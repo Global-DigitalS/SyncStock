@@ -182,6 +182,16 @@ function App() {
             }
           />
           <Route
+            path="/suppliers/:supplierId"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <SupplierDetail />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/products"
             element={
               <ProtectedRoute>
