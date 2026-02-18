@@ -72,14 +72,16 @@ const SupplierDetail = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const [supplierRes, productsRes, categoriesRes] = await Promise.all([
+      const [supplierRes, productsRes, categoriesRes, syncStatusRes] = await Promise.all([
         api.get(`/suppliers/${supplierId}`),
         api.get("/products", { params: { supplier_id: supplierId } }),
-        api.get("/products/categories")
+        api.get("/products/categories"),
+        api.get(`/suppliers/${supplierId}/sync-status`).catch(() => ({ data: null }))
       ]);
       setSupplier(supplierRes.data);
       setProducts(productsRes.data);
       setCategories(categoriesRes.data);
+      setSyncStatus(syncStatusRes.data);
     } catch (error) {
       toast.error("Error al cargar los datos del proveedor");
       navigate("/suppliers");
@@ -91,6 +93,19 @@ const SupplierDetail = () => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleSync = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.post(`/suppliers/${supplierId}/sync`);
+      toast.success(`Sincronización completada: ${res.data.imported} nuevos, ${res.data.updated} actualizados`);
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error en la sincronización FTP");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const filteredProducts = products.filter((product) => {
     if (filters.search) {
