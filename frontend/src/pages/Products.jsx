@@ -216,42 +216,42 @@ const Products = () => {
               />
             </div>
             <Select
-              value={filters.supplier_id}
-              onValueChange={(value) => setFilters({ ...filters, supplier_id: value })}
+              value={filters.supplier_id || "all"}
+              onValueChange={(value) => setFilters({ ...filters, supplier_id: value === "all" ? "" : value })}
             >
               <SelectTrigger className="w-full lg:w-[200px] input-base" data-testid="filter-supplier">
                 <SelectValue placeholder="Todos los proveedores" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos los proveedores</SelectItem>
+                <SelectItem value="all">Todos los proveedores</SelectItem>
                 {suppliers.map((s) => (
                   <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Select
-              value={filters.category}
-              onValueChange={(value) => setFilters({ ...filters, category: value })}
+              value={filters.category || "all"}
+              onValueChange={(value) => setFilters({ ...filters, category: value === "all" ? "" : value })}
             >
               <SelectTrigger className="w-full lg:w-[180px] input-base" data-testid="filter-category">
                 <SelectValue placeholder="Todas las categorías" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todas las categorías</SelectItem>
+                <SelectItem value="all">Todas las categorías</SelectItem>
                 {categories.map((c) => (
                   <SelectItem key={c} value={c}>{c}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
             <Select
-              value={filters.stock}
-              onValueChange={(value) => setFilters({ ...filters, stock: value })}
+              value={filters.stock || "all"}
+              onValueChange={(value) => setFilters({ ...filters, stock: value === "all" ? "" : value })}
             >
               <SelectTrigger className="w-full lg:w-[150px] input-base" data-testid="filter-stock">
                 <SelectValue placeholder="Stock" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todo el stock</SelectItem>
+                <SelectItem value="all">Todo el stock</SelectItem>
                 <SelectItem value="low">Stock bajo</SelectItem>
                 <SelectItem value="out">Sin stock</SelectItem>
               </SelectContent>
