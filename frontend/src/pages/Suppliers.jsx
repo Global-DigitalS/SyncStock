@@ -228,6 +228,7 @@ const Suppliers = () => {
                   <TableHead>Proveedor</TableHead>
                   <TableHead>Formato</TableHead>
                   <TableHead>Conexión FTP</TableHead>
+                  <TableHead></TableHead>
                   <TableHead className="text-right">Productos</TableHead>
                   <TableHead>Última Sincronización</TableHead>
                   <TableHead className="w-[50px]"></TableHead>
