@@ -53,10 +53,12 @@ import {
   Server,
   FileText,
   Package,
-  RefreshCw
+  RefreshCw,
+  Eye
 } from "lucide-react";
 
 const Suppliers = () => {
+  const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
