@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Suppliers from "./pages/Suppliers";
+import SupplierDetail from "./pages/SupplierDetail";
 import Products from "./pages/Products";
 import Catalog from "./pages/Catalog";
 import MarginRules from "./pages/MarginRules";
