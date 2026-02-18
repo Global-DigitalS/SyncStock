@@ -458,7 +458,7 @@ class MarginRuleResponse(MarginRuleCreate):
 
 class NotificationResponse(BaseModel):
     id: str
-    type: str  # stock_low, stock_out, price_change
+    type: str  # stock_low, stock_out, price_change, sync_complete, sync_error
     message: str
     product_id: Optional[str] = None
     product_name: Optional[str] = None
