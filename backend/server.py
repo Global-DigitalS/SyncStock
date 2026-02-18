@@ -63,20 +63,42 @@ class UserResponse(BaseModel):
 class SupplierCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    # Conexión FTP
+    ftp_schema: Optional[str] = "ftp"  # ftp, sftp
     ftp_host: Optional[str] = None
     ftp_user: Optional[str] = None
     ftp_password: Optional[str] = None
+    ftp_port: Optional[int] = 21
     ftp_path: Optional[str] = None
-    file_format: Optional[str] = "csv"  # csv, xlsx, xml
+    ftp_mode: Optional[str] = "passive"  # passive, active
+    # Configuración CSV
+    file_format: Optional[str] = "csv"  # csv, xlsx, xls, xml
+    csv_separator: Optional[str] = ";"
+    csv_enclosure: Optional[str] = '"'
+    csv_line_break: Optional[str] = "\\n"
+    csv_header_row: Optional[int] = 1
+    # Mapeo de campos CSV
+    csv_field_mapping: Optional[Dict[str, str]] = None
 
 class SupplierUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    # Conexión FTP
+    ftp_schema: Optional[str] = None
     ftp_host: Optional[str] = None
     ftp_user: Optional[str] = None
     ftp_password: Optional[str] = None
+    ftp_port: Optional[int] = None
     ftp_path: Optional[str] = None
+    ftp_mode: Optional[str] = None
+    # Configuración CSV
     file_format: Optional[str] = None
+    csv_separator: Optional[str] = None
+    csv_enclosure: Optional[str] = None
+    csv_line_break: Optional[str] = None
+    csv_header_row: Optional[int] = None
+    # Mapeo de campos CSV
+    csv_field_mapping: Optional[Dict[str, str]] = None
 
 class SupplierResponse(BaseModel):
     id: str
