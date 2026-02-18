@@ -1,0 +1,130 @@
+{
+  "identity": {
+    "name": "E1 - The Swiss Architect",
+    "archetype": "Swiss & High-Contrast",
+    "vibe": "Professional, Precise, Industrial, Efficient",
+    "language": "es"
+  },
+  "typography": {
+    "font_family": {
+      "headings": "Manrope, sans-serif",
+      "body": "Inter, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-4xl font-bold tracking-tight",
+      "h2": "text-3xl font-semibold tracking-tight",
+      "h3": "text-2xl font-semibold tracking-tight",
+      "p": "text-base leading-relaxed text-muted-foreground",
+      "small": "text-sm font-medium text-muted-foreground"
+    },
+    "instructions": "Import fonts from Google Fonts: Manrope (400, 500, 600, 700), Inter (variable), JetBrains Mono (variable). Use Manrope for all Headings. Use JetBrains Mono for ALL numerical data (prices, stock, SKUs, IDs)."
+  },
+  "colors": {
+    "palette": {
+      "primary": {
+        "name": "Slate Obsidian",
+        "hex": "#0F172A",
+        "tailwind": "slate-900"
+      },
+      "secondary": {
+        "name": "Industrial Silver",
+        "hex": "#F1F5F9",
+        "tailwind": "slate-100"
+      },
+      "accent": {
+        "name": "Logistic Indigo",
+        "hex": "#4F46E5",
+        "tailwind": "indigo-600"
+      },
+      "functional": {
+        "success": "#10B981",
+        "warning": "#F59E0B",
+        "error": "#E11D48",
+        "info": "#3B82F6"
+      },
+      "background": {
+        "light": "#FFFFFF",
+        "dark": "#020617"
+      }
+    },
+    "theme_strategy": "High Contrast Light Mode by default. Dark Mode available for 'Night Ops'. Avoid broad gradients. Use solid colors and 1px borders.",
+    "forbidden_colors": ["#1B93A4", "#7351B7"]
+  },
+  "layout": {
+    "spacing_system": "Generous. Use p-6 or p-8 for cards. Gap-6 for grids.",
+    "container_width": "max-w-7xl mx-auto px-4 sm:px-6 lg:px-8",
+    "grid_strategy": "Bento Grid (Mode B). Dense, functional, minimal gaps (gap-4).",
+    "sidebar": "Fixed left sidebar, width 64 (256px). Collapsible on mobile.",
+    "z_index": {
+      "toast": 50,
+      "modal": 40,
+      "dropdown": 30,
+      "sticky_nav": 20
+    }
+  },
+  "components": {
+    "buttons": {
+      "style": "Sharp corners (rounded-sm). High contrast.",
+      "primary": "bg-slate-900 text-white hover:bg-slate-800 shadow-sm",
+      "secondary": "bg-white border border-slate-200 text-slate-900 hover:bg-slate-50",
+      "ghost": "hover:bg-slate-100 text-slate-600"
+    },
+    "cards": {
+      "style": "Flat, 1px border (border-slate-200), no shadow by default. Hover: shadow-md transition-all duration-200.",
+      "padding": "p-6"
+    },
+    "inputs": {
+      "style": "bg-slate-50 border-slate-200 focus:bg-white focus:ring-2 focus:ring-indigo-500 rounded-sm font-medium"
+    },
+    "tables": {
+      "style": "Dense. Header: bg-slate-50 uppercase text-xs tracking-wider text-slate-500. Rows: hover:bg-slate-50 transition-colors. Font-mono for numbers.",
+      "borders": "border-b border-slate-100"
+    },
+    "status_badges": {
+      "style": "Pill shape, px-2.5 py-0.5 rounded-full text-xs font-medium border",
+      "variants": {
+        "success": "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "warning": "bg-amber-50 text-amber-700 border-amber-200",
+        "error": "bg-rose-50 text-rose-700 border-rose-200"
+      }
+    }
+  },
+  "visual_enhancers": {
+    "borders": "Use 1px borders everywhere to define structure. Opacity 100% in light mode, 20% in dark mode.",
+    "shadows": "Layered ambient shadows. shadow-[0_2px_8px_rgba(0,0,0,0.08)]",
+    "textures": "Subtle noise texture on sidebar background to reduce digital sterility.",
+    "empty_states": "Use minimalist logistics imagery with grayscale filter."
+  },
+  "icons": {
+    "library": "lucide-react",
+    "style": "Stroke width 1.5px. Crisp.",
+    "usage": "Use icons to support labels, not replace them."
+  },
+  "images": {
+    "login_background": "https://images.unsplash.com/photo-1557447733-6db6888dd2d2?crop=entropy&cs=srgb&fm=jpg&q=85",
+    "empty_state_generic": "https://images.unsplash.com/photo-1610641563856-4ec0223d7084?crop=entropy&cs=srgb&fm=jpg&q=85"
+  },
+  "design_rules": {
+    "contrast": "Ensure WCAG AA compliance. Text on colored badges must be dark enough.",
+    "interaction": "All clickable elements must have a :hover and :active state. Buttons should scale down slightly (0.98) on click.",
+    "data_density": "High. Avoid wasted white space in tables. Use compact rows.",
+    "language": "UI Text MUST be in SPANISH (Español)."
+  },
+  "component_overrides": {
+    "sonner": "Use rich colors for toasts. Success = Emerald, Error = Rose.",
+    "shadcn_ui": "Customize radius to 0.25rem (4px). Customize font-family to Manrope."
+  },
+  "universal_guidelines": [
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "Use glass-morphism effects with backdrop filters (12-24px blur) only for sticky headers/modals.",
+    "You MUST NOT apply universal transition (transition: all). Add transitions for specific properties.",
+    "You MUST NOT center align the app container (.App { text-align: center; }).",
+    "Always use modern button styles (sharp/semi-rounded) with interaction animations.",
+    "NEVER use AI assistant Emoji characters (🤖, 🧠, etc) for icons.",
+    "Every interaction needs micro-animations - hover states, transitions.",
+    "All interactive elements MUST include data-testid attribute (kebab-case)."
+  ]
+}
