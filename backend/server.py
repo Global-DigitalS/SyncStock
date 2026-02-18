@@ -19,6 +19,11 @@ import json
 import xmltodict
 from openpyxl import load_workbook
 import xlrd
+import ftplib
+import paramiko
+import asyncio
+from contextlib import asynccontextmanager
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -33,7 +38,22 @@ JWT_SECRET = os.environ.get('JWT_SECRET', 'stockhub-secret-key-2024')
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
-app = FastAPI(title="StockHub SaaS API")
+# Scheduler for automatic sync
+scheduler = AsyncIOScheduler()
+
+# Lifespan context manager for startup/shutdown
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    scheduler.add_job(sync_all_suppliers, 'interval', hours=12, id='sync_suppliers', replace_existing=True)
+    scheduler.start()
+    logger.info("Scheduler started - FTP sync every 12 hours")
+    yield
+    # Shutdown
+    scheduler.shutdown()
+    client.close()
+
+app = FastAPI(title="StockHub SaaS API", lifespan=lifespan)
 api_router = APIRouter(prefix="/api")
 security = HTTPBearer()
 
