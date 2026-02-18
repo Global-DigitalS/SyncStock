@@ -104,10 +104,24 @@ class SupplierResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
+    # Conexión FTP
+    ftp_schema: Optional[str] = None
     ftp_host: Optional[str] = None
     ftp_user: Optional[str] = None
+    ftp_port: Optional[int] = None
     ftp_path: Optional[str] = None
+    ftp_mode: Optional[str] = None
+    # Configuración CSV
     file_format: Optional[str] = None
+    csv_separator: Optional[str] = None
+    csv_enclosure: Optional[str] = None
+    csv_line_break: Optional[str] = None
+    csv_header_row: Optional[int] = None
+    csv_field_mapping: Optional[Dict[str, str]] = None
+    # Stats
+    product_count: int = 0
+    last_sync: Optional[str] = None
+    created_at: str
     product_count: int = 0
     last_sync: Optional[str] = None
     created_at: str
