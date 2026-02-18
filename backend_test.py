@@ -109,7 +109,7 @@ class StockHubAPITester:
         # Test login with registered user credentials
         timestamp = datetime.now().strftime('%H%M%S')
         login_data = {
-            "email": f"test_user_{timestamp}@stockhub.test",
+            "email": f"test_user_{timestamp}@example.com",
             "password": "TestPass123!"
         }
         
