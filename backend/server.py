@@ -254,9 +254,9 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
         "created_at": now
     }
     await db.suppliers.insert_one(supplier_doc)
-    del supplier_doc["ftp_password"]
-    del supplier_doc["user_id"]
-    del supplier_doc["_id"] if "_id" in supplier_doc else None
+    supplier_doc.pop("ftp_password", None)
+    supplier_doc.pop("user_id", None)
+    supplier_doc.pop("_id", None)
     return SupplierResponse(**supplier_doc)
 
 @api_router.get("/suppliers", response_model=List[SupplierResponse])
