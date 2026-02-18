@@ -235,7 +235,7 @@ def main():
         ("Get Suppliers", lambda: tester.test_get_suppliers()[0]),
         ("Create Margin Rule", lambda: tester.test_create_margin_rule() is not None),
         ("Get Margin Rules", lambda: tester.test_get_margin_rules()[0]),
-        ("Get Dashboard Stats", lambda: tester.test_dashboard_stats()[0]),
+        ("Get Dashboard Stats", lambda: tester.test_get_dashboard_stats()[0]),
         ("Get Notifications", tester.test_get_notifications),
         ("Get Price History", tester.test_get_price_history),
         ("Product Endpoints", tester.test_products_endpoints),
