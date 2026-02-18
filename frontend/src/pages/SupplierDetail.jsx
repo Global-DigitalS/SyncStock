@@ -42,7 +42,9 @@ import {
   ShoppingCart,
   Server,
   FileText,
-  RefreshCw
+  RefreshCw,
+  Clock,
+  Zap
 } from "lucide-react";
 
 const SupplierDetail = () => {
@@ -53,6 +55,8 @@ const SupplierDetail = () => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState(null);
   const [selectedProducts, setSelectedProducts] = useState(new Set());
   const [filters, setFilters] = useState({
     search: "",
