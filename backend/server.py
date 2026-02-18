@@ -61,6 +61,265 @@ security = HTTPBearer()
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# ==================== FTP SYNC FUNCTIONS ====================
+
+async def download_file_from_ftp(supplier: dict) -> bytes:
+    """Download file from FTP/SFTP server"""
+    schema = supplier.get('ftp_schema', 'ftp').lower()
+    host = supplier.get('ftp_host')
+    port = supplier.get('ftp_port', 21)
+    user = supplier.get('ftp_user', '')
+    password = supplier.get('ftp_password', '')
+    file_path = supplier.get('ftp_path', '')
+    mode = supplier.get('ftp_mode', 'passive')
+    
+    if not host or not file_path:
+        raise ValueError("FTP host and path are required")
+    
+    content = io.BytesIO()
+    
+    if schema == 'sftp':
+        # SFTP connection using paramiko
+        transport = paramiko.Transport((host, port or 22))
+        transport.connect(username=user, password=password)
+        sftp = paramiko.SFTPClient.from_transport(transport)
+        try:
+            sftp.getfo(file_path, content)
+        finally:
+            sftp.close()
+            transport.close()
+    else:
+        # FTP/FTPS connection
+        if schema == 'ftps':
+            ftp = ftplib.FTP_TLS()
+        else:
+            ftp = ftplib.FTP()
+        
+        try:
+            ftp.connect(host, port or 21)
+            ftp.login(user, password)
+            
+            if schema == 'ftps':
+                ftp.prot_p()  # Enable data channel encryption
+            
+            if mode == 'passive':
+                ftp.set_pasv(True)
+            else:
+                ftp.set_pasv(False)
+            
+            ftp.retrbinary(f'RETR {file_path}', content.write)
+        finally:
+            ftp.quit()
+    
+    content.seek(0)
+    return content.read()
+
+async def process_supplier_file(supplier: dict, content: bytes) -> dict:
+    """Process downloaded file and update products"""
+    file_format = supplier.get('file_format', 'csv').lower()
+    separator = supplier.get('csv_separator', ';')
+    enclosure = supplier.get('csv_enclosure', '"')
+    header_row = supplier.get('csv_header_row', 1) or 1
+    
+    try:
+        if file_format == 'csv':
+            # Handle CSV with custom settings
+            try:
+                decoded = content.decode('utf-8')
+            except:
+                decoded = content.decode('latin-1')
+            
+            lines = decoded.split('\n')
+            if header_row > 1:
+                lines = lines[header_row-1:]
+            
+            reader = csv.DictReader(lines, delimiter=separator, quotechar=enclosure if enclosure else '"')
+            raw_products = list(reader)
+        elif file_format in ['xlsx', 'xls']:
+            if file_format == 'xlsx':
+                wb = load_workbook(filename=io.BytesIO(content), read_only=True)
+                ws = wb.active
+                rows = list(ws.iter_rows(values_only=True))
+            else:
+                wb = xlrd.open_workbook(file_contents=content)
+                ws = wb.sheet_by_index(0)
+                rows = [[ws.cell_value(r, c) for c in range(ws.ncols)] for r in range(ws.nrows)]
+            
+            if not rows:
+                return {"imported": 0, "updated": 0, "errors": 0}
+            
+            # Skip to header row
+            if header_row > 1:
+                rows = rows[header_row-1:]
+            
+            headers = [str(h).lower().strip() if h else f"col_{i}" for i, h in enumerate(rows[0])]
+            raw_products = [dict(zip(headers, row)) for row in rows[1:] if any(row)]
+        elif file_format == 'xml':
+            raw_products = parse_xml_content(content)
+        else:
+            return {"imported": 0, "updated": 0, "errors": 0, "message": "Unsupported format"}
+        
+        # Process products
+        now = datetime.now(timezone.utc).isoformat()
+        imported = 0
+        updated = 0
+        errors = 0
+        
+        for raw in raw_products:
+            try:
+                normalized = normalize_product_data(raw)
+                if not normalized.get('sku') or not normalized.get('name'):
+                    errors += 1
+                    continue
+                
+                existing = await db.products.find_one({
+                    "sku": normalized['sku'], 
+                    "supplier_id": supplier['id']
+                })
+                
+                product_doc = {
+                    "sku": normalized.get('sku'),
+                    "name": normalized.get('name'),
+                    "description": normalized.get('description'),
+                    "price": normalized.get('price', 0),
+                    "stock": normalized.get('stock', 0),
+                    "category": normalized.get('category'),
+                    "brand": normalized.get('brand'),
+                    "ean": normalized.get('ean'),
+                    "weight": normalized.get('weight'),
+                    "image_url": normalized.get('image_url'),
+                    "supplier_id": supplier['id'],
+                    "supplier_name": supplier["name"],
+                    "user_id": supplier["user_id"],
+                    "updated_at": now
+                }
+                
+                if existing:
+                    # Track price changes
+                    if existing.get('price') != product_doc['price'] and existing.get('price', 0) > 0:
+                        await db.price_history.insert_one({
+                            "id": str(uuid.uuid4()),
+                            "product_id": existing["id"],
+                            "product_name": product_doc["name"],
+                            "old_price": existing.get('price', 0),
+                            "new_price": product_doc['price'],
+                            "change_percentage": ((product_doc['price'] - existing.get('price', 0)) / existing.get('price', 1)) * 100,
+                            "user_id": supplier["user_id"],
+                            "created_at": now
+                        })
+                    
+                    # Track stock changes
+                    if existing.get('stock', 0) > 0 and product_doc['stock'] == 0:
+                        await db.notifications.insert_one({
+                            "id": str(uuid.uuid4()),
+                            "type": "stock_out",
+                            "message": f"Producto '{product_doc['name']}' sin stock (sincronización automática)",
+                            "product_id": existing["id"],
+                            "product_name": product_doc["name"],
+                            "user_id": supplier["user_id"],
+                            "read": False,
+                            "created_at": now
+                        })
+                    elif existing.get('stock', 0) > 5 and product_doc['stock'] <= 5 and product_doc['stock'] > 0:
+                        await db.notifications.insert_one({
+                            "id": str(uuid.uuid4()),
+                            "type": "stock_low",
+                            "message": f"Producto '{product_doc['name']}' con stock bajo ({product_doc['stock']} uds) - sincronización automática",
+                            "product_id": existing["id"],
+                            "product_name": product_doc["name"],
+                            "user_id": supplier["user_id"],
+                            "read": False,
+                            "created_at": now
+                        })
+                    
+                    await db.products.update_one({"id": existing["id"]}, {"$set": product_doc})
+                    updated += 1
+                else:
+                    product_doc["id"] = str(uuid.uuid4())
+                    product_doc["created_at"] = now
+                    await db.products.insert_one(product_doc)
+                    imported += 1
+            except Exception as e:
+                logger.error(f"Error processing product: {e}")
+                errors += 1
+        
+        return {"imported": imported, "updated": updated, "errors": errors}
+    
+    except Exception as e:
+        logger.error(f"Error processing file: {e}")
+        return {"imported": 0, "updated": 0, "errors": 1, "message": str(e)}
+
+async def sync_supplier(supplier: dict) -> dict:
+    """Sync a single supplier from FTP"""
+    if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
+        return {"status": "skipped", "message": "FTP not configured"}
+    
+    try:
+        logger.info(f"Syncing supplier: {supplier['name']}")
+        
+        # Download file
+        content = await download_file_from_ftp(supplier)
+        
+        # Process file
+        result = await process_supplier_file(supplier, content)
+        
+        # Update supplier stats
+        now = datetime.now(timezone.utc).isoformat()
+        product_count = await db.products.count_documents({"supplier_id": supplier['id']})
+        await db.suppliers.update_one(
+            {"id": supplier['id']},
+            {"$set": {"product_count": product_count, "last_sync": now}}
+        )
+        
+        # Create sync log notification
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": "sync_complete",
+            "message": f"Sincronización completada: {supplier['name']} - {result['imported']} nuevos, {result['updated']} actualizados",
+            "product_id": None,
+            "product_name": None,
+            "user_id": supplier["user_id"],
+            "read": False,
+            "created_at": now
+        })
+        
+        logger.info(f"Sync complete for {supplier['name']}: {result}")
+        return {"status": "success", **result}
+        
+    except Exception as e:
+        logger.error(f"Error syncing supplier {supplier['name']}: {e}")
+        
+        # Create error notification
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": "sync_error",
+            "message": f"Error en sincronización: {supplier['name']} - {str(e)[:100]}",
+            "product_id": None,
+            "product_name": None,
+            "user_id": supplier["user_id"],
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+        
+        return {"status": "error", "message": str(e)}
+
+async def sync_all_suppliers():
+    """Sync all suppliers with FTP configured - runs every 12 hours"""
+    logger.info("Starting scheduled FTP sync for all suppliers...")
+    
+    suppliers = await db.suppliers.find({
+        "ftp_host": {"$ne": None, "$ne": ""},
+        "ftp_path": {"$ne": None, "$ne": ""}
+    }).to_list(1000)
+    
+    logger.info(f"Found {len(suppliers)} suppliers with FTP configured")
+    
+    for supplier in suppliers:
+        await sync_supplier(supplier)
+        await asyncio.sleep(2)  # Small delay between syncs
+    
+    logger.info("Scheduled FTP sync completed")
+
 # ==================== MODELS ====================
 
 class UserCreate(BaseModel):
