@@ -268,6 +268,18 @@ const Suppliers = () => {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => navigate(`/suppliers/${supplier.id}`)}
+                        className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50 font-medium"
+                        data-testid={`view-catalog-${supplier.id}`}
+                      >
+                        <Eye className="w-4 h-4 mr-1.5" strokeWidth={1.5} />
+                        Ver catálogo
+                      </Button>
+                    </TableCell>
+                    <TableCell className="text-right">
                       <span className="font-mono text-slate-900">{supplier.product_count.toLocaleString()}</span>
                     </TableCell>
                     <TableCell>
