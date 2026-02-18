@@ -280,11 +280,22 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
         "user_id": user["id"],
         "name": supplier.name,
         "description": supplier.description,
+        # Conexión FTP
+        "ftp_schema": supplier.ftp_schema,
         "ftp_host": supplier.ftp_host,
         "ftp_user": supplier.ftp_user,
         "ftp_password": supplier.ftp_password,
+        "ftp_port": supplier.ftp_port,
         "ftp_path": supplier.ftp_path,
+        "ftp_mode": supplier.ftp_mode,
+        # Configuración CSV
         "file_format": supplier.file_format,
+        "csv_separator": supplier.csv_separator,
+        "csv_enclosure": supplier.csv_enclosure,
+        "csv_line_break": supplier.csv_line_break,
+        "csv_header_row": supplier.csv_header_row,
+        "csv_field_mapping": supplier.csv_field_mapping,
+        # Stats
         "product_count": 0,
         "last_sync": None,
         "created_at": now
