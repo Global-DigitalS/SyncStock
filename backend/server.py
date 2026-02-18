@@ -618,6 +618,41 @@ async def delete_supplier(supplier_id: str, user: dict = Depends(get_current_use
     await db.products.delete_many({"supplier_id": supplier_id})
     return {"message": "Proveedor eliminado"}
 
+@api_router.post("/suppliers/{supplier_id}/sync")
+async def sync_supplier_manual(supplier_id: str, user: dict = Depends(get_current_user)):
+    """Manually trigger FTP sync for a supplier"""
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    
+    if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
+        raise HTTPException(status_code=400, detail="Configuración FTP incompleta. Configure Host y Ruta del archivo.")
+    
+    result = await sync_supplier(supplier)
+    
+    if result.get('status') == 'error':
+        raise HTTPException(status_code=500, detail=result.get('message', 'Error en sincronización'))
+    
+    return result
+
+@api_router.get("/suppliers/{supplier_id}/sync-status")
+async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_user)):
+    """Get sync status for a supplier"""
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]}, {"_id": 0})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    
+    # Get next scheduled sync time
+    job = scheduler.get_job('sync_suppliers')
+    next_run = job.next_run_time.isoformat() if job and job.next_run_time else None
+    
+    return {
+        "last_sync": supplier.get('last_sync'),
+        "next_scheduled_sync": next_run,
+        "ftp_configured": bool(supplier.get('ftp_host') and supplier.get('ftp_path')),
+        "product_count": supplier.get('product_count', 0)
+    }
+
 # ==================== FILE PARSING HELPERS ====================
 
 def parse_csv_content(content: bytes) -> List[dict]:
