@@ -663,7 +663,7 @@ async def create_margin_rule(rule: MarginRuleCreate, user: dict = Depends(get_cu
         "created_at": now
     }
     await db.margin_rules.insert_one(rule_doc)
-    del rule_doc["_id"] if "_id" in rule_doc else None
+    rule_doc.pop("_id", None)
     return MarginRuleResponse(**rule_doc)
 
 @api_router.get("/margin-rules", response_model=List[MarginRuleResponse])
