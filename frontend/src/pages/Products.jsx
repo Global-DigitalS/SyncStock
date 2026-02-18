@@ -373,6 +373,7 @@ const Products = () => {
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>Importar Productos</DialogTitle>
+            <DialogDescription>Selecciona un proveedor y sube el archivo de productos</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
