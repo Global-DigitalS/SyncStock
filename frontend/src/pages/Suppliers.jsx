@@ -587,7 +587,7 @@ const Suppliers = () => {
                     <Label htmlFor="csv_enclosure">Delimitador de texto</Label>
                     <Select
                       value={formData.csv_enclosure}
-                      onValueChange={(value) => setFormData({ ...formData, csv_enclosure: value })}
+                      onValueChange={(value) => setFormData({ ...formData, csv_enclosure: value === "none" ? "" : value })}
                     >
                       <SelectTrigger className="input-base" data-testid="csv-enclosure-select">
                         <SelectValue />
@@ -595,7 +595,7 @@ const Suppliers = () => {
                       <SelectContent>
                         <SelectItem value='"'>Comillas dobles (")</SelectItem>
                         <SelectItem value="'">Comillas simples (')</SelectItem>
-                        <SelectItem value="">Ninguno</SelectItem>
+                        <SelectItem value="none">Ninguno</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
