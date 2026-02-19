@@ -47,6 +47,7 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 - [x] Login/Registro con diseño profesional
 - [x] Dashboard con estadísticas y alertas
 - [x] Gestión de proveedores con formulario de pestañas
+- [x] **Selector de tipo de conexión (FTP/SFTP o URL Directa)**
 - [x] Configuración FTP (schema, host, port, user, password, path, modo)
 - [x] Configuración CSV (separador, enclosure, header row, formato)
 - [x] Detalle de proveedor con catálogo de productos
@@ -57,7 +58,8 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 - [x] Exportación a 3 plataformas (CSV)
 - [x] Historial de precios con gráficos
 - [x] Centro de notificaciones
-- [x] **NUEVO: Página WooCommerce Export**
+- [x] Página WooCommerce Export
+- [x] Componente ColumnMappingDialog para mapeo visual de columnas
   - Añadir/editar/eliminar tiendas
   - Probar conexión
   - Exportar productos directamente
