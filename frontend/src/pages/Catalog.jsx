@@ -313,14 +313,22 @@ const Catalog = () => {
             <BookOpen className="w-10 h-10" strokeWidth={1.5} />
           </div>
           <h3 className="text-lg font-semibold text-slate-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-            Tu catálogo está vacío
+            {catalogItems.length === 0 ? "Tu catálogo está vacío" : "No se encontraron productos"}
           </h3>
           <p className="text-slate-500 mb-4">
-            Añade productos desde la sección de Productos para crear tu catálogo
+            {catalogItems.length === 0 
+              ? "Añade productos desde la sección de Proveedores para crear tu catálogo"
+              : "Prueba con otros filtros de búsqueda"
+            }
           </p>
         </div>
       ) : (
         <Card className="border-slate-200">
+          <CardHeader className="border-b border-slate-100 py-3 px-4">
+            <p className="text-sm text-slate-500">
+              Mostrando {filteredItems.length} de {catalogItems.length} productos
+            </p>
+          </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader>
@@ -335,7 +343,7 @@ const Catalog = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {catalogItems.map((item) => (
+                {filteredItems.map((item) => (
                   <TableRow
                     key={item.id}
                     className={`table-row ${!item.active ? "opacity-50" : ""}`}
