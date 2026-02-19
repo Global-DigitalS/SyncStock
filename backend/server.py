@@ -415,11 +415,23 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 logger.error(f"Error processing product: {e}")
                 errors += 1
         
-        return {"imported": imported, "updated": updated, "errors": errors, "detected_columns": detected_columns}
+        result = {
+            "imported": imported, 
+            "updated": updated, 
+            "errors": errors, 
+            "detected_columns": detected_columns
+        }
+        
+        # Add helpful message if mapping is needed
+        if needs_mapping and errors > 0 and (imported + updated) == 0:
+            result["message"] = "Se detectaron columnas pero no se pudieron importar productos. Configura el mapeo de columnas para asignar los campos correctamente."
+            result["needs_mapping"] = True
+        
+        return result
     
     except Exception as e:
         logger.error(f"Error processing file: {e}")
-        return {"imported": 0, "updated": 0, "errors": 1, "message": str(e)}
+        return {"imported": 0, "updated": 0, "errors": 1, "message": str(e), "detected_columns": []}
 
 async def sync_supplier(supplier: dict) -> dict:
     """Sync a single supplier from FTP or URL"""
