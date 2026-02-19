@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useNavigate } from "react-router-dom";
 import { api } from "../App";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
+import { Checkbox } from "../components/ui/checkbox";
+import { Badge } from "../components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -26,6 +28,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "../components/ui/dialog";
 import {
   Package,
@@ -36,14 +39,20 @@ import {
   X,
   Eye,
   ExternalLink,
-  FileUp
+  FileUp,
+  BookOpen,
+  Star,
+  RefreshCw,
+  CheckSquare
 } from "lucide-react";
 
 const Products = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [products, setProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [catalogs, setCatalogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [filters, setFilters] = useState({
@@ -54,21 +63,28 @@ const Products = () => {
   });
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedProducts, setSelectedProducts] = useState(new Set());
+  const [selectedCatalogs, setSelectedCatalogs] = useState(new Set());
+  const [productsToAdd, setProductsToAdd] = useState([]);
+  const [addingToCatalog, setAddingToCatalog] = useState(false);
   const [uploadSupplierId, setUploadSupplierId] = useState("");
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const [productsRes, suppliersRes, categoriesRes] = await Promise.all([
+      const [productsRes, suppliersRes, categoriesRes, catalogsRes] = await Promise.all([
         api.get("/products", { params: buildQueryParams() }),
         api.get("/suppliers"),
-        api.get("/products/categories")
+        api.get("/products/categories"),
+        api.get("/catalogs")
       ]);
       setProducts(productsRes.data);
       setSuppliers(suppliersRes.data);
       setCategories(categoriesRes.data);
+      setCatalogs(catalogsRes.data);
     } catch (error) {
       toast.error("Error al cargar los productos");
     } finally {
@@ -156,16 +172,101 @@ const Products = () => {
     }
   };
 
-  const handleAddToCatalog = async (productId) => {
-    try {
-      await api.post("/catalog", { product_id: productId });
-      toast.success("Producto añadido al catálogo");
-    } catch (error) {
-      if (error.response?.status === 400) {
-        toast.info("El producto ya está en el catálogo");
+  // Product selection handlers
+  const handleSelectAll = (checked) => {
+    if (checked) {
+      setSelectedProducts(new Set(products.map(p => p.id)));
+    } else {
+      setSelectedProducts(new Set());
+    }
+  };
+
+  const handleSelectProduct = (productId, checked) => {
+    setSelectedProducts(prev => {
+      const newSet = new Set(prev);
+      if (checked) {
+        newSet.add(productId);
       } else {
-        toast.error("Error al añadir al catálogo");
+        newSet.delete(productId);
       }
+      return newSet;
+    });
+  };
+
+  // Catalog selection handlers
+  const openCatalogSelector = (productIds) => {
+    if (catalogs.length === 0) {
+      toast.error("No hay catálogos creados. Crea uno primero en la sección Catálogos.");
+      return;
+    }
+    setProductsToAdd(productIds);
+    const defaultCatalog = catalogs.find(c => c.is_default);
+    if (defaultCatalog) {
+      setSelectedCatalogs(new Set([defaultCatalog.id]));
+    } else {
+      setSelectedCatalogs(new Set());
+    }
+    setShowCatalogDialog(true);
+  };
+
+  const handleAddSelectedToCatalogs = () => {
+    if (selectedProducts.size === 0) {
+      toast.error("Selecciona al menos un producto");
+      return;
+    }
+    openCatalogSelector(Array.from(selectedProducts));
+  };
+
+  const handleAddSingleToCatalog = (productId) => {
+    openCatalogSelector([productId]);
+  };
+
+  const toggleCatalogSelection = (catalogId) => {
+    setSelectedCatalogs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(catalogId)) {
+        newSet.delete(catalogId);
+      } else {
+        newSet.add(catalogId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleConfirmAddToCatalogs = async () => {
+    if (selectedCatalogs.size === 0) {
+      toast.error("Selecciona al menos un catálogo");
+      return;
+    }
+
+    setAddingToCatalog(true);
+    let totalAdded = 0;
+
+    for (const catalogId of selectedCatalogs) {
+      try {
+        const res = await api.post(`/catalogs/${catalogId}/products`, {
+          product_ids: productsToAdd
+        });
+        totalAdded += res.data.added || 0;
+      } catch (error) {
+        console.error("Error adding to catalog:", error);
+      }
+    }
+
+    setAddingToCatalog(false);
+    setShowCatalogDialog(false);
+    setSelectedProducts(new Set());
+    setProductsToAdd([]);
+
+    const catalogNames = catalogs
+      .filter(c => selectedCatalogs.has(c.id))
+      .map(c => c.name)
+      .join(", ");
+
+    if (totalAdded > 0) {
+      toast.success(`Productos añadidos a: ${catalogNames}`);
+    } else {
+      toast.info("Los productos ya estaban en los catálogos seleccionados");
     }
   };
 
