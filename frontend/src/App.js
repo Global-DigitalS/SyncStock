@@ -233,6 +233,16 @@ function App() {
             }
           />
           <Route
+            path="/woocommerce"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <WooCommerceExport />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/price-history"
             element={
               <ProtectedRoute>
