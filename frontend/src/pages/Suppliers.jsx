@@ -82,7 +82,7 @@ const defaultFormData = {
   csv_line_break: "\\n",
   csv_header_row: 1,
   // Mapeo de campos
-  csv_field_mapping: null
+  column_mapping: null
 };
 
 const fieldMappingOptions = [
