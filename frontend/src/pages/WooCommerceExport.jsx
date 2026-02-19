@@ -144,15 +144,41 @@ const WooCommerceExport = () => {
     setShowDeleteDialog(true);
   };
 
-  const openExport = (config) => {
+  const openExport = async (config) => {
     setSelectedConfig(config);
-    setExportOptions({
-      update_existing: true,
-      export_all: true,
-      selected_ids: []
-    });
     setExportResult(null);
+    
+    // Set default catalog if not set
+    if (!exportOptions.catalog_id && catalogs.length > 0) {
+      const defaultCatalog = catalogs.find(c => c.is_default) || catalogs[0];
+      setExportOptions(prev => ({ ...prev, catalog_id: defaultCatalog.id }));
+      
+      // Load products for default catalog
+      setLoadingCatalogProducts(true);
+      try {
+        const res = await api.get(`/catalogs/${defaultCatalog.id}/products?active_only=true`);
+        setSelectedCatalogProducts(res.data);
+      } catch (error) {
+        console.error("Error loading catalog products:", error);
+      } finally {
+        setLoadingCatalogProducts(false);
+      }
+    }
+    
     setShowExportDialog(true);
+  };
+  
+  const handleCatalogChange = async (catalogId) => {
+    setExportOptions(prev => ({ ...prev, catalog_id: catalogId }));
+    setLoadingCatalogProducts(true);
+    try {
+      const res = await api.get(`/catalogs/${catalogId}/products?active_only=true`);
+      setSelectedCatalogProducts(res.data);
+    } catch (error) {
+      console.error("Error loading catalog products:", error);
+    } finally {
+      setLoadingCatalogProducts(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -223,7 +249,10 @@ const WooCommerceExport = () => {
   };
 
   const handleExport = async () => {
-    if (!selectedConfig) return;
+    if (!selectedConfig || !exportOptions.catalog_id) {
+      toast.error("Selecciona un catálogo para exportar");
+      return;
+    }
     
     setExporting(true);
     setExportResult(null);
@@ -232,7 +261,7 @@ const WooCommerceExport = () => {
       const payload = {
         config_id: selectedConfig.id,
         update_existing: exportOptions.update_existing,
-        catalog_ids: exportOptions.export_all ? null : exportOptions.selected_ids
+        catalog_id: exportOptions.catalog_id
       };
       
       const res = await api.post("/woocommerce/export", payload);
@@ -330,10 +359,10 @@ const WooCommerceExport = () => {
           <CardContent className="p-4">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-emerald-600">Productos en Catálogo</p>
-                <p className="text-2xl font-bold text-emerald-700">{catalogItems.length}</p>
+                <p className="text-sm text-emerald-600">Catálogos Disponibles</p>
+                <p className="text-2xl font-bold text-emerald-700">{catalogs.length}</p>
               </div>
-              <Package className="w-8 h-8 text-emerald-200" strokeWidth={1.5} />
+              <BookOpen className="w-8 h-8 text-emerald-200" strokeWidth={1.5} />
             </div>
           </CardContent>
         </Card>
@@ -441,7 +470,7 @@ const WooCommerceExport = () => {
                           size="sm"
                           onClick={() => openExport(config)}
                           className="btn-primary"
-                          disabled={catalogItems.length === 0}
+                          disabled={catalogs.length === 0}
                           data-testid={`export-btn-${config.id}`}
                         >
                           <Upload className="w-3.5 h-3.5 mr-1" />
