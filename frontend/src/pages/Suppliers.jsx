@@ -320,7 +320,14 @@ const Suppliers = () => {
                       </span>
                     </TableCell>
                     <TableCell>
-                      {supplier.ftp_host ? (
+                      {supplier.connection_type === "url" && supplier.file_url ? (
+                        <div className="flex items-center gap-2">
+                          <Globe className="w-4 h-4 text-emerald-500" strokeWidth={1.5} />
+                          <span className="text-sm text-slate-600 truncate max-w-[200px]" title={supplier.file_url}>
+                            URL Directa
+                          </span>
+                        </div>
+                      ) : supplier.ftp_host ? (
                         <div className="flex items-center gap-2">
                           <Server className="w-4 h-4 text-emerald-500" strokeWidth={1.5} />
                           <span className="text-sm text-slate-600 font-mono">
