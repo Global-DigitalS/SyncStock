@@ -762,12 +762,16 @@ async def sync_supplier_manual(supplier_id: str, user: dict = Depends(get_curren
     if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
         raise HTTPException(status_code=400, detail="Configuración FTP incompleta. Configure Host y Ruta del archivo.")
     
-    result = await sync_supplier(supplier)
-    
-    if result.get('status') == 'error':
-        raise HTTPException(status_code=500, detail=result.get('message', 'Error en sincronización'))
-    
-    return result
+    try:
+        result = await sync_supplier(supplier)
+        
+        if result.get('status') == 'error':
+            return {"status": "error", "message": result.get('message', 'Error en sincronización')}
+        
+        return result
+    except Exception as e:
+        logger.error(f"Exception in sync_supplier_manual: {e}")
+        return {"status": "error", "message": str(e)}
 
 @api_router.get("/suppliers/{supplier_id}/sync-status")
 async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_user)):
