@@ -2228,13 +2228,20 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             if product.get("weight"):
                 wc_product["weight"] = str(product["weight"])
             
-            # Check if product exists (by SKU) and update or create
-            sku = product.get("sku", "")
-            if sku and sku in existing_skus and request.update_existing:
+            # Check if product exists by EAN first (primary identifier), then by SKU as fallback
+            ean = product.get("ean", "") or product.get("EAN", "") or ""
+            existing_wc_id = None
+            
+            if ean and ean in existing_eans and request.update_existing:
+                existing_wc_id = existing_eans[ean]
+            elif sku and sku in existing_skus and request.update_existing:
+                existing_wc_id = existing_skus[sku]
+            
+            if existing_wc_id:
                 # Update existing product
                 response = await asyncio.to_thread(
                     wcapi.put, 
-                    f"products/{existing_skus[sku]}", 
+                    f"products/{existing_wc_id}", 
                     wc_product
                 )
                 if response.status_code in [200, 201]:
