@@ -2182,6 +2182,10 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         final_price = calculate_final_price(base_price, product, margin_rules)
         
         try:
+            # Get EAN for this product
+            ean = product.get("ean", "") or product.get("EAN", "") or ""
+            sku = product.get("sku", "")
+            
             # Prepare WooCommerce product data
             wc_product = {
                 "name": catalog_item.get("custom_name") or product.get("name", "Producto sin nombre"),
@@ -2189,12 +2193,27 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                 "regular_price": str(round(final_price, 2)),
                 "description": product.get("description", ""),
                 "short_description": product.get("short_description", ""),
-                "sku": product.get("sku", ""),
+                "sku": sku,
                 "manage_stock": True,
                 "stock_quantity": product.get("stock", 0),
                 "categories": [],
-                "images": []
+                "images": [],
+                "meta_data": []
             }
+            
+            # Add EAN/GTIN to meta_data for WooCommerce
+            # This field is used by WooCommerce for Google Shopping, product identification, etc.
+            if ean:
+                wc_product["meta_data"].extend([
+                    {"key": "_global_unique_id", "value": ean},  # WooCommerce standard field
+                    {"key": "_gtin", "value": ean},              # Common plugin field
+                    {"key": "gtin", "value": ean},               # Alternative field
+                    {"key": "_ean", "value": ean}                # EAN specific field
+                ])
+            
+            # Add brand if exists
+            if product.get("brand"):
+                wc_product["meta_data"].append({"key": "_brand", "value": product["brand"]})
             
             # Add category if exists
             if product.get("category"):
