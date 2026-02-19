@@ -1492,6 +1492,340 @@ async def get_price_history(
     history = await db.price_history.find(query, {"_id": 0, "user_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
     return [PriceHistoryResponse(**h) for h in history]
 
+# ==================== WOOCOMMERCE INTEGRATION ENDPOINTS ====================
+
+def get_woocommerce_client(config: dict) -> WooCommerceAPI:
+    """Create WooCommerce API client from config"""
+    return WooCommerceAPI(
+        url=config['store_url'],
+        consumer_key=config['consumer_key'],
+        consumer_secret=config['consumer_secret'],
+        version="wc/v3",
+        timeout=30
+    )
+
+def mask_key(key: str) -> str:
+    """Mask API key showing only last 4 characters"""
+    if len(key) <= 4:
+        return "****"
+    return "*" * (len(key) - 4) + key[-4:]
+
+@api_router.post("/woocommerce/configs", response_model=WooCommerceConfigResponse)
+async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depends(get_current_user)):
+    """Create a new WooCommerce store configuration"""
+    config_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    
+    config_doc = {
+        "id": config_id,
+        "user_id": user["id"],
+        "name": config.name or "Mi Tienda WooCommerce",
+        "store_url": config.store_url.rstrip('/'),
+        "consumer_key": config.consumer_key,
+        "consumer_secret": config.consumer_secret,
+        "is_connected": False,
+        "last_sync": None,
+        "products_synced": 0,
+        "created_at": now
+    }
+    
+    await db.woocommerce_configs.insert_one(config_doc)
+    
+    return WooCommerceConfigResponse(
+        id=config_id,
+        name=config_doc["name"],
+        store_url=config_doc["store_url"],
+        consumer_key_masked=mask_key(config.consumer_key),
+        is_connected=False,
+        last_sync=None,
+        products_synced=0,
+        created_at=now
+    )
+
+@api_router.get("/woocommerce/configs", response_model=List[WooCommerceConfigResponse])
+async def get_woocommerce_configs(user: dict = Depends(get_current_user)):
+    """Get all WooCommerce configurations for the user"""
+    configs = await db.woocommerce_configs.find(
+        {"user_id": user["id"]}, 
+        {"_id": 0, "consumer_secret": 0}
+    ).to_list(100)
+    
+    return [
+        WooCommerceConfigResponse(
+            id=c["id"],
+            name=c["name"],
+            store_url=c["store_url"],
+            consumer_key_masked=mask_key(c["consumer_key"]),
+            is_connected=c.get("is_connected", False),
+            last_sync=c.get("last_sync"),
+            products_synced=c.get("products_synced", 0),
+            created_at=c["created_at"]
+        ) for c in configs
+    ]
+
+@api_router.get("/woocommerce/configs/{config_id}", response_model=WooCommerceConfigResponse)
+async def get_woocommerce_config(config_id: str, user: dict = Depends(get_current_user)):
+    """Get a specific WooCommerce configuration"""
+    config = await db.woocommerce_configs.find_one(
+        {"id": config_id, "user_id": user["id"]},
+        {"_id": 0, "consumer_secret": 0}
+    )
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+    
+    return WooCommerceConfigResponse(
+        id=config["id"],
+        name=config["name"],
+        store_url=config["store_url"],
+        consumer_key_masked=mask_key(config["consumer_key"]),
+        is_connected=config.get("is_connected", False),
+        last_sync=config.get("last_sync"),
+        products_synced=config.get("products_synced", 0),
+        created_at=config["created_at"]
+    )
+
+@api_router.put("/woocommerce/configs/{config_id}", response_model=WooCommerceConfigResponse)
+async def update_woocommerce_config(config_id: str, update: WooCommerceConfigUpdate, user: dict = Depends(get_current_user)):
+    """Update a WooCommerce configuration"""
+    existing = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+    
+    update_data = {k: v for k, v in update.model_dump().items() if v is not None}
+    if "store_url" in update_data:
+        update_data["store_url"] = update_data["store_url"].rstrip('/')
+    
+    if update_data:
+        await db.woocommerce_configs.update_one({"id": config_id}, {"$set": update_data})
+    
+    updated = await db.woocommerce_configs.find_one({"id": config_id}, {"_id": 0, "consumer_secret": 0})
+    return WooCommerceConfigResponse(
+        id=updated["id"],
+        name=updated["name"],
+        store_url=updated["store_url"],
+        consumer_key_masked=mask_key(updated["consumer_key"]),
+        is_connected=updated.get("is_connected", False),
+        last_sync=updated.get("last_sync"),
+        products_synced=updated.get("products_synced", 0),
+        created_at=updated["created_at"]
+    )
+
+@api_router.delete("/woocommerce/configs/{config_id}")
+async def delete_woocommerce_config(config_id: str, user: dict = Depends(get_current_user)):
+    """Delete a WooCommerce configuration"""
+    result = await db.woocommerce_configs.delete_one({"id": config_id, "user_id": user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+    return {"message": "Configuración eliminada"}
+
+@api_router.post("/woocommerce/configs/{config_id}/test")
+async def test_woocommerce_connection(config_id: str, user: dict = Depends(get_current_user)):
+    """Test connection to WooCommerce store"""
+    config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+    
+    try:
+        wcapi = get_woocommerce_client(config)
+        # Test connection by getting store info
+        response = await asyncio.to_thread(wcapi.get, "")
+        
+        if response.status_code == 200:
+            await db.woocommerce_configs.update_one(
+                {"id": config_id},
+                {"$set": {"is_connected": True}}
+            )
+            store_info = response.json()
+            return {
+                "status": "success",
+                "message": "Conexión exitosa",
+                "store_name": store_info.get("name", "Tienda WooCommerce"),
+                "store_description": store_info.get("description", "")
+            }
+        else:
+            await db.woocommerce_configs.update_one(
+                {"id": config_id},
+                {"$set": {"is_connected": False}}
+            )
+            return {
+                "status": "error",
+                "message": f"Error de conexión: {response.status_code}"
+            }
+    except Exception as e:
+        await db.woocommerce_configs.update_one(
+            {"id": config_id},
+            {"$set": {"is_connected": False}}
+        )
+        return {
+            "status": "error",
+            "message": f"Error de conexión: {str(e)}"
+        }
+
+@api_router.post("/woocommerce/export", response_model=WooCommerceExportResult)
+async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = Depends(get_current_user)):
+    """Export catalog products to WooCommerce"""
+    # Get WooCommerce config
+    config = await db.woocommerce_configs.find_one({"id": request.config_id, "user_id": user["id"]})
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuración de WooCommerce no encontrada")
+    
+    # Get catalog items to export
+    query = {"user_id": user["id"], "active": True}
+    if request.catalog_ids:
+        query["id"] = {"$in": request.catalog_ids}
+    
+    catalog_items = await db.catalog.find(query, {"_id": 0}).to_list(1000)
+    
+    if not catalog_items:
+        return WooCommerceExportResult(status="warning", errors=["No hay productos activos para exportar"])
+    
+    # Get product details for each catalog item
+    product_ids = [item["product_id"] for item in catalog_items]
+    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(1000)
+    products_map = {p["id"]: p for p in products}
+    
+    # Create WooCommerce client
+    wcapi = get_woocommerce_client(config)
+    
+    created = 0
+    updated = 0
+    failed = 0
+    errors = []
+    
+    # Get existing products by SKU for update check
+    existing_skus = {}
+    if request.update_existing:
+        try:
+            response = await asyncio.to_thread(wcapi.get, "products", params={"per_page": 100})
+            if response.status_code == 200:
+                for p in response.json():
+                    if p.get("sku"):
+                        existing_skus[p["sku"]] = p["id"]
+        except Exception as e:
+            logger.warning(f"Could not fetch existing products: {e}")
+    
+    # Export each product
+    for catalog_item in catalog_items:
+        product = products_map.get(catalog_item["product_id"])
+        if not product:
+            failed += 1
+            errors.append(f"Producto no encontrado: {catalog_item['product_id']}")
+            continue
+        
+        try:
+            # Prepare WooCommerce product data
+            wc_product = {
+                "name": catalog_item.get("custom_name") or product.get("name", "Producto sin nombre"),
+                "type": "simple",
+                "regular_price": str(catalog_item.get("final_price", product.get("price", 0))),
+                "description": product.get("description", ""),
+                "short_description": product.get("short_description", ""),
+                "sku": product.get("sku", ""),
+                "manage_stock": True,
+                "stock_quantity": product.get("stock", 0),
+                "categories": [],
+                "images": []
+            }
+            
+            # Add category if exists
+            if product.get("category"):
+                wc_product["categories"] = [{"name": product["category"]}]
+            
+            # Add images if exist
+            for img_field in ["image_url", "image_url2", "image_url3"]:
+                if product.get(img_field):
+                    wc_product["images"].append({"src": product[img_field]})
+            
+            # Add weight if exists
+            if product.get("weight"):
+                wc_product["weight"] = str(product["weight"])
+            
+            # Check if product exists (by SKU) and update or create
+            sku = product.get("sku", "")
+            if sku and sku in existing_skus and request.update_existing:
+                # Update existing product
+                response = await asyncio.to_thread(
+                    wcapi.put, 
+                    f"products/{existing_skus[sku]}", 
+                    wc_product
+                )
+                if response.status_code in [200, 201]:
+                    updated += 1
+                else:
+                    failed += 1
+                    errors.append(f"Error actualizando {sku}: {response.text[:100]}")
+            else:
+                # Create new product
+                response = await asyncio.to_thread(wcapi.post, "products", wc_product)
+                if response.status_code in [200, 201]:
+                    created += 1
+                else:
+                    failed += 1
+                    errors.append(f"Error creando {sku or product.get('name', 'producto')}: {response.text[:100]}")
+                    
+        except Exception as e:
+            failed += 1
+            errors.append(f"Error procesando {product.get('sku', 'producto')}: {str(e)[:100]}")
+    
+    # Update sync stats
+    now = datetime.now(timezone.utc).isoformat()
+    await db.woocommerce_configs.update_one(
+        {"id": request.config_id},
+        {"$set": {
+            "last_sync": now,
+            "products_synced": created + updated
+        }}
+    )
+    
+    # Create notification
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "type": "woocommerce_export",
+        "message": f"Exportación WooCommerce: {created} creados, {updated} actualizados, {failed} errores",
+        "product_id": None,
+        "product_name": None,
+        "user_id": user["id"],
+        "read": False,
+        "created_at": now
+    })
+    
+    return WooCommerceExportResult(
+        status="success" if failed == 0 else "partial" if (created + updated) > 0 else "error",
+        created=created,
+        updated=updated,
+        failed=failed,
+        errors=errors[:10]  # Limit to 10 errors
+    )
+
+@api_router.get("/woocommerce/configs/{config_id}/products")
+async def get_woocommerce_products(config_id: str, page: int = 1, per_page: int = 20, user: dict = Depends(get_current_user)):
+    """Get products from WooCommerce store"""
+    config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+    
+    try:
+        wcapi = get_woocommerce_client(config)
+        response = await asyncio.to_thread(
+            wcapi.get, 
+            "products", 
+            params={"page": page, "per_page": per_page}
+        )
+        
+        if response.status_code == 200:
+            products = response.json()
+            total = response.headers.get('X-WP-Total', 0)
+            return {
+                "products": products,
+                "total": int(total),
+                "page": page,
+                "per_page": per_page
+            }
+        else:
+            return {"status": "error", "message": f"Error: {response.status_code}"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
 # ==================== HEALTH CHECK ====================
 
 @api_router.get("/health")
