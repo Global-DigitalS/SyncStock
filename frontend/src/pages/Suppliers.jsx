@@ -651,30 +651,21 @@ const Suppliers = () => {
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="csv_headers">Cabecera CSV (nombres de columnas)</Label>
-                  <Textarea
-                    id="csv_headers"
-                    value={csvHeaders}
-                    onChange={(e) => setCsvHeaders(e.target.value)}
-                    placeholder="sku, nombre, precio, stock, categoria, marca, ean, peso, imagen"
-                    className="input-base min-h-[100px] font-mono text-sm"
-                    data-testid="csv-headers-input"
-                  />
-                  <p className="text-xs text-slate-500">
-                    Introduce los nombres de las columnas del archivo CSV separados por comas. 
-                    Esto ayudará a mapear correctamente los campos al importar.
-                  </p>
-                </div>
-
                 <div className="p-3 bg-indigo-50 rounded-sm border border-indigo-200">
-                  <p className="text-sm text-indigo-800 font-medium mb-2">Campos reconocidos automáticamente:</p>
-                  <div className="flex flex-wrap gap-2">
-                    {fieldMappingOptions.map(opt => (
-                      <span key={opt.key} className="px-2 py-1 bg-white rounded text-xs text-indigo-700 border border-indigo-200">
-                        {opt.label}
-                      </span>
-                    ))}
+                  <div className="flex items-start gap-3">
+                    <Columns className="w-5 h-5 text-indigo-600 mt-0.5" strokeWidth={1.5} />
+                    <div>
+                      <p className="text-sm text-indigo-800 font-medium mb-1">Mapeo de columnas</p>
+                      <p className="text-sm text-indigo-700 mb-2">
+                        Después de crear el proveedor y sincronizar por primera vez, podrás mapear las columnas 
+                        del archivo del proveedor a los campos del sistema desde el menú de acciones.
+                      </p>
+                      {formData.column_mapping && (
+                        <p className="text-xs text-indigo-600">
+                          Mapeo configurado: {Object.keys(formData.column_mapping).length} campos
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </TabsContent>
@@ -691,6 +682,16 @@ const Suppliers = () => {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* Column Mapping Dialog */}
+      <ColumnMappingDialog
+        open={showMappingDialog}
+        onOpenChange={setShowMappingDialog}
+        detectedColumns={mappingSupplier?.detected_columns || []}
+        currentMapping={mappingSupplier?.column_mapping}
+        onSave={handleSaveMapping}
+        saving={saving}
+      />
 
       {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
