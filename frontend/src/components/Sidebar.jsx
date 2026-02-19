@@ -21,7 +21,7 @@ const navItems = [
   { path: "/", label: "Panel de Control", icon: LayoutDashboard },
   { path: "/suppliers", label: "Proveedores", icon: Truck },
   { path: "/products", label: "Productos", icon: Package },
-  { path: "/catalog", label: "Mi Catálogo", icon: BookOpen },
+  { path: "/catalogs", label: "Catálogos", icon: BookOpen },
   { path: "/margin-rules", label: "Reglas de Margen", icon: Percent },
   { path: "/export", label: "Exportar", icon: Download },
   { path: "/woocommerce", label: "WooCommerce", icon: ShoppingCart },
