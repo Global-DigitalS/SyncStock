@@ -2083,12 +2083,42 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
     if not config:
         raise HTTPException(status_code=404, detail="Configuración de WooCommerce no encontrada")
     
-    # Get catalog items to export
-    query = {"user_id": user["id"], "active": True}
-    if request.catalog_ids:
-        query["id"] = {"$in": request.catalog_ids}
+    # Get catalog to export
+    catalog = None
+    catalog_items = []
+    margin_rules = []
     
-    catalog_items = await db.catalog.find(query, {"_id": 0}).to_list(1000)
+    if request.catalog_id:
+        # Export specific catalog
+        catalog = await db.catalogs.find_one({"id": request.catalog_id, "user_id": user["id"]})
+        if not catalog:
+            raise HTTPException(status_code=404, detail="Catálogo no encontrado")
+        
+        catalog_items = await db.catalog_items.find(
+            {"catalog_id": request.catalog_id, "active": True}, {"_id": 0}
+        ).to_list(1000)
+        
+        margin_rules = await db.catalog_margin_rules.find(
+            {"catalog_id": request.catalog_id}, {"_id": 0}
+        ).sort("priority", -1).to_list(100)
+    else:
+        # Export default catalog or legacy catalog
+        catalog = await db.catalogs.find_one({"user_id": user["id"], "is_default": True})
+        if catalog:
+            catalog_items = await db.catalog_items.find(
+                {"catalog_id": catalog["id"], "active": True}, {"_id": 0}
+            ).to_list(1000)
+            margin_rules = await db.catalog_margin_rules.find(
+                {"catalog_id": catalog["id"]}, {"_id": 0}
+            ).sort("priority", -1).to_list(100)
+        else:
+            # Fallback to legacy catalog collection
+            catalog_items = await db.catalog.find(
+                {"user_id": user["id"], "active": True}, {"_id": 0}
+            ).to_list(1000)
+            margin_rules = await db.margin_rules.find(
+                {"user_id": user["id"]}, {"_id": 0}
+            ).sort("priority", -1).to_list(100)
     
     if not catalog_items:
         return WooCommerceExportResult(status="warning", errors=["No hay productos activos para exportar"])
@@ -2125,6 +2155,10 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             failed += 1
             errors.append(f"Producto no encontrado: {catalog_item['product_id']}")
             continue
+        
+        # Calculate final price using catalog-specific margin rules
+        base_price = catalog_item.get("custom_price") or product.get("price", 0)
+        final_price = calculate_final_price(base_price, product, margin_rules)
         
         try:
             # Prepare WooCommerce product data
