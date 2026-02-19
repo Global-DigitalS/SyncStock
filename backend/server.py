@@ -34,7 +34,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 # JWT Configuration
-JWT_SECRET = os.environ.get('JWT_SECRET', 'stockhub-secret-key-2024')
+JWT_SECRET = os.environ.get('JWT_SECRET', 'stockhub-secret-key-2024-secure-token')
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
 
@@ -101,7 +101,7 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
             ftp = ftplib.FTP()
         
         try:
-            ftp.connect(host, port, timeout=30)
+            ftp.connect(host, port, timeout=15)  # Reduced timeout to avoid Cloudflare 520
             ftp.login(user or 'anonymous', password or '')
             
             if schema == 'ftps':
