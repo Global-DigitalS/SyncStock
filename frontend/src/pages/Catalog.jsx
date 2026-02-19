@@ -146,7 +146,7 @@ const Catalog = () => {
       });
       toast.success("Producto actualizado");
       setShowEditDialog(false);
-      fetchCatalog();
+      fetchData();
     } catch (error) {
       toast.error("Error al guardar los cambios");
     } finally {
@@ -159,7 +159,7 @@ const Catalog = () => {
       await api.delete(`/catalog/${selectedItem.id}`);
       toast.success("Producto eliminado del catálogo");
       setShowDeleteDialog(false);
-      fetchCatalog();
+      fetchData();
     } catch (error) {
       toast.error("Error al eliminar");
     }
@@ -173,7 +173,7 @@ const Catalog = () => {
         custom_name: item.custom_name,
         active: !item.active
       });
-      fetchCatalog();
+      fetchData();
     } catch (error) {
       toast.error("Error al cambiar el estado");
     }
