@@ -778,6 +778,35 @@ class DashboardStats(BaseModel):
     total_products: int
     total_catalog_items: int
     low_stock_count: int
+
+# ==================== UNIFIED PRODUCT MODELS (EAN-based) ====================
+
+class SupplierOffer(BaseModel):
+    """Oferta de un proveedor para un producto"""
+    supplier_id: str
+    supplier_name: str
+    price: float
+    stock: int
+    sku: str
+    is_best_offer: bool = False  # True si es el mejor precio con stock
+    product_id: str  # ID del producto original
+
+class UnifiedProductResponse(BaseModel):
+    """Producto unificado por EAN con ofertas de múltiples proveedores"""
+    ean: str
+    name: str
+    description: Optional[str] = None
+    category: Optional[str] = None
+    brand: Optional[str] = None
+    image_url: Optional[str] = None
+    best_price: float
+    best_supplier: str
+    best_supplier_id: str
+    total_stock: int
+    supplier_count: int
+    suppliers: List[SupplierOffer]
+    # From best offer
+    weight: Optional[float] = None
     out_of_stock_count: int
     unread_notifications: int
     recent_price_changes: int
