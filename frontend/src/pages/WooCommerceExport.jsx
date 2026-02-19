@@ -40,6 +40,13 @@ import {
   DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../components/ui/select";
+import {
   ShoppingCart,
   Plus,
   MoreVertical,
@@ -55,12 +62,14 @@ import {
   Store,
   Package,
   Key,
-  Link2
+  Link2,
+  BookOpen
 } from "lucide-react";
 
 const WooCommerceExport = () => {
   const [configs, setConfigs] = useState([]);
-  const [catalogItems, setCatalogItems] = useState([]);
+  const [catalogs, setCatalogs] = useState([]);
+  const [selectedCatalogProducts, setSelectedCatalogProducts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -74,22 +83,30 @@ const WooCommerceExport = () => {
   });
   const [exportOptions, setExportOptions] = useState({
     update_existing: true,
-    export_all: true,
-    selected_ids: []
+    catalog_id: ""
   });
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportResult, setExportResult] = useState(null);
+  const [loadingCatalogProducts, setLoadingCatalogProducts] = useState(false);
 
   const fetchData = useCallback(async () => {
     try {
-      const [configsRes, catalogRes] = await Promise.all([
+      const [configsRes, catalogsRes] = await Promise.all([
         api.get("/woocommerce/configs"),
-        api.get("/catalog")
+        api.get("/catalogs")
       ]);
       setConfigs(configsRes.data);
-      setCatalogItems(catalogRes.data.filter(item => item.active));
+      setCatalogs(catalogsRes.data);
+      
+      // Set default catalog
+      const defaultCatalog = catalogsRes.data.find(c => c.is_default);
+      if (defaultCatalog) {
+        setExportOptions(prev => ({ ...prev, catalog_id: defaultCatalog.id }));
+      } else if (catalogsRes.data.length > 0) {
+        setExportOptions(prev => ({ ...prev, catalog_id: catalogsRes.data[0].id }));
+      }
     } catch (error) {
       toast.error("Error al cargar datos");
     } finally {
