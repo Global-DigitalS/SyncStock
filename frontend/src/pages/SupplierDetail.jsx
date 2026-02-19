@@ -4,8 +4,10 @@ import { api } from "../App";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Checkbox } from "../components/ui/checkbox";
+import { Badge } from "../components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -27,6 +29,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  DialogFooter,
 } from "../components/ui/dialog";
 import {
   Truck,
@@ -46,7 +49,9 @@ import {
   Clock,
   Zap,
   Globe,
-  Columns
+  Columns,
+  BookOpen,
+  Star
 } from "lucide-react";
 
 const SupplierDetail = () => {
@@ -70,20 +75,26 @@ const SupplierDetail = () => {
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [dragActive, setDragActive] = useState(false);
   const [addingToCatalog, setAddingToCatalog] = useState(false);
+  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
+  const [catalogs, setCatalogs] = useState([]);
+  const [selectedCatalogs, setSelectedCatalogs] = useState(new Set());
+  const [productsToAdd, setProductsToAdd] = useState([]);
   const fileInputRef = useRef(null);
 
   const fetchData = useCallback(async () => {
     try {
-      const [supplierRes, productsRes, categoriesRes, syncStatusRes] = await Promise.all([
+      const [supplierRes, productsRes, categoriesRes, syncStatusRes, catalogsRes] = await Promise.all([
         api.get(`/suppliers/${supplierId}`),
         api.get("/products", { params: { supplier_id: supplierId } }),
         api.get("/products/categories"),
-        api.get(`/suppliers/${supplierId}/sync-status`).catch(() => ({ data: null }))
+        api.get(`/suppliers/${supplierId}/sync-status`).catch(() => ({ data: null })),
+        api.get("/catalogs")
       ]);
       setSupplier(supplierRes.data);
       setProducts(productsRes.data);
       setCategories(categoriesRes.data);
       setSyncStatus(syncStatusRes.data);
+      setCatalogs(catalogsRes.data);
     } catch (error) {
       toast.error("Error al cargar los datos del proveedor");
       navigate("/suppliers");
@@ -214,49 +225,81 @@ const SupplierDetail = () => {
     }
   };
 
-  const handleAddSelectedToCatalog = async () => {
+  const openCatalogSelector = (productIds) => {
+    if (catalogs.length === 0) {
+      toast.error("No hay catálogos creados. Crea uno primero en la sección Catálogos.");
+      return;
+    }
+    setProductsToAdd(productIds);
+    // Pre-select default catalog
+    const defaultCatalog = catalogs.find(c => c.is_default);
+    if (defaultCatalog) {
+      setSelectedCatalogs(new Set([defaultCatalog.id]));
+    } else {
+      setSelectedCatalogs(new Set());
+    }
+    setShowCatalogDialog(true);
+  };
+
+  const handleAddSelectedToCatalog = () => {
     if (selectedProducts.size === 0) {
       toast.error("Selecciona al menos un producto");
       return;
     }
+    openCatalogSelector(Array.from(selectedProducts));
+  };
+
+  const handleAddSingleToCatalog = (productId) => {
+    openCatalogSelector([productId]);
+  };
+
+  const toggleCatalogSelection = (catalogId) => {
+    setSelectedCatalogs(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(catalogId)) {
+        newSet.delete(catalogId);
+      } else {
+        newSet.add(catalogId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleConfirmAddToCatalogs = async () => {
+    if (selectedCatalogs.size === 0) {
+      toast.error("Selecciona al menos un catálogo");
+      return;
+    }
 
     setAddingToCatalog(true);
-    let added = 0;
-    let skipped = 0;
+    let totalAdded = 0;
+    let totalSkipped = 0;
 
-    for (const productId of selectedProducts) {
+    for (const catalogId of selectedCatalogs) {
       try {
-        await api.post("/catalog", { product_id: productId });
-        added++;
+        const res = await api.post(`/catalogs/${catalogId}/products`, {
+          product_ids: productsToAdd
+        });
+        totalAdded += res.data.added || 0;
       } catch (error) {
-        if (error.response?.status === 400) {
-          skipped++;
-        }
+        console.error("Error adding to catalog:", error);
       }
     }
 
     setAddingToCatalog(false);
+    setShowCatalogDialog(false);
     setSelectedProducts(new Set());
+    setProductsToAdd([]);
 
-    if (added > 0 && skipped > 0) {
-      toast.success(`${added} productos añadidos, ${skipped} ya estaban en el catálogo`);
-    } else if (added > 0) {
-      toast.success(`${added} productos añadidos al catálogo`);
+    const catalogNames = catalogs
+      .filter(c => selectedCatalogs.has(c.id))
+      .map(c => c.name)
+      .join(", ");
+
+    if (totalAdded > 0) {
+      toast.success(`Productos añadidos a: ${catalogNames}`);
     } else {
-      toast.info("Todos los productos seleccionados ya estaban en el catálogo");
-    }
-  };
-
-  const handleAddSingleToCatalog = async (productId) => {
-    try {
-      await api.post("/catalog", { product_id: productId });
-      toast.success("Producto añadido al catálogo");
-    } catch (error) {
-      if (error.response?.status === 400) {
-        toast.info("El producto ya está en el catálogo");
-      } else {
-        toast.error("Error al añadir al catálogo");
-      }
+      toast.info("Los productos ya estaban en los catálogos seleccionados");
     }
   };
 
