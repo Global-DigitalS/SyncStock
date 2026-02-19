@@ -177,22 +177,11 @@ const Suppliers = () => {
     }
 
     setSaving(true);
-    
-    // Parse field mapping from headers
-    let fieldMapping = null;
-    if (csvHeaders.trim()) {
-      const headers = csvHeaders.split(",").map(h => h.trim()).filter(h => h);
-      fieldMapping = {};
-      headers.forEach((header, index) => {
-        fieldMapping[header] = header.toLowerCase();
-      });
-    }
 
     const payload = {
       ...formData,
       ftp_port: parseInt(formData.ftp_port) || 21,
-      csv_header_row: parseInt(formData.csv_header_row) || 1,
-      csv_field_mapping: fieldMapping
+      csv_header_row: parseInt(formData.csv_header_row) || 1
     };
 
     try {
@@ -208,6 +197,23 @@ const Suppliers = () => {
       fetchSuppliers();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al guardar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSaveMapping = async (mapping) => {
+    if (!mappingSupplier) return;
+    
+    setSaving(true);
+    try {
+      await api.put(`/suppliers/${mappingSupplier.id}`, { column_mapping: mapping });
+      toast.success("Mapeo de columnas guardado");
+      setShowMappingDialog(false);
+      setMappingSupplier(null);
+      fetchSuppliers();
+    } catch (error) {
+      toast.error("Error al guardar el mapeo");
     } finally {
       setSaving(false);
     }
