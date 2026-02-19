@@ -613,32 +613,34 @@ const Suppliers = () => {
                           data-testid="supplier-ftp-user"
                         />
                       </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ftp_password">Contraseña</Label>
-                    <Input
-                      id="ftp_password"
-                      type="password"
-                      value={formData.ftp_password}
-                      onChange={(e) => setFormData({ ...formData, ftp_password: e.target.value })}
-                      placeholder="••••••••"
-                      className="input-base"
-                      data-testid="supplier-ftp-password"
-                    />
-                  </div>
-                </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ftp_password">Contraseña</Label>
+                        <Input
+                          id="ftp_password"
+                          type="password"
+                          value={formData.ftp_password}
+                          onChange={(e) => setFormData({ ...formData, ftp_password: e.target.value })}
+                          placeholder="••••••••"
+                          className="input-base"
+                          data-testid="supplier-ftp-password"
+                        />
+                      </div>
+                    </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="ftp_path">Ruta del archivo de descarga</Label>
-                  <Input
-                    id="ftp_path"
-                    value={formData.ftp_path}
-                    onChange={(e) => setFormData({ ...formData, ftp_path: e.target.value })}
-                    placeholder="/catalogo/productos.csv"
-                    className="input-base font-mono text-sm"
-                    data-testid="supplier-ftp-path"
-                  />
-                  <p className="text-xs text-slate-500">Ruta completa al archivo en el servidor FTP</p>
-                </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="ftp_path">Ruta del archivo de descarga</Label>
+                      <Input
+                        id="ftp_path"
+                        value={formData.ftp_path}
+                        onChange={(e) => setFormData({ ...formData, ftp_path: e.target.value })}
+                        placeholder="/catalogo/productos.csv"
+                        className="input-base font-mono text-sm"
+                        data-testid="supplier-ftp-path"
+                      />
+                      <p className="text-xs text-slate-500">Ruta completa al archivo en el servidor FTP</p>
+                    </div>
+                  </>
+                )}
               </TabsContent>
 
               {/* Tab Config CSV */}
