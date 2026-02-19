@@ -85,19 +85,6 @@ const defaultFormData = {
   column_mapping: null
 };
 
-const fieldMappingOptions = [
-  { key: "sku", label: "SKU / Referencia" },
-  { key: "name", label: "Nombre" },
-  { key: "description", label: "Descripción" },
-  { key: "price", label: "Precio" },
-  { key: "stock", label: "Stock" },
-  { key: "category", label: "Categoría" },
-  { key: "brand", label: "Marca" },
-  { key: "ean", label: "EAN / Código de barras" },
-  { key: "weight", label: "Peso" },
-  { key: "image_url", label: "URL de imagen" }
-];
-
 const Suppliers = () => {
   const navigate = useNavigate();
   const [suppliers, setSuppliers] = useState([]);
