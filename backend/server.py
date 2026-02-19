@@ -478,8 +478,12 @@ class UserResponse(BaseModel):
 class SupplierCreate(BaseModel):
     name: str
     description: Optional[str] = None
+    # Tipo de conexión
+    connection_type: Optional[str] = "ftp"  # ftp, url
+    # URL directa del archivo
+    file_url: Optional[str] = None
     # Conexión FTP
-    ftp_schema: Optional[str] = "ftp"  # ftp, sftp
+    ftp_schema: Optional[str] = "ftp"  # ftp, sftp, ftps
     ftp_host: Optional[str] = None
     ftp_user: Optional[str] = None
     ftp_password: Optional[str] = None
@@ -498,6 +502,10 @@ class SupplierCreate(BaseModel):
 class SupplierUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    # Tipo de conexión
+    connection_type: Optional[str] = None
+    # URL directa del archivo
+    file_url: Optional[str] = None
     # Conexión FTP
     ftp_schema: Optional[str] = None
     ftp_host: Optional[str] = None
