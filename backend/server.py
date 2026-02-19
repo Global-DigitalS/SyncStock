@@ -412,15 +412,25 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
         return {"imported": 0, "updated": 0, "errors": 1, "message": str(e)}
 
 async def sync_supplier(supplier: dict) -> dict:
-    """Sync a single supplier from FTP"""
-    if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
-        return {"status": "skipped", "message": "FTP not configured"}
+    """Sync a single supplier from FTP or URL"""
+    connection_type = supplier.get('connection_type', 'ftp')
+    
+    # Check if connection is configured
+    if connection_type == 'url':
+        if not supplier.get('file_url'):
+            return {"status": "skipped", "message": "URL no configurada"}
+    else:  # FTP
+        if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
+            return {"status": "skipped", "message": "FTP no configurado"}
     
     try:
-        logger.info(f"Syncing supplier: {supplier['name']}")
+        logger.info(f"Syncing supplier: {supplier['name']} (via {connection_type})")
         
-        # Download file
-        content = await download_file_from_ftp(supplier)
+        # Download file based on connection type
+        if connection_type == 'url':
+            content = await download_file_from_url(supplier['file_url'])
+        else:
+            content = await download_file_from_ftp(supplier)
         
         # Process file
         result = await process_supplier_file(supplier, content)
