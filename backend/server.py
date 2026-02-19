@@ -787,6 +787,10 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
         "user_id": user["id"],
         "name": supplier.name,
         "description": supplier.description,
+        # Tipo de conexión
+        "connection_type": supplier.connection_type or "ftp",
+        # URL directa
+        "file_url": supplier.file_url,
         # Conexión FTP
         "ftp_schema": supplier.ftp_schema,
         "ftp_host": supplier.ftp_host,
