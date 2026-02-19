@@ -63,8 +63,8 @@ logger = logging.getLogger(__name__)
 
 # ==================== FTP SYNC FUNCTIONS ====================
 
-async def download_file_from_ftp(supplier: dict) -> bytes:
-    """Download file from FTP/SFTP server"""
+def download_file_from_ftp_sync(supplier: dict) -> bytes:
+    """Download file from FTP/SFTP server (synchronous)"""
     schema = supplier.get('ftp_schema', 'ftp').lower()
     host = supplier.get('ftp_host')
     port = supplier.get('ftp_port', 21)
@@ -76,28 +76,33 @@ async def download_file_from_ftp(supplier: dict) -> bytes:
     if not host or not file_path:
         raise ValueError("FTP host and path are required")
     
+    logger.info(f"Connecting to {schema.upper()}://{host}:{port}{file_path}")
+    
     content = io.BytesIO()
     
     if schema == 'sftp':
         # SFTP connection using paramiko
-        transport = paramiko.Transport((host, port or 22))
+        port = port or 22
+        transport = paramiko.Transport((host, port))
         transport.connect(username=user, password=password)
         sftp = paramiko.SFTPClient.from_transport(transport)
         try:
             sftp.getfo(file_path, content)
+            logger.info(f"SFTP download completed: {content.tell()} bytes")
         finally:
             sftp.close()
             transport.close()
     else:
         # FTP/FTPS connection
+        port = port or 21
         if schema == 'ftps':
             ftp = ftplib.FTP_TLS()
         else:
             ftp = ftplib.FTP()
         
         try:
-            ftp.connect(host, port or 21)
-            ftp.login(user, password)
+            ftp.connect(host, port, timeout=30)
+            ftp.login(user or 'anonymous', password or '')
             
             if schema == 'ftps':
                 ftp.prot_p()  # Enable data channel encryption
@@ -107,12 +112,114 @@ async def download_file_from_ftp(supplier: dict) -> bytes:
             else:
                 ftp.set_pasv(False)
             
+            logger.info(f"FTP connected, downloading {file_path}")
             ftp.retrbinary(f'RETR {file_path}', content.write)
+            logger.info(f"FTP download completed: {content.tell()} bytes")
         finally:
-            ftp.quit()
+            try:
+                ftp.quit()
+            except:
+                pass
     
     content.seek(0)
     return content.read()
+
+async def download_file_from_ftp(supplier: dict) -> bytes:
+    """Async wrapper for FTP download"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, download_file_from_ftp_sync, supplier)
+
+def apply_column_mapping(raw_data: dict, column_mapping: dict) -> dict:
+    """Apply column mapping to transform supplier data to system fields"""
+    if not column_mapping:
+        # No mapping, use auto-detection
+        return normalize_product_data(raw_data)
+    
+    result = {}
+    raw_lower = {str(k).lower().strip(): v for k, v in raw_data.items()}
+    raw_original = {str(k).strip(): v for k, v in raw_data.items()}
+    
+    # System fields to map
+    field_types = {
+        'sku': 'string',
+        'name': 'string',
+        'description': 'string',
+        'price': 'float',
+        'price2': 'float',  # Secondary price
+        'stock': 'int',
+        'ean': 'string',
+        'brand': 'string',
+        'category': 'string',
+        'subcategory': 'string',
+        'subcategory2': 'string',
+        'weight': 'float',
+        'image_url': 'string',
+        'image_url2': 'string',
+        'image_url3': 'string',
+        'short_description': 'string',
+        'long_description': 'string'
+    }
+    
+    for system_field, mapping in column_mapping.items():
+        if not mapping:
+            continue
+            
+        # mapping can be a string (single column) or list (multiple columns to concatenate)
+        if isinstance(mapping, str):
+            columns = [mapping]
+        elif isinstance(mapping, list):
+            columns = mapping
+        else:
+            continue
+        
+        values = []
+        for col in columns:
+            if not col:
+                continue
+            # Try to find the column (case insensitive)
+            value = raw_original.get(col) or raw_lower.get(col.lower().strip())
+            if value is not None and value != '':
+                values.append(str(value))
+        
+        if values:
+            combined_value = ' > '.join(values) if system_field.startswith('category') else ' '.join(values)
+            
+            # Convert to appropriate type
+            field_type = field_types.get(system_field, 'string')
+            try:
+                if field_type == 'float':
+                    combined_value = float(str(combined_value).replace(',', '.').replace('€', '').replace('$', '').strip())
+                elif field_type == 'int':
+                    combined_value = int(float(str(combined_value).replace(',', '.')))
+            except:
+                if field_type in ['float', 'int']:
+                    combined_value = 0
+            
+            result[system_field] = combined_value
+    
+    # Build final product data
+    product = {
+        'sku': result.get('sku', ''),
+        'name': result.get('name', ''),
+        'description': result.get('description') or result.get('long_description') or result.get('short_description', ''),
+        'price': result.get('price', 0),
+        'stock': result.get('stock', 0),
+        'category': result.get('category', ''),
+        'brand': result.get('brand', ''),
+        'ean': result.get('ean', ''),
+        'weight': result.get('weight'),
+        'image_url': result.get('image_url', '')
+    }
+    
+    # Combine categories if multiple levels
+    categories = [result.get('category', '')]
+    if result.get('subcategory'):
+        categories.append(result['subcategory'])
+    if result.get('subcategory2'):
+        categories.append(result['subcategory2'])
+    product['category'] = ' > '.join([c for c in categories if c])
+    
+    return product
 
 async def process_supplier_file(supplier: dict, content: bytes) -> dict:
     """Process downloaded file and update products"""
@@ -120,6 +227,9 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
     separator = supplier.get('csv_separator', ';')
     enclosure = supplier.get('csv_enclosure', '"')
     header_row = supplier.get('csv_header_row', 1) or 1
+    column_mapping = supplier.get('column_mapping')
+    
+    detected_columns = []
     
     try:
         if file_format == 'csv':
@@ -128,6 +238,151 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 decoded = content.decode('utf-8')
             except:
                 decoded = content.decode('latin-1')
+            
+            lines = decoded.split('\n')
+            if header_row > 1:
+                lines = lines[header_row-1:]
+            
+            # Handle different separators
+            if separator == '\\t':
+                separator = '\t'
+            
+            reader = csv.DictReader(lines, delimiter=separator, quotechar=enclosure if enclosure else '"')
+            raw_products = list(reader)
+            
+            # Get detected columns
+            if raw_products:
+                detected_columns = list(raw_products[0].keys())
+                
+        elif file_format in ['xlsx', 'xls']:
+            if file_format == 'xlsx':
+                wb = load_workbook(filename=io.BytesIO(content), read_only=True)
+                ws = wb.active
+                rows = list(ws.iter_rows(values_only=True))
+            else:
+                wb = xlrd.open_workbook(file_contents=content)
+                ws = wb.sheet_by_index(0)
+                rows = [[ws.cell_value(r, c) for c in range(ws.ncols)] for r in range(ws.nrows)]
+            
+            if not rows:
+                return {"imported": 0, "updated": 0, "errors": 0}
+            
+            # Skip to header row
+            if header_row > 1:
+                rows = rows[header_row-1:]
+            
+            headers = [str(h).strip() if h else f"col_{i}" for i, h in enumerate(rows[0])]
+            detected_columns = headers
+            raw_products = [dict(zip(headers, row)) for row in rows[1:] if any(row)]
+            
+        elif file_format == 'xml':
+            raw_products = parse_xml_content(content)
+            if raw_products:
+                detected_columns = list(raw_products[0].keys())
+        else:
+            return {"imported": 0, "updated": 0, "errors": 0, "message": "Unsupported format"}
+        
+        # Save detected columns to supplier
+        if detected_columns:
+            await db.suppliers.update_one(
+                {"id": supplier['id']},
+                {"$set": {"detected_columns": detected_columns}}
+            )
+        
+        # Process products
+        now = datetime.now(timezone.utc).isoformat()
+        imported = 0
+        updated = 0
+        errors = 0
+        
+        for raw in raw_products:
+            try:
+                # Apply column mapping or auto-detect
+                if column_mapping:
+                    normalized = apply_column_mapping(raw, column_mapping)
+                else:
+                    normalized = normalize_product_data(raw)
+                    
+                if not normalized.get('sku') or not normalized.get('name'):
+                    errors += 1
+                    continue
+                
+                existing = await db.products.find_one({
+                    "sku": normalized['sku'], 
+                    "supplier_id": supplier['id']
+                })
+                
+                product_doc = {
+                    "sku": normalized.get('sku'),
+                    "name": normalized.get('name'),
+                    "description": normalized.get('description'),
+                    "price": normalized.get('price', 0),
+                    "stock": normalized.get('stock', 0),
+                    "category": normalized.get('category'),
+                    "brand": normalized.get('brand'),
+                    "ean": normalized.get('ean'),
+                    "weight": normalized.get('weight'),
+                    "image_url": normalized.get('image_url'),
+                    "supplier_id": supplier['id'],
+                    "supplier_name": supplier["name"],
+                    "user_id": supplier["user_id"],
+                    "updated_at": now
+                }
+                
+                if existing:
+                    # Track price changes
+                    if existing.get('price') != product_doc['price'] and existing.get('price', 0) > 0:
+                        await db.price_history.insert_one({
+                            "id": str(uuid.uuid4()),
+                            "product_id": existing["id"],
+                            "product_name": product_doc["name"],
+                            "old_price": existing.get('price', 0),
+                            "new_price": product_doc['price'],
+                            "change_percentage": ((product_doc['price'] - existing.get('price', 0)) / existing.get('price', 1)) * 100,
+                            "user_id": supplier["user_id"],
+                            "created_at": now
+                        })
+                    
+                    # Track stock changes
+                    if existing.get('stock', 0) > 0 and product_doc['stock'] == 0:
+                        await db.notifications.insert_one({
+                            "id": str(uuid.uuid4()),
+                            "type": "stock_out",
+                            "message": f"Producto '{product_doc['name']}' sin stock",
+                            "product_id": existing["id"],
+                            "product_name": product_doc["name"],
+                            "user_id": supplier["user_id"],
+                            "read": False,
+                            "created_at": now
+                        })
+                    elif existing.get('stock', 0) > 5 and product_doc['stock'] <= 5 and product_doc['stock'] > 0:
+                        await db.notifications.insert_one({
+                            "id": str(uuid.uuid4()),
+                            "type": "stock_low",
+                            "message": f"Producto '{product_doc['name']}' con stock bajo ({product_doc['stock']} uds)",
+                            "product_id": existing["id"],
+                            "product_name": product_doc["name"],
+                            "user_id": supplier["user_id"],
+                            "read": False,
+                            "created_at": now
+                        })
+                    
+                    await db.products.update_one({"id": existing["id"]}, {"$set": product_doc})
+                    updated += 1
+                else:
+                    product_doc["id"] = str(uuid.uuid4())
+                    product_doc["created_at"] = now
+                    await db.products.insert_one(product_doc)
+                    imported += 1
+            except Exception as e:
+                logger.error(f"Error processing product: {e}")
+                errors += 1
+        
+        return {"imported": imported, "updated": updated, "errors": errors, "detected_columns": detected_columns}
+    
+    except Exception as e:
+        logger.error(f"Error processing file: {e}")
+        return {"imported": 0, "updated": 0, "errors": 1, "message": str(e)}
             
             lines = decoded.split('\n')
             if header_row > 1:
