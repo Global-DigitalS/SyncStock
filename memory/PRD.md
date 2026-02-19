@@ -38,30 +38,16 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 - [x] Sincronización manual desde el frontend
 - [x] Mapeo de columnas personalizado
 - [x] Integración WooCommerce API REST
-  - CRUD de configuraciones de tiendas
-  - Test de conexión
-  - Exportación directa seleccionando catálogo
-  - Soporte para actualizar productos existentes por SKU
 
 ### Frontend
 - [x] Login/Registro con diseño profesional
 - [x] Dashboard con estadísticas y alertas
 - [x] Gestión de proveedores con formulario de pestañas
-- [x] Selector de tipo de conexión (FTP/SFTP o URL Directa)
-- [x] Configuración FTP y CSV detallada
-- [x] Detalle de proveedor con catálogo de productos
-- [x] **NUEVA: Página Catálogos** (`Catalogs.jsx`)
-  - Listado de catálogos con estadísticas
-  - Crear/editar/eliminar catálogos
-  - Configurar reglas de margen por catálogo
-  - Badge de catálogo por defecto
-- [x] **NUEVA: Detalle de Catálogo** (`CatalogDetail.jsx`)
-  - Ver productos de un catálogo específico
-  - Añadir/eliminar productos del catálogo
-  - Búsqueda y filtros
-- [x] **ACTUALIZADO: Exportar a WooCommerce** (`WooCommerceExport.jsx`)
-  - Selector de catálogo a exportar
-  - Indicador de productos a enviar
+- [x] **Página Catálogos** - Gestión completa de múltiples catálogos
+- [x] **Detalle de Catálogo** - Ver y gestionar productos por catálogo
+- [x] **Exportar a WooCommerce** - Selector de catálogo para exportar
+- [x] **Selección múltiple de productos en Proveedores** - Añadir a varios catálogos
+- [x] **Selección múltiple de productos en Productos** - Añadir a varios catálogos
 - [x] Reglas de margen configurables
 - [x] Exportación a 3 plataformas (CSV)
 - [x] Historial de precios
@@ -69,17 +55,18 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 
 ## Última Actualización: 19 Feb 2026
 
-### Sesión Actual - Múltiples Catálogos
-1. ✅ **Página Catalogs.jsx**: Gestión completa de múltiples catálogos
-2. ✅ **Página CatalogDetail.jsx**: Ver y gestionar productos por catálogo
-3. ✅ **WooCommerceExport.jsx actualizado**: Selector de catálogo antes de exportar
-4. ✅ **App.js actualizado**: Rutas /catalogs, /catalogs/:catalogId, redirect /catalog
-5. ✅ **Sidebar actualizado**: Navegación a Catálogos
+### Sesión Actual - Selección Múltiple de Catálogos
+1. ✅ **SupplierDetail.jsx**: Dialog para añadir productos a múltiples catálogos
+2. ✅ **Products.jsx**: 
+   - Checkboxes para seleccionar productos
+   - Banner de "X productos seleccionados" 
+   - Botón "Añadir a Catálogos"
+   - Dialog con checkboxes para seleccionar múltiples catálogos
+3. ✅ Icono actualizado de Plus a BookOpen para claridad visual
 
 ### Testing
-- Backend: 90.9% tests pasados
-- Frontend: 100% flujos UI verificados
-- Ver: /app/test_reports/iteration_5.json
+- Frontend verificado visualmente con screenshots
+- Flujo completo: seleccionar productos → abrir dialog → seleccionar catálogos → confirmar
 
 ## Próximas Tareas (P1)
 - [ ] Sincronización de proveedores a catálogos específicos
@@ -93,10 +80,3 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 - [ ] Múltiples usuarios por cuenta
 - [ ] Roles y permisos
 - [ ] Refactorizar server.py en módulos separados
-
-## Notas Técnicas
-- El archivo antiguo `Catalog.jsx` puede eliminarse (la ruta /catalog redirige a /catalogs)
-- Las colecciones de MongoDB usadas:
-  - `catalogs`: Metadatos de catálogos
-  - `catalog_items`: Productos en cada catálogo
-  - `catalog_margin_rules`: Reglas de margen por catálogo
