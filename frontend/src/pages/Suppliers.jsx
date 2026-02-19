@@ -59,8 +59,10 @@ import {
   RefreshCw,
   Settings,
   Database,
-  Link2
+  Link2,
+  Columns
 } from "lucide-react";
+import ColumnMappingDialog from "../components/ColumnMappingDialog";
 
 const defaultFormData = {
   name: "",
