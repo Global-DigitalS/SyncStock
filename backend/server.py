@@ -2136,15 +2136,36 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
     failed = 0
     errors = []
     
-    # Get existing products by SKU for update check
+    # Get existing products by EAN for update check (EAN is the unique identifier)
+    existing_eans = {}
     existing_skus = {}
     if request.update_existing:
         try:
-            response = await asyncio.to_thread(wcapi.get, "products", params={"per_page": 100})
-            if response.status_code == 200:
-                for p in response.json():
-                    if p.get("sku"):
-                        existing_skus[p["sku"]] = p["id"]
+            # Fetch all products to check by EAN (stored in meta_data as _global_unique_id or gtin)
+            page = 1
+            while True:
+                response = await asyncio.to_thread(wcapi.get, "products", params={"per_page": 100, "page": page})
+                if response.status_code == 200:
+                    products_batch = response.json()
+                    if not products_batch:
+                        break
+                    for p in products_batch:
+                        # Check EAN in meta_data
+                        ean_value = None
+                        for meta in p.get("meta_data", []):
+                            if meta.get("key") in ["_global_unique_id", "_gtin", "_ean", "gtin"]:
+                                ean_value = meta.get("value")
+                                break
+                        if ean_value:
+                            existing_eans[ean_value] = p["id"]
+                        # Also track SKU as fallback
+                        if p.get("sku"):
+                            existing_skus[p["sku"]] = p["id"]
+                    page += 1
+                    if len(products_batch) < 100:
+                        break
+                else:
+                    break
         except Exception as e:
             logger.warning(f"Could not fetch existing products: {e}")
     
