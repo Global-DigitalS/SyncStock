@@ -11,7 +11,8 @@ import Dashboard from "./pages/Dashboard";
 import Suppliers from "./pages/Suppliers";
 import SupplierDetail from "./pages/SupplierDetail";
 import Products from "./pages/Products";
-import Catalog from "./pages/Catalog";
+import Catalogs from "./pages/Catalogs";
+import CatalogDetail from "./pages/CatalogDetail";
 import MarginRules from "./pages/MarginRules";
 import Export from "./pages/Export";
 import WooCommerceExport from "./pages/WooCommerceExport";
@@ -203,14 +204,28 @@ function App() {
             }
           />
           <Route
-            path="/catalog"
+            path="/catalogs"
             element={
               <ProtectedRoute>
                 <MainLayout>
-                  <Catalog />
+                  <Catalogs />
                 </MainLayout>
               </ProtectedRoute>
             }
+          />
+          <Route
+            path="/catalogs/:catalogId"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <CatalogDetail />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/catalog"
+            element={<Navigate to="/catalogs" replace />}
           />
           <Route
             path="/margin-rules"
