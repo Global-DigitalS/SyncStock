@@ -154,10 +154,14 @@ const Suppliers = () => {
       csv_enclosure: supplier.csv_enclosure || '"',
       csv_line_break: supplier.csv_line_break || "\\n",
       csv_header_row: supplier.csv_header_row || 1,
-      csv_field_mapping: supplier.csv_field_mapping || null
+      column_mapping: supplier.column_mapping || null
     });
-    setCsvHeaders(supplier.csv_field_mapping ? Object.keys(supplier.csv_field_mapping).join(", ") : "");
     setShowDialog(true);
+  };
+
+  const openMapping = (supplier) => {
+    setMappingSupplier(supplier);
+    setShowMappingDialog(true);
   };
 
   const openDelete = (supplier) => {
