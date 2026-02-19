@@ -8,6 +8,7 @@ import {
   BookOpen,
   Percent,
   Download,
+  ShoppingCart,
   TrendingUp,
   Bell,
   LogOut,
@@ -23,6 +24,7 @@ const navItems = [
   { path: "/catalog", label: "Mi Catálogo", icon: BookOpen },
   { path: "/margin-rules", label: "Reglas de Margen", icon: Percent },
   { path: "/export", label: "Exportar", icon: Download },
+  { path: "/woocommerce", label: "WooCommerce", icon: ShoppingCart },
   { path: "/price-history", label: "Historial de Precios", icon: TrendingUp },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
 ];
