@@ -104,11 +104,12 @@ const Suppliers = () => {
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showMappingDialog, setShowMappingDialog] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState(null);
   const [formData, setFormData] = useState(defaultFormData);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("general");
-  const [csvHeaders, setCsvHeaders] = useState("");
+  const [mappingSupplier, setMappingSupplier] = useState(null);
 
   const fetchSuppliers = useCallback(async () => {
     try {
