@@ -2248,15 +2248,23 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                     updated += 1
                 else:
                     failed += 1
-                    errors.append(f"Error actualizando {sku}: {response.text[:100]}")
+                    errors.append(f"Error actualizando {ean or sku}: {response.text[:100]}")
             else:
                 # Create new product
                 response = await asyncio.to_thread(wcapi.post, "products", wc_product)
                 if response.status_code in [200, 201]:
                     created += 1
+                    # Track the new product's EAN for future updates in this batch
+                    if ean:
+                        try:
+                            new_product_id = response.json().get("id")
+                            if new_product_id:
+                                existing_eans[ean] = new_product_id
+                        except:
+                            pass
                 else:
                     failed += 1
-                    errors.append(f"Error creando {sku or product.get('name', 'producto')}: {response.text[:100]}")
+                    errors.append(f"Error creando {ean or sku or product.get('name', 'producto')}: {response.text[:100]}")
                     
         except Exception as e:
             failed += 1
