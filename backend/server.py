@@ -527,6 +527,10 @@ class SupplierResponse(BaseModel):
     id: str
     name: str
     description: Optional[str] = None
+    # Tipo de conexión
+    connection_type: Optional[str] = "ftp"
+    # URL directa
+    file_url: Optional[str] = None
     # Conexión FTP
     ftp_schema: Optional[str] = None
     ftp_host: Optional[str] = None
