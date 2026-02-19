@@ -477,20 +477,29 @@ async def sync_supplier(supplier: dict) -> dict:
 
 async def sync_all_suppliers():
     """Sync all suppliers with FTP configured - runs every 12 hours"""
-    logger.info("Starting scheduled FTP sync for all suppliers...")
+    logger.info("Starting scheduled sync for all suppliers...")
     
-    suppliers = await db.suppliers.find({
+    # Find suppliers with FTP configured
+    ftp_suppliers = await db.suppliers.find({
+        "connection_type": {"$ne": "url"},
         "ftp_host": {"$ne": None, "$ne": ""},
         "ftp_path": {"$ne": None, "$ne": ""}
     }).to_list(1000)
     
-    logger.info(f"Found {len(suppliers)} suppliers with FTP configured")
+    # Find suppliers with URL configured
+    url_suppliers = await db.suppliers.find({
+        "connection_type": "url",
+        "file_url": {"$ne": None, "$ne": ""}
+    }).to_list(1000)
     
-    for supplier in suppliers:
+    all_suppliers = ftp_suppliers + url_suppliers
+    logger.info(f"Found {len(all_suppliers)} suppliers to sync ({len(ftp_suppliers)} FTP, {len(url_suppliers)} URL)")
+    
+    for supplier in all_suppliers:
         await sync_supplier(supplier)
         await asyncio.sleep(2)  # Small delay between syncs
     
-    logger.info("Scheduled FTP sync completed")
+    logger.info("Scheduled sync completed")
 
 # ==================== MODELS ====================
 
