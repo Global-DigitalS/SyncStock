@@ -707,7 +707,7 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
         "csv_enclosure": supplier.csv_enclosure,
         "csv_line_break": supplier.csv_line_break,
         "csv_header_row": supplier.csv_header_row,
-        "csv_field_mapping": supplier.csv_field_mapping,
+        "column_mapping": supplier.column_mapping,
         # Stats
         "product_count": 0,
         "last_sync": None,
