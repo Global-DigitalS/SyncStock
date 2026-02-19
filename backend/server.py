@@ -852,13 +852,20 @@ async def delete_supplier(supplier_id: str, user: dict = Depends(get_current_use
 
 @api_router.post("/suppliers/{supplier_id}/sync")
 async def sync_supplier_manual(supplier_id: str, user: dict = Depends(get_current_user)):
-    """Manually trigger FTP sync for a supplier"""
+    """Manually trigger sync for a supplier (FTP or URL)"""
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     
-    if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
-        raise HTTPException(status_code=400, detail="Configuración FTP incompleta. Configure Host y Ruta del archivo.")
+    connection_type = supplier.get('connection_type', 'ftp')
+    
+    # Validate connection configuration
+    if connection_type == 'url':
+        if not supplier.get('file_url'):
+            raise HTTPException(status_code=400, detail="URL del archivo no configurada.")
+    else:  # FTP
+        if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
+            raise HTTPException(status_code=400, detail="Configuración FTP incompleta. Configure Host y Ruta del archivo.")
     
     try:
         result = await sync_supplier(supplier)
