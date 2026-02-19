@@ -359,27 +359,36 @@ class TestSupplierSyncEndpoints:
         # Cleanup
         requests.delete(f"{BASE_URL}/api/suppliers/{supplier_id}", headers=auth_headers)
     
-    def test_sync_supplier_ftp_error(self, auth_headers):
-        """Test sync endpoint with FTP connection error (expected to fail gracefully)"""
-        # Create supplier with invalid FTP
+    def test_sync_supplier_ftp_error_with_known_host(self, auth_headers):
+        """Test sync endpoint with FTP permission error (known host that denies access)"""
+        # Create supplier with real FTP server that denies access 
+        # speedtest.tele2.net exists but denies file access
         payload = {
-            "name": f"TEST_InvalidFTP_{uuid.uuid4().hex[:8]}",
-            "ftp_host": "nonexistent.ftp.server.xyz",
-            "ftp_path": "/test.csv"
+            "name": f"TEST_PermissionDenied_{uuid.uuid4().hex[:8]}",
+            "ftp_host": "speedtest.tele2.net",
+            "ftp_path": "/nonexistent/test.csv",
+            "ftp_user": "",
+            "ftp_password": ""
         }
         create_response = requests.post(f"{BASE_URL}/api/suppliers", json=payload, headers=auth_headers)
         assert create_response.status_code == 200
         supplier_id = create_response.json()["id"]
         
-        # Try to sync - should return error as JSON (not crash with 500)
-        sync_response = requests.post(f"{BASE_URL}/api/suppliers/{supplier_id}/sync", headers=auth_headers)
+        # Try to sync - should return 200 with error status (per the fix mentioned)
+        # FTP connection is quick but file access is denied
+        sync_response = requests.post(
+            f"{BASE_URL}/api/suppliers/{supplier_id}/sync", 
+            headers=auth_headers,
+            timeout=30
+        )
         
-        # Should return 200 with error status (per the fix mentioned)
-        assert sync_response.status_code == 200, f"Expected 200, got {sync_response.status_code}"
+        # Should return 200 with error status (per the main agent's fix)
+        assert sync_response.status_code == 200, f"Expected 200, got {sync_response.status_code}: {sync_response.text}"
         data = sync_response.json()
         assert data.get("status") == "error"
         assert "message" in data
-        print(f"FTP error handled gracefully: {data['message'][:50]}...")
+        # Error should mention permission denied or file not found
+        print(f"FTP error handled gracefully: {data['message'][:80]}...")
         
         # Cleanup
         requests.delete(f"{BASE_URL}/api/suppliers/{supplier_id}", headers=auth_headers)
