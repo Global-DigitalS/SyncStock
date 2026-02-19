@@ -44,7 +44,9 @@ import {
   FileText,
   RefreshCw,
   Clock,
-  Zap
+  Zap,
+  Globe,
+  Columns
 } from "lucide-react";
 
 const SupplierDetail = () => {
