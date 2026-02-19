@@ -14,6 +14,7 @@ import Products from "./pages/Products";
 import Catalog from "./pages/Catalog";
 import MarginRules from "./pages/MarginRules";
 import Export from "./pages/Export";
+import WooCommerceExport from "./pages/WooCommerceExport";
 import PriceHistory from "./pages/PriceHistory";
 import Notifications from "./pages/Notifications";
 
