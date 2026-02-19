@@ -366,6 +366,46 @@ const Products = () => {
         </CardContent>
       </Card>
 
+      {/* Selection Banner */}
+      {selectedProducts.size > 0 && (
+        <Card className="border-indigo-200 bg-indigo-50 mb-6">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CheckSquare className="w-5 h-5 text-indigo-600" />
+                <span className="font-medium text-indigo-900">
+                  {selectedProducts.size} producto{selectedProducts.size !== 1 ? "s" : ""} seleccionado{selectedProducts.size !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedProducts(new Set())}
+                  className="btn-secondary"
+                >
+                  Limpiar selección
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={handleAddSelectedToCatalogs}
+                  disabled={addingToCatalog}
+                  className="btn-primary"
+                  data-testid="add-selected-to-catalogs"
+                >
+                  {addingToCatalog ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <BookOpen className="w-4 h-4 mr-2" />
+                  )}
+                  Añadir a Catálogos
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Products Table */}
       {products.length === 0 ? (
         <div className="empty-state">
@@ -389,6 +429,13 @@ const Products = () => {
             <Table>
               <TableHeader>
                 <TableRow className="table-header">
+                  <TableHead className="w-[50px]">
+                    <Checkbox
+                      checked={selectedProducts.size === products.length && products.length > 0}
+                      onCheckedChange={handleSelectAll}
+                      data-testid="select-all-products"
+                    />
+                  </TableHead>
                   <TableHead>Producto</TableHead>
                   <TableHead>SKU</TableHead>
                   <TableHead>Proveedor</TableHead>
@@ -400,7 +447,18 @@ const Products = () => {
               </TableHeader>
               <TableBody>
                 {products.map((product) => (
-                  <TableRow key={product.id} className="table-row" data-testid={`product-row-${product.id}`}>
+                  <TableRow 
+                    key={product.id} 
+                    className={`table-row ${selectedProducts.has(product.id) ? 'bg-indigo-50' : ''}`} 
+                    data-testid={`product-row-${product.id}`}
+                  >
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedProducts.has(product.id)}
+                        onCheckedChange={(checked) => handleSelectProduct(product.id, checked)}
+                        data-testid={`select-product-${product.id}`}
+                      />
+                    </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-3 max-w-[300px]">
                         {product.image_url ? (
@@ -453,11 +511,11 @@ const Products = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleAddToCatalog(product.id)}
+                          onClick={() => handleAddSingleToCatalog(product.id)}
                           className="h-8 w-8 p-0 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
                           data-testid={`add-to-catalog-${product.id}`}
                         >
-                          <Plus className="w-4 h-4" strokeWidth={1.5} />
+                          <BookOpen className="w-4 h-4" strokeWidth={1.5} />
                         </Button>
                       </div>
                     </TableCell>
