@@ -460,85 +460,159 @@ const Suppliers = () => {
 
               {/* Tab Conexión */}
               <TabsContent value="connection" className="space-y-4">
+                {/* Tipo de conexión */}
                 <div className="p-3 bg-slate-50 rounded-sm mb-4">
-                  <p className="text-sm text-slate-600">
-                    Configura la conexión FTP/SFTP para descargar automáticamente el archivo de productos.
-                  </p>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label>Protocolo FTP</Label>
-                    <Select
-                      value={formData.ftp_schema}
-                      onValueChange={(value) => setFormData({ ...formData, ftp_schema: value })}
+                  <Label className="text-sm font-medium mb-3 block">Tipo de conexión</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, connection_type: "ftp" })}
+                      className={`p-3 rounded-lg border-2 text-left transition-all ${
+                        formData.connection_type === "ftp" 
+                          ? "border-indigo-500 bg-indigo-50" 
+                          : "border-slate-200 hover:border-slate-300"
+                      }`}
                     >
-                      <SelectTrigger className="input-base" data-testid="ftp-schema-select">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ftp">FTP</SelectItem>
-                        <SelectItem value="sftp">SFTP</SelectItem>
-                        <SelectItem value="ftps">FTPS</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Modo de conexión</Label>
-                    <Select
-                      value={formData.ftp_mode}
-                      onValueChange={(value) => setFormData({ ...formData, ftp_mode: value })}
+                      <div className="flex items-center gap-2 mb-1">
+                        <Server className={`w-4 h-4 ${formData.connection_type === "ftp" ? "text-indigo-600" : "text-slate-400"}`} />
+                        <span className={`font-medium ${formData.connection_type === "ftp" ? "text-indigo-900" : "text-slate-700"}`}>
+                          FTP / SFTP
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">Conexión a servidor FTP del proveedor</p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFormData({ ...formData, connection_type: "url" })}
+                      className={`p-3 rounded-lg border-2 text-left transition-all ${
+                        formData.connection_type === "url" 
+                          ? "border-indigo-500 bg-indigo-50" 
+                          : "border-slate-200 hover:border-slate-300"
+                      }`}
                     >
-                      <SelectTrigger className="input-base" data-testid="ftp-mode-select">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="passive">Pasivo</SelectItem>
-                        <SelectItem value="active">Activo</SelectItem>
-                      </SelectContent>
-                    </Select>
+                      <div className="flex items-center gap-2 mb-1">
+                        <Globe className={`w-4 h-4 ${formData.connection_type === "url" ? "text-indigo-600" : "text-slate-400"}`} />
+                        <span className={`font-medium ${formData.connection_type === "url" ? "text-indigo-900" : "text-slate-700"}`}>
+                          URL Directa
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500">Descargar desde URL HTTP/HTTPS</p>
+                    </button>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="col-span-2 space-y-2">
-                    <Label htmlFor="ftp_host">Host</Label>
-                    <Input
-                      id="ftp_host"
-                      value={formData.ftp_host}
-                      onChange={(e) => setFormData({ ...formData, ftp_host: e.target.value })}
-                      placeholder="ftp.ejemplo.com"
-                      className="input-base font-mono text-sm"
-                      data-testid="supplier-ftp-host"
-                    />
+                {/* Configuración URL */}
+                {formData.connection_type === "url" && (
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="file_url">URL del archivo *</Label>
+                      <div className="relative">
+                        <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Input
+                          id="file_url"
+                          value={formData.file_url}
+                          onChange={(e) => setFormData({ ...formData, file_url: e.target.value })}
+                          placeholder="https://proveedor.com/catalogo.csv"
+                          className="input-base pl-9 font-mono text-sm"
+                          data-testid="supplier-file-url"
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500">
+                        URL completa al archivo CSV, Excel o XML del proveedor
+                      </p>
+                    </div>
+                    
+                    <div className="p-3 bg-amber-50 rounded-sm border border-amber-200">
+                      <div className="flex items-start gap-2">
+                        <ExternalLink className="w-4 h-4 text-amber-600 mt-0.5" />
+                        <div className="text-sm text-amber-800">
+                          <p className="font-medium mb-1">Nota sobre URLs</p>
+                          <p className="text-xs">
+                            La URL debe ser accesible públicamente o no requerir autenticación. 
+                            Para URLs protegidas, usa la conexión FTP/SFTP.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="ftp_port">Puerto</Label>
-                    <Input
-                      id="ftp_port"
-                      type="number"
-                      value={formData.ftp_port}
-                      onChange={(e) => setFormData({ ...formData, ftp_port: e.target.value })}
-                      placeholder="21"
-                      className="input-base font-mono text-sm"
-                      data-testid="supplier-ftp-port"
-                    />
-                  </div>
-                </div>
+                )}
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="ftp_user">Usuario</Label>
-                    <Input
-                      id="ftp_user"
-                      value={formData.ftp_user}
-                      onChange={(e) => setFormData({ ...formData, ftp_user: e.target.value })}
-                      placeholder="usuario"
-                      className="input-base"
-                      data-testid="supplier-ftp-user"
-                    />
-                  </div>
+                {/* Configuración FTP */}
+                {formData.connection_type === "ftp" && (
+                  <>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Protocolo FTP</Label>
+                        <Select
+                          value={formData.ftp_schema}
+                          onValueChange={(value) => setFormData({ ...formData, ftp_schema: value })}
+                        >
+                          <SelectTrigger className="input-base" data-testid="ftp-schema-select">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ftp">FTP</SelectItem>
+                            <SelectItem value="sftp">SFTP</SelectItem>
+                            <SelectItem value="ftps">FTPS</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Modo de conexión</Label>
+                        <Select
+                          value={formData.ftp_mode}
+                          onValueChange={(value) => setFormData({ ...formData, ftp_mode: value })}
+                        >
+                          <SelectTrigger className="input-base" data-testid="ftp-mode-select">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="passive">Pasivo</SelectItem>
+                            <SelectItem value="active">Activo</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-4">
+                      <div className="col-span-2 space-y-2">
+                        <Label htmlFor="ftp_host">Host</Label>
+                        <Input
+                          id="ftp_host"
+                          value={formData.ftp_host}
+                          onChange={(e) => setFormData({ ...formData, ftp_host: e.target.value })}
+                          placeholder="ftp.ejemplo.com"
+                          className="input-base font-mono text-sm"
+                          data-testid="supplier-ftp-host"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="ftp_port">Puerto</Label>
+                        <Input
+                          id="ftp_port"
+                          type="number"
+                          value={formData.ftp_port}
+                          onChange={(e) => setFormData({ ...formData, ftp_port: e.target.value })}
+                          placeholder="21"
+                          className="input-base font-mono text-sm"
+                          data-testid="supplier-ftp-port"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="ftp_user">Usuario</Label>
+                        <Input
+                          id="ftp_user"
+                          value={formData.ftp_user}
+                          onChange={(e) => setFormData({ ...formData, ftp_user: e.target.value })}
+                          placeholder="usuario"
+                          className="input-base"
+                          data-testid="supplier-ftp-user"
+                        />
+                      </div>
                   <div className="space-y-2">
                     <Label htmlFor="ftp_password">Contraseña</Label>
                     <Input
