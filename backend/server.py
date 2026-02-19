@@ -2165,7 +2165,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             wc_product = {
                 "name": catalog_item.get("custom_name") or product.get("name", "Producto sin nombre"),
                 "type": "simple",
-                "regular_price": str(catalog_item.get("final_price", product.get("price", 0))),
+                "regular_price": str(round(final_price, 2)),
                 "description": product.get("description", ""),
                 "short_description": product.get("short_description", ""),
                 "sku": product.get("sku", ""),
