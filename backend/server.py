@@ -131,6 +131,31 @@ async def download_file_from_ftp(supplier: dict) -> bytes:
     loop = asyncio.get_event_loop()
     return await loop.run_in_executor(None, download_file_from_ftp_sync, supplier)
 
+def download_file_from_url_sync(url: str) -> bytes:
+    """Download file from HTTP/HTTPS URL"""
+    logger.info(f"Downloading from URL: {url}")
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    }
+    
+    try:
+        response = requests.get(url, headers=headers, timeout=60, stream=True)
+        response.raise_for_status()
+        
+        content = response.content
+        logger.info(f"URL download completed: {len(content)} bytes")
+        return content
+        
+    except requests.exceptions.RequestException as e:
+        logger.error(f"URL download failed: {e}")
+        raise Exception(f"Error descargando desde URL: {str(e)}")
+
+async def download_file_from_url(url: str) -> bytes:
+    """Async wrapper for URL download"""
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, download_file_from_url_sync, url)
+
 def apply_column_mapping(raw_data: dict, column_mapping: dict) -> dict:
     """Apply column mapping to transform supplier data to system fields"""
     if not column_mapping:
