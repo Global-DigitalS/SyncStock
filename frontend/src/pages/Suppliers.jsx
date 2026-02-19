@@ -366,6 +366,10 @@ const Suppliers = () => {
                             <Pencil className="w-4 h-4 mr-2" strokeWidth={1.5} />
                             Editar
                           </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => openMapping(supplier)} data-testid={`mapping-supplier-${supplier.id}`}>
+                            <Columns className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                            Mapear Columnas
+                          </DropdownMenuItem>
                           <DropdownMenuItem
                             onClick={() => openDelete(supplier)}
                             className="text-rose-600 focus:text-rose-600"
