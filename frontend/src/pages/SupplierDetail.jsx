@@ -98,10 +98,26 @@ const SupplierDetail = () => {
     setSyncing(true);
     try {
       const res = await api.post(`/suppliers/${supplierId}/sync`);
-      toast.success(`Sincronización completada: ${res.data.imported} nuevos, ${res.data.updated} actualizados`);
+      
+      // Check if mapping is needed
+      if (res.data.needs_mapping) {
+        toast.warning(res.data.message || "Se necesita configurar el mapeo de columnas", {
+          duration: 8000,
+          description: `Columnas detectadas: ${(res.data.detected_columns || []).slice(0, 5).join(", ")}...`
+        });
+      } else if (res.data.status === "success" && res.data.imported + res.data.updated > 0) {
+        toast.success(`Sincronización completada: ${res.data.imported} nuevos, ${res.data.updated} actualizados`);
+      } else if (res.data.errors > 0 && res.data.imported + res.data.updated === 0) {
+        toast.warning("Archivo descargado pero no se importaron productos. Verifica el mapeo de columnas.", {
+          duration: 6000
+        });
+      } else {
+        toast.info("Sincronización completada sin cambios");
+      }
+      
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error en la sincronización FTP");
+      toast.error(error.response?.data?.message || error.response?.data?.detail || "Error en la sincronización");
     } finally {
       setSyncing(false);
     }
