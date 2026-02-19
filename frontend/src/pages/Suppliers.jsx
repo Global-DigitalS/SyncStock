@@ -129,7 +129,6 @@ const Suppliers = () => {
   const resetForm = () => {
     setFormData(defaultFormData);
     setSelectedSupplier(null);
-    setCsvHeaders("");
     setActiveTab("general");
   };
 
