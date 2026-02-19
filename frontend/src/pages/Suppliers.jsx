@@ -288,7 +288,7 @@ const Suppliers = () => {
                 <TableRow className="table-header">
                   <TableHead>Proveedor</TableHead>
                   <TableHead>Formato</TableHead>
-                  <TableHead>Conexión FTP</TableHead>
+                  <TableHead>Conexión</TableHead>
                   <TableHead></TableHead>
                   <TableHead className="text-right">Productos</TableHead>
                   <TableHead>Última Sincronización</TableHead>
