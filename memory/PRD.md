@@ -25,6 +25,7 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 ### Backend
 - [x] Autenticación JWT (registro/login)
 - [x] CRUD de proveedores con configuración FTP/SFTP
+- [x] **NUEVO: Soporte para importar desde URL directa HTTP/HTTPS**
 - [x] Importación de productos (CSV, XLSX, XLS, XML)
 - [x] Normalización automática de campos
 - [x] Catálogo personal con precios personalizados
@@ -36,7 +37,7 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 - [x] Sincronización FTP/SFTP automática cada 12 horas (APScheduler)
 - [x] Sincronización manual desde el frontend
 - [x] Mapeo de columnas personalizado
-- [x] **NUEVO: Integración WooCommerce API REST**
+- [x] Integración WooCommerce API REST
   - CRUD de configuraciones de tiendas
   - Test de conexión
   - Exportación directa de productos vía API
