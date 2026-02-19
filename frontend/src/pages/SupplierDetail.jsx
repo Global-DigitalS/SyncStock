@@ -314,13 +314,13 @@ const SupplierDetail = () => {
             </div>
           </div>
           <div className="flex items-center gap-3">
-            {syncStatus?.ftp_configured && (
+            {(syncStatus?.ftp_configured || supplier?.connection_type === "url") && (
               <Button 
                 onClick={handleSync} 
                 disabled={syncing}
                 variant="outline"
                 className="btn-secondary"
-                data-testid="sync-ftp-btn"
+                data-testid="sync-btn"
               >
                 {syncing ? (
                   <>
@@ -330,7 +330,7 @@ const SupplierDetail = () => {
                 ) : (
                   <>
                     <Zap className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                    Sincronizar FTP
+                    {supplier?.connection_type === "url" ? "Sincronizar URL" : "Sincronizar FTP"}
                   </>
                 )}
               </Button>
