@@ -322,6 +322,16 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
         updated = 0
         errors = 0
         
+        # If no column mapping and we have detected columns, warn the user
+        needs_mapping = False
+        if not column_mapping and detected_columns:
+            # Check if auto-detection might work by looking at column names
+            col_names_lower = [c.lower().strip() for c in detected_columns]
+            has_sku = any(x in col_names_lower for x in ['sku', 'codigo', 'referencia', 'ref', 'reference', 'id'])
+            has_name = any(x in col_names_lower for x in ['name', 'nombre', 'title', 'titulo', 'product', 'producto'])
+            if not has_sku or not has_name:
+                needs_mapping = True
+        
         for raw in raw_products:
             try:
                 # Apply column mapping or auto-detect
