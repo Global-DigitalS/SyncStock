@@ -133,6 +133,8 @@ const Suppliers = () => {
     setFormData({
       name: supplier.name || "",
       description: supplier.description || "",
+      connection_type: supplier.connection_type || "ftp",
+      file_url: supplier.file_url || "",
       ftp_schema: supplier.ftp_schema || "ftp",
       ftp_host: supplier.ftp_host || "",
       ftp_user: supplier.ftp_user || "",
