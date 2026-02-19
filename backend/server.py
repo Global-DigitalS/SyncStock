@@ -763,7 +763,7 @@ class WooCommerceConfigResponse(BaseModel):
 
 class WooCommerceExportRequest(BaseModel):
     config_id: str
-    catalog_ids: Optional[List[str]] = None  # Si es None, exportar todo el catálogo activo
+    catalog_id: Optional[str] = None  # ID del catálogo a exportar. Si es None, exportar catálogo por defecto
     update_existing: bool = True  # Actualizar productos existentes por SKU
 
 class WooCommerceExportResult(BaseModel):
