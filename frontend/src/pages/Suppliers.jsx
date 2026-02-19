@@ -60,7 +60,9 @@ import {
   Settings,
   Database,
   Link2,
-  Columns
+  Columns,
+  Globe,
+  ExternalLink
 } from "lucide-react";
 import ColumnMappingDialog from "../components/ColumnMappingDialog";
 
