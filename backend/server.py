@@ -805,11 +805,7 @@ class UnifiedProductResponse(BaseModel):
     total_stock: int
     supplier_count: int
     suppliers: List[SupplierOffer]
-    # From best offer
     weight: Optional[float] = None
-    out_of_stock_count: int
-    unread_notifications: int
-    recent_price_changes: int
 
 # ==================== AUTH HELPERS ====================
 
