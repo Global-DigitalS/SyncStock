@@ -16,7 +16,7 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 - Idioma: Solo español
 
 ## Arquitectura
-- **Backend**: FastAPI + MongoDB
+- **Backend**: FastAPI + MongoDB + WooCommerce API
 - **Frontend**: React + Tailwind CSS + Shadcn/UI
 - **Auth**: JWT con bcrypt
 
@@ -29,13 +29,18 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 - [x] Normalización automática de campos
 - [x] Catálogo personal con precios personalizados
 - [x] Reglas de margen (porcentaje/fijo, por categoría/proveedor)
-- [x] Exportación a Prestashop, WooCommerce, Shopify
+- [x] Exportación a Prestashop, WooCommerce, Shopify (CSV)
 - [x] Dashboard con estadísticas
 - [x] Historial de precios
 - [x] Notificaciones de stock
 - [x] Sincronización FTP/SFTP automática cada 12 horas (APScheduler)
 - [x] Sincronización manual desde el frontend
 - [x] Mapeo de columnas personalizado
+- [x] **NUEVO: Integración WooCommerce API REST**
+  - CRUD de configuraciones de tiendas
+  - Test de conexión
+  - Exportación directa de productos vía API
+  - Soporte para actualizar productos existentes por SKU
 
 ### Frontend
 - [x] Login/Registro con diseño profesional
@@ -46,31 +51,37 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 - [x] Detalle de proveedor con catálogo de productos
 - [x] Selección múltiple para añadir al catálogo
 - [x] Productos con filtros (búsqueda, categoría, stock)
-- [x] Mi Catálogo con precios finales
+- [x] Mi Catálogo con filtros por proveedor/estado y estadísticas
 - [x] Reglas de margen configurables
-- [x] Exportación a 3 plataformas
+- [x] Exportación a 3 plataformas (CSV)
 - [x] Historial de precios con gráficos
 - [x] Centro de notificaciones
+- [x] **NUEVO: Página WooCommerce Export**
+  - Añadir/editar/eliminar tiendas
+  - Probar conexión
+  - Exportar productos directamente
+  - Estadísticas de sincronización
+- [x] **NUEVO: Componente ColumnMappingDialog** para mapeo visual de columnas
 
 ## Última Actualización: 19 Feb 2026
-### Bug Fixes (Sesión Actual)
-- ✅ Corregido bug crítico en POST /api/suppliers (csv_field_mapping → column_mapping)
-- ✅ Corregido endpoint de sync para devolver JSON con errores en lugar de HTTP 500
-- ✅ Aumentado JWT_SECRET a 32+ bytes para mayor seguridad
-- ✅ Reducido timeout de FTP a 15s para evitar timeouts de Cloudflare
+
+### Tareas P1 Completadas (Sesión Actual)
+1. ✅ **UI Mapeo de Columnas**: Componente ColumnMappingDialog.jsx con auto-detección y mapeo visual
+2. ✅ **Mejoras en Mi Catálogo**: 4 tarjetas de estadísticas, filtros por proveedor/estado
+3. ✅ **Exportar a WooCommerce API REST**: Nueva sección completa con integración real
 
 ### Testing
-- 100% tests pasados (19/19 backend, todos los flujos frontend)
-- Ver: /app/test_reports/iteration_2.json
+- 100% tests pasados en todas las iteraciones
+- Ver: /app/test_reports/iteration_3.json
 
 ## Próximas Tareas (P1)
-- [ ] Implementar UI de mapeo de columnas (arrastrar y soltar columnas del proveedor a campos del sistema)
-- [ ] Crear sección de catálogo personal mejorada
-- [ ] Desarrollar UI para reglas de márgenes
+- [ ] Integración API REST con Prestashop
+- [ ] Integración API REST con Shopify
 
 ## Backlog (P2)
 - [ ] Alertas por email
 - [ ] Historial de cambios por producto
-- [ ] API pública para integraciones
+- [ ] API pública para integraciones externas
 - [ ] Múltiples usuarios por cuenta
 - [ ] Roles y permisos
+- [ ] Refactorizar server.py en módulos separados
