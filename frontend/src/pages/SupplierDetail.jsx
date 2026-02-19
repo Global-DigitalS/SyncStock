@@ -522,9 +522,9 @@ const SupplierDetail = () => {
                   {addingToCatalog ? (
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" strokeWidth={1.5} />
                   ) : (
-                    <ShoppingCart className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                    <BookOpen className="w-4 h-4 mr-2" strokeWidth={1.5} />
                   )}
-                  Añadir a Mi Catálogo
+                  Añadir a Catálogos
                 </Button>
               </div>
             </div>
