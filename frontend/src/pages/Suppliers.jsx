@@ -67,6 +67,10 @@ import ColumnMappingDialog from "../components/ColumnMappingDialog";
 const defaultFormData = {
   name: "",
   description: "",
+  // Tipo de conexión
+  connection_type: "ftp",
+  // URL directa
+  file_url: "",
   // Conexión FTP
   ftp_schema: "ftp",
   ftp_host: "",
