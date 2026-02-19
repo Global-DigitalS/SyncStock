@@ -612,6 +612,42 @@ class ExportRequest(BaseModel):
     platform: str  # prestashop, woocommerce, shopify
     catalog_ids: Optional[List[str]] = None
 
+# ==================== WOOCOMMERCE INTEGRATION ====================
+
+class WooCommerceConfig(BaseModel):
+    store_url: str = Field(..., description="URL de la tienda WooCommerce (ej: https://mitienda.com)")
+    consumer_key: str = Field(..., description="Consumer Key de la API REST")
+    consumer_secret: str = Field(..., description="Consumer Secret de la API REST")
+    name: Optional[str] = "Mi Tienda WooCommerce"
+
+class WooCommerceConfigUpdate(BaseModel):
+    store_url: Optional[str] = None
+    consumer_key: Optional[str] = None
+    consumer_secret: Optional[str] = None
+    name: Optional[str] = None
+
+class WooCommerceConfigResponse(BaseModel):
+    id: str
+    name: str
+    store_url: str
+    consumer_key_masked: str  # Solo mostrar últimos 4 caracteres
+    is_connected: bool = False
+    last_sync: Optional[str] = None
+    products_synced: int = 0
+    created_at: str
+
+class WooCommerceExportRequest(BaseModel):
+    config_id: str
+    catalog_ids: Optional[List[str]] = None  # Si es None, exportar todo el catálogo activo
+    update_existing: bool = True  # Actualizar productos existentes por SKU
+
+class WooCommerceExportResult(BaseModel):
+    status: str
+    created: int = 0
+    updated: int = 0
+    failed: int = 0
+    errors: List[str] = []
+
 class DashboardStats(BaseModel):
     total_suppliers: int
     total_products: int
