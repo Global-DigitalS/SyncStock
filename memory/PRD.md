@@ -38,6 +38,10 @@ Software SaaS para gestión de catálogos de productos con proveedores:
 - [x] Sincronización manual desde el frontend
 - [x] Mapeo de columnas personalizado
 - [x] Integración WooCommerce API REST
+- [x] **EXPORTACIÓN WooCommerce con EAN como identificador único**
+  - EAN usado para detectar productos existentes (evita duplicados)
+  - EAN exportado a campos GTIN/UPC/EAN (_global_unique_id, _gtin, _ean, gtin)
+  - Fallback a SKU si no hay EAN
 
 ### Frontend
 - [x] Login/Registro con diseño profesional
