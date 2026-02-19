@@ -602,11 +602,42 @@ const WooCommerceExport = () => {
               Exportar a {selectedConfig?.name}
             </DialogTitle>
             <DialogDescription>
-              Configura las opciones de exportación para tu tienda WooCommerce
+              Selecciona el catálogo y configura las opciones de exportación
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
+            {/* Catalog Selector */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Catálogo a exportar</Label>
+              <Select 
+                value={exportOptions.catalog_id} 
+                onValueChange={handleCatalogChange}
+              >
+                <SelectTrigger className="input-base">
+                  <BookOpen className="w-4 h-4 mr-2 text-slate-400" />
+                  <SelectValue placeholder="Selecciona un catálogo" />
+                </SelectTrigger>
+                <SelectContent>
+                  {catalogs.map(catalog => (
+                    <SelectItem key={catalog.id} value={catalog.id}>
+                      <div className="flex items-center gap-2">
+                        {catalog.name}
+                        {catalog.is_default && (
+                          <Badge className="bg-indigo-100 text-indigo-700 border-0 text-xs ml-1">
+                            Defecto
+                          </Badge>
+                        )}
+                        <span className="text-slate-500 text-xs">
+                          ({catalog.product_count} productos)
+                        </span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
               <div>
                 <p className="font-medium text-slate-900">Actualizar productos existentes</p>
@@ -623,9 +654,16 @@ const WooCommerceExport = () => {
                 <Package className="w-4 h-4 text-indigo-600" />
                 <p className="font-medium text-indigo-900">Productos a exportar</p>
               </div>
-              <p className="text-sm text-indigo-700">
-                Se exportarán <strong>{catalogItems.length}</strong> productos activos de tu catálogo
-              </p>
+              {loadingCatalogProducts ? (
+                <div className="flex items-center gap-2 text-sm text-indigo-700">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Cargando productos...
+                </div>
+              ) : (
+                <p className="text-sm text-indigo-700">
+                  Se exportarán <strong>{selectedCatalogProducts.length}</strong> productos del catálogo seleccionado
+                </p>
+              )}
             </div>
             
             {exportResult && (
@@ -649,7 +687,7 @@ const WooCommerceExport = () => {
                     <p className="text-xs text-slate-600">Errores</p>
                   </div>
                 </div>
-                {exportResult.errors.length > 0 && (
+                {exportResult.errors && exportResult.errors.length > 0 && (
                   <div className="mt-2 text-xs text-rose-700">
                     {exportResult.errors.slice(0, 3).map((err, i) => (
                       <p key={i}>• {err}</p>
@@ -667,7 +705,7 @@ const WooCommerceExport = () => {
             {!exportResult && (
               <Button 
                 onClick={handleExport} 
-                disabled={exporting || catalogItems.length === 0} 
+                disabled={exporting || !exportOptions.catalog_id || selectedCatalogProducts.length === 0} 
                 className="btn-primary"
                 data-testid="confirm-export-btn"
               >
