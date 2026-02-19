@@ -692,6 +692,51 @@ class ExportRequest(BaseModel):
     platform: str  # prestashop, woocommerce, shopify
     catalog_ids: Optional[List[str]] = None
 
+# ==================== CATALOG MODELS ====================
+
+class CatalogCreate(BaseModel):
+    name: str = Field(..., description="Nombre del catálogo")
+    description: Optional[str] = None
+    is_default: bool = False
+
+class CatalogUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    is_default: Optional[bool] = None
+
+class CatalogResponse(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    is_default: bool = False
+    product_count: int = 0
+    margin_rules_count: int = 0
+    created_at: str
+
+class CatalogProductAdd(BaseModel):
+    product_ids: List[str]
+    custom_prices: Optional[Dict[str, float]] = None  # product_id: custom_price
+
+class CatalogMarginRuleCreate(BaseModel):
+    catalog_id: str
+    name: str
+    rule_type: str = "percentage"  # percentage, fixed
+    value: float
+    apply_to: str = "all"  # all, category, supplier, brand
+    apply_to_value: Optional[str] = None
+    priority: int = 0
+
+class CatalogMarginRuleResponse(BaseModel):
+    id: str
+    catalog_id: str
+    name: str
+    rule_type: str
+    value: float
+    apply_to: str
+    apply_to_value: Optional[str] = None
+    priority: int
+    created_at: str
+
 # ==================== WOOCOMMERCE INTEGRATION ====================
 
 class WooCommerceConfig(BaseModel):
