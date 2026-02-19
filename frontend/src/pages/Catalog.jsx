@@ -196,39 +196,118 @@ const Catalog = () => {
   return (
     <div className="p-6 lg:p-8 animate-fade-in">
       {/* Page Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-slate-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-          Mi Catálogo
-        </h1>
-        <p className="text-slate-500">
-          {catalogItems.length.toLocaleString()} productos en tu catálogo personalizado
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+            Mi Catálogo
+          </h1>
+          <p className="text-slate-500">
+            Gestiona tu catálogo personalizado de productos
+          </p>
+        </div>
+        <Button 
+          onClick={() => window.location.href = '/export'} 
+          className="btn-primary"
+          data-testid="export-catalog-btn"
+        >
+          <Download className="w-4 h-4 mr-2" strokeWidth={1.5} />
+          Exportar Catálogo
+        </Button>
       </div>
 
-      {/* Search */}
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500">Total Productos</p>
+                <p className="text-2xl font-bold text-slate-900">{stats.total}</p>
+              </div>
+              <BookOpen className="w-8 h-8 text-indigo-200" strokeWidth={1.5} />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-emerald-200 bg-emerald-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-emerald-600">Activos</p>
+                <p className="text-2xl font-bold text-emerald-700">{stats.active}</p>
+              </div>
+              <Package className="w-8 h-8 text-emerald-200" strokeWidth={1.5} />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-slate-200">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-500">Inactivos</p>
+                <p className="text-2xl font-bold text-slate-700">{stats.inactive}</p>
+              </div>
+              <Package className="w-8 h-8 text-slate-200" strokeWidth={1.5} />
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-indigo-200 bg-indigo-50">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-indigo-600">Valor Total</p>
+                <p className="text-xl font-bold text-indigo-700">
+                  {stats.totalValue.toLocaleString("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <TrendingUp className="w-8 h-8 text-indigo-200" strokeWidth={1.5} />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Filters */}
       <Card className="border-slate-200 mb-6">
         <CardContent className="p-4">
-          <div className="flex gap-4">
+          <div className="flex flex-col lg:flex-row gap-4">
             <div className="flex-1 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" strokeWidth={1.5} />
               <Input
-                placeholder="Buscar en mi catálogo..."
+                placeholder="Buscar por nombre o SKU..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 className="pl-9 input-base"
                 data-testid="search-catalog"
               />
             </div>
-            <Button onClick={handleSearch} className="btn-secondary" data-testid="search-catalog-btn">
-              Buscar
-            </Button>
+            <Select value={supplierFilter} onValueChange={setSupplierFilter}>
+              <SelectTrigger className="w-full lg:w-[200px] input-base" data-testid="filter-supplier">
+                <Truck className="w-4 h-4 mr-2 text-slate-400" />
+                <SelectValue placeholder="Proveedor" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos los proveedores</SelectItem>
+                {suppliers.map(s => (
+                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full lg:w-[150px] input-base" data-testid="filter-status">
+                <Filter className="w-4 h-4 mr-2 text-slate-400" />
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="active">Activos</SelectItem>
+                <SelectItem value="inactive">Inactivos</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
 
       {/* Catalog Table */}
-      {catalogItems.length === 0 ? (
+      {filteredItems.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">
             <BookOpen className="w-10 h-10" strokeWidth={1.5} />
