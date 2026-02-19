@@ -55,8 +55,11 @@ import {
 
 const Catalog = () => {
   const [catalogItems, setCatalogItems] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [supplierFilter, setSupplierFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
@@ -66,26 +69,56 @@ const Catalog = () => {
     active: true
   });
   const [saving, setSaving] = useState(false);
+  const [stats, setStats] = useState({ total: 0, active: 0, inactive: 0, totalValue: 0 });
 
-  const fetchCatalog = useCallback(async () => {
+  const fetchData = useCallback(async () => {
     try {
-      const res = await api.get("/catalog", { params: { search: search || undefined } });
-      setCatalogItems(res.data);
+      const [catalogRes, suppliersRes] = await Promise.all([
+        api.get("/catalog"),
+        api.get("/suppliers")
+      ]);
+      setCatalogItems(catalogRes.data);
+      setSuppliers(suppliersRes.data);
+      
+      // Calculate stats
+      const items = catalogRes.data;
+      setStats({
+        total: items.length,
+        active: items.filter(i => i.active).length,
+        inactive: items.filter(i => !i.active).length,
+        totalValue: items.filter(i => i.active).reduce((sum, i) => sum + (i.final_price * (i.product?.stock || 0)), 0)
+      });
     } catch (error) {
       toast.error("Error al cargar el catálogo");
     } finally {
       setLoading(false);
     }
-  }, [search]);
-
-  useEffect(() => {
-    fetchCatalog();
   }, []);
 
-  const handleSearch = () => {
-    setLoading(true);
-    fetchCatalog();
-  };
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
+  const filteredItems = catalogItems.filter(item => {
+    // Search filter
+    if (search) {
+      const searchLower = search.toLowerCase();
+      const name = (item.custom_name || item.product?.name || "").toLowerCase();
+      const sku = (item.product?.sku || "").toLowerCase();
+      if (!name.includes(searchLower) && !sku.includes(searchLower)) {
+        return false;
+      }
+    }
+    // Supplier filter
+    if (supplierFilter !== "all" && item.product?.supplier_id !== supplierFilter) {
+      return false;
+    }
+    // Status filter
+    if (statusFilter === "active" && !item.active) return false;
+    if (statusFilter === "inactive" && item.active) return false;
+    
+    return true;
+  });
 
   const openEdit = (item) => {
     setSelectedItem(item);
