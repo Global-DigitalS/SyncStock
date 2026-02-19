@@ -356,8 +356,8 @@ class SupplierCreate(BaseModel):
     csv_enclosure: Optional[str] = '"'
     csv_line_break: Optional[str] = "\\n"
     csv_header_row: Optional[int] = 1
-    # Mapeo de campos CSV
-    csv_field_mapping: Optional[Dict[str, str]] = None
+    # Mapeo de columnas - campo del sistema: columna(s) del proveedor
+    column_mapping: Optional[Dict[str, Any]] = None
 
 class SupplierUpdate(BaseModel):
     name: Optional[str] = None
@@ -376,8 +376,8 @@ class SupplierUpdate(BaseModel):
     csv_enclosure: Optional[str] = None
     csv_line_break: Optional[str] = None
     csv_header_row: Optional[int] = None
-    # Mapeo de campos CSV
-    csv_field_mapping: Optional[Dict[str, str]] = None
+    # Mapeo de columnas
+    column_mapping: Optional[Dict[str, Any]] = None
 
 class SupplierResponse(BaseModel):
     id: str
@@ -396,11 +396,10 @@ class SupplierResponse(BaseModel):
     csv_enclosure: Optional[str] = None
     csv_line_break: Optional[str] = None
     csv_header_row: Optional[int] = None
-    csv_field_mapping: Optional[Dict[str, str]] = None
+    column_mapping: Optional[Dict[str, Any]] = None
+    # Detected columns from last import
+    detected_columns: Optional[List[str]] = None
     # Stats
-    product_count: int = 0
-    last_sync: Optional[str] = None
-    created_at: str
     product_count: int = 0
     last_sync: Optional[str] = None
     created_at: str
