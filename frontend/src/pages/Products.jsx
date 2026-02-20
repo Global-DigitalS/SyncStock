@@ -5,8 +5,8 @@ import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Card, CardContent } from "../components/ui/card";
-import { Checkbox } from "../components/ui/checkbox";
 import { Badge } from "../components/ui/badge";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Select,
   SelectContent,
@@ -33,78 +33,74 @@ import {
 import {
   Package,
   Search,
-  Upload,
   Filter,
-  Plus,
-  X,
   Eye,
-  ExternalLink,
-  FileUp,
   BookOpen,
   Star,
   RefreshCw,
-  CheckSquare
+  Plus,
+  CheckSquare,
+  Truck,
+  TrendingDown,
+  AlertTriangle,
+  Upload,
+  FileUp
 } from "lucide-react";
 
 const Products = () => {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [products, setProducts] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
   const [catalogs, setCatalogs] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
   const [filters, setFilters] = useState({
     search: "",
-    supplier_id: "",
     category: "",
     stock: searchParams.get("stock") || ""
   });
-  const [showUploadDialog, setShowUploadDialog] = useState(false);
-  const [showDetailDialog, setShowDetailDialog] = useState(false);
-  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(null);
   const [selectedProducts, setSelectedProducts] = useState(new Set());
   const [selectedCatalogs, setSelectedCatalogs] = useState(new Set());
+  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
+  const [showDetailDialog, setShowDetailDialog] = useState(false);
+  const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
   const [productsToAdd, setProductsToAdd] = useState([]);
   const [addingToCatalog, setAddingToCatalog] = useState(false);
   const [uploadSupplierId, setUploadSupplierId] = useState("");
+  const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
 
+  const buildQueryParams = useCallback(() => {
+    const params = {};
+    if (filters.search) params.search = filters.search;
+    if (filters.category) params.category = filters.category;
+    if (filters.stock === "available") {
+      params.min_stock = 1;
+    }
+    return params;
+  }, [filters]);
+
   const fetchData = useCallback(async () => {
     try {
-      const [productsRes, suppliersRes, categoriesRes, catalogsRes] = await Promise.all([
-        api.get("/products", { params: buildQueryParams() }),
-        api.get("/suppliers"),
+      const [productsRes, categoriesRes, suppliersRes, catalogsRes] = await Promise.all([
+        api.get("/products-unified", { params: buildQueryParams() }),
         api.get("/products/categories"),
+        api.get("/suppliers"),
         api.get("/catalogs")
       ]);
       setProducts(productsRes.data);
-      setSuppliers(suppliersRes.data);
       setCategories(categoriesRes.data);
+      setSuppliers(suppliersRes.data);
       setCatalogs(catalogsRes.data);
     } catch (error) {
       toast.error("Error al cargar los productos");
     } finally {
       setLoading(false);
     }
-  }, []);
-
-  const buildQueryParams = () => {
-    const params = {};
-    if (filters.search) params.search = filters.search;
-    if (filters.supplier_id) params.supplier_id = filters.supplier_id;
-    if (filters.category) params.category = filters.category;
-    if (filters.stock === "low") {
-      params.min_stock = 1;
-      params.max_stock = 5;
-    } else if (filters.stock === "out") {
-      params.max_stock = 0;
-    }
-    return params;
-  };
+  }, [buildQueryParams]);
 
   useEffect(() => {
     fetchData();
@@ -113,7 +109,7 @@ const Products = () => {
   const handleSearch = async () => {
     setLoading(true);
     try {
-      const res = await api.get("/products", { params: buildQueryParams() });
+      const res = await api.get("/products-unified", { params: buildQueryParams() });
       setProducts(res.data);
     } catch (error) {
       toast.error("Error al buscar productos");
@@ -122,29 +118,24 @@ const Products = () => {
     }
   };
 
+  // File upload handlers
   const handleFileUpload = async (file) => {
     if (!uploadSupplierId) {
-      toast.error("Selecciona un proveedor");
+      toast.error("Selecciona un proveedor primero");
       return;
     }
 
-    const validExtensions = ['.csv', '.xlsx', '.xls', '.xml'];
-    const ext = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
-    if (!validExtensions.includes(ext)) {
-      toast.error("Formato no soportado. Use CSV, XLSX, XLS o XML");
-      return;
-    }
-
-    setUploading(true);
     const formData = new FormData();
     formData.append("file", file);
 
+    setUploading(true);
     try {
-      const res = await api.post(`/products/import/${uploadSupplierId}`, formData, {
+      const res = await api.post(`/suppliers/${uploadSupplierId}/upload`, formData, {
         headers: { "Content-Type": "multipart/form-data" }
       });
-      toast.success(`Importación completada: ${res.data.imported} nuevos, ${res.data.updated} actualizados`);
+      toast.success(`${res.data.imported} productos importados`);
       setShowUploadDialog(false);
+      setUploadSupplierId("");
       fetchData();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al importar productos");
@@ -172,33 +163,49 @@ const Products = () => {
     }
   };
 
-  // Product selection handlers
+  // Selection handlers
   const handleSelectAll = (checked) => {
     if (checked) {
-      setSelectedProducts(new Set(products.map(p => p.id)));
+      setSelectedProducts(new Set(products.map(p => p.ean)));
     } else {
       setSelectedProducts(new Set());
     }
   };
 
-  const handleSelectProduct = (productId, checked) => {
+  const handleSelectProduct = (ean, checked) => {
     setSelectedProducts(prev => {
       const newSet = new Set(prev);
       if (checked) {
-        newSet.add(productId);
+        newSet.add(ean);
       } else {
-        newSet.delete(productId);
+        newSet.delete(ean);
       }
       return newSet;
     });
   };
 
-  // Catalog selection handlers
-  const openCatalogSelector = (productIds) => {
+  // Get best product_ids for selected EANs
+  const getBestProductIds = (eans) => {
+    const productIds = [];
+    for (const ean of eans) {
+      const product = products.find(p => p.ean === ean);
+      if (product) {
+        const bestOffer = product.suppliers.find(s => s.is_best_offer);
+        if (bestOffer) {
+          productIds.push(bestOffer.product_id);
+        }
+      }
+    }
+    return productIds;
+  };
+
+  // Catalog handlers
+  const openCatalogSelector = (eans) => {
     if (catalogs.length === 0) {
       toast.error("No hay catálogos creados. Crea uno primero en la sección Catálogos.");
       return;
     }
+    const productIds = getBestProductIds(eans);
     setProductsToAdd(productIds);
     const defaultCatalog = catalogs.find(c => c.is_default);
     if (defaultCatalog) {
@@ -215,10 +222,6 @@ const Products = () => {
       return;
     }
     openCatalogSelector(Array.from(selectedProducts));
-  };
-
-  const handleAddSingleToCatalog = (productId) => {
-    openCatalogSelector([productId]);
   };
 
   const toggleCatalogSelection = (catalogId) => {
@@ -270,16 +273,21 @@ const Products = () => {
     }
   };
 
+  const openProductDetail = (product) => {
+    setSelectedProduct(product);
+    setShowDetailDialog(true);
+  };
+
   const getStockBadge = (stock) => {
-    if (stock === 0) return <span className="badge-error">Sin stock</span>;
-    if (stock <= 5) return <span className="badge-warning">{stock} uds</span>;
-    return <span className="badge-success">{stock} uds</span>;
+    if (stock === 0) return <Badge className="bg-rose-100 text-rose-700 border-0">Sin stock</Badge>;
+    if (stock <= 5) return <Badge className="bg-amber-100 text-amber-700 border-0">{stock} uds</Badge>;
+    return <Badge className="bg-emerald-100 text-emerald-700 border-0">{stock} uds</Badge>;
   };
 
   if (loading && products.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="spinner"></div>
+        <RefreshCw className="w-8 h-8 animate-spin text-indigo-600" />
       </div>
     );
   }
@@ -293,11 +301,11 @@ const Products = () => {
             Productos
           </h1>
           <p className="text-slate-500">
-            {products.length.toLocaleString()} productos de tus proveedores
+            {products.length.toLocaleString()} productos únicos de tus proveedores
           </p>
         </div>
-        <Button onClick={() => setShowUploadDialog(true)} className="btn-primary" data-testid="import-products-btn">
-          <Upload className="w-4 h-4 mr-2" strokeWidth={1.5} />
+        <Button onClick={() => setShowUploadDialog(true)} className="btn-primary">
+          <Upload className="w-4 h-4 mr-2" />
           Importar Productos
         </Button>
       </div>
@@ -307,7 +315,7 @@ const Products = () => {
         <CardContent className="p-4">
           <div className="flex flex-col lg:flex-row gap-4">
             <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" strokeWidth={1.5} />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <Input
                 placeholder="Buscar por nombre, SKU o EAN..."
                 value={filters.search}
@@ -318,24 +326,10 @@ const Products = () => {
               />
             </div>
             <Select
-              value={filters.supplier_id || "all"}
-              onValueChange={(value) => setFilters({ ...filters, supplier_id: value === "all" ? "" : value })}
-            >
-              <SelectTrigger className="w-full lg:w-[200px] input-base" data-testid="filter-supplier">
-                <SelectValue placeholder="Todos los proveedores" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos los proveedores</SelectItem>
-                {suppliers.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
               value={filters.category || "all"}
               onValueChange={(value) => setFilters({ ...filters, category: value === "all" ? "" : value })}
             >
-              <SelectTrigger className="w-full lg:w-[180px] input-base" data-testid="filter-category">
+              <SelectTrigger className="w-full lg:w-[200px] input-base">
                 <SelectValue placeholder="Todas las categorías" />
               </SelectTrigger>
               <SelectContent>
@@ -349,17 +343,16 @@ const Products = () => {
               value={filters.stock || "all"}
               onValueChange={(value) => setFilters({ ...filters, stock: value === "all" ? "" : value })}
             >
-              <SelectTrigger className="w-full lg:w-[150px] input-base" data-testid="filter-stock">
+              <SelectTrigger className="w-full lg:w-[150px] input-base">
                 <SelectValue placeholder="Stock" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todo el stock</SelectItem>
-                <SelectItem value="low">Stock bajo</SelectItem>
-                <SelectItem value="out">Sin stock</SelectItem>
+                <SelectItem value="available">Con stock</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleSearch} className="btn-secondary" data-testid="apply-filters">
-              <Filter className="w-4 h-4 mr-2" strokeWidth={1.5} />
+            <Button onClick={handleSearch} className="btn-secondary">
+              <Filter className="w-4 h-4 mr-2" />
               Filtrar
             </Button>
           </div>
@@ -410,18 +403,20 @@ const Products = () => {
       {products.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">
-            <Package className="w-10 h-10" strokeWidth={1.5} />
+            <Package className="w-10 h-10" />
           </div>
-          <h3 className="text-lg font-semibold text-slate-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+          <h3 className="text-lg font-semibold text-slate-900 mb-2">
             No hay productos
           </h3>
           <p className="text-slate-500 mb-4">
-            Importa productos desde tus proveedores para comenzar
+            {filters.search || filters.category ? "Prueba con otros filtros de búsqueda" : "Importa productos desde tus proveedores para comenzar"}
           </p>
-          <Button onClick={() => setShowUploadDialog(true)} className="btn-primary" data-testid="empty-import-btn">
-            <Upload className="w-4 h-4 mr-2" strokeWidth={1.5} />
-            Importar Productos
-          </Button>
+          {!filters.search && !filters.category && (
+            <Button onClick={() => setShowUploadDialog(true)} className="btn-primary">
+              <Upload className="w-4 h-4 mr-2" />
+              Importar Productos
+            </Button>
+          )}
         </div>
       ) : (
         <Card className="border-slate-200">
@@ -437,26 +432,26 @@ const Products = () => {
                     />
                   </TableHead>
                   <TableHead>Producto</TableHead>
-                  <TableHead>SKU</TableHead>
-                  <TableHead>Proveedor</TableHead>
-                  <TableHead>Categoría</TableHead>
-                  <TableHead className="text-right">Precio</TableHead>
-                  <TableHead className="text-right">Stock</TableHead>
+                  <TableHead>EAN</TableHead>
+                  <TableHead>Mejor Proveedor</TableHead>
+                  <TableHead className="text-right">Mejor Precio</TableHead>
+                  <TableHead className="text-right">Stock Total</TableHead>
+                  <TableHead className="text-center">Proveedores</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {products.map((product) => (
                   <TableRow 
-                    key={product.id} 
-                    className={`table-row ${selectedProducts.has(product.id) ? 'bg-indigo-50' : ''}`} 
-                    data-testid={`product-row-${product.id}`}
+                    key={product.ean} 
+                    className={`table-row ${selectedProducts.has(product.ean) ? 'bg-indigo-50' : ''}`}
+                    data-testid={`product-row-${product.ean}`}
                   >
                     <TableCell>
                       <Checkbox
-                        checked={selectedProducts.has(product.id)}
-                        onCheckedChange={(checked) => handleSelectProduct(product.id, checked)}
-                        data-testid={`select-product-${product.id}`}
+                        checked={selectedProducts.has(product.ean)}
+                        onCheckedChange={(checked) => handleSelectProduct(product.ean, checked)}
+                        data-testid={`select-product-${product.ean}`}
                       />
                     </TableCell>
                     <TableCell>
@@ -469,7 +464,7 @@ const Products = () => {
                           />
                         ) : (
                           <div className="w-10 h-10 bg-slate-100 rounded-sm flex items-center justify-center">
-                            <Package className="w-5 h-5 text-slate-400" strokeWidth={1.5} />
+                            <Package className="w-5 h-5 text-slate-400" />
                           </div>
                         )}
                         <div className="min-w-0">
@@ -481,41 +476,47 @@ const Products = () => {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <span className="font-mono text-sm text-slate-600">{product.sku}</span>
+                      <span className="font-mono text-sm text-slate-600">{product.ean}</span>
                     </TableCell>
                     <TableCell>
-                      <span className="text-sm text-slate-600">{product.supplier_name}</span>
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm text-slate-600">{product.category || "-"}</span>
+                      <div className="flex items-center gap-2">
+                        <TrendingDown className="w-4 h-4 text-emerald-500" />
+                        <span className="text-sm font-medium text-slate-900">{product.best_supplier}</span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-right">
-                      <span className="font-mono font-semibold text-slate-900">
-                        {product.price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                      <span className="font-mono font-semibold text-emerald-600">
+                        {product.best_price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">
-                      {getStockBadge(product.stock)}
+                      {getStockBadge(product.total_stock)}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge className="bg-slate-100 text-slate-700 border-0">
+                        <Truck className="w-3 h-3 mr-1" />
+                        {product.supplier_count}
+                      </Badge>
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => { setSelectedProduct(product); setShowDetailDialog(true); }}
+                          onClick={() => openProductDetail(product)}
                           className="h-8 w-8 p-0"
-                          data-testid={`view-product-${product.id}`}
+                          data-testid={`view-product-${product.ean}`}
                         >
-                          <Eye className="w-4 h-4" strokeWidth={1.5} />
+                          <Eye className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleAddSingleToCatalog(product.id)}
+                          onClick={() => openCatalogSelector([product.ean])}
                           className="h-8 w-8 p-0 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
-                          data-testid={`add-to-catalog-${product.id}`}
+                          data-testid={`add-to-catalog-${product.ean}`}
                         >
-                          <BookOpen className="w-4 h-4" strokeWidth={1.5} />
+                          <BookOpen className="w-4 h-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -527,138 +528,156 @@ const Products = () => {
         </Card>
       )}
 
-      {/* Upload Dialog */}
-      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>Importar Productos</DialogTitle>
-            <DialogDescription>Selecciona un proveedor y sube el archivo de productos</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">Seleccionar proveedor *</label>
-              <Select value={uploadSupplierId} onValueChange={setUploadSupplierId}>
-                <SelectTrigger className="input-base" data-testid="upload-supplier-select">
-                  <SelectValue placeholder="Seleccionar proveedor" />
-                </SelectTrigger>
-                <SelectContent>
-                  {suppliers.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div
-              className={`upload-zone ${dragActive ? "dragging" : ""}`}
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv,.xlsx,.xls,.xml"
-                onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
-                className="hidden"
-                data-testid="file-input"
-              />
-              {uploading ? (
-                <div className="flex flex-col items-center">
-                  <div className="spinner mb-3"></div>
-                  <p className="text-slate-600">Importando productos...</p>
-                </div>
-              ) : (
-                <>
-                  <FileUp className="w-12 h-12 text-slate-400 mx-auto mb-3" strokeWidth={1.5} />
-                  <p className="text-slate-600 font-medium mb-1">
-                    Arrastra tu archivo aquí o haz clic para seleccionar
-                  </p>
-                  <p className="text-sm text-slate-400">
-                    Formatos soportados: CSV, XLSX, XLS, XML
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
-
       {/* Product Detail Dialog */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
           <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>Detalle del Producto</DialogTitle>
+            <DialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>
+              Detalle del Producto
+            </DialogTitle>
+            <DialogDescription>
+              Comparativa de precios entre proveedores
+            </DialogDescription>
           </DialogHeader>
+          
           {selectedProduct && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                {selectedProduct.image_url ? (
-                  <img
-                    src={selectedProduct.image_url}
-                    alt={selectedProduct.name}
-                    className="w-full h-48 object-cover rounded-sm border border-slate-200"
-                  />
-                ) : (
-                  <div className="w-full h-48 bg-slate-100 rounded-sm flex items-center justify-center">
-                    <Package className="w-16 h-16 text-slate-300" strokeWidth={1.5} />
-                  </div>
-                )}
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-xl font-semibold text-slate-900 mb-1">{selectedProduct.name}</h3>
-                  {selectedProduct.brand && (
-                    <p className="text-sm text-slate-500">{selectedProduct.brand}</p>
+            <div className="flex-1 overflow-y-auto space-y-6 py-4">
+              {/* Product Info */}
+              <div className="flex gap-6">
+                <div className="w-32 h-32 flex-shrink-0">
+                  {selectedProduct.image_url ? (
+                    <img
+                      src={selectedProduct.image_url}
+                      alt={selectedProduct.name}
+                      className="w-full h-full object-cover rounded-lg border border-slate-200"
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-slate-100 rounded-lg flex items-center justify-center">
+                      <Package className="w-12 h-12 text-slate-300" />
+                    </div>
                   )}
                 </div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-slate-500">SKU</p>
-                    <p className="font-mono font-medium">{selectedProduct.sku}</p>
+                <div className="flex-1 space-y-2">
+                  <h3 className="text-xl font-semibold text-slate-900">{selectedProduct.name}</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge className="bg-slate-100 text-slate-700 border-0 font-mono">
+                      EAN: {selectedProduct.ean}
+                    </Badge>
+                    {selectedProduct.brand && (
+                      <Badge className="bg-indigo-100 text-indigo-700 border-0">
+                        {selectedProduct.brand}
+                      </Badge>
+                    )}
+                    {selectedProduct.category && (
+                      <Badge className="bg-slate-100 text-slate-600 border-0">
+                        {selectedProduct.category}
+                      </Badge>
+                    )}
                   </div>
-                  <div>
-                    <p className="text-slate-500">EAN</p>
-                    <p className="font-mono font-medium">{selectedProduct.ean || "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Precio</p>
-                    <p className="font-mono font-semibold text-lg text-slate-900">
-                      {selectedProduct.price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Stock</p>
-                    <p className="font-mono">{getStockBadge(selectedProduct.stock)}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Categoría</p>
-                    <p className="font-medium">{selectedProduct.category || "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Proveedor</p>
-                    <p className="font-medium">{selectedProduct.supplier_name}</p>
-                  </div>
+                  {selectedProduct.description && (
+                    <p className="text-sm text-slate-600 line-clamp-2">{selectedProduct.description}</p>
+                  )}
                 </div>
-                {selectedProduct.description && (
-                  <div>
-                    <p className="text-slate-500 text-sm mb-1">Descripción</p>
-                    <p className="text-sm text-slate-600">{selectedProduct.description}</p>
+              </div>
+
+              {/* Best Offer Highlight */}
+              <Card className="border-emerald-200 bg-emerald-50">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+                        <Star className="w-5 h-5 text-emerald-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-emerald-600 font-medium">Mejor Oferta</p>
+                        <p className="text-lg font-bold text-emerald-700">{selectedProduct.best_supplier}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-2xl font-bold text-emerald-700">
+                        {selectedProduct.best_price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                      </p>
+                      <p className="text-sm text-emerald-600">Stock total: {selectedProduct.total_stock} uds</p>
+                    </div>
                   </div>
-                )}
-                <Button
-                  onClick={() => { handleAddSingleToCatalog(selectedProduct.id); setShowDetailDialog(false); }}
-                  className="w-full btn-primary"
-                  data-testid="add-to-catalog-detail"
-                >
-                  <BookOpen className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                  Añadir a Catálogos
-                </Button>
+                </CardContent>
+              </Card>
+
+              {/* All Suppliers */}
+              <div>
+                <h4 className="text-sm font-medium text-slate-700 mb-3">
+                  Todos los Proveedores ({selectedProduct.supplier_count})
+                </h4>
+                <div className="space-y-2">
+                  {selectedProduct.suppliers.map((supplier, idx) => (
+                    <div
+                      key={idx}
+                      className={`flex items-center justify-between p-3 rounded-lg border ${
+                        supplier.is_best_offer
+                          ? "bg-emerald-50 border-emerald-200"
+                          : supplier.stock > 0
+                          ? "bg-white border-slate-200"
+                          : "bg-slate-50 border-slate-200 opacity-60"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+                          supplier.is_best_offer ? "bg-emerald-100" : "bg-slate-100"
+                        }`}>
+                          <Truck className={`w-4 h-4 ${supplier.is_best_offer ? "text-emerald-600" : "text-slate-500"}`} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-slate-900">{supplier.supplier_name}</p>
+                            {supplier.is_best_offer && (
+                              <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
+                                <Star className="w-3 h-3 mr-1" />
+                                Mejor
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 font-mono">SKU: {supplier.sku}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-bold ${supplier.is_best_offer ? "text-emerald-600" : "text-slate-900"}`}>
+                          {supplier.price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                        </p>
+                        {supplier.stock > 0 ? (
+                          <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
+                            {supplier.stock} uds
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-rose-100 text-rose-700 border-0 text-xs">
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            Sin stock
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
+          
+          <DialogFooter className="border-t pt-4">
+            <Button variant="outline" onClick={() => setShowDetailDialog(false)} className="btn-secondary">
+              Cerrar
+            </Button>
+            <Button 
+              onClick={() => { 
+                if (selectedProduct) {
+                  openCatalogSelector([selectedProduct.ean]); 
+                  setShowDetailDialog(false);
+                }
+              }}
+              className="btn-primary"
+            >
+              <BookOpen className="w-4 h-4 mr-2" />
+              Añadir a Catálogos
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -671,7 +690,7 @@ const Products = () => {
               Añadir a Catálogos
             </DialogTitle>
             <DialogDescription>
-              Selecciona los catálogos donde quieres añadir {productsToAdd.length} producto{productsToAdd.length !== 1 ? "s" : ""}
+              Se añadirá la mejor oferta de cada producto seleccionado
             </DialogDescription>
           </DialogHeader>
           
@@ -739,6 +758,85 @@ const Products = () => {
                 <Plus className="w-4 h-4 mr-2" />
               )}
               Añadir a {selectedCatalogs.size} catálogo{selectedCatalogs.size !== 1 ? "s" : ""}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Upload Dialog */}
+      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+              <Upload className="w-5 h-5 text-indigo-600" />
+              Importar Productos
+            </DialogTitle>
+            <DialogDescription>
+              Sube un archivo CSV, Excel o XML con tus productos
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Selecciona el proveedor</label>
+              <Select value={uploadSupplierId} onValueChange={setUploadSupplierId}>
+                <SelectTrigger className="input-base">
+                  <SelectValue placeholder="Selecciona un proveedor" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div
+              className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                dragActive ? "border-indigo-400 bg-indigo-50" : "border-slate-300 hover:border-slate-400"
+              }`}
+              onDragEnter={handleDrag}
+              onDragLeave={handleDrag}
+              onDragOver={handleDrag}
+              onDrop={handleDrop}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx,.xls,.xml"
+                className="hidden"
+                onChange={(e) => e.target.files?.[0] && handleFileUpload(e.target.files[0])}
+              />
+              <FileUp className="w-10 h-10 text-slate-400 mx-auto mb-3" />
+              <p className="text-slate-600 mb-2">
+                Arrastra tu archivo aquí o{" "}
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="text-indigo-600 hover:text-indigo-700 font-medium"
+                >
+                  selecciona uno
+                </button>
+              </p>
+              <p className="text-xs text-slate-500">CSV, Excel (.xlsx, .xls) o XML</p>
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUploadDialog(false)} className="btn-secondary">
+              Cancelar
+            </Button>
+            <Button 
+              onClick={() => fileInputRef.current?.click()} 
+              disabled={uploading || !uploadSupplierId}
+              className="btn-primary"
+            >
+              {uploading ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Upload className="w-4 h-4 mr-2" />
+              )}
+              Importar
             </Button>
           </DialogFooter>
         </DialogContent>
