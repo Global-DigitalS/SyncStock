@@ -523,6 +523,161 @@ async def sync_all_suppliers():
     
     logger.info("Scheduled sync completed")
 
+async def sync_all_woocommerce_stores():
+    """Sync all WooCommerce stores with auto_sync enabled - runs every 12 hours"""
+    logger.info("Starting scheduled WooCommerce sync for all stores...")
+    
+    # Find all WooCommerce configs with auto_sync_enabled
+    configs = await db.woocommerce_configs.find({
+        "auto_sync_enabled": True,
+        "catalog_id": {"$ne": None, "$ne": ""}
+    }).to_list(1000)
+    
+    logger.info(f"Found {len(configs)} WooCommerce stores with auto-sync enabled")
+    
+    for config in configs:
+        try:
+            await sync_woocommerce_store_price_stock(config)
+            await asyncio.sleep(5)  # Delay between store syncs
+        except Exception as e:
+            logger.error(f"Error syncing WooCommerce store {config.get('name', config['id'])}: {e}")
+    
+    logger.info("Scheduled WooCommerce sync completed")
+
+async def sync_woocommerce_store_price_stock(config: dict):
+    """Sync only price and stock for a WooCommerce store"""
+    store_name = config.get("name", "Unknown")
+    catalog_id = config.get("catalog_id")
+    
+    if not catalog_id:
+        logger.warning(f"No catalog associated with WooCommerce store {store_name}")
+        return
+    
+    logger.info(f"Starting price/stock sync for WooCommerce store: {store_name}")
+    
+    try:
+        # Initialize WooCommerce API
+        wcapi = WooCommerceAPI(
+            url=config["store_url"],
+            consumer_key=config["consumer_key"],
+            consumer_secret=config["consumer_secret"],
+            version="wc/v3",
+            timeout=30
+        )
+        
+        # Get catalog items with their products
+        catalog_items = await db.catalog_items.find({"catalog_id": catalog_id, "active": True}).to_list(10000)
+        
+        if not catalog_items:
+            logger.info(f"No active products in catalog for store {store_name}")
+            return
+        
+        # Get margin rules for the catalog
+        margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}).to_list(100)
+        
+        # Fetch all WooCommerce products to get their IDs by EAN
+        wc_products_by_ean = {}
+        wc_products_by_sku = {}
+        page = 1
+        while True:
+            response = await asyncio.to_thread(wcapi.get, "products", params={"per_page": 100, "page": page})
+            if response.status_code == 200:
+                products_batch = response.json()
+                if not products_batch:
+                    break
+                for p in products_batch:
+                    # Check EAN in meta_data
+                    for meta in p.get("meta_data", []):
+                        if meta.get("key") in ["_global_unique_id", "_gtin", "_ean", "gtin"]:
+                            ean_value = meta.get("value")
+                            if ean_value:
+                                wc_products_by_ean[ean_value] = p["id"]
+                                break
+                    # Track SKU as fallback
+                    if p.get("sku"):
+                        wc_products_by_sku[p["sku"]] = p["id"]
+                page += 1
+                if len(products_batch) < 100:
+                    break
+            else:
+                logger.error(f"Error fetching WooCommerce products: {response.text}")
+                break
+        
+        logger.info(f"Found {len(wc_products_by_ean)} products by EAN, {len(wc_products_by_sku)} by SKU in WooCommerce")
+        
+        updated = 0
+        failed = 0
+        
+        for item in catalog_items:
+            try:
+                # Get the product
+                product = await db.products.find_one({"id": item["product_id"]})
+                if not product:
+                    continue
+                
+                # Calculate final price with margin rules
+                base_price = item.get("custom_price") or product.get("price", 0)
+                final_price = base_price
+                
+                for rule in margin_rules:
+                    if rule.get("applies_to") == "all":
+                        if rule.get("margin_type") == "percentage":
+                            final_price = base_price * (1 + rule.get("margin_value", 0) / 100)
+                        else:
+                            final_price = base_price + rule.get("margin_value", 0)
+                        break
+                    elif rule.get("applies_to") == "category" and rule.get("category") == product.get("category"):
+                        if rule.get("margin_type") == "percentage":
+                            final_price = base_price * (1 + rule.get("margin_value", 0) / 100)
+                        else:
+                            final_price = base_price + rule.get("margin_value", 0)
+                        break
+                
+                # Find WooCommerce product ID by EAN or SKU
+                ean = product.get("ean", "")
+                sku = product.get("sku", "")
+                wc_product_id = None
+                
+                if ean and ean in wc_products_by_ean:
+                    wc_product_id = wc_products_by_ean[ean]
+                elif sku and sku in wc_products_by_sku:
+                    wc_product_id = wc_products_by_sku[sku]
+                
+                if wc_product_id:
+                    # Update ONLY price and stock
+                    update_data = {
+                        "regular_price": str(round(final_price, 2)),
+                        "stock_quantity": product.get("stock", 0)
+                    }
+                    
+                    response = await asyncio.to_thread(
+                        wcapi.put,
+                        f"products/{wc_product_id}",
+                        update_data
+                    )
+                    
+                    if response.status_code in [200, 201]:
+                        updated += 1
+                    else:
+                        failed += 1
+                        logger.warning(f"Failed to update product {ean or sku}: {response.text[:100]}")
+                
+            except Exception as e:
+                failed += 1
+                logger.error(f"Error processing catalog item: {e}")
+        
+        # Update last sync timestamp
+        now = datetime.now(timezone.utc).isoformat()
+        await db.woocommerce_configs.update_one(
+            {"id": config["id"]},
+            {"$set": {"last_sync": now, "products_synced": updated}}
+        )
+        
+        logger.info(f"WooCommerce sync completed for {store_name}: {updated} updated, {failed} failed")
+        
+    except Exception as e:
+        logger.error(f"Error syncing WooCommerce store {store_name}: {e}")
+
 # ==================== MODELS ====================
 
 class UserCreate(BaseModel):
