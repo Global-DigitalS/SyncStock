@@ -2219,6 +2219,62 @@ async def get_stock_alerts(user: dict = Depends(get_current_user)):
     
     return {"low_stock": low_stock, "out_of_stock": out_of_stock}
 
+@api_router.get("/dashboard/sync-status")
+async def get_dashboard_sync_status(user: dict = Depends(get_current_user)):
+    """Get sync status overview for dashboard"""
+    # Supplier sync info
+    suppliers = await db.suppliers.find(
+        {"user_id": user["id"]},
+        {"_id": 0, "id": 1, "name": 1, "last_sync": 1, "product_count": 1, "connection_type": 1}
+    ).to_list(100)
+    
+    # WooCommerce sync info
+    wc_configs = await db.woocommerce_configs.find(
+        {"user_id": user["id"]},
+        {"_id": 0, "consumer_key": 0, "consumer_secret": 0}
+    ).to_list(100)
+    
+    wc_syncs = []
+    for c in wc_configs:
+        catalog_name = None
+        if c.get("catalog_id"):
+            cat = await db.catalogs.find_one({"id": c["catalog_id"]}, {"_id": 0, "name": 1})
+            catalog_name = cat["name"] if cat else None
+        
+        next_sync = None
+        if c.get("auto_sync_enabled"):
+            if c.get("last_sync"):
+                last_dt = datetime.fromisoformat(c["last_sync"].replace('Z', '+00:00'))
+                next_sync = (last_dt + timedelta(hours=12)).isoformat()
+            else:
+                next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+        
+        wc_syncs.append({
+            "id": c["id"],
+            "name": c.get("name", "Sin nombre"),
+            "store_url": c.get("store_url", ""),
+            "is_connected": c.get("is_connected", False),
+            "auto_sync_enabled": c.get("auto_sync_enabled", False),
+            "catalog_name": catalog_name,
+            "last_sync": c.get("last_sync"),
+            "next_sync": next_sync,
+            "products_synced": c.get("products_synced", 0),
+            "sync_status": c.get("sync_status", "idle")
+        })
+    
+    # Recent notifications
+    recent_notifications = await db.notifications.find(
+        {"user_id": user["id"]},
+        {"_id": 0, "user_id": 0}
+    ).sort("created_at", -1).limit(5).to_list(5)
+    
+    return {
+        "suppliers": suppliers,
+        "woocommerce_stores": wc_syncs,
+        "recent_notifications": recent_notifications
+    }
+
+
 # ==================== NOTIFICATIONS ENDPOINTS ====================
 
 @api_router.get("/notifications", response_model=List[NotificationResponse])
