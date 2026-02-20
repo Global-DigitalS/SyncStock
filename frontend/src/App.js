@@ -204,16 +204,6 @@ function App() {
             }
           />
           <Route
-            path="/products-unified"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <UnifiedProducts />
-                </MainLayout>
-              </ProtectedRoute>
-            }
-          />
-          <Route
             path="/catalogs"
             element={
               <ProtectedRoute>
