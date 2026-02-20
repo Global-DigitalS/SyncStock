@@ -2174,7 +2174,8 @@ async def export_catalog(request: ExportRequest, user: dict = Depends(get_curren
 async def get_dashboard_stats(user: dict = Depends(get_current_user)):
     total_suppliers = await db.suppliers.count_documents({"user_id": user["id"]})
     total_products = await db.products.count_documents({"user_id": user["id"]})
-    total_catalog_items = await db.catalog.count_documents({"user_id": user["id"]})
+    total_catalog_items = await db.catalog_items.count_documents({"user_id": user["id"]})
+    total_catalogs = await db.catalogs.count_documents({"user_id": user["id"]})
     low_stock_count = await db.products.count_documents({"user_id": user["id"], "stock": {"$gt": 0, "$lte": 5}})
     out_of_stock_count = await db.products.count_documents({"user_id": user["id"], "stock": 0})
     unread_notifications = await db.notifications.count_documents({"user_id": user["id"], "read": False})
@@ -2182,14 +2183,26 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     recent_price_changes = await db.price_history.count_documents({"user_id": user["id"], "created_at": {"$gte": week_ago}})
     
+    # WooCommerce stats
+    wc_configs = await db.woocommerce_configs.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+    woocommerce_stores = len(wc_configs)
+    woocommerce_connected = sum(1 for c in wc_configs if c.get("is_connected"))
+    woocommerce_auto_sync = sum(1 for c in wc_configs if c.get("auto_sync_enabled"))
+    woocommerce_total_synced = sum(c.get("products_synced", 0) for c in wc_configs)
+    
     return DashboardStats(
         total_suppliers=total_suppliers,
         total_products=total_products,
         total_catalog_items=total_catalog_items,
+        total_catalogs=total_catalogs,
         low_stock_count=low_stock_count,
         out_of_stock_count=out_of_stock_count,
         unread_notifications=unread_notifications,
-        recent_price_changes=recent_price_changes
+        recent_price_changes=recent_price_changes,
+        woocommerce_stores=woocommerce_stores,
+        woocommerce_connected=woocommerce_connected,
+        woocommerce_auto_sync=woocommerce_auto_sync,
+        woocommerce_total_synced=woocommerce_total_synced,
     )
 
 @api_router.get("/dashboard/stock-alerts")
