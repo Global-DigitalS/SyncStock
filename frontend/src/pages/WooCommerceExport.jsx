@@ -63,7 +63,10 @@ import {
   Package,
   Key,
   Link2,
-  BookOpen
+  BookOpen,
+  Clock,
+  Zap,
+  Settings
 } from "lucide-react";
 
 const WooCommerceExport = () => {
