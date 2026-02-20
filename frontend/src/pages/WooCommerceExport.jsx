@@ -238,6 +238,35 @@ const WooCommerceExport = () => {
     }
   };
 
+  const handleSyncPriceStock = async (config) => {
+    setSyncing(prev => ({ ...prev, [config.id]: true }));
+    try {
+      const res = await api.post(`/woocommerce/configs/${config.id}/sync`);
+      if (res.data.status === "success") {
+        toast.success(res.data.message);
+        fetchData();
+      } else {
+        toast.error(res.data.message);
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al sincronizar");
+    } finally {
+      setSyncing(prev => ({ ...prev, [config.id]: false }));
+    }
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "Nunca";
+    const date = new Date(dateStr);
+    return date.toLocaleString("es-ES", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  };
+
   const handleTestConnection = async (config) => {
     setTesting(true);
     try {
