@@ -11,7 +11,6 @@ import Dashboard from "./pages/Dashboard";
 import Suppliers from "./pages/Suppliers";
 import SupplierDetail from "./pages/SupplierDetail";
 import Products from "./pages/Products";
-import UnifiedProducts from "./pages/UnifiedProducts";
 import Catalogs from "./pages/Catalogs";
 import CatalogDetail from "./pages/CatalogDetail";
 import MarginRules from "./pages/MarginRules";
