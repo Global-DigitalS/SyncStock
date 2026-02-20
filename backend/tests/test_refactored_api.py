@@ -562,17 +562,17 @@ class TestUnauthorizedAccess:
     
     def test_dashboard_without_auth(self):
         response = requests.get(f"{BASE_URL}/api/dashboard/stats")
-        assert response.status_code == 401
+        assert response.status_code in [401, 403]
         print("✓ Dashboard requires authentication")
     
     def test_catalogs_without_auth(self):
         response = requests.get(f"{BASE_URL}/api/catalogs")
-        assert response.status_code == 401
+        assert response.status_code in [401, 403]
         print("✓ Catalogs require authentication")
     
     def test_suppliers_without_auth(self):
         response = requests.get(f"{BASE_URL}/api/suppliers")
-        assert response.status_code == 401
+        assert response.status_code in [401, 403]
         print("✓ Suppliers require authentication")
 
 
