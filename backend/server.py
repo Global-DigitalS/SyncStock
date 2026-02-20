@@ -2493,6 +2493,35 @@ async def test_woocommerce_connection(config_id: str, user: dict = Depends(get_c
             "message": f"Error de conexión: {str(e)}"
         }
 
+@api_router.post("/woocommerce/configs/{config_id}/sync")
+async def sync_woocommerce_price_stock(config_id: str, user: dict = Depends(get_current_user)):
+    """Manually sync price and stock to WooCommerce store"""
+    config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuración no encontrada")
+    
+    if not config.get("catalog_id"):
+        raise HTTPException(status_code=400, detail="No hay catálogo asociado a esta tienda. Configura un catálogo primero.")
+    
+    try:
+        await sync_woocommerce_store_price_stock(config)
+        
+        # Get updated config
+        updated = await db.woocommerce_configs.find_one({"id": config_id}, {"_id": 0})
+        
+        return {
+            "status": "success",
+            "message": f"Sincronización completada. {updated.get('products_synced', 0)} productos actualizados.",
+            "products_synced": updated.get("products_synced", 0),
+            "last_sync": updated.get("last_sync")
+        }
+    except Exception as e:
+        logger.error(f"Error in manual WooCommerce sync: {e}")
+        return {
+            "status": "error",
+            "message": f"Error en la sincronización: {str(e)}"
+        }
+
 @api_router.post("/woocommerce/export", response_model=WooCommerceExportResult)
 async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = Depends(get_current_user)):
     """Export catalog products to WooCommerce"""
