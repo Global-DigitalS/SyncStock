@@ -744,12 +744,16 @@ class WooCommerceConfig(BaseModel):
     consumer_key: str = Field(..., description="Consumer Key de la API REST")
     consumer_secret: str = Field(..., description="Consumer Secret de la API REST")
     name: Optional[str] = "Mi Tienda WooCommerce"
+    catalog_id: Optional[str] = None  # Catálogo asociado para sincronización
+    auto_sync_enabled: bool = False  # Habilitar sincronización automática cada 12h
 
 class WooCommerceConfigUpdate(BaseModel):
     store_url: Optional[str] = None
     consumer_key: Optional[str] = None
     consumer_secret: Optional[str] = None
     name: Optional[str] = None
+    catalog_id: Optional[str] = None
+    auto_sync_enabled: Optional[bool] = None
 
 class WooCommerceConfigResponse(BaseModel):
     id: str
@@ -760,6 +764,10 @@ class WooCommerceConfigResponse(BaseModel):
     last_sync: Optional[str] = None
     products_synced: int = 0
     created_at: str
+    catalog_id: Optional[str] = None
+    catalog_name: Optional[str] = None
+    auto_sync_enabled: bool = False
+    next_sync: Optional[str] = None
 
 class WooCommerceExportRequest(BaseModel):
     config_id: str
