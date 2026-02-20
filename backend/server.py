@@ -48,8 +48,9 @@ scheduler = AsyncIOScheduler()
 async def lifespan(app: FastAPI):
     # Startup
     scheduler.add_job(sync_all_suppliers, 'interval', hours=12, id='sync_suppliers', replace_existing=True)
+    scheduler.add_job(sync_all_woocommerce_stores, 'interval', hours=12, id='sync_woocommerce', replace_existing=True)
     scheduler.start()
-    logger.info("Scheduler started - FTP sync every 12 hours")
+    logger.info("Scheduler started - FTP sync every 12 hours, WooCommerce sync every 12 hours")
     yield
     # Shutdown
     scheduler.shutdown()
