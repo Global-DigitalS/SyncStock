@@ -126,7 +126,9 @@ const WooCommerceExport = () => {
       name: "",
       store_url: "",
       consumer_key: "",
-      consumer_secret: ""
+      consumer_secret: "",
+      catalog_id: "",
+      auto_sync_enabled: false
     });
     setSelectedConfig(null);
   };
@@ -137,7 +139,9 @@ const WooCommerceExport = () => {
       name: config.name,
       store_url: config.store_url,
       consumer_key: "",
-      consumer_secret: ""
+      consumer_secret: "",
+      catalog_id: config.catalog_id || "",
+      auto_sync_enabled: config.auto_sync_enabled || false
     });
     setShowDialog(true);
   };
