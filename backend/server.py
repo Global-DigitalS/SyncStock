@@ -2271,6 +2271,13 @@ async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depe
     config_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     
+    # Get catalog name if catalog_id provided
+    catalog_name = None
+    if config.catalog_id:
+        catalog = await db.catalogs.find_one({"id": config.catalog_id, "user_id": user["id"]})
+        if catalog:
+            catalog_name = catalog.get("name")
+    
     config_doc = {
         "id": config_id,
         "user_id": user["id"],
@@ -2278,6 +2285,8 @@ async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depe
         "store_url": config.store_url.rstrip('/'),
         "consumer_key": config.consumer_key,
         "consumer_secret": config.consumer_secret,
+        "catalog_id": config.catalog_id,
+        "auto_sync_enabled": config.auto_sync_enabled,
         "is_connected": False,
         "last_sync": None,
         "products_synced": 0,
@@ -2285,6 +2294,11 @@ async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depe
     }
     
     await db.woocommerce_configs.insert_one(config_doc)
+    
+    # Calculate next sync time if auto_sync is enabled
+    next_sync = None
+    if config.auto_sync_enabled:
+        next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
     
     return WooCommerceConfigResponse(
         id=config_id,
@@ -2294,7 +2308,11 @@ async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depe
         is_connected=False,
         last_sync=None,
         products_synced=0,
-        created_at=now
+        created_at=now,
+        catalog_id=config.catalog_id,
+        catalog_name=catalog_name,
+        auto_sync_enabled=config.auto_sync_enabled,
+        next_sync=next_sync
     )
 
 @api_router.get("/woocommerce/configs", response_model=List[WooCommerceConfigResponse])
@@ -2305,8 +2323,23 @@ async def get_woocommerce_configs(user: dict = Depends(get_current_user)):
         {"_id": 0, "consumer_secret": 0}
     ).to_list(100)
     
-    return [
-        WooCommerceConfigResponse(
+    # Get catalog names
+    catalog_ids = [c.get("catalog_id") for c in configs if c.get("catalog_id")]
+    catalogs = {}
+    if catalog_ids:
+        catalog_docs = await db.catalogs.find({"id": {"$in": catalog_ids}}).to_list(100)
+        catalogs = {c["id"]: c.get("name") for c in catalog_docs}
+    
+    result = []
+    for c in configs:
+        next_sync = None
+        if c.get("auto_sync_enabled") and c.get("last_sync"):
+            last_sync_dt = datetime.fromisoformat(c["last_sync"].replace('Z', '+00:00'))
+            next_sync = (last_sync_dt + timedelta(hours=12)).isoformat()
+        elif c.get("auto_sync_enabled"):
+            next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+        
+        result.append(WooCommerceConfigResponse(
             id=c["id"],
             name=c["name"],
             store_url=c["store_url"],
@@ -2314,9 +2347,14 @@ async def get_woocommerce_configs(user: dict = Depends(get_current_user)):
             is_connected=c.get("is_connected", False),
             last_sync=c.get("last_sync"),
             products_synced=c.get("products_synced", 0),
-            created_at=c["created_at"]
-        ) for c in configs
-    ]
+            created_at=c["created_at"],
+            catalog_id=c.get("catalog_id"),
+            catalog_name=catalogs.get(c.get("catalog_id")),
+            auto_sync_enabled=c.get("auto_sync_enabled", False),
+            next_sync=next_sync
+        ))
+    
+    return result
 
 @api_router.get("/woocommerce/configs/{config_id}", response_model=WooCommerceConfigResponse)
 async def get_woocommerce_config(config_id: str, user: dict = Depends(get_current_user)):
@@ -2328,6 +2366,21 @@ async def get_woocommerce_config(config_id: str, user: dict = Depends(get_curren
     if not config:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
     
+    # Get catalog name
+    catalog_name = None
+    if config.get("catalog_id"):
+        catalog = await db.catalogs.find_one({"id": config["catalog_id"]})
+        if catalog:
+            catalog_name = catalog.get("name")
+    
+    # Calculate next sync
+    next_sync = None
+    if config.get("auto_sync_enabled") and config.get("last_sync"):
+        last_sync_dt = datetime.fromisoformat(config["last_sync"].replace('Z', '+00:00'))
+        next_sync = (last_sync_dt + timedelta(hours=12)).isoformat()
+    elif config.get("auto_sync_enabled"):
+        next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+    
     return WooCommerceConfigResponse(
         id=config["id"],
         name=config["name"],
@@ -2336,7 +2389,11 @@ async def get_woocommerce_config(config_id: str, user: dict = Depends(get_curren
         is_connected=config.get("is_connected", False),
         last_sync=config.get("last_sync"),
         products_synced=config.get("products_synced", 0),
-        created_at=config["created_at"]
+        created_at=config["created_at"],
+        catalog_id=config.get("catalog_id"),
+        catalog_name=catalog_name,
+        auto_sync_enabled=config.get("auto_sync_enabled", False),
+        next_sync=next_sync
     )
 
 @api_router.put("/woocommerce/configs/{config_id}", response_model=WooCommerceConfigResponse)
@@ -2354,6 +2411,22 @@ async def update_woocommerce_config(config_id: str, update: WooCommerceConfigUpd
         await db.woocommerce_configs.update_one({"id": config_id}, {"$set": update_data})
     
     updated = await db.woocommerce_configs.find_one({"id": config_id}, {"_id": 0, "consumer_secret": 0})
+    
+    # Get catalog name
+    catalog_name = None
+    if updated.get("catalog_id"):
+        catalog = await db.catalogs.find_one({"id": updated["catalog_id"]})
+        if catalog:
+            catalog_name = catalog.get("name")
+    
+    # Calculate next sync
+    next_sync = None
+    if updated.get("auto_sync_enabled") and updated.get("last_sync"):
+        last_sync_dt = datetime.fromisoformat(updated["last_sync"].replace('Z', '+00:00'))
+        next_sync = (last_sync_dt + timedelta(hours=12)).isoformat()
+    elif updated.get("auto_sync_enabled"):
+        next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+    
     return WooCommerceConfigResponse(
         id=updated["id"],
         name=updated["name"],
@@ -2362,7 +2435,11 @@ async def update_woocommerce_config(config_id: str, update: WooCommerceConfigUpd
         is_connected=updated.get("is_connected", False),
         last_sync=updated.get("last_sync"),
         products_synced=updated.get("products_synced", 0),
-        created_at=updated["created_at"]
+        created_at=updated["created_at"],
+        catalog_id=updated.get("catalog_id"),
+        catalog_name=catalog_name,
+        auto_sync_enabled=updated.get("auto_sync_enabled", False),
+        next_sync=next_sync
     )
 
 @api_router.delete("/woocommerce/configs/{config_id}")
