@@ -658,6 +658,52 @@ const WooCommerceExport = () => {
                 data-testid="woo-secret-input"
               />
             </div>
+
+            {/* Sync Configuration Section */}
+            <div className="border-t border-slate-200 pt-4 mt-4">
+              <p className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
+                <RefreshCw className="w-4 h-4 text-indigo-600" strokeWidth={1.5} />
+                Configuración de Sincronización
+              </p>
+              
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="catalog_id">Catálogo para sincronización</Label>
+                  <Select
+                    value={formData.catalog_id || "none"}
+                    onValueChange={(val) => setFormData({ ...formData, catalog_id: val === "none" ? "" : val })}
+                  >
+                    <SelectTrigger className="input-base" data-testid="woo-catalog-select">
+                      <BookOpen className="w-4 h-4 mr-2 text-slate-400" />
+                      <SelectValue placeholder="Selecciona un catálogo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sin catálogo</SelectItem>
+                      {catalogs.map(catalog => (
+                        <SelectItem key={catalog.id} value={catalog.id}>
+                          {catalog.name} ({catalog.product_count} productos)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-slate-500">
+                    Los productos de este catálogo se usarán para sincronizar precio y stock
+                  </p>
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+                  <div>
+                    <p className="font-medium text-sm text-slate-900">Sincronización automática</p>
+                    <p className="text-xs text-slate-500">Sincronizar precio y stock cada 12 horas</p>
+                  </div>
+                  <Switch
+                    checked={formData.auto_sync_enabled}
+                    onCheckedChange={(checked) => setFormData({ ...formData, auto_sync_enabled: checked })}
+                    data-testid="woo-auto-sync-switch"
+                  />
+                </div>
+              </div>
+            </div>
             
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowDialog(false)} className="btn-secondary">
