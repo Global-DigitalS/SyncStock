@@ -1,86 +1,57 @@
-# StockHub - Product Requirements Document
+# SupplierSync Pro - PRD
 
 ## Problema Original
-Software SaaS para gestión de catálogos de productos con proveedores:
-- Descargar archivos de productos (CSV, Excel, XML, FTP)
-- Ver precios, stocks y fichas de productos
-- Crear múltiples catálogos personalizados sincronizados con proveedores
-- Configurar precios de venta con reglas de márgenes por catálogo
-- Exportar catálogo a Prestashop, WooCommerce, Shopify
+Aplicación SaaS para gestionar catálogos de productos de proveedores con las siguientes funcionalidades:
+1. Descargar archivos de productos (CSV) desde FTP/SFTP o URL
+2. Ver precios y stocks de proveedores
+3. Crear múltiples catálogos de productos personalizados
+4. Asignar reglas de márgenes de beneficio a catálogos
+5. Exportar catálogos a CSV y a WooCommerce vía API REST
+6. Autenticación JWT
+7. Sincronización automática de datos de proveedores
+8. Mapeo de columnas para archivos CSV
+9. Unificar productos por EAN, mostrando el mejor proveedor
+10. Sincronización automática con WooCommerce cada 12 horas
+11. Al exportar a WooCommerce, usar EAN como identificador único (GTIN)
 
-## Preferencias del Usuario
-- Formatos: CSV, Excel (XLSX/XLS), XML, FTP
-- Autenticación: JWT
-- Dashboard con estadísticas, historial de precios, notificaciones
-- Diseño profesional/corporativo
-- Idioma: Solo español
-
-## Arquitectura
-- **Backend**: FastAPI + MongoDB + WooCommerce API
-- **Frontend**: React + Tailwind CSS + Shadcn/UI
-- **Auth**: JWT con bcrypt
+## Arquitectura Técnica
+- **Backend**: FastAPI (modular) + MongoDB + APScheduler
+- **Frontend**: React + TailwindCSS + Shadcn UI
+- **Estructura modular**:
+  - `/app/backend/server.py` - Orquestador principal
+  - `/app/backend/routes/` - auth, suppliers, products, catalogs, woocommerce, dashboard
+  - `/app/backend/models/schemas.py` - Modelos Pydantic
+  - `/app/backend/services/` - database, auth, sync
 
 ## Funcionalidades Implementadas
 
-### Backend
-- [x] Autenticación JWT (registro/login)
-- [x] CRUD de proveedores con configuración FTP/SFTP
-- [x] Soporte para importar desde URL directa HTTP/HTTPS
-- [x] Importación de productos (CSV, XLSX, XLS, XML)
-- [x] Normalización automática de campos
-- [x] **MÚLTIPLES CATÁLOGOS** con productos y reglas independientes
-- [x] Reglas de margen por catálogo (porcentaje/fijo, por categoría/proveedor)
-- [x] Exportación a Prestashop, WooCommerce, Shopify (CSV)
-- [x] Dashboard con estadísticas
-- [x] Historial de precios
-- [x] Notificaciones de stock
-- [x] Sincronización FTP/SFTP automática cada 12 horas (APScheduler)
-- [x] Sincronización manual desde el frontend
-- [x] Mapeo de columnas personalizado
-- [x] Integración WooCommerce API REST
-- [x] **EXPORTACIÓN WooCommerce con EAN como identificador único**
-  - EAN usado para detectar productos existentes (evita duplicados)
-  - EAN exportado a campos GTIN/UPC/EAN (_global_unique_id, _gtin, _ean, gtin)
-  - Fallback a SKU si no hay EAN
+### Completado
+- [x] Autenticación JWT (registro, login, token)
+- [x] Gestión de proveedores CRUD
+- [x] Sincronización FTP/SFTP/URL de productos
+- [x] Mapeo de columnas CSV personalizable
+- [x] Gestión de múltiples catálogos
+- [x] Reglas de margen por catálogo
+- [x] Unificación de productos por EAN
+- [x] Exportación CSV (PrestaShop, WooCommerce, Shopify)
+- [x] Exportación a WooCommerce API (con EAN como GTIN)
+- [x] Sincronización automática WooCommerce (cada 12h, precio y stock)
+- [x] UI de configuración WooCommerce (selector catálogo + switch auto-sync)
+- [x] Dashboard mejorado con stats WooCommerce y alertas de stock
+- [x] Sistema de notificaciones (stock bajo, sincronización, exportación)
+- [x] Página de notificaciones con filtros
+- [x] Refactorización completa del backend a arquitectura modular
 
-### Frontend
-- [x] Login/Registro con diseño profesional
-- [x] Dashboard con estadísticas y alertas
-- [x] Gestión de proveedores con formulario de pestañas
-- [x] **Página Catálogos** - Gestión completa de múltiples catálogos
-- [x] **Detalle de Catálogo** - Ver y gestionar productos por catálogo
-- [x] **Exportar a WooCommerce** - Selector de catálogo para exportar
-- [x] **Selección múltiple de productos en Proveedores** - Añadir a varios catálogos
-- [x] **Selección múltiple de productos en Productos** - Añadir a varios catálogos
-- [x] Reglas de margen configurables
-- [x] Exportación a 3 plataformas (CSV)
-- [x] Historial de precios
-- [x] Centro de notificaciones
+### P0 - P2 Completed (Feb 2026)
+- P0: Sincronización WooCommerce UI + backend
+- P1: Dashboard mejorado con estadísticas WooCommerce
+- P2: Refactorización modular del backend
+- P2: Sistema de notificaciones funcional
 
-## Última Actualización: 19 Feb 2026
-
-### Sesión Actual - Selección Múltiple de Catálogos
-1. ✅ **SupplierDetail.jsx**: Dialog para añadir productos a múltiples catálogos
-2. ✅ **Products.jsx**: 
-   - Checkboxes para seleccionar productos
-   - Banner de "X productos seleccionados" 
-   - Botón "Añadir a Catálogos"
-   - Dialog con checkboxes para seleccionar múltiples catálogos
-3. ✅ Icono actualizado de Plus a BookOpen para claridad visual
-
-### Testing
-- Frontend verificado visualmente con screenshots
-- Flujo completo: seleccionar productos → abrir dialog → seleccionar catálogos → confirmar
-
-## Próximas Tareas (P1)
-- [ ] Sincronización de proveedores a catálogos específicos
-- [ ] Integración API REST con Prestashop
-- [ ] Integración API REST con Shopify
-
-## Backlog (P2)
-- [ ] Alertas por email
-- [ ] Historial de cambios por producto
-- [ ] API pública para integraciones externas
-- [ ] Múltiples usuarios por cuenta
-- [ ] Roles y permisos
-- [ ] Refactorizar server.py en módulos separados
+## Backlog Futuro
+- [ ] Mejorar Login.jsx (React setState warning durante render)
+- [ ] Mejoras de UX en sidebar (duplicación mobile/desktop)
+- [ ] Historial de sincronizaciones detallado
+- [ ] Graficas de evolución de precios
+- [ ] Sistema de roles de usuario
+- [ ] API keys management para integraciones externas
