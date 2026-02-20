@@ -941,7 +941,15 @@ class DashboardStats(BaseModel):
     total_suppliers: int
     total_products: int
     total_catalog_items: int
+    total_catalogs: int = 0
     low_stock_count: int
+    out_of_stock_count: int = 0
+    unread_notifications: int = 0
+    recent_price_changes: int = 0
+    woocommerce_stores: int = 0
+    woocommerce_connected: int = 0
+    woocommerce_auto_sync: int = 0
+    woocommerce_total_synced: int = 0
 
 # ==================== UNIFIED PRODUCT MODELS (EAN-based) ====================
 
