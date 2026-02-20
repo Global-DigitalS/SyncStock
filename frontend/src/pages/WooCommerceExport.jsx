@@ -79,7 +79,9 @@ const WooCommerceExport = () => {
     name: "",
     store_url: "",
     consumer_key: "",
-    consumer_secret: ""
+    consumer_secret: "",
+    catalog_id: "",
+    auto_sync_enabled: false
   });
   const [exportOptions, setExportOptions] = useState({
     update_existing: true,
@@ -88,6 +90,7 @@ const WooCommerceExport = () => {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [syncing, setSyncing] = useState({});
   const [exportResult, setExportResult] = useState(null);
   const [loadingCatalogProducts, setLoadingCatalogProducts] = useState(false);
 
