@@ -445,10 +445,12 @@ const WooCommerceExport = () => {
                 <TableRow className="table-header">
                   <TableHead>Tienda</TableHead>
                   <TableHead>URL</TableHead>
+                  <TableHead>Catálogo Asociado</TableHead>
+                  <TableHead className="text-center">Auto-Sync</TableHead>
                   <TableHead className="text-center">Estado</TableHead>
                   <TableHead className="text-right">Productos</TableHead>
                   <TableHead>Última Sync</TableHead>
-                  <TableHead className="w-[120px]"></TableHead>
+                  <TableHead className="w-[180px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -472,9 +474,39 @@ const WooCommerceExport = () => {
                         rel="noopener noreferrer"
                         className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 text-sm"
                       >
-                        {config.store_url.replace(/^https?:\/\//, '').slice(0, 30)}
+                        {config.store_url.replace(/^https?:\/\//, '').slice(0, 25)}
                         <ExternalLink className="w-3 h-3" />
                       </a>
+                    </TableCell>
+                    <TableCell>
+                      {config.catalog_name ? (
+                        <Badge className="bg-indigo-100 text-indigo-700 border-0">
+                          <BookOpen className="w-3 h-3 mr-1" />
+                          {config.catalog_name}
+                        </Badge>
+                      ) : (
+                        <span className="text-sm text-slate-400">No configurado</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {config.auto_sync_enabled ? (
+                        <div className="flex flex-col items-center gap-1">
+                          <Badge className="bg-emerald-100 text-emerald-700 border-0">
+                            <Zap className="w-3 h-3 mr-1" />
+                            Activo
+                          </Badge>
+                          {config.next_sync && (
+                            <span className="text-xs text-slate-500">
+                              Próx: {formatDate(config.next_sync)}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <Badge variant="outline" className="text-slate-400">
+                          <Clock className="w-3 h-3 mr-1" />
+                          Desactivado
+                        </Badge>
+                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       {config.is_connected ? (
@@ -493,18 +525,25 @@ const WooCommerceExport = () => {
                       {config.products_synced || 0}
                     </TableCell>
                     <TableCell className="text-sm text-slate-500">
-                      {config.last_sync 
-                        ? new Date(config.last_sync).toLocaleDateString('es-ES', { 
-                            day: '2-digit', 
-                            month: 'short', 
-                            hour: '2-digit', 
-                            minute: '2-digit' 
-                          })
-                        : "Nunca"
-                      }
+                      {formatDate(config.last_sync)}
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleSyncPriceStock(config)}
+                          disabled={!config.catalog_id || syncing[config.id]}
+                          className="btn-secondary"
+                          title="Sincronizar solo precio y stock"
+                          data-testid={`sync-btn-${config.id}`}
+                        >
+                          {syncing[config.id] ? (
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          )}
+                        </Button>
                         <Button
                           size="sm"
                           onClick={() => openExport(config)}
@@ -527,8 +566,8 @@ const WooCommerceExport = () => {
                               Probar Conexión
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => openEdit(config)}>
-                              <Pencil className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                              Editar
+                              <Settings className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                              Configurar
                             </DropdownMenuItem>
                             <DropdownMenuItem 
                               onClick={() => openDelete(config)}
