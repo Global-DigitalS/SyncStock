@@ -62,7 +62,12 @@ import {
   Link2,
   Columns,
   Globe,
-  ExternalLink
+  ExternalLink,
+  FolderOpen,
+  FileArchive,
+  X,
+  CheckCircle,
+  ChevronRight
 } from "lucide-react";
 import ColumnMappingDialog from "../components/ColumnMappingDialog";
 
