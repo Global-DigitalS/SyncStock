@@ -44,8 +44,13 @@ import {
   TrendingDown,
   AlertTriangle,
   Upload,
-  FileUp
+  FileUp,
+  Save,
+  Pencil
 } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { Label } from "../components/ui/label";
+import { Switch } from "../components/ui/switch";
 
 const Products = () => {
   const [searchParams] = useSearchParams();
