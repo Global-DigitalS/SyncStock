@@ -721,7 +721,7 @@ const Suppliers = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="ftp_path">Ruta del archivo de descarga</Label>
+                      <Label htmlFor="ftp_path">Ruta del archivo (único)</Label>
                       <Input
                         id="ftp_path"
                         value={formData.ftp_path}
@@ -730,7 +730,137 @@ const Suppliers = () => {
                         className="input-base font-mono text-sm"
                         data-testid="supplier-ftp-path"
                       />
-                      <p className="text-xs text-slate-500">Ruta completa al archivo en el servidor FTP</p>
+                      <p className="text-xs text-slate-500">Ruta única, o usa el explorador FTP para múltiples archivos</p>
+                    </div>
+
+                    {/* FTP File Browser */}
+                    <div className="border border-slate-200 rounded-lg overflow-hidden mt-4">
+                      <div className="bg-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-200">
+                        <div className="flex items-center gap-2">
+                          <FolderOpen className="w-4 h-4 text-indigo-600" />
+                          <span className="text-sm font-semibold text-slate-800">Explorador FTP</span>
+                          {selectedFtpFiles.length > 0 && (
+                            <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full font-medium">
+                              {selectedFtpFiles.length} archivos
+                            </span>
+                          )}
+                        </div>
+                        <Button
+                          type="button" size="sm" variant="outline"
+                          onClick={() => handleFtpBrowse(ftpCurrentPath)}
+                          disabled={ftpBrowsing || !formData.ftp_host}
+                          className="text-xs h-7"
+                          data-testid="ftp-browse-btn"
+                        >
+                          {ftpBrowsing ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <FolderOpen className="w-3 h-3 mr-1" />}
+                          Conectar
+                        </Button>
+                      </div>
+
+                      {/* Selected Files */}
+                      {selectedFtpFiles.length > 0 && (
+                        <div className="p-3 bg-indigo-50/50 border-b border-slate-200">
+                          <p className="text-xs font-medium text-slate-600 mb-2">Archivos seleccionados para sincronización:</p>
+                          <div className="space-y-1.5">
+                            {selectedFtpFiles.map((file) => (
+                              <div key={file.path} className="flex items-center gap-2 bg-white rounded-md px-3 py-2 border border-slate-200">
+                                <FileArchive className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                <span className="text-xs font-mono text-slate-700 flex-1 truncate">{file.label || file.path}</span>
+                                <select
+                                  value={file.role}
+                                  onChange={(e) => updateFtpFileRole(file.path, e.target.value)}
+                                  className="text-xs border border-slate-200 rounded px-2 py-1 bg-white"
+                                  data-testid={`file-role-${file.path}`}
+                                >
+                                  {Object.entries(ROLE_LABELS).map(([val, label]) => (
+                                    <option key={val} value={val}>{label}</option>
+                                  ))}
+                                </select>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ROLE_COLORS[file.role] || ROLE_COLORS.other}`}>
+                                  {ROLE_LABELS[file.role] || file.role}
+                                </span>
+                                <button type="button" onClick={() => removeFtpFile(file.path)}
+                                  className="text-slate-400 hover:text-rose-500 transition-colors" data-testid={`remove-file-${file.path}`}>
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* File Browser */}
+                      {ftpFiles.length > 0 && (
+                        <div className="max-h-64 overflow-y-auto">
+                          {/* Current path */}
+                          <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 flex items-center gap-1">
+                            <span className="text-xs text-slate-500">Ruta:</span>
+                            <span className="text-xs font-mono text-slate-700">{ftpCurrentPath}</span>
+                            {ftpCurrentPath !== "/" && (
+                              <button type="button" onClick={() => {
+                                const parent = ftpCurrentPath.split("/").slice(0, -1).join("/") || "/";
+                                handleFtpBrowse(parent);
+                              }} className="text-xs text-indigo-600 hover:text-indigo-700 ml-2 font-medium">
+                                Subir
+                              </button>
+                            )}
+                          </div>
+                          {ftpFiles.map((file) => {
+                            const isSelected = selectedFtpFiles.some(f => f.path === file.path);
+                            return (
+                              <div key={file.path}
+                                className={`flex items-center gap-3 px-3 py-2 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer ${isSelected ? "bg-indigo-50" : ""}`}
+                                onClick={() => file.is_dir ? handleFtpBrowse(file.path) : null}
+                                data-testid={`ftp-file-${file.name}`}
+                              >
+                                {file.is_dir ? (
+                                  <FolderOpen className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                                ) : file.name.endsWith('.zip') ? (
+                                  <FileArchive className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                                ) : (
+                                  <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                                )}
+                                <span className={`text-sm flex-1 truncate ${file.is_dir ? "font-medium text-slate-800" : "text-slate-700 font-mono text-xs"}`}>
+                                  {file.name}
+                                </span>
+                                {!file.is_dir && (
+                                  <>
+                                    <span className="text-xs text-slate-400">{formatFileSize(file.size)}</span>
+                                    <span className="text-xs text-slate-400">{file.modified}</span>
+                                    {isSelected ? (
+                                      <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+                                        <CheckCircle className="w-3 h-3" /> Añadido
+                                      </span>
+                                    ) : (
+                                      <button type="button" onClick={(e) => { e.stopPropagation(); addFtpFile(file); }}
+                                        className="text-xs bg-indigo-600 text-white px-2.5 py-1 rounded-md hover:bg-indigo-700 transition-colors font-medium"
+                                        data-testid={`add-file-${file.name}`}
+                                      >
+                                        Añadir
+                                      </button>
+                                    )}
+                                  </>
+                                )}
+                                {file.is_dir && (
+                                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+
+                      {ftpFiles.length === 0 && !ftpBrowsing && (
+                        <div className="py-8 text-center text-sm text-slate-400">
+                          Pulsa "Conectar" para explorar los archivos del servidor FTP
+                        </div>
+                      )}
+                      {ftpBrowsing && (
+                        <div className="py-8 text-center">
+                          <RefreshCw className="w-5 h-5 text-indigo-400 animate-spin mx-auto mb-2" />
+                          <p className="text-sm text-slate-400">Conectando al FTP...</p>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
