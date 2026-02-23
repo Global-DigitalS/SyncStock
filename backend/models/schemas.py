@@ -24,6 +24,14 @@ class UserResponse(BaseModel):
 
 # ==================== SUPPLIER MODELS ====================
 
+class FtpFileConfig(BaseModel):
+    path: str
+    role: str = "products"
+    label: Optional[str] = None
+    separator: Optional[str] = ";"
+    header_row: Optional[int] = 1
+    merge_key: Optional[str] = None
+
 class SupplierCreate(BaseModel):
     name: str
     description: Optional[str] = None
@@ -35,6 +43,7 @@ class SupplierCreate(BaseModel):
     ftp_password: Optional[str] = None
     ftp_port: Optional[int] = 21
     ftp_path: Optional[str] = None
+    ftp_paths: Optional[List[Dict[str, Any]]] = None
     ftp_mode: Optional[str] = "passive"
     file_format: Optional[str] = "csv"
     csv_separator: Optional[str] = ";"
@@ -54,6 +63,7 @@ class SupplierUpdate(BaseModel):
     ftp_password: Optional[str] = None
     ftp_port: Optional[int] = None
     ftp_path: Optional[str] = None
+    ftp_paths: Optional[List[Dict[str, Any]]] = None
     ftp_mode: Optional[str] = None
     file_format: Optional[str] = None
     csv_separator: Optional[str] = None
@@ -73,6 +83,7 @@ class SupplierResponse(BaseModel):
     ftp_user: Optional[str] = None
     ftp_port: Optional[int] = None
     ftp_path: Optional[str] = None
+    ftp_paths: Optional[List[Dict[str, Any]]] = None
     ftp_mode: Optional[str] = None
     file_format: Optional[str] = None
     csv_separator: Optional[str] = None
