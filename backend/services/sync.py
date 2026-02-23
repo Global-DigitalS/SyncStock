@@ -489,6 +489,40 @@ def extract_zip_files(content: bytes) -> dict:
     return result
 
 
+async def resolve_latest_file(supplier: dict, file_config: dict) -> str:
+    """If auto_latest is set, find the latest matching file (e.g. latest ZIP)"""
+    file_path = file_config.get('path', '')
+    if not file_config.get('auto_latest'):
+        return file_path
+    
+    # Get the directory of the file
+    dir_path = '/'.join(file_path.split('/')[:-1]) or '/'
+    filename = file_path.split('/')[-1]
+    ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
+    
+    try:
+        result = await browse_ftp_directory(supplier, dir_path)
+        if result.get('status') != 'ok':
+            return file_path
+        
+        # Filter files with same extension
+        candidates = [f for f in result['files'] if not f['is_dir'] and f['name'].lower().endswith(f'.{ext}')]
+        if not candidates:
+            return file_path
+        
+        # Sort by name descending (works for date-based naming like _20260223)
+        candidates.sort(key=lambda x: x['name'], reverse=True)
+        latest = candidates[0]
+        
+        if latest['path'] != file_path:
+            logger.info(f"Auto-latest: resolved {file_path} -> {latest['path']}")
+        
+        return latest['path']
+    except Exception as e:
+        logger.warning(f"Could not resolve latest file for {file_path}: {e}")
+        return file_path
+
+
 async def sync_supplier_multifile(supplier: dict) -> dict:
     """Sync supplier with multiple file paths - downloads all, merges by key"""
     ftp_paths = supplier.get('ftp_paths', [])
@@ -500,7 +534,7 @@ async def sync_supplier_multifile(supplier: dict) -> dict:
     all_detected_columns = {}
 
     for file_config in ftp_paths:
-        file_path = file_config.get('path', '')
+        file_path = await resolve_latest_file(supplier, file_config)
         role = file_config.get('role', 'products')
         sep = file_config.get('separator', ';')
         hdr = file_config.get('header_row', 1) or 1
