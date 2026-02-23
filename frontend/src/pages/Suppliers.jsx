@@ -103,6 +103,10 @@ const Suppliers = () => {
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState("general");
   const [mappingSupplier, setMappingSupplier] = useState(null);
+  const [ftpFiles, setFtpFiles] = useState([]);
+  const [ftpBrowsing, setFtpBrowsing] = useState(false);
+  const [ftpCurrentPath, setFtpCurrentPath] = useState("/");
+  const [selectedFtpFiles, setSelectedFtpFiles] = useState([]);
 
   const fetchSuppliers = useCallback(async () => {
     try {
