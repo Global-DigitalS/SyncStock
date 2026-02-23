@@ -376,12 +376,15 @@ async def sync_supplier(supplier: dict) -> dict:
 
 async def sync_all_suppliers():
     logger.info("Starting scheduled sync for all suppliers...")
-    ftp_suppliers = await db.suppliers.find({"connection_type": {"$ne": "url"}, "ftp_host": {"$ne": None, "$ne": ""}, "ftp_path": {"$ne": None, "$ne": ""}}).to_list(1000)
+    ftp_suppliers = await db.suppliers.find({"connection_type": {"$ne": "url"}, "ftp_host": {"$ne": None, "$ne": ""}}).to_list(1000)
     url_suppliers = await db.suppliers.find({"connection_type": "url", "file_url": {"$ne": None, "$ne": ""}}).to_list(1000)
     all_suppliers = ftp_suppliers + url_suppliers
     logger.info(f"Found {len(all_suppliers)} suppliers to sync")
     for supplier in all_suppliers:
-        await sync_supplier(supplier)
+        if supplier.get('ftp_paths'):
+            await sync_supplier_multifile(supplier)
+        else:
+            await sync_supplier(supplier)
         await asyncio.sleep(2)
     logger.info("Scheduled sync completed")
 
