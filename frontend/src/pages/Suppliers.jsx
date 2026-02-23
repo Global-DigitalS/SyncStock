@@ -235,6 +235,83 @@ const Suppliers = () => {
     }
   };
 
+  const handleFtpBrowse = async (path = "/") => {
+    if (!formData.ftp_host) {
+      toast.error("Configura el host FTP primero");
+      return;
+    }
+    setFtpBrowsing(true);
+    try {
+      const res = await api.post("/suppliers/ftp-browse", {
+        ftp_schema: formData.ftp_schema || "ftp",
+        ftp_host: formData.ftp_host,
+        ftp_user: formData.ftp_user,
+        ftp_password: formData.ftp_password || (selectedSupplier ? "__keep__" : ""),
+        ftp_port: parseInt(formData.ftp_port) || 21,
+        ftp_mode: formData.ftp_mode || "passive",
+        path
+      });
+      if (res.data.status === "ok") {
+        setFtpFiles(res.data.files);
+        setFtpCurrentPath(res.data.path);
+      } else {
+        toast.error(res.data.message || "Error al explorar FTP");
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error conectando al FTP");
+    } finally {
+      setFtpBrowsing(false);
+    }
+  };
+
+  const addFtpFile = (file) => {
+    if (selectedFtpFiles.some(f => f.path === file.path)) return;
+    const role = guessFileRole(file.name);
+    setSelectedFtpFiles(prev => [...prev, {
+      path: file.path, role, label: file.name,
+      separator: ";", header_row: 1, merge_key: null
+    }]);
+  };
+
+  const removeFtpFile = (path) => {
+    setSelectedFtpFiles(prev => prev.filter(f => f.path !== path));
+  };
+
+  const updateFtpFileRole = (path, role) => {
+    setSelectedFtpFiles(prev => prev.map(f => f.path === path ? { ...f, role } : f));
+  };
+
+  const guessFileRole = (name) => {
+    const n = name.toLowerCase();
+    if (n.includes('stock')) return 'stock';
+    if (n.includes('price') && !n.includes('qb')) return 'prices';
+    if (n.includes('qb')) return 'prices_qb';
+    if (n.includes('product')) return 'products';
+    if (n.includes('kit')) return 'kit';
+    if (n.includes('minqty')) return 'min_qty';
+    if (n.endsWith('.zip')) return 'products';
+    return 'products';
+  };
+
+  const formatFileSize = (bytes) => {
+    if (!bytes) return "";
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / 1048576).toFixed(1)} MB`;
+  };
+
+  const ROLE_LABELS = {
+    products: "Productos", prices: "Precios", stock: "Stock",
+    prices_qb: "Precios Vol.", kit: "Kits", min_qty: "Cant. Mín.", other: "Otro"
+  };
+
+  const ROLE_COLORS = {
+    products: "bg-indigo-100 text-indigo-700", prices: "bg-emerald-100 text-emerald-700",
+    stock: "bg-amber-100 text-amber-700", prices_qb: "bg-purple-100 text-purple-700",
+    kit: "bg-slate-100 text-slate-700", min_qty: "bg-blue-100 text-blue-700",
+    other: "bg-slate-100 text-slate-700"
+  };
+
   const formatDate = (dateStr) => {
     if (!dateStr) return "Nunca";
     return new Date(dateStr).toLocaleDateString("es-ES", {
