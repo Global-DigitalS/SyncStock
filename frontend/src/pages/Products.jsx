@@ -77,6 +77,9 @@ const Products = () => {
   const [uploading, setUploading] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
+  const [editForm, setEditForm] = useState({});
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [activeTab, setActiveTab] = useState("proveedores");
 
   const buildQueryParams = useCallback(() => {
     const params = {};
