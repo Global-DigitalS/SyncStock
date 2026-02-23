@@ -598,156 +598,374 @@ const Products = () => {
         </Card>
       )}
 
-      {/* Product Detail Dialog */}
+      {/* Product Detail Dialog with Tabs */}
       <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-hidden flex flex-col">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col p-0">
+          <DialogHeader className="px-6 pt-6 pb-0">
             <DialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>
-              Detalle del Producto
+              Ficha del Producto
             </DialogTitle>
             <DialogDescription>
-              Comparativa de precios entre proveedores
+              {selectedProduct?.name}
             </DialogDescription>
           </DialogHeader>
           
           {selectedProduct && (
-            <div className="flex-1 overflow-y-auto space-y-6 py-4">
-              {/* Product Info */}
-              <div className="flex gap-6">
-                <div className="w-32 h-32 flex-shrink-0">
-                  {selectedProduct.image_url ? (
-                    <img
-                      src={selectedProduct.image_url}
-                      alt={selectedProduct.name}
-                      className="w-full h-full object-cover rounded-lg border border-slate-200"
-                    />
-                  ) : (
-                    <div className="w-full h-full bg-slate-100 rounded-lg flex items-center justify-center">
-                      <Package className="w-12 h-12 text-slate-300" />
-                    </div>
-                  )}
-                </div>
-                <div className="flex-1 space-y-2">
-                  <h3 className="text-xl font-semibold text-slate-900">{selectedProduct.name}</h3>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge className="bg-slate-100 text-slate-700 border-0 font-mono">
-                      EAN: {selectedProduct.ean}
-                    </Badge>
-                    {selectedProduct.brand && (
-                      <Badge className="bg-indigo-100 text-indigo-700 border-0">
-                        {selectedProduct.brand}
-                      </Badge>
-                    )}
-                    {selectedProduct.category && (
-                      <Badge className="bg-slate-100 text-slate-600 border-0">
-                        {selectedProduct.category}
-                      </Badge>
-                    )}
-                  </div>
-                  {selectedProduct.description && (
-                    <p className="text-sm text-slate-600 line-clamp-2">{selectedProduct.description}</p>
-                  )}
-                </div>
+            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+              <div className="px-6 pt-2">
+                <TabsList className="w-full grid grid-cols-2" data-testid="product-detail-tabs">
+                  <TabsTrigger value="proveedores" data-testid="tab-proveedores">
+                    <Truck className="w-4 h-4 mr-2" />
+                    Proveedores
+                  </TabsTrigger>
+                  <TabsTrigger value="datos" data-testid="tab-datos">
+                    <Pencil className="w-4 h-4 mr-2" />
+                    Datos del Producto
+                  </TabsTrigger>
+                </TabsList>
               </div>
 
-              {/* Best Offer Highlight */}
-              <Card className="border-emerald-200 bg-emerald-50">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
-                        <Star className="w-5 h-5 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="text-sm text-emerald-600 font-medium">Mejor Oferta</p>
-                        <p className="text-lg font-bold text-emerald-700">{selectedProduct.best_supplier}</p>
-                      </div>
+              {/* TAB 1: Proveedores */}
+              <TabsContent value="proveedores" className="flex-1 overflow-y-auto px-6 pb-4 mt-0">
+                <div className="space-y-5 pt-4">
+                  {/* Product Info Header */}
+                  <div className="flex gap-5">
+                    <div className="w-24 h-24 flex-shrink-0">
+                      {selectedProduct.image_url ? (
+                        <img src={selectedProduct.image_url} alt={selectedProduct.name}
+                          className="w-full h-full object-cover rounded-lg border border-slate-200" />
+                      ) : (
+                        <div className="w-full h-full bg-slate-100 rounded-lg flex items-center justify-center">
+                          <Package className="w-10 h-10 text-slate-300" />
+                        </div>
+                      )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold text-emerald-700">
-                        {selectedProduct.best_price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
-                      </p>
-                      <p className="text-sm text-emerald-600">Stock total: {selectedProduct.total_stock} uds</p>
+                    <div className="flex-1 space-y-2">
+                      <h3 className="text-lg font-semibold text-slate-900">{selectedProduct.name}</h3>
+                      <div className="flex flex-wrap gap-2">
+                        <Badge className="bg-slate-100 text-slate-700 border-0 font-mono text-xs">EAN: {selectedProduct.ean}</Badge>
+                        {selectedProduct.brand && <Badge className="bg-indigo-100 text-indigo-700 border-0 text-xs">{selectedProduct.brand}</Badge>}
+                        {selectedProduct.category && <Badge className="bg-slate-100 text-slate-600 border-0 text-xs">{selectedProduct.category}</Badge>}
+                      </div>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
 
-              {/* All Suppliers */}
-              <div>
-                <h4 className="text-sm font-medium text-slate-700 mb-3">
-                  Todos los Proveedores ({selectedProduct.supplier_count})
-                </h4>
-                <div className="space-y-2">
-                  {selectedProduct.suppliers.map((supplier, idx) => (
-                    <div
-                      key={idx}
-                      className={`flex items-center justify-between p-3 rounded-lg border ${
-                        supplier.is_best_offer
-                          ? "bg-emerald-50 border-emerald-200"
-                          : supplier.stock > 0
-                          ? "bg-white border-slate-200"
-                          : "bg-slate-50 border-slate-200 opacity-60"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                          supplier.is_best_offer ? "bg-emerald-100" : "bg-slate-100"
-                        }`}>
-                          <Truck className={`w-4 h-4 ${supplier.is_best_offer ? "text-emerald-600" : "text-slate-500"}`} />
+                  {/* Best Offer */}
+                  <Card className="border-emerald-200 bg-emerald-50">
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-emerald-100 rounded-full flex items-center justify-center">
+                            <Star className="w-5 h-5 text-emerald-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-emerald-600 font-medium">Mejor Oferta</p>
+                            <p className="text-lg font-bold text-emerald-700">{selectedProduct.best_supplier}</p>
+                          </div>
                         </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <p className="font-medium text-slate-900">{supplier.supplier_name}</p>
-                            {supplier.is_best_offer && (
-                              <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
-                                <Star className="w-3 h-3 mr-1" />
-                                Mejor
-                              </Badge>
+                        <div className="text-right">
+                          <p className="text-2xl font-bold text-emerald-700">
+                            {selectedProduct.best_price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                          </p>
+                          <p className="text-sm text-emerald-600">Stock total: {selectedProduct.total_stock} uds</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* All Suppliers */}
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-700 mb-3">
+                      Todos los Proveedores ({selectedProduct.supplier_count})
+                    </h4>
+                    <div className="space-y-2">
+                      {selectedProduct.suppliers.map((supplier, idx) => (
+                        <div key={idx} className={`flex items-center justify-between p-3 rounded-lg border ${
+                          supplier.is_best_offer ? "bg-emerald-50 border-emerald-200" :
+                          supplier.stock > 0 ? "bg-white border-slate-200" : "bg-slate-50 border-slate-200 opacity-60"
+                        }`}>
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${supplier.is_best_offer ? "bg-emerald-100" : "bg-slate-100"}`}>
+                              <Truck className={`w-4 h-4 ${supplier.is_best_offer ? "text-emerald-600" : "text-slate-500"}`} />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium text-slate-900">{supplier.supplier_name}</p>
+                                {supplier.is_best_offer && (
+                                  <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs"><Star className="w-3 h-3 mr-1" />Mejor</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-slate-500 font-mono">SKU: {supplier.sku}</p>
+                            </div>
+                          </div>
+                          <div className="text-right">
+                            <p className={`font-bold ${supplier.is_best_offer ? "text-emerald-600" : "text-slate-900"}`}>
+                              {supplier.price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                            </p>
+                            {supplier.stock > 0 ? (
+                              <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">{supplier.stock} uds</Badge>
+                            ) : (
+                              <Badge className="bg-rose-100 text-rose-700 border-0 text-xs"><AlertTriangle className="w-3 h-3 mr-1" />Sin stock</Badge>
                             )}
                           </div>
-                          <p className="text-xs text-slate-500 font-mono">SKU: {supplier.sku}</p>
                         </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* TAB 2: Datos del Producto */}
+              <TabsContent value="datos" className="flex-1 overflow-y-auto px-6 pb-4 mt-0">
+                <div className="space-y-6 pt-4">
+                  {/* Section: Nombre */}
+                  <div className="space-y-2">
+                    <Label className="text-sm font-semibold text-slate-800">Nombre del Producto</Label>
+                    <Input value={editForm.name || ""} onChange={(e) => updateEditField("name", e.target.value)}
+                      className="input-base" data-testid="edit-name" />
+                  </div>
+
+                  {/* Section: Estado */}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 mb-3">Estado</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4">
+                      <ToggleField label="Activado" value={editForm.activado} onChange={(v) => updateEditField("activado", v)} testId="edit-activado" />
+                      <ToggleField label="Descatalogado" value={editForm.descatalogado} onChange={(v) => updateEditField("descatalogado", v)} testId="edit-descatalogado" />
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Condición</Label>
+                        <Input value={editForm.condicion || ""} onChange={(e) => updateEditField("condicion", e.target.value)}
+                          className="input-base text-sm h-9" placeholder="Nuevo / Usado" />
                       </div>
-                      <div className="text-right">
-                        <p className={`font-bold ${supplier.is_best_offer ? "text-emerald-600" : "text-slate-900"}`}>
-                          {supplier.price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
-                        </p>
-                        {supplier.stock > 0 ? (
-                          <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
-                            {supplier.stock} uds
-                          </Badge>
-                        ) : (
-                          <Badge className="bg-rose-100 text-rose-700 border-0 text-xs">
-                            <AlertTriangle className="w-3 h-3 mr-1" />
-                            Sin stock
-                          </Badge>
-                        )}
+                      <ToggleField label="Activar en POS" value={editForm.activar_pos} onChange={(v) => updateEditField("activar_pos", v)} testId="edit-activar-pos" />
+                      <ToggleField label="De tipo Pack" value={editForm.tipo_pack} onChange={(v) => updateEditField("tipo_pack", v)} testId="edit-tipo-pack" />
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">ID ERP</Label>
+                        <Input value={editForm.id_erp || ""} onChange={(e) => updateEditField("id_erp", e.target.value)}
+                          className="input-base text-sm h-9" />
                       </div>
                     </div>
-                  ))}
+                  </div>
+
+                  {/* Section: Identificadores */}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 mb-3">Identificadores</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-3">
+                      {[
+                        { field: "referencia", label: "Referencia" },
+                        { field: "part_number", label: "Part Number" },
+                        { field: "ean", label: "EAN" },
+                        { field: "asin", label: "ASIN" },
+                        { field: "upc", label: "UPC" },
+                        { field: "gtin", label: "GTIN" },
+                        { field: "oem", label: "OEM" },
+                      ].map(({ field, label }) => (
+                        <div key={field} className="space-y-1">
+                          <Label className="text-xs text-slate-500">{label}</Label>
+                          <Input value={editForm[field] || ""} onChange={(e) => updateEditField(field, e.target.value)}
+                            className="input-base text-sm h-9 font-mono" data-testid={`edit-${field}`} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Section: Marca, Proveedor, Opciones */}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 mb-3">Marca y Opciones</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Marca</Label>
+                        <Input value={editForm.brand || ""} onChange={(e) => updateEditField("brand", e.target.value)}
+                          className="input-base text-sm h-9" data-testid="edit-brand" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Categoría</Label>
+                        <Input value={editForm.category || ""} onChange={(e) => updateEditField("category", e.target.value)}
+                          className="input-base text-sm h-9" />
+                      </div>
+                      <ToggleField label="Vender sin stock" value={editForm.vender_sin_stock} onChange={(v) => updateEditField("vender_sin_stock", v)} testId="edit-vender-sin-stock" />
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Nuevo</Label>
+                        <Input value={editForm.nuevo || ""} onChange={(e) => updateEditField("nuevo", e.target.value)}
+                          className="input-base text-sm h-9" placeholder="Decidir por fecha" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Fecha disponibilidad</Label>
+                        <Input type="date" value={editForm.fecha_disponibilidad || ""} onChange={(e) => updateEditField("fecha_disponibilidad", e.target.value)}
+                          className="input-base text-sm h-9" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Stock */}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 mb-3">Stock</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-3">
+                      {[
+                        { field: "stock_disponible", label: "Stock disponible" },
+                        { field: "stock", label: "Stock proveedor" },
+                        { field: "stock_fantasma", label: "Stock Fantasma" },
+                        { field: "stock_market", label: "Stock Market" },
+                        { field: "unid_caja", label: "Unid. caja" },
+                        { field: "cantidad_minima", label: "Cantidad mínima" },
+                        { field: "dias_entrega", label: "Días de entrega" },
+                        { field: "cantidad_maxima_carrito", label: "Cant. máx. carrito" },
+                      ].map(({ field, label }) => (
+                        <div key={field} className="space-y-1">
+                          <Label className="text-xs text-slate-500">{label}</Label>
+                          <Input type="number" value={editForm[field] ?? 0}
+                            onChange={(e) => updateEditField(field, parseInt(e.target.value) || 0)}
+                            className="input-base text-sm h-9 font-mono" data-testid={`edit-${field}`} />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3">
+                      <ToggleField label="Resto de Stock" value={editForm.resto_stock} onChange={(v) => updateEditField("resto_stock", v)} testId="edit-resto-stock" />
+                    </div>
+                  </div>
+
+                  {/* Section: Envío */}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 mb-3">Envío</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+                      <ToggleField label="Requiere Envío" value={editForm.requiere_envio} onChange={(v) => updateEditField("requiere_envio", v)} testId="edit-requiere-envio" />
+                      <ToggleField label="Envío gratis" value={editForm.envio_gratis} onChange={(v) => updateEditField("envio_gratis", v)} testId="edit-envio-gratis" />
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Gastos de envío</Label>
+                        <Input type="number" step="0.01" value={editForm.gastos_envio ?? 0}
+                          onChange={(e) => updateEditField("gastos_envio", parseFloat(e.target.value) || 0)}
+                          className="input-base text-sm h-9 font-mono" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Precio</Label>
+                        <Input type="number" step="0.01" value={editForm.price ?? 0}
+                          onChange={(e) => updateEditField("price", parseFloat(e.target.value) || 0)}
+                          className="input-base text-sm h-9 font-mono" data-testid="edit-price" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Imagen URL</Label>
+                        <Input value={editForm.image_url || ""} onChange={(e) => updateEditField("image_url", e.target.value)}
+                          className="input-base text-sm h-9" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Dimensiones */}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 mb-3">Dimensiones y Peso</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                      {[
+                        { field: "largo", label: "Largo" },
+                        { field: "ancho", label: "Ancho" },
+                        { field: "alto", label: "Alto" },
+                        { field: "weight", label: "Peso" },
+                      ].map(({ field, label }) => (
+                        <div key={field} className="space-y-1">
+                          <Label className="text-xs text-slate-500">{label}</Label>
+                          <Input type="number" step="0.01" value={editForm[field] ?? 0}
+                            onChange={(e) => updateEditField(field, parseFloat(e.target.value) || 0)}
+                            className="input-base text-sm h-9 font-mono" data-testid={`edit-${field}`} />
+                        </div>
+                      ))}
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Tipo peso</Label>
+                        <div className="flex rounded-lg border border-slate-200 overflow-hidden h-9">
+                          {["gram", "kilogram", "ounce", "pound"].map((unit) => (
+                            <button key={unit} type="button"
+                              onClick={() => updateEditField("tipo_peso", unit)}
+                              className={`flex-1 text-xs font-medium transition-colors ${
+                                editForm.tipo_peso === unit
+                                  ? "bg-slate-900 text-white"
+                                  : "bg-white text-slate-500 hover:bg-slate-50"
+                              }`}
+                              data-testid={`peso-${unit}`}
+                            >
+                              {unit === "gram" ? "Gram" : unit === "kilogram" ? "Kg" : unit === "ounce" ? "Oz" : "Lb"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Formas de pago y envío */}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 mb-3">Formas de pago y envío</p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Formas de pago disponibles</Label>
+                        <div className="flex rounded-lg border border-slate-200 overflow-hidden h-9">
+                          {["todas", "especificas"].map((opt) => (
+                            <button key={opt} type="button"
+                              onClick={() => updateEditField("formas_pago", opt)}
+                              className={`flex-1 text-xs font-medium transition-colors capitalize ${
+                                editForm.formas_pago === opt ? "bg-emerald-500 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+                              }`}>
+                              {opt === "todas" ? "Todas" : "Específicas"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs text-slate-500">Formas de envío disponibles</Label>
+                        <div className="flex rounded-lg border border-slate-200 overflow-hidden h-9">
+                          {["todas", "especificas"].map((opt) => (
+                            <button key={opt} type="button"
+                              onClick={() => updateEditField("formas_envio", opt)}
+                              className={`flex-1 text-xs font-medium transition-colors capitalize ${
+                                editForm.formas_envio === opt ? "bg-emerald-500 text-white" : "bg-white text-slate-500 hover:bg-slate-50"
+                              }`}>
+                              {opt === "todas" ? "Todas" : "Específicas"}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Section: Permisos */}
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800 mb-3">Permisos de Proveedor</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                      <ToggleField label="Permite actualizar coste" value={editForm.permite_actualizar_coste} onChange={(v) => updateEditField("permite_actualizar_coste", v)} testId="edit-permite-coste" />
+                      <ToggleField label="Permite actualizar stock" value={editForm.permite_actualizar_stock} onChange={(v) => updateEditField("permite_actualizar_stock", v)} testId="edit-permite-stock" />
+                      <ToggleField label="De tipo cheque regalo" value={editForm.tipo_cheque_regalo} onChange={(v) => updateEditField("tipo_cheque_regalo", v)} testId="edit-cheque-regalo" />
+                    </div>
+                  </div>
+
+                  {/* Description */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-500">Descripción</Label>
+                    <textarea value={editForm.description || ""} onChange={(e) => updateEditField("description", e.target.value)}
+                      className="w-full rounded-md border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 min-h-[80px] resize-y"
+                      data-testid="edit-description" />
+                  </div>
                 </div>
-              </div>
-            </div>
+              </TabsContent>
+            </Tabs>
           )}
           
-          <DialogFooter className="border-t pt-4">
+          <div className="border-t px-6 py-4 flex items-center justify-between">
             <Button variant="outline" onClick={() => setShowDetailDialog(false)} className="btn-secondary">
               Cerrar
             </Button>
-            <Button 
-              onClick={() => { 
+            <div className="flex items-center gap-2">
+              {activeTab === "datos" && (
+                <Button onClick={handleSaveProduct} disabled={savingProduct} className="btn-primary" data-testid="save-product-btn">
+                  {savingProduct ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}
+                  Guardar Cambios
+                </Button>
+              )}
+              <Button onClick={() => {
                 if (selectedProduct) {
-                  openCatalogSelector([selectedProduct.ean]); 
+                  openCatalogSelector([selectedProduct.ean]);
                   setShowDetailDialog(false);
                 }
-              }}
-              className="btn-primary"
-            >
-              <BookOpen className="w-4 h-4 mr-2" />
-              Añadir a Catálogos
-            </Button>
-          </DialogFooter>
+              }} className="btn-primary" variant={activeTab === "datos" ? "outline" : "default"}>
+                <BookOpen className="w-4 h-4 mr-2" />
+                Añadir a Catálogos
+              </Button>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 
