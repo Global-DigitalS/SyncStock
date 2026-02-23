@@ -158,6 +158,7 @@ const Suppliers = () => {
       csv_header_row: supplier.csv_header_row || 1,
       column_mapping: supplier.column_mapping || null
     });
+    setSelectedFtpFiles(supplier.ftp_paths || []);
     setShowDialog(true);
   };
 
