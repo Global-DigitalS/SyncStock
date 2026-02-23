@@ -127,6 +127,9 @@ const Suppliers = () => {
     setFormData(defaultFormData);
     setSelectedSupplier(null);
     setActiveTab("general");
+    setSelectedFtpFiles([]);
+    setFtpFiles([]);
+    setFtpCurrentPath("/");
   };
 
   const openCreate = () => {
