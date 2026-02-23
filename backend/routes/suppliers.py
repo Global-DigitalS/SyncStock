@@ -97,14 +97,18 @@ async def sync_supplier_manual(supplier_id: str, user: dict = Depends(get_curren
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     connection_type = supplier.get('connection_type', 'ftp')
+    has_multifile = bool(supplier.get('ftp_paths'))
     if connection_type == 'url':
         if not supplier.get('file_url'):
             raise HTTPException(status_code=400, detail="URL del archivo no configurada.")
     else:
-        if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
+        if not has_multifile and (not supplier.get('ftp_host') or not supplier.get('ftp_path')):
             raise HTTPException(status_code=400, detail="Configuración FTP incompleta.")
     try:
-        result = await sync_supplier(supplier)
+        if has_multifile:
+            result = await sync_supplier_multifile(supplier)
+        else:
+            result = await sync_supplier(supplier)
         if result.get('status') == 'error':
             return {"status": "error", "message": result.get('message', 'Error en sincronización')}
         return result
@@ -118,11 +122,41 @@ async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_use
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]}, {"_id": 0})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    has_ftp = bool(supplier.get('ftp_host') and (supplier.get('ftp_path') or supplier.get('ftp_paths')))
     return {
         "last_sync": supplier.get('last_sync'),
-        "ftp_configured": bool(supplier.get('ftp_host') and supplier.get('ftp_path')),
-        "product_count": supplier.get('product_count', 0)
+        "ftp_configured": has_ftp,
+        "product_count": supplier.get('product_count', 0),
+        "ftp_paths_count": len(supplier.get('ftp_paths', []))
     }
+
+
+@router.post("/suppliers/ftp-browse")
+async def ftp_browse(req: FtpBrowseRequest, user: dict = Depends(get_current_user)):
+    try:
+        result = await browse_ftp_directory({
+            "ftp_schema": req.ftp_schema, "ftp_host": req.ftp_host,
+            "ftp_user": req.ftp_user, "ftp_password": req.ftp_password,
+            "ftp_port": req.ftp_port, "ftp_mode": req.ftp_mode,
+        }, req.path)
+        return result
+    except Exception as e:
+        logger.error(f"FTP browse error: {e}")
+        return {"status": "error", "message": str(e), "files": []}
+
+
+@router.post("/suppliers/{supplier_id}/ftp-browse")
+async def ftp_browse_supplier(supplier_id: str, data: dict, user: dict = Depends(get_current_user)):
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    path = data.get("path", "/")
+    try:
+        result = await browse_ftp_directory(supplier, path)
+        return result
+    except Exception as e:
+        logger.error(f"FTP browse error: {e}")
+        return {"status": "error", "message": str(e), "files": []}
 
 
 @router.post("/products/import/{supplier_id}")
