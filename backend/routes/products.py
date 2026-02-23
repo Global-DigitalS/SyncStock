@@ -56,6 +56,20 @@ async def get_product(product_id: str, user: dict = Depends(get_current_user)):
     return ProductResponse(**product)
 
 
+@router.put("/products/{product_id}", response_model=ProductResponse)
+async def update_product(product_id: str, update: ProductUpdate, user: dict = Depends(get_current_user)):
+    existing = await db.products.find_one({"id": product_id, "user_id": user["id"]})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    update_data = {k: v for k, v in update.model_dump().items() if v is not None}
+    if update_data:
+        update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+        await db.products.update_one({"id": product_id}, {"$set": update_data})
+    updated = await db.products.find_one({"id": product_id}, {"_id": 0, "user_id": 0})
+    return ProductResponse(**updated)
+
+
+
 @router.post("/products/add-to-catalogs")
 async def add_products_to_multiple_catalogs(
     data: dict, user: dict = Depends(get_current_user)
