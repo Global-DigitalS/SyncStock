@@ -19,16 +19,19 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores.
 - [x] Refactorización completa del backend a arquitectura modular
 - [x] Ficha de producto con 2 pestañas (Proveedores + Datos editables)
 - [x] Explorador FTP integrado en configuración de proveedor
-- [x] Soporte multi-archivo por proveedor (ej: TechData con Stock + ZIP con Productos/Precios)
+- [x] Soporte multi-archivo por proveedor
 - [x] Extracción automática de ZIP y detección de roles de archivo
 - [x] Sincronización multi-archivo con fusión de datos por clave común
+- [x] Auto-selección del ZIP más reciente y StockFile al conectar al FTP
+- [x] Búsqueda dinámica del archivo más reciente durante sync automático (auto_latest)
 
 ## Arquitectura
 - **Backend**: FastAPI modular + MongoDB + APScheduler
 - **Frontend**: React + TailwindCSS + Shadcn UI
-- **Estructura**: routes/, models/, services/ (refactorizado desde monolítico)
+- **Estructura**: routes/, models/, services/
 
 ## Backlog
+- [ ] Mapeo de columnas para archivos TechData
 - [ ] Gráficas de evolución de precios
 - [ ] Sistema de roles de usuario
 - [ ] Historial de sincronizaciones detallado
