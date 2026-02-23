@@ -6,7 +6,7 @@ import uuid
 from services.database import db
 from services.auth import get_current_user
 from models.schemas import (
-    ProductResponse, SupplierOffer, UnifiedProductResponse
+    ProductResponse, ProductUpdate, SupplierOffer, UnifiedProductResponse
 )
 
 router = APIRouter()
