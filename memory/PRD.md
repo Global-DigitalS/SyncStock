@@ -13,6 +13,7 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores con las s
 9. Unificar productos por EAN, mostrando el mejor proveedor
 10. Sincronización automática con WooCommerce cada 12 horas
 11. Al exportar a WooCommerce, usar EAN como identificador único (GTIN)
+12. Ficha de producto con dos pestañas: Proveedores y Datos editables
 
 ## Arquitectura Técnica
 - **Backend**: FastAPI (modular) + MongoDB + APScheduler
@@ -41,17 +42,12 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores con las s
 - [x] Sistema de notificaciones (stock bajo, sincronización, exportación)
 - [x] Página de notificaciones con filtros
 - [x] Refactorización completa del backend a arquitectura modular
-
-### P0 - P2 Completed (Feb 2026)
-- P0: Sincronización WooCommerce UI + backend
-- P1: Dashboard mejorado con estadísticas WooCommerce
-- P2: Refactorización modular del backend
-- P2: Sistema de notificaciones funcional
+- [x] Ficha de producto con 2 pestañas: Proveedores (mejor oferta + comparativa) y Datos editables (formulario extenso con 40+ campos)
+- [x] PUT /api/products/{id} - Endpoint para editar datos extendidos del producto
 
 ## Backlog Futuro
-- [ ] Mejorar Login.jsx (React setState warning durante render)
-- [ ] Mejoras de UX en sidebar (duplicación mobile/desktop)
-- [ ] Historial de sincronizaciones detallado
-- [ ] Graficas de evolución de precios
+- [ ] Fix React setState warning en Login.jsx
+- [ ] Gráficas de evolución de precios
 - [ ] Sistema de roles de usuario
 - [ ] API keys management para integraciones externas
+- [ ] Historial de sincronizaciones detallado
