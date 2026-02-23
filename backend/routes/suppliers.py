@@ -41,6 +41,7 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
         "ftp_schema": supplier.ftp_schema, "ftp_host": supplier.ftp_host,
         "ftp_user": supplier.ftp_user, "ftp_password": supplier.ftp_password,
         "ftp_port": supplier.ftp_port, "ftp_path": supplier.ftp_path,
+        "ftp_paths": [p if isinstance(p, dict) else p.model_dump() for p in (supplier.ftp_paths or [])],
         "ftp_mode": supplier.ftp_mode,
         "file_format": supplier.file_format,
         "csv_separator": supplier.csv_separator, "csv_enclosure": supplier.csv_enclosure,
