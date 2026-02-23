@@ -184,7 +184,8 @@ const Suppliers = () => {
     const payload = {
       ...formData,
       ftp_port: parseInt(formData.ftp_port) || 21,
-      csv_header_row: parseInt(formData.csv_header_row) || 1
+      csv_header_row: parseInt(formData.csv_header_row) || 1,
+      ftp_paths: selectedFtpFiles.length > 0 ? selectedFtpFiles : null
     };
 
     try {
