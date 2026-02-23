@@ -1133,4 +1133,23 @@ const Products = () => {
   );
 };
 
+// Toggle field component for No/Sí switches
+const ToggleField = ({ label, value, onChange, testId }) => (
+  <div className="space-y-1">
+    <Label className="text-xs text-slate-500">{label}</Label>
+    <div className="flex rounded-lg border border-slate-200 overflow-hidden h-9">
+      <button type="button" onClick={() => onChange(false)}
+        className={`flex-1 text-xs font-medium transition-colors ${!value ? "bg-slate-200 text-slate-700" : "bg-white text-slate-400 hover:bg-slate-50"}`}
+        data-testid={testId ? `${testId}-no` : undefined}>
+        No
+      </button>
+      <button type="button" onClick={() => onChange(true)}
+        className={`flex-1 text-xs font-medium transition-colors ${value ? "bg-emerald-500 text-white" : "bg-white text-slate-400 hover:bg-slate-50"}`}
+        data-testid={testId ? `${testId}-si` : undefined}>
+        Sí
+      </button>
+    </div>
+  </div>
+);
+
 export default Products;
