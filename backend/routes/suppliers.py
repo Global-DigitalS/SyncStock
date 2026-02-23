@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
@@ -7,13 +8,25 @@ import logging
 from services.database import db
 from services.auth import get_current_user
 from services.sync import (
-    sync_supplier, parse_csv_content, parse_xlsx_content,
-    parse_xls_content, parse_xml_content, normalize_product_data
+    sync_supplier, sync_supplier_multifile,
+    parse_csv_content, parse_xlsx_content,
+    parse_xls_content, parse_xml_content, normalize_product_data,
+    browse_ftp_directory
 )
 from models.schemas import SupplierCreate, SupplierUpdate, SupplierResponse, ProductResponse
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+class FtpBrowseRequest(BaseModel):
+    ftp_schema: str = "ftp"
+    ftp_host: str
+    ftp_user: Optional[str] = ""
+    ftp_password: Optional[str] = ""
+    ftp_port: Optional[int] = 21
+    ftp_mode: Optional[str] = "passive"
+    path: Optional[str] = "/"
 
 
 @router.post("/suppliers", response_model=SupplierResponse)
