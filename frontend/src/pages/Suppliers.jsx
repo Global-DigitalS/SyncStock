@@ -259,6 +259,37 @@ const Suppliers = () => {
       if (res.data.status === "ok") {
         setFtpFiles(res.data.files);
         setFtpCurrentPath(res.data.path);
+        
+        // Auto-select: only on first browse (root path) and no files selected yet
+        if (path === "/" && selectedFtpFiles.length === 0) {
+          const autoSelected = [];
+          const files = res.data.files.filter(f => !f.is_dir);
+          
+          // Find StockFile
+          const stockFile = files.find(f => f.name.toLowerCase().includes('stock') && !f.name.endsWith('.zip'));
+          if (stockFile) {
+            autoSelected.push({
+              path: stockFile.path, role: 'stock', label: stockFile.name,
+              separator: ";", header_row: 1, merge_key: null
+            });
+          }
+          
+          // Find latest ZIP by date in filename (e.g. TD_ES_564195_A_20260223.zip)
+          const zips = files.filter(f => f.name.toLowerCase().endsWith('.zip'));
+          if (zips.length > 0) {
+            const sorted = [...zips].sort((a, b) => b.name.localeCompare(a.name));
+            const latestZip = sorted[0];
+            autoSelected.push({
+              path: latestZip.path, role: 'products', label: latestZip.name,
+              separator: ";", header_row: 1, merge_key: null, auto_latest: true
+            });
+          }
+          
+          if (autoSelected.length > 0) {
+            setSelectedFtpFiles(autoSelected);
+            toast.success(`Auto-seleccionados ${autoSelected.length} archivos (ZIP más reciente + Stock)`);
+          }
+        }
       } else {
         toast.error(res.data.message || "Error al explorar FTP");
       }
