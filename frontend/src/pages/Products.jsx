@@ -281,9 +281,71 @@ const Products = () => {
     }
   };
 
-  const openProductDetail = (product) => {
+  const openProductDetail = async (product) => {
     setSelectedProduct(product);
+    setActiveTab("proveedores");
     setShowDetailDialog(true);
+    // Load full product data for the best offer to populate edit form
+    const bestOffer = product.suppliers.find(s => s.is_best_offer);
+    if (bestOffer) {
+      try {
+        const res = await api.get(`/products/${bestOffer.product_id}`);
+        const p = res.data;
+        setEditForm({
+          name: p.name || "", ean: p.ean || "", sku: p.sku || "",
+          description: p.description || "", price: p.price || 0,
+          stock: p.stock || 0, category: p.category || "",
+          brand: p.brand || "", weight: p.weight || 0,
+          image_url: p.image_url || "",
+          referencia: p.referencia || "", part_number: p.part_number || "",
+          asin: p.asin || "", upc: p.upc || "", gtin: p.gtin || p.ean || "",
+          oem: p.oem || "", id_erp: p.id_erp || "",
+          activado: p.activado !== false, descatalogado: p.descatalogado || false,
+          condicion: p.condicion || "", activar_pos: p.activar_pos || false,
+          tipo_pack: p.tipo_pack || false,
+          vender_sin_stock: p.vender_sin_stock || false,
+          nuevo: p.nuevo || "", fecha_disponibilidad: p.fecha_disponibilidad || "",
+          stock_disponible: p.stock_disponible ?? p.stock ?? 0,
+          stock_fantasma: p.stock_fantasma ?? 0, stock_market: p.stock_market ?? 0,
+          unid_caja: p.unid_caja ?? 0, cantidad_minima: p.cantidad_minima ?? 0,
+          dias_entrega: p.dias_entrega ?? 0,
+          cantidad_maxima_carrito: p.cantidad_maxima_carrito ?? 0,
+          resto_stock: p.resto_stock !== false,
+          requiere_envio: p.requiere_envio !== false,
+          envio_gratis: p.envio_gratis || false,
+          gastos_envio: p.gastos_envio ?? 0,
+          largo: p.largo ?? 0, ancho: p.ancho ?? 0, alto: p.alto ?? 0,
+          tipo_peso: p.tipo_peso || "kilogram",
+          formas_pago: p.formas_pago || "todas",
+          formas_envio: p.formas_envio || "todas",
+          permite_actualizar_coste: p.permite_actualizar_coste !== false,
+          permite_actualizar_stock: p.permite_actualizar_stock !== false,
+          tipo_cheque_regalo: p.tipo_cheque_regalo || false,
+          _product_id: bestOffer.product_id
+        });
+      } catch (error) {
+        console.error("Error loading product data:", error);
+      }
+    }
+  };
+
+  const handleSaveProduct = async () => {
+    if (!editForm._product_id) return;
+    setSavingProduct(true);
+    try {
+      const { _product_id, ...payload } = editForm;
+      await api.put(`/products/${_product_id}`, payload);
+      toast.success("Producto actualizado correctamente");
+      fetchData();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al guardar el producto");
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  const updateEditField = (field, value) => {
+    setEditForm(prev => ({ ...prev, [field]: value }));
   };
 
   const getStockBadge = (stock) => {
