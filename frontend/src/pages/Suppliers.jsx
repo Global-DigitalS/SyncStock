@@ -424,6 +424,11 @@ const Suppliers = () => {
                           <span className="text-sm text-slate-600 font-mono">
                             {supplier.ftp_schema?.toUpperCase() || "FTP"}://{supplier.ftp_host}:{supplier.ftp_port || 21}
                           </span>
+                          {supplier.ftp_paths?.length > 0 && (
+                            <span className="text-xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-medium">
+                              {supplier.ftp_paths.length} archivos
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <span className="text-sm text-slate-400">No configurado</span>
