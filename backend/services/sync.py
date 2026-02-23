@@ -4,6 +4,7 @@ import logging
 import uuid
 import ftplib
 import asyncio
+import zipfile
 import paramiko
 import requests
 from datetime import datetime, timezone
