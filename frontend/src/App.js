@@ -95,22 +95,100 @@ const MainLayout = ({ children }) => {
   );
 };
 
-// Auth Provider
+// Auth Provider with WebSocket support
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const wsRef = useRef(null);
+  const [wsConnected, setWsConnected] = useState(false);
+  const reconnectTimeoutRef = useRef(null);
+
+  // WebSocket connection
+  const connectWebSocket = useCallback((userId) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+    
+    try {
+      const ws = new WebSocket(`${WS_URL}/ws/notifications/${userId}`);
+      
+      ws.onopen = () => {
+        console.log("WebSocket connected");
+        setWsConnected(true);
+        // Send ping every 30 seconds to keep connection alive
+        const pingInterval = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send("ping");
+          }
+        }, 30000);
+        ws.pingInterval = pingInterval;
+      };
+      
+      ws.onmessage = (event) => {
+        if (event.data === "pong") return;
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "notification") {
+            // Show toast for real-time notification
+            const notif = data.data;
+            if (notif.type === "sync_complete") {
+              toast.success(notif.message, { duration: 5000 });
+            } else if (notif.type === "sync_error") {
+              toast.error(notif.message, { duration: 8000 });
+            } else if (notif.type === "price_change") {
+              toast.info(notif.message, { duration: 5000 });
+            } else if (notif.type === "stock_out" || notif.type === "stock_low") {
+              toast.warning(notif.message, { duration: 5000 });
+            }
+          }
+        } catch (e) {
+          console.log("WS message:", event.data);
+        }
+      };
+      
+      ws.onclose = () => {
+        console.log("WebSocket disconnected");
+        setWsConnected(false);
+        if (ws.pingInterval) clearInterval(ws.pingInterval);
+        // Reconnect after 5 seconds
+        if (user) {
+          reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(userId), 5000);
+        }
+      };
+      
+      ws.onerror = (error) => {
+        console.log("WebSocket error:", error);
+      };
+      
+      wsRef.current = ws;
+    } catch (error) {
+      console.log("WebSocket connection failed:", error);
+    }
+  }, [user]);
+
+  const disconnectWebSocket = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+    if (wsRef.current) {
+      if (wsRef.current.pingInterval) clearInterval(wsRef.current.pingInterval);
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setWsConnected(false);
+  }, []);
 
   useEffect(() => {
     const token = localStorage.getItem("token");
     const savedUser = localStorage.getItem("user");
     
     if (token && savedUser) {
-      setUser(JSON.parse(savedUser));
+      const userData = JSON.parse(savedUser);
+      setUser(userData);
       // Verify token is still valid
       api.get("/auth/me")
         .then((res) => {
           setUser(res.data);
           localStorage.setItem("user", JSON.stringify(res.data));
+          connectWebSocket(res.data.id);
         })
         .catch(() => {
           localStorage.removeItem("token");
@@ -121,6 +199,8 @@ const AuthProvider = ({ children }) => {
     } else {
       setLoading(false);
     }
+    
+    return () => disconnectWebSocket();
   }, []);
 
   const login = async (email, password) => {
@@ -129,6 +209,7 @@ const AuthProvider = ({ children }) => {
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
+    connectWebSocket(userData.id);
     return userData;
   };
 
@@ -138,10 +219,12 @@ const AuthProvider = ({ children }) => {
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
+    connectWebSocket(userData.id);
     return userData;
   };
 
   const logout = () => {
+    disconnectWebSocket();
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     setUser(null);
@@ -149,7 +232,9 @@ const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{ user, login, register, logout, loading }}>
-      {children}
+      <WebSocketContext.Provider value={{ connected: wsConnected }}>
+        {children}
+      </WebSocketContext.Provider>
     </AuthContext.Provider>
   );
 };
