@@ -9,7 +9,7 @@ class UserCreate(BaseModel):
     password: str
     name: str
     company: Optional[str] = None
-    role: Optional[str] = "user"  # admin, user, viewer
+    role: Optional[str] = "user"  # superadmin, admin, user, viewer
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -21,12 +21,23 @@ class UserResponse(BaseModel):
     name: str
     company: Optional[str] = None
     role: str = "user"
+    max_suppliers: int = 10
+    max_catalogs: int = 5
+    max_woocommerce_stores: int = 2
     created_at: str
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     company: Optional[str] = None
-    role: Optional[str] = None  # Only admin can change roles
+    role: Optional[str] = None
+    max_suppliers: Optional[int] = None
+    max_catalogs: Optional[int] = None
+    max_woocommerce_stores: Optional[int] = None
+
+class UserLimits(BaseModel):
+    max_suppliers: int = 10
+    max_catalogs: int = 5
+    max_woocommerce_stores: int = 2
 
 
 # ==================== SUPPLIER MODELS ====================
