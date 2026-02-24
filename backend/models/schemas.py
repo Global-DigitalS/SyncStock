@@ -389,6 +389,33 @@ class WooCommerceExportResult(BaseModel):
     errors: List[str] = []
 
 
+# ==================== SUBSCRIPTION/BILLING MODELS ====================
+
+class SubscriptionPlan(BaseModel):
+    id: str
+    name: str
+    description: Optional[str] = None
+    max_suppliers: int
+    max_catalogs: int
+    max_woocommerce_stores: int
+    price_monthly: float
+    price_yearly: float
+    features: List[str] = []
+    is_active: bool = True
+    created_at: str
+
+class UserSubscription(BaseModel):
+    id: str
+    user_id: str
+    plan_id: str
+    plan_name: str
+    status: str  # active, cancelled, expired, trial
+    billing_cycle: str  # monthly, yearly
+    current_period_start: str
+    current_period_end: str
+    created_at: str
+
+
 # ==================== DASHBOARD MODELS ====================
 
 class DashboardStats(BaseModel):
