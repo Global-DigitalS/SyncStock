@@ -176,6 +176,83 @@ async def get_price_history(product_id: Optional[str] = None, days: int = 30, sk
     return [PriceHistoryResponse(**h) for h in history]
 
 
+# ==================== SYNC HISTORY ====================
+
+@router.get("/sync-history", response_model=List[SyncHistoryResponse])
+async def get_sync_history(
+    supplier_id: Optional[str] = None,
+    status: Optional[str] = None,
+    days: int = 30,
+    skip: int = 0,
+    limit: int = 100,
+    user: dict = Depends(get_current_user)
+):
+    """Obtener historial de sincronizaciones"""
+    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    query = {"user_id": user["id"], "created_at": {"$gte": start_date}}
+    if supplier_id:
+        query["supplier_id"] = supplier_id
+    if status:
+        query["status"] = status
+    history = await db.sync_history.find(query, {"_id": 0, "user_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
+    return [SyncHistoryResponse(**h) for h in history]
+
+
+@router.get("/sync-history/stats")
+async def get_sync_history_stats(days: int = 30, user: dict = Depends(get_current_user)):
+    """Obtener estadísticas de sincronizaciones"""
+    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    query = {"user_id": user["id"], "created_at": {"$gte": start_date}}
+    
+    total = await db.sync_history.count_documents(query)
+    success = await db.sync_history.count_documents({**query, "status": "success"})
+    errors = await db.sync_history.count_documents({**query, "status": "error"})
+    partial = await db.sync_history.count_documents({**query, "status": "partial"})
+    
+    # Get totals
+    pipeline = [
+        {"$match": query},
+        {"$group": {
+            "_id": None,
+            "total_imported": {"$sum": "$imported"},
+            "total_updated": {"$sum": "$updated"},
+            "total_errors": {"$sum": "$errors"},
+            "avg_duration": {"$avg": "$duration_seconds"}
+        }}
+    ]
+    agg_result = await db.sync_history.aggregate(pipeline).to_list(1)
+    totals = agg_result[0] if agg_result else {"total_imported": 0, "total_updated": 0, "total_errors": 0, "avg_duration": 0}
+    
+    # Group by day for chart
+    daily_pipeline = [
+        {"$match": query},
+        {"$addFields": {
+            "date_str": {"$substr": ["$created_at", 0, 10]}
+        }},
+        {"$group": {
+            "_id": "$date_str",
+            "count": {"$sum": 1},
+            "success": {"$sum": {"$cond": [{"$eq": ["$status", "success"]}, 1, 0]}},
+            "errors": {"$sum": {"$cond": [{"$eq": ["$status", "error"]}, 1, 0]}}
+        }},
+        {"$sort": {"_id": 1}},
+        {"$limit": 30}
+    ]
+    daily_stats = await db.sync_history.aggregate(daily_pipeline).to_list(30)
+    
+    return {
+        "total": total,
+        "success": success,
+        "errors": errors,
+        "partial": partial,
+        "total_imported": totals.get("total_imported", 0),
+        "total_updated": totals.get("total_updated", 0),
+        "total_errors": totals.get("total_errors", 0),
+        "avg_duration": round(totals.get("avg_duration", 0) or 0, 2),
+        "daily_stats": [{"date": d["_id"], "count": d["count"], "success": d["success"], "errors": d["errors"]} for d in daily_stats]
+    }
+
+
 # ==================== CSV EXPORT ====================
 
 @router.post("/export")
