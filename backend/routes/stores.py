@@ -425,21 +425,14 @@ async def export_to_store(request: dict, user: dict = Depends(get_current_user))
     
     # Get catalog items
     catalog_items = []
-    margin_rules = []
     if catalog_id:
         catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
         if not catalog:
             raise HTTPException(status_code=404, detail="Catálogo no encontrado")
         catalog_items = await db.catalog_items.find({"catalog_id": catalog_id, "active": True}, {"_id": 0}).to_list(1000)
-        margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
     
     if not catalog_items:
         return {"status": "warning", "created": 0, "updated": 0, "failed": 0, "errors": ["No hay productos activos para exportar"]}
-    
-    # Get products
-    product_ids = [item["product_id"] for item in catalog_items]
-    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(1000)
-    products_map = {p["id"]: p for p in products}
     
     if platform == "woocommerce":
         # Use existing WooCommerce export logic
