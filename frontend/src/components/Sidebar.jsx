@@ -87,8 +87,8 @@ const Sidebar = ({ open, onToggle }) => {
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
-          // Skip admin-only items for non-admin users
-          if (item.adminOnly && user?.role !== "admin") return null;
+          // Skip admin-only items for non-admin/superadmin users
+          if (item.adminOnly && !["admin", "superadmin"].includes(user?.role)) return null;
           
           const Icon = item.icon;
           const active = isActive(item.path);
