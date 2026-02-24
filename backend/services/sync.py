@@ -13,6 +13,7 @@ import xlrd
 import xmltodict
 from woocommerce import API as WooCommerceAPI
 from services.database import db
+from config import PRICE_CHANGE_THRESHOLD_PERCENT, LOW_STOCK_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -297,25 +298,40 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                     "user_id": supplier["user_id"], "updated_at": now
                 }
                 if existing:
-                    if existing.get('price') != product_doc['price'] and existing.get('price', 0) > 0:
+                    old_price = existing.get('price', 0)
+                    new_price = product_doc['price']
+                    # Registrar historial de precios si hay cambio
+                    if old_price != new_price and old_price > 0:
+                        change_pct = ((new_price - old_price) / old_price) * 100
                         await db.price_history.insert_one({
                             "id": str(uuid.uuid4()), "product_id": existing["id"],
-                            "product_name": product_doc["name"], "old_price": existing.get('price', 0),
-                            "new_price": product_doc['price'],
-                            "change_percentage": ((product_doc['price'] - existing.get('price', 0)) / existing.get('price', 1)) * 100,
+                            "product_name": product_doc["name"], "old_price": old_price,
+                            "new_price": new_price, "change_percentage": change_pct,
                             "user_id": supplier["user_id"], "created_at": now
                         })
-                    if existing.get('stock', 0) > 0 and product_doc['stock'] == 0:
+                        # Notificar si el cambio de precio supera el umbral configurado
+                        if abs(change_pct) >= PRICE_CHANGE_THRESHOLD_PERCENT:
+                            direction = "subido" if change_pct > 0 else "bajado"
+                            await db.notifications.insert_one({
+                                "id": str(uuid.uuid4()), "type": "price_change",
+                                "message": f"Precio de '{product_doc['name'][:40]}' ha {direction} {abs(change_pct):.1f}% ({old_price:.2f}€ → {new_price:.2f}€)",
+                                "product_id": existing["id"], "product_name": product_doc["name"],
+                                "user_id": supplier["user_id"], "read": False, "created_at": now
+                            })
+                    # Notificar cambios de stock
+                    old_stock = existing.get('stock', 0)
+                    new_stock = product_doc['stock']
+                    if old_stock > 0 and new_stock == 0:
                         await db.notifications.insert_one({
                             "id": str(uuid.uuid4()), "type": "stock_out",
-                            "message": f"Producto '{product_doc['name']}' sin stock",
+                            "message": f"Producto '{product_doc['name'][:40]}' sin stock",
                             "product_id": existing["id"], "product_name": product_doc["name"],
                             "user_id": supplier["user_id"], "read": False, "created_at": now
                         })
-                    elif existing.get('stock', 0) > 5 and product_doc['stock'] <= 5 and product_doc['stock'] > 0:
+                    elif old_stock > LOW_STOCK_THRESHOLD and new_stock <= LOW_STOCK_THRESHOLD and new_stock > 0:
                         await db.notifications.insert_one({
                             "id": str(uuid.uuid4()), "type": "stock_low",
-                            "message": f"Producto '{product_doc['name']}' con stock bajo ({product_doc['stock']} uds)",
+                            "message": f"Producto '{product_doc['name'][:40]}' con stock bajo ({new_stock} uds)",
                             "product_id": existing["id"], "product_name": product_doc["name"],
                             "user_id": supplier["user_id"], "read": False, "created_at": now
                         })
