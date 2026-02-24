@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext, useCallback, useRef } from "react";
 import "@/App.css";
 import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
@@ -19,17 +19,24 @@ import WooCommerceExport from "./pages/WooCommerceExport";
 import PriceHistory from "./pages/PriceHistory";
 import Notifications from "./pages/Notifications";
 import SyncHistory from "./pages/SyncHistory";
+import UserManagement from "./pages/UserManagement";
 
 // Components
 import Sidebar from "./components/Sidebar";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
+const WS_URL = BACKEND_URL.replace("https://", "wss://").replace("http://", "ws://");
 
 // Auth Context
-const AuthContext = createContext(null);
+export const AuthContext = createContext(null);
 
 export const useAuth = () => useContext(AuthContext);
+
+// WebSocket Context for real-time notifications
+const WebSocketContext = createContext(null);
+
+export const useWebSocket = () => useContext(WebSocketContext);
 
 // API instance with auth
 export const api = axios.create({ baseURL: API });
