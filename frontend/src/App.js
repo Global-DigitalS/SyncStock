@@ -343,7 +343,7 @@ function App() {
             }
           />
           <Route
-            path="/woocommerce"
+            path="/stores"
             element={
               <ProtectedRoute>
                 <MainLayout>
