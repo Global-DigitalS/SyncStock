@@ -282,6 +282,22 @@ class MarginRuleResponse(MarginRuleCreate):
     created_at: str
 
 
+# ==================== SYNC HISTORY MODELS ====================
+
+class SyncHistoryResponse(BaseModel):
+    id: str
+    supplier_id: str
+    supplier_name: str
+    sync_type: str  # manual, scheduled
+    status: str  # success, error, partial
+    imported: int = 0
+    updated: int = 0
+    errors: int = 0
+    duration_seconds: float = 0
+    error_message: Optional[str] = None
+    created_at: str
+
+
 # ==================== NOTIFICATION MODELS ====================
 
 class NotificationResponse(BaseModel):
