@@ -25,16 +25,13 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores.
 - [x] Búsqueda dinámica del archivo más reciente durante sync automático (auto_latest)
 - [x] Sistema de notificaciones mejorado con alertas de cambio de precio
 - [x] Configuración centralizada de MongoDB (config.py)
-- [x] **Historial de Sincronizaciones** (Febrero 2026)
-  - Página dedicada `/sync-history` con estadísticas
-  - Gráfica de barras por día (exitosas vs errores)
-  - Filtros por proveedor, estado y rango de días
-  - Tabla detallada con métricas (importados, actualizados, errores, duración)
-  - Registro automático de cada sincronización
-- [x] **Refactorización de componentes frontend** (Febrero 2026)
-  - FtpFileBrowser.jsx - Explorador FTP reutilizable
-  - ProductDetailDialog.jsx - Ficha de producto con pestañas
-  - CatalogSelectorDialog.jsx - Selector de catálogos
+- [x] Historial de Sincronizaciones con gráficas
+- [x] Refactorización de componentes frontend (FtpFileBrowser, ProductDetailDialog)
+- [x] **Paginación de productos** (Febrero 2026)
+  - Controles de navegación (primera, anterior, números, siguiente, última)
+  - Selector de tamaño de página (10, 25, 50, 100)
+  - Contador de productos (ej. "Mostrando 1 - 25 de 83 productos")
+  - Endpoint `/api/products-unified/count` para total de productos
 
 ## Arquitectura
 - **Backend**: FastAPI modular + MongoDB + APScheduler
