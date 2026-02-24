@@ -160,7 +160,7 @@ async def get_my_subscription(user: dict = Depends(get_current_user)):
 @router.post("/subscriptions/subscribe/{plan_id}")
 async def subscribe_to_plan(plan_id: str, billing_cycle: str = "monthly", user: dict = Depends(get_current_user)):
     """Subscribe user to a plan (simulated - would integrate with Stripe in production)"""
-    plan = await db.subscription_plans.find_one({"id": plan_id, "is_active": True})
+    plan = await db.subscription_plans.find_one({"id": plan_id, "is_active": True}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
     
