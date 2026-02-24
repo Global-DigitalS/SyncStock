@@ -91,6 +91,8 @@ const Sidebar = ({ open, onToggle }) => {
         {navItems.map((item) => {
           // Skip admin-only items for non-admin/superadmin users
           if (item.adminOnly && !["admin", "superadmin"].includes(user?.role)) return null;
+          // Skip superadmin-only items for non-superadmin users
+          if (item.superadminOnly && user?.role !== "superadmin") return null;
           
           const Icon = item.icon;
           const active = isActive(item.path);
