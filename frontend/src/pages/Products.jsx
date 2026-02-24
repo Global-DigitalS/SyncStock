@@ -542,12 +542,64 @@ const Products = () => {
                       data-testid="select-all-products"
                     />
                   </TableHead>
-                  <TableHead>Producto</TableHead>
+                  <TableHead>
+                    <button
+                      onClick={() => handleSort("name")}
+                      className="flex items-center gap-1 hover:text-indigo-600 transition-colors"
+                      data-testid="sort-name"
+                    >
+                      Producto
+                      {sortBy === "name" ? (
+                        sortOrder === "asc" ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 opacity-40" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead>EAN</TableHead>
                   <TableHead>Mejor Proveedor</TableHead>
-                  <TableHead className="text-right">Mejor Precio</TableHead>
-                  <TableHead className="text-right">Stock Total</TableHead>
-                  <TableHead className="text-center">Proveedores</TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      onClick={() => handleSort("price")}
+                      className="flex items-center gap-1 ml-auto hover:text-indigo-600 transition-colors"
+                      data-testid="sort-price"
+                    >
+                      Mejor Precio
+                      {sortBy === "price" ? (
+                        sortOrder === "asc" ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 opacity-40" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-right">
+                    <button
+                      onClick={() => handleSort("stock")}
+                      className="flex items-center gap-1 ml-auto hover:text-indigo-600 transition-colors"
+                      data-testid="sort-stock"
+                    >
+                      Stock Total
+                      {sortBy === "stock" ? (
+                        sortOrder === "asc" ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 opacity-40" />
+                      )}
+                    </button>
+                  </TableHead>
+                  <TableHead className="text-center">
+                    <button
+                      onClick={() => handleSort("suppliers")}
+                      className="flex items-center gap-1 mx-auto hover:text-indigo-600 transition-colors"
+                      data-testid="sort-suppliers"
+                    >
+                      Proveedores
+                      {sortBy === "suppliers" ? (
+                        sortOrder === "asc" ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+                      ) : (
+                        <ArrowUpDown className="w-4 h-4 opacity-40" />
+                      )}
+                    </button>
+                  </TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
