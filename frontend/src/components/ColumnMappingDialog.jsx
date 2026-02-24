@@ -53,6 +53,7 @@ const ColumnMappingDialog = ({
   onOpenChange, 
   detectedColumns = [], 
   currentMapping = null,
+  suggestedMapping = null,
   onSave,
   saving = false 
 }) => {
@@ -61,6 +62,9 @@ const ColumnMappingDialog = ({
   useEffect(() => {
     if (currentMapping) {
       setMapping(currentMapping);
+    } else if (suggestedMapping) {
+      // Use server-side suggested mapping
+      setMapping(suggestedMapping);
     } else {
       // Auto-detectar mapeo basado en nombres similares
       const autoMapping = {};
