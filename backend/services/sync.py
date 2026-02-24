@@ -928,7 +928,10 @@ async def sync_woocommerce_store_price_stock(config: dict):
 
 async def sync_all_woocommerce_stores():
     logger.info("Starting scheduled WooCommerce sync for all stores...")
-    configs = await db.woocommerce_configs.find({"auto_sync_enabled": True, "catalog_id": {"$ne": None, "$ne": ""}}).to_list(1000)
+    configs = await db.woocommerce_configs.find({
+        "auto_sync_enabled": True, 
+        "catalog_id": {"$nin": [None, ""]}
+    }).to_list(1000)
     logger.info(f"Found {len(configs)} WooCommerce stores with auto-sync enabled")
     for config in configs:
         try:
