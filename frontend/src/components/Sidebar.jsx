@@ -15,7 +15,10 @@ import {
   Menu,
   X,
   ChevronLeft,
-  History
+  History,
+  Users,
+  Wifi,
+  WifiOff
 } from "lucide-react";
 
 const navItems = [
@@ -29,6 +32,7 @@ const navItems = [
   { path: "/price-history", label: "Historial de Precios", icon: TrendingUp },
   { path: "/sync-history", label: "Historial de Syncs", icon: History },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
+  { path: "/users", label: "Usuarios", icon: Users, adminOnly: true },
 ];
 
 const Sidebar = ({ open, onToggle }) => {
