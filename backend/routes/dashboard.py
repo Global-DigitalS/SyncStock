@@ -110,6 +110,60 @@ async def mark_all_notifications_read(user: dict = Depends(get_current_user)):
     return {"message": "Todas las notificaciones marcadas como leídas"}
 
 
+@router.delete("/notifications/{notification_id}")
+async def delete_notification(notification_id: str, user: dict = Depends(get_current_user)):
+    result = await db.notifications.delete_one({"id": notification_id, "user_id": user["id"]})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Notificación no encontrada")
+    return {"message": "Notificación eliminada"}
+
+
+@router.delete("/notifications")
+async def delete_all_notifications(read_only: bool = True, user: dict = Depends(get_current_user)):
+    """Eliminar notificaciones. Si read_only=True, solo elimina las leídas."""
+    query = {"user_id": user["id"]}
+    if read_only:
+        query["read"] = True
+    result = await db.notifications.delete_many(query)
+    return {"message": f"{result.deleted_count} notificaciones eliminadas"}
+
+
+@router.get("/notifications/stats")
+async def get_notification_stats(user: dict = Depends(get_current_user)):
+    """Obtener estadísticas de notificaciones por tipo"""
+    pipeline = [
+        {"$match": {"user_id": user["id"]}},
+        {"$group": {
+            "_id": {"type": "$type", "read": "$read"},
+            "count": {"$sum": 1}
+        }}
+    ]
+    results = await db.notifications.aggregate(pipeline).to_list(100)
+    stats = {
+        "total": 0, "unread": 0,
+        "by_type": {
+            "sync_complete": {"total": 0, "unread": 0},
+            "sync_error": {"total": 0, "unread": 0},
+            "stock_out": {"total": 0, "unread": 0},
+            "stock_low": {"total": 0, "unread": 0},
+            "price_change": {"total": 0, "unread": 0},
+            "woocommerce_export": {"total": 0, "unread": 0},
+        }
+    }
+    for r in results:
+        notif_type = r["_id"]["type"]
+        is_read = r["_id"]["read"]
+        count = r["count"]
+        stats["total"] += count
+        if not is_read:
+            stats["unread"] += count
+        if notif_type in stats["by_type"]:
+            stats["by_type"][notif_type]["total"] += count
+            if not is_read:
+                stats["by_type"][notif_type]["unread"] += count
+    return stats
+
+
 # ==================== PRICE HISTORY ====================
 
 @router.get("/price-history", response_model=List[PriceHistoryResponse])
