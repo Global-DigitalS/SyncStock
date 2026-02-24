@@ -346,25 +346,57 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
                 return {"status": "error", "message": f"Error de conexión: {response.status_code}"}
         
         elif platform == "prestashop":
-            # PrestaShop - simulated for now
-            # In production, would use requests to test API
-            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": True}})
-            return {"status": "success", "message": "Conexión configurada (PrestaShop)", "store_name": config["name"]}
+            # PrestaShop real connection test
+            client = PrestaShopClient(
+                store_url=config.get("store_url", ""),
+                api_key=config.get("api_key", "")
+            )
+            result = await asyncio.to_thread(client.test_connection)
+            is_connected = result.get("status") == "success"
+            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": is_connected}})
+            result["store_name"] = config["name"]
+            return result
         
         elif platform == "shopify":
-            # Shopify - simulated for now
-            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": True}})
-            return {"status": "success", "message": "Conexión configurada (Shopify)", "store_name": config["name"]}
+            # Shopify real connection test
+            client = ShopifyClient(
+                store_url=config.get("store_url", ""),
+                access_token=config.get("access_token", ""),
+                api_version=config.get("api_version", "2024-10")
+            )
+            result = await asyncio.to_thread(client.test_connection)
+            is_connected = result.get("status") == "success"
+            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": is_connected}})
+            if not result.get("store_name"):
+                result["store_name"] = config["name"]
+            return result
         
         elif platform == "wix":
-            # Wix - simulated for now
-            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": True}})
-            return {"status": "success", "message": "Conexión configurada (Wix)", "store_name": config["name"]}
+            # Wix real connection test
+            client = WixClient(
+                store_url=config.get("store_url", ""),
+                api_key=config.get("api_key", ""),
+                site_id=config.get("site_id", "")
+            )
+            result = await asyncio.to_thread(client.test_connection)
+            is_connected = result.get("status") == "success"
+            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": is_connected}})
+            result["store_name"] = config["name"]
+            return result
         
         elif platform == "magento":
-            # Magento - simulated for now
-            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": True}})
-            return {"status": "success", "message": "Conexión configurada (Magento)", "store_name": config["name"]}
+            # Magento real connection test
+            client = MagentoClient(
+                store_url=config.get("store_url", ""),
+                access_token=config.get("access_token", ""),
+                store_code=config.get("store_code", "default")
+            )
+            result = await asyncio.to_thread(client.test_connection)
+            is_connected = result.get("status") == "success"
+            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": is_connected}})
+            if not result.get("store_name"):
+                result["store_name"] = config["name"]
+            return result
         
         else:
             return {"status": "error", "message": f"Plataforma no soportada: {platform}"}
