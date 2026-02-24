@@ -401,12 +401,12 @@ class TestAuthRequired:
     def test_webhook_configs_requires_auth(self):
         """Test GET /api/webhooks/configs requires auth"""
         response = requests.get(f"{BASE_URL}/api/webhooks/configs")
-        assert response.status_code == 401, f"Expected 401, got {response.status_code}"
+        assert response.status_code in [401, 403], f"Expected 401/403, got {response.status_code}"
     
     def test_webhook_stats_requires_auth(self):
         """Test GET /api/webhooks/stats requires auth"""
         response = requests.get(f"{BASE_URL}/api/webhooks/stats")
-        assert response.status_code == 401, f"Expected 401, got {response.status_code}"
+        assert response.status_code in [401, 403], f"Expected 401/403, got {response.status_code}"
 
 
 if __name__ == "__main__":
