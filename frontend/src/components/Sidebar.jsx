@@ -18,7 +18,8 @@ import {
   History,
   Users,
   Wifi,
-  WifiOff
+  WifiOff,
+  Crown
 } from "lucide-react";
 
 const navItems = [
@@ -33,6 +34,7 @@ const navItems = [
   { path: "/sync-history", label: "Historial de Syncs", icon: History },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
   { path: "/users", label: "Usuarios", icon: Users, adminOnly: true },
+  { path: "/superadmin", label: "Dashboard Admin", icon: Crown, superadminOnly: true },
 ];
 
 const Sidebar = ({ open, onToggle }) => {
