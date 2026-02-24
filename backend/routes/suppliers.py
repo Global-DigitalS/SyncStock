@@ -31,6 +31,14 @@ class FtpBrowseRequest(BaseModel):
 
 @router.post("/suppliers", response_model=SupplierResponse)
 async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_current_user)):
+    # Check user limit
+    can_create = await check_user_limit(user, "suppliers")
+    if not can_create:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Has alcanzado el límite de proveedores. Máximo: {user.get('max_suppliers', 10)}"
+        )
+    
     supplier_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     supplier_doc = {
