@@ -380,6 +380,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/users"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <UserManagement />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
