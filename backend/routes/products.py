@@ -101,6 +101,7 @@ async def add_products_to_multiple_catalogs(
 async def get_unified_products(
     category: Optional[str] = None, search: Optional[str] = None,
     min_stock: Optional[int] = None, skip: int = 0, limit: int = 50,
+    sort_by: Optional[str] = None, sort_order: Optional[str] = "asc",
     user: dict = Depends(get_current_user)
 ):
     match_query = {"user_id": user["id"], "ean": {"$ne": None, "$ne": ""}}
@@ -123,12 +124,27 @@ async def get_unified_products(
                 "supplier_id": "$supplier_id", "supplier_name": "$supplier_name", "weight": "$weight"
             }},
             "total_stock": {"$sum": "$stock"},
-            "supplier_count": {"$sum": 1}
+            "supplier_count": {"$sum": 1},
+            "min_price": {"$min": "$price"},
+            "first_name": {"$first": "$name"}
         }},
         {"$match": {"_id": {"$ne": None, "$ne": ""}}}
     ]
     if min_stock is not None:
         pipeline.append({"$match": {"total_stock": {"$gte": min_stock}}})
+    
+    # Add sorting
+    if sort_by:
+        sort_field_map = {
+            "name": "first_name",
+            "price": "min_price",
+            "stock": "total_stock",
+            "suppliers": "supplier_count"
+        }
+        if sort_by in sort_field_map:
+            sort_direction = 1 if sort_order == "asc" else -1
+            pipeline.append({"$sort": {sort_field_map[sort_by]: sort_direction}})
+    
     # Add pagination at the end
     pipeline.append({"$skip": skip})
     pipeline.append({"$limit": limit})
