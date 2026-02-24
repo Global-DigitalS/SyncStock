@@ -402,6 +402,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/subscriptions"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Subscriptions />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
