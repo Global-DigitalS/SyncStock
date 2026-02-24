@@ -21,6 +21,7 @@ import Notifications from "./pages/Notifications";
 import SyncHistory from "./pages/SyncHistory";
 import UserManagement from "./pages/UserManagement";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
+import Subscriptions from "./pages/Subscriptions";
 
 // Components
 import Sidebar from "./components/Sidebar";
