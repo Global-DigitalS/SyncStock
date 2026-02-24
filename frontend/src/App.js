@@ -391,6 +391,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/superadmin"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <SuperAdminDashboard />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
