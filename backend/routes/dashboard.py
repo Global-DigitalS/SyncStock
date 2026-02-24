@@ -176,6 +176,55 @@ async def get_price_history(product_id: Optional[str] = None, days: int = 30, sk
     return [PriceHistoryResponse(**h) for h in history]
 
 
+@router.get("/price-history/product/{product_name}")
+async def get_price_history_by_product(product_name: str, days: int = 90, user: dict = Depends(get_current_user)):
+    """Obtener historial de precios de un producto específico para gráficas"""
+    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    query = {"user_id": user["id"], "product_name": product_name, "created_at": {"$gte": start_date}}
+    history = await db.price_history.find(query, {"_id": 0, "user_id": 0}).sort("created_at", 1).to_list(500)
+    
+    # Build price evolution timeline
+    if not history:
+        return {"product_name": product_name, "timeline": [], "current_price": None, "min_price": None, "max_price": None}
+    
+    timeline = [{"date": h["created_at"][:10], "price": h["new_price"]} for h in history]
+    prices = [h["new_price"] for h in history]
+    
+    return {
+        "product_name": product_name,
+        "timeline": timeline,
+        "current_price": history[-1]["new_price"] if history else None,
+        "min_price": min(prices) if prices else None,
+        "max_price": max(prices) if prices else None,
+        "total_changes": len(history)
+    }
+
+
+@router.get("/price-history/top-products")
+async def get_top_price_change_products(days: int = 30, limit: int = 10, user: dict = Depends(get_current_user)):
+    """Obtener productos con más cambios de precio"""
+    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    pipeline = [
+        {"$match": {"user_id": user["id"], "created_at": {"$gte": start_date}}},
+        {"$group": {
+            "_id": "$product_name",
+            "changes": {"$sum": 1},
+            "last_old_price": {"$last": "$old_price"},
+            "last_new_price": {"$last": "$new_price"},
+            "avg_change": {"$avg": "$change_percentage"}
+        }},
+        {"$sort": {"changes": -1}},
+        {"$limit": limit}
+    ]
+    results = await db.price_history.aggregate(pipeline).to_list(limit)
+    return [{
+        "product_name": r["_id"],
+        "changes": r["changes"],
+        "last_price": r["last_new_price"],
+        "avg_change_percent": round(r["avg_change"], 1)
+    } for r in results]
+
+
 # ==================== SYNC HISTORY ====================
 
 @router.get("/sync-history", response_model=List[SyncHistoryResponse])
