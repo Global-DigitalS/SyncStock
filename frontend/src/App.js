@@ -384,6 +384,16 @@ function App() {
             }
           />
           <Route
+            path="/webhooks"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Webhooks />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/users"
             element={
               <ProtectedRoute>
