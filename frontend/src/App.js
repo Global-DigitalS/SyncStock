@@ -278,6 +278,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/sync-history"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <SyncHistory />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
