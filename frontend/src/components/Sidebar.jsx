@@ -19,7 +19,8 @@ import {
   Users,
   Wifi,
   WifiOff,
-  Crown
+  Crown,
+  CreditCard
 } from "lucide-react";
 
 const navItems = [
@@ -33,6 +34,7 @@ const navItems = [
   { path: "/price-history", label: "Historial de Precios", icon: TrendingUp },
   { path: "/sync-history", label: "Historial de Syncs", icon: History },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
+  { path: "/subscriptions", label: "Suscripciones", icon: CreditCard },
   { path: "/users", label: "Usuarios", icon: Users, adminOnly: true },
   { path: "/superadmin", label: "Dashboard Admin", icon: Crown, superadminOnly: true },
 ];
