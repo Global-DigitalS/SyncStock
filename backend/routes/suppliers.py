@@ -231,3 +231,61 @@ async def import_products(supplier_id: str, file: UploadFile = File(...), user: 
     product_count = await db.products.count_documents({"supplier_id": supplier_id})
     await db.suppliers.update_one({"id": supplier_id}, {"$set": {"product_count": product_count, "last_sync": now}})
     return {"imported": imported, "updated": updated, "total": imported + updated}
+
+
+@router.post("/suppliers/{supplier_id}/preview-file")
+async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_current_user)):
+    """Previsualiza el archivo del proveedor y muestra las columnas detectadas"""
+    from services.sync import download_file_from_ftp, download_file_from_url, parse_csv_content
+    
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    
+    connection_type = supplier.get('connection_type', 'ftp')
+    try:
+        if connection_type == 'url':
+            if not supplier.get('file_url'):
+                raise HTTPException(status_code=400, detail="URL no configurada")
+            content = await download_file_from_url(supplier['file_url'])
+        else:
+            if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
+                raise HTTPException(status_code=400, detail="FTP no configurado")
+            content = await download_file_from_ftp(supplier)
+        
+        # Parse as CSV
+        separator = supplier.get('csv_separator', ';')
+        if separator == '\\t':
+            separator = '\t'
+        header_row = supplier.get('csv_header_row', 1) or 1
+        
+        try:
+            decoded = content.decode('utf-8')
+        except:
+            decoded = content.decode('latin-1')
+        
+        lines = decoded.split('\n')
+        if header_row > 1:
+            lines = lines[header_row-1:]
+        
+        import csv
+        reader = csv.DictReader(lines, delimiter=separator)
+        raw_products = list(reader)[:5]  # Just first 5 for preview
+        
+        columns = list(raw_products[0].keys()) if raw_products else []
+        
+        # Show sample data
+        samples = []
+        for row in raw_products[:3]:
+            samples.append({k: str(v)[:50] for k, v in row.items()})
+        
+        return {
+            "status": "success",
+            "columns": columns,
+            "sample_data": samples,
+            "total_rows": len(lines) - 1,
+            "message": f"Archivo con {len(columns)} columnas detectadas"
+        }
+    except Exception as e:
+        logger.error(f"Error previewing file: {e}")
+        return {"status": "error", "message": str(e), "columns": []}
