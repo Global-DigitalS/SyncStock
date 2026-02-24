@@ -9,6 +9,7 @@ class UserCreate(BaseModel):
     password: str
     name: str
     company: Optional[str] = None
+    role: Optional[str] = "user"  # admin, user, viewer
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -19,7 +20,13 @@ class UserResponse(BaseModel):
     email: str
     name: str
     company: Optional[str] = None
+    role: str = "user"
     created_at: str
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    company: Optional[str] = None
+    role: Optional[str] = None  # Only admin can change roles
 
 
 # ==================== SUPPLIER MODELS ====================
