@@ -1,0 +1,172 @@
+<analysis>**original_problem_statement:**
+El usuario quiere construir una aplicación SaaS para gestionar catálogos de productos de proveedores. Las características clave incluyen:
+1.  Descargar archivos de productos (CSV) desde FTP/SFTP o URL.
+2.  Ver precios y stocks de proveedores.
+3.  Crear múltiples catálogos de productos personalizados.
+4.  Asignar reglas de márgenes de beneficio a catálogos.
+5.  Exportar catálogos a CSV y a WooCommerce.
+6.  Autenticación de usuarios mediante JWT.
+7.  Sincronización automática de datos de proveedores.
+8.  Mapeo de columnas para archivos CSV.
+9.  Unificar productos por EAN, mostrando el proveedor con el mejor precio y stock.
+10. Sincronización automática de precio y stock con WooCommerce.
+11. Paginación en la lista de productos.
+12. Sistema de roles de usuario (viewer, user, admin).
+13. **Requerimiento añadido:** En la ficha de producto, mostrar dos pestañas: una para comparar ofertas de proveedores y otra con datos editables del producto.
+14. **Requerimiento añadido:** Gestionar proveedores cuyo catálogo está dividido en múltiples archivos (p. ej., productos y stock por separado), incluyendo un explorador de archivos FTP en la interfaz.
+15. **Requerimiento añadido:** Mejorar la sincronización FTP para que, durante las sincronizaciones automáticas, se busque y utilice dinámicamente el archivo de catálogo más reciente.
+16. **Requerimiento añadido (en curso):** Crear un rol **SuperAdmin** con la capacidad de gestionar a todos los demás usuarios y establecer límites en la cantidad de proveedores, tiendas WooCommerce y catálogos que pueden crear.
+
+**User's preferred language**: Spanish. The next agent MUST respond in Spanish.
+
+**what currently exists?**
+Se ha desarrollado una aplicación full-stack con un backend en FastAPI y un frontend en React.
+-   **Backend**: Arquitectura modular (rutas, modelos, servicios) con autenticación JWT, notificaciones en tiempo real vía WebSockets, y un sistema de roles (viewer, user, admin). Implementa gestión de proveedores (FTP/URL), catálogos, unificación de productos por EAN y sincronización con WooCommerce. Incluye una página de historial de sincronizaciones y endpoints para soportar paginación y ordenación en el frontend. El trabajo actual se centra en añadir un rol  y la lógica para hacer cumplir los límites de recursos (proveedores, catálogos, tiendas).
+-   **Frontend**: La aplicación React cuenta con un dashboard, páginas para gestionar proveedores, catálogos, productos, y configuración de WooCommerce. Se han añadido páginas para Notificaciones, Historial de Sincronizaciones y Gestión de Usuarios (visible para administradores). La página de Productos soporta paginación y ordenación por columnas. La página de Proveedores tiene un asistente de mapeo de columnas mejorado que previsualiza archivos CSV. El trabajo actual se centra en actualizar la página de Gestión de Usuarios para que el  pueda establecer límites a otros usuarios.
+
+**Last working item**:
+    - Last item agent was working: Implementación del rol  y un sistema de límites de recursos. El agente modificó los modelos del backend, las rutas y el frontend para añadir la lógica de creación y verificación de límites (proveedores, catálogos, tiendas WooCommerce) que un  puede asignar a otros usuarios.
+    - Status: IN PROGRESS
+    - Agent Testing Done: N
+    - Which testing method agent to use? both. Es un cambio importante que afecta a la autenticación, múltiples recursos y la UI. Se recomienda primero una prueba manual (reiniciar servicios, crear/actualizar un usuario a , probar los límites) y luego usar el  para una verificación completa.
+    - User Testing Done: N
+
+**All Pending/In progress Issue list**:
+  - Issue 1:  Finalizar y probar la implementación del rol  y los límites de recursos (P0)
+  - Issue 2:  Corregir el bug de la conexión FTP que no reconoce productos en archivos CSV únicos (P1)
+  
+  Issues Detail:
+  - Issue 1: 
+     - Attempted fixes: El agente ha modificado múltiples archivos para implementar la lógica del . Se actualizaron los modelos de usuario para incluir  y , se protegieron los endpoints de creación de recursos (, , ) con verificaciones de límites, y se actualizó la página de  para permitir a un  ver y editar estos límites.
+     - Next debug checklist: 
+        1. Reiniciar los servicios  y .
+        2. Promover un usuario existente (ej. ) a rol  a través de un script o directamente en la base de datos para poder probar.
+        3. Iniciar sesión como  y navegar a la página de Usuarios.
+        4. Verificar que se muestran los campos para editar los límites de otros usuarios.
+        5. Establecer un límite (ej. 1 proveedor) para un usuario normal.
+        6. Iniciar sesión como ese usuario y tratar de crear 2 proveedores. Verificar que el primero se crea y el segundo falla con un error claro.
+        7. Ejecutar el  para una regresión completa.
+     - Why fix this issue and what will be achieved with the fix? Para completar la última solicitud del usuario, añadiendo una capa fundamental de control y monetización para el modelo SaaS de la aplicación.
+     - Status:  IN PROGRESS
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? both
+     - Blocked on other issue: No.
+  - Issue 2: 
+     - Attempted fixes: El usuario informó que la sincronización FTP para proveedores con un solo archivo CSV no funciona. El agente investigó y mejoró la UI de mapeo de columnas para previsualizar el archivo CSV () y sugerir mapeos, ya que la causa más probable es el uso de nombres de columna no estándar sin un mapeo manual.
+     - Next debug checklist: 
+        1. Solicitar al usuario las credenciales FTP de un proveedor que esté fallando para poder reproducir el error.
+        2. Utilizar el proveedor de prueba para abrir el diálogo de Mapeo de Columnas.
+        3. Verificar que la previsualización del archivo funciona y muestra las columnas y mapeos sugeridos.
+        4. Configurar el mapeo, guardar y ejecutar la sincronización.
+        5. Comprobar si los productos se importan correctamente.
+     - Why fix this issue and what will be achieved with the fix? Resolver un bug crítico que impide el funcionamiento de una de las características principales de la aplicación para ciertos proveedores.
+     - Status:  BLOCKED (A la espera de credenciales FTP del usuario para reproducir el bug).
+     - Is recurring issue? Y (La lógica de sincronización es compleja y ha requerido ajustes previos).
+     - Should Test frontend/backend/both after fix? both
+     - Blocked on other issue: No.
+
+**In progress Task List**:
+- No hay tareas en progreso más allá del 
+wtmp begins Tue Feb 24 07:51:44 2026.
+
+**Upcoming and Future Tasks**
+    Upcoming Tasks:
+    - **Task 1 (P2):** Ampliar las fuentes de datos para incluir SFTP o APIs directas, además de FTP y URL.
+    - **Task 2 (P2):** Implementar un dashboard para el  donde pueda ver estadísticas globales de uso de la plataforma (total de usuarios, proveedores, catálogos, etc.).
+    Future Tasks:
+    - **Task 3 (P3):** Refinar el frontend descomponiendo los componentes grandes  y  en componentes más pequeños y reutilizables.
+    - **Task 4 (P3):** Añadir más opciones de seguridad, como autenticación de dos factores (2FA).
+
+**Completed work in this session**
+- **Sistema de Roles y Gestión de Usuarios**: Se implementó un sistema de roles (admin, user, viewer) y una página de gestión de usuarios para que los admins puedan cambiar roles.
+- **Notificaciones en Tiempo Real (WebSockets)**: Se creó un sistema completo de notificaciones para eventos como errores de sincronización, bajo stock o cambios de precio, con una UI dedicada y actualizaciones en tiempo real.
+- **Historial de Sincronizaciones**: Se desarrolló una nueva página con estadísticas, gráficos y una tabla detallada que registra cada ejecución de sincronización de proveedores.
+- **Paginación y Ordenación de Productos**: Se añadió paginación completa y la capacidad de ordenar por columnas en la página de listado de productos.
+- **Mejora del Historial de Precios**: La página de historial de precios fue mejorada con gráficos de evolución por producto y una lista de los productos con más cambios.
+- **Mejora del Mapeo de Columnas**: Se optimizó el asistente de mapeo de columnas para previsualizar dinámicamente los archivos CSV del proveedor y sugerir mapeos automáticamente.
+- **Pruebas Exhaustivas**: Se utilizó el  repetidamente después de cada nueva funcionalidad importante, asegurando una alta calidad y detectando regresiones.
+
+**Earlier issues found/mentioned but not fixed**
+   - El único problema pendiente es el bug de la conexión FTP (Issue 2), que está bloqueado a la espera de información del usuario.
+
+**Known issue recurrence from previous fork**
+  - La lógica de sincronización FTP/CSV es un área compleja que ha requerido múltiples iteraciones. El bug actual es un ejemplo de esto.
+
+**Code Architecture**
+
+
+**Key Technical Concepts**
+- **Backend**: FastAPI, Pydantic, Motor (MongoDB), JWT, WebSockets, APScheduler, .
+- **Frontend**: React, React Router, Axios, TailwindCSS, Shadcn UI, Recharts, .
+- **Arquitectura**: API REST modular, Single Page Application (SPA), Role-Based Access Control (RBAC).
+
+**key DB schema**
+  - **users**: Contiene  (superadmin, admin, user, viewer) y un diccionario  con las claves , , y .
+  - **sync_history**: Nueva colección para registrar los resultados de cada sincronización.
+  - **notifications**: Colección para almacenar las notificaciones generadas por el sistema.
+
+**changes in tech stack**
+  - Se ha integrado el uso de WebSockets directamente en FastAPI para las notificaciones en tiempo real.
+
+**All files of reference**
+- **SuperAdmin y Límites (en progreso)**:
+  - 
+  - , , , 
+  - 
+- **Funcionalidades completadas recientemente**:
+  -  (endpoint WebSocket)
+  - , 
+  - , 
+  -  (paginación y ordenación)
+  -  y  (mejora del mapeo)
+
+**Areas that need refactoring**:
+- Los archivos  y  siguen siendo grandes y se beneficiarían de una mayor descomposición en componentes más pequeños para mejorar su mantenimiento.
+
+**key api endpoints**
+- : Actualizado para que un  establezca roles y límites.
+- , , : Ahora verifican los límites del usuario antes de crear un recurso.
+- : Nuevo endpoint WebSocket para notificaciones.
+- : Endpoint para el historial de sincronizaciones.
+- : Endpoint para analizar un archivo CSV de un proveedor.
+- : Actualizado para soportar paginación (, ) y ordenación (, ).
+
+**Critical Info for New Agent**
+- La máxima prioridad es finalizar y probar la funcionalidad de  y los límites de recursos. Es un cambio complejo que requiere una verificación cuidadosa.
+- La segunda prioridad es el bug del FTP, pero está bloqueado. El agente debe estar preparado para actuar en cuanto el usuario proporcione las credenciales necesarias para la depuración.
+- El usuario ha definido claramente el flujo de trabajo para el . Siga esos requisitos de cerca.
+
+**documents and test reports created in this job**
+  - Múltiples informes de prueba, siendo el último .
+  -  ha sido actualizado continuamente.
+
+**Last 10 User Messages and any pending HUMAN messages** 
+- : Petición del usuario para crear el rol SuperAdmin y el sistema de límites. **(TAREA ACTUAL)**
+- : Pregunta del usuario que condujo a la creación de la tarea del SuperAdmin.
+- : Indicación del usuario para continuar con la tarea actual.
+- : Aprobación del plan para implementar roles, WebSockets y el asistente de mapeo.
+- : Reporte del bug de FTP. **(PENDIENTE)**
+- : Aprobación del plan para la ordenación y las gráficas de precios.
+- : Petición de la funcionalidad de paginación.
+- : Aprobación del plan de refactorización y el historial de sincronizaciones.
+
+**Project Health Check:**
+- **Broken**: La funcionalidad de  está a medio implementar. La sincronización FTP para CSV únicos sin mapeo explícito está reportada como rota.
+- **Mocked**: N/A
+
+**3rd Party Integrations**
+- **WooCommerce**: Integrado vía API REST. Requiere URL de la tienda, Consumer Key y Consumer Secret.
+
+**Testing status**
+  - Testing agent used after significant changes: YES. Se ha usado con éxito tras cada entrega de funcionalidad mayor.
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: []
+  - Known regressions: Ninguna detectada por el . El bug del FTP fue reportado por el usuario.
+
+**Credentials to test flow:**
+- **Email**: 
+- **Password**: 
+- **Rol actual**: . Para probar la nueva funcionalidad, este usuario deberá ser promovido a  (p. ej., mediante un script en la BD).
+
+**What agent forgot to execute**
+- El agente está en medio de la implementación de la característica de . No ha olvidado nada, pero la tarea está incompleta y sin probar.</analysis>
