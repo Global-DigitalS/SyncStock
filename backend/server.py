@@ -22,6 +22,7 @@ from routes.products import router as products_router
 from routes.catalogs import router as catalogs_router
 from routes.woocommerce import router as woocommerce_router
 from routes.dashboard import router as dashboard_router
+from routes.subscriptions import router as subscriptions_router
 
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
