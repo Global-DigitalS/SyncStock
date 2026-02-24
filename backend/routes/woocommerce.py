@@ -6,7 +6,7 @@ import logging
 import asyncio
 
 from services.database import db
-from services.auth import get_current_user
+from services.auth import get_current_user, check_user_limit
 from services.sync import (
     get_woocommerce_client, mask_key, calculate_final_price,
     sync_woocommerce_store_price_stock
@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 
 @router.post("/woocommerce/configs", response_model=WooCommerceConfigResponse)
 async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depends(get_current_user)):
+    # Check user limit
+    can_create = await check_user_limit(user, "woocommerce_stores")
+    if not can_create:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Has alcanzado el límite de tiendas WooCommerce. Máximo: {user.get('max_woocommerce_stores', 2)}"
+        )
+    
     config_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     catalog_name = None
