@@ -197,6 +197,9 @@ async def subscribe_to_plan(plan_id: str, billing_cycle: str = "monthly", user: 
         }}
     )
     
+    # Remove _id added by MongoDB insert_one
+    subscription_doc.pop("_id", None)
+    
     return {
         "message": f"Suscrito al plan {plan['name']} exitosamente",
         "subscription": subscription_doc,
