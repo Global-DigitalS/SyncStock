@@ -1041,6 +1041,7 @@ const Suppliers = () => {
         onOpenChange={setShowMappingDialog}
         detectedColumns={mappingSupplier?.detected_columns || []}
         currentMapping={mappingSupplier?.column_mapping}
+        suggestedMapping={mappingSupplier?.suggested_mapping}
         onSave={handleSaveMapping}
         saving={saving}
       />
