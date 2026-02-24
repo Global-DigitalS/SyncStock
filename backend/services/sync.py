@@ -430,9 +430,9 @@ async def sync_all_suppliers():
     logger.info(f"Found {len(all_suppliers)} suppliers to sync")
     for supplier in all_suppliers:
         if supplier.get('ftp_paths'):
-            await sync_supplier_multifile(supplier)
+            await sync_supplier_multifile(supplier, sync_type="scheduled")
         else:
-            await sync_supplier(supplier)
+            await sync_supplier(supplier, sync_type="scheduled")
         await asyncio.sleep(2)
     logger.info("Scheduled sync completed")
 
