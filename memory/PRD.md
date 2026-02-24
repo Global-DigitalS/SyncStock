@@ -13,74 +13,93 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores.
 - [x] Unificación de productos por EAN
 - [x] Exportación CSV (PrestaShop, WooCommerce, Shopify)
 - [x] Exportación a WooCommerce API (con EAN como GTIN)
-- [x] Sincronización automática WooCommerce (cada 12h, precio y stock)
-- [x] Dashboard mejorado con stats WooCommerce y alertas de stock
-- [x] Refactorización completa del backend a arquitectura modular
-- [x] Ficha de producto con 2 pestañas (Proveedores + Datos editables)
-- [x] Explorador FTP integrado en configuración de proveedor
+- [x] Sincronización automática WooCommerce (cada 12h)
+- [x] Dashboard mejorado con stats y alertas de stock
+- [x] Refactorización completa del backend
+- [x] Ficha de producto con pestañas (Proveedores + Datos editables)
+- [x] Explorador FTP integrado
 - [x] Soporte multi-archivo por proveedor
-- [x] Extracción automática de ZIP y detección de roles de archivo
-- [x] Sincronización multi-archivo con fusión de datos por clave común
-- [x] Auto-selección del ZIP más reciente y StockFile al conectar al FTP
-- [x] Búsqueda dinámica del archivo más reciente durante sync automático
-- [x] Sistema de notificaciones mejorado con alertas de cambio de precio
-- [x] Configuración centralizada de MongoDB (config.py)
+- [x] Sistema de notificaciones con alertas de precio
+- [x] Configuración centralizada MongoDB (config.py)
 - [x] Historial de Sincronizaciones con gráficas
-- [x] Refactorización de componentes frontend
-- [x] Paginación de productos
-- [x] **Ordenación de columnas en productos** (Febrero 2026)
-  - Ordenar por nombre, precio, stock y número de proveedores
-  - Indicadores visuales ASC/DESC en cabeceras
-  - Integrado con paginación
-- [x] **Gráficas de evolución de precios mejoradas** (Febrero 2026)
-  - Gráfica de área con subidas (rojo) y bajadas (verde)
-  - Panel "Productos más activos" con número de cambios
-  - Vista detallada de evolución por producto con precio actual/min/max
-  - Nuevos endpoints: `/api/price-history/top-products` y `/api/price-history/product/{name}`
-- [x] **Mejoras en detección de columnas CSV** (Febrero 2026)
-  - Más aliases para columnas comunes (partnumber, item_code, etc.)
-  - Logging mejorado para depuración de columnas no detectadas
-  - Endpoint `/api/suppliers/{id}/preview-file` para previsualizar CSV
+- [x] Paginación y ordenación de productos
+- [x] Gráficas de evolución de precios mejoradas
+- [x] **Sistema de Roles de Usuario** (Febrero 2026)
+  - Roles: admin, user, viewer
+  - Permisos: read, write, delete, manage_users, manage_settings, sync, export
+  - Primer usuario se convierte automáticamente en admin
+  - Página de gestión de usuarios `/users` (solo admins)
+  - Endpoints: GET/PUT/DELETE `/api/users/*`
+- [x] **WebSockets para Notificaciones en Tiempo Real** (Febrero 2026)
+  - Conexión WebSocket en `/ws/notifications/{user_id}`
+  - Notificaciones push instantáneas de sincronización
+  - Toasts automáticos para sync completado/error
+  - Reconexión automática si se pierde conexión
+- [x] **Asistente de Mapeo de Columnas Mejorado** (Febrero 2026)
+  - Endpoint `/api/suppliers/{id}/preview-file` con sugerencias automáticas
+  - Detección automática de columnas al abrir mapeo
+  - Aliases expandidos para más formatos de CSV
+  - Vista previa de datos del archivo
 
 ## Arquitectura
-- **Backend**: FastAPI modular + MongoDB + APScheduler
-- **Frontend**: React + TailwindCSS + Shadcn UI + Recharts
-- **Estructura Backend**:
 ```
 /app/backend/
 ├── config.py        # Configuración centralizada
-├── server.py        # Orquestador FastAPI
+├── server.py        # FastAPI + WebSocket Manager
 ├── models/schemas.py
 ├── routes/
-│   ├── auth.py, catalogs.py, dashboard.py
-│   ├── products.py  # Con sorting
-│   ├── suppliers.py # Con preview-file
+│   ├── auth.py      # + gestión de usuarios y roles
+│   ├── catalogs.py
+│   ├── dashboard.py
+│   ├── products.py
+│   ├── suppliers.py # + preview-file endpoint
 │   └── woocommerce.py
 └── services/
-    ├── auth.py, database.py
-    └── sync.py      # normalize_product_data mejorado
+    ├── auth.py      # + ROLE_PERMISSIONS, check_permission
+    ├── database.py
+    └── sync.py      # + send_realtime_notification
+
+/app/frontend/src/
+├── pages/
+│   ├── UserManagement.jsx  # Gestión de usuarios (admin)
+│   └── ...
+├── components/
+│   ├── ColumnMappingDialog.jsx  # + suggestedMapping prop
+│   └── ...
+└── App.js           # + WebSocket context, AuthContext exportado
 ```
 
-## Aliases de Columnas CSV (normalize_product_data)
-```python
-'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number', 'articulo', 'codigo_articulo', 'cod', 'item_code']
-'name': ['name', 'nombre', 'title', 'titulo', 'product_name', 'descripcion', 'description', 'producto', 'articulo_nombre', 'item_name']
-'price': ['price', 'precio', 'pvp', 'cost', 'coste', 'unit_price', 'tarifa', 'importe', 'pricen', 'precio_neto', 'net_price']
-'stock': ['stock', 'quantity', 'cantidad', 'qty', 'inventory', 'disponible', 'existencias', 'unidades', 'disponibilidad', 'units']
-```
+## Roles y Permisos
+| Rol | Permisos |
+|-----|----------|
+| admin | Todos (read, write, delete, manage_users, manage_settings, sync, export) |
+| user | read, write, delete, sync, export |
+| viewer | read (solo lectura) |
 
-## Problema Conocido: FTP con CSV de columnas no estándar
-Si un archivo CSV tiene columnas con nombres diferentes a los aliases predefinidos, no se reconocerán los productos. **Solución**: Configurar el mapeo de columnas manualmente en la configuración del proveedor.
+## WebSocket Events
+```javascript
+// Mensaje de notificación en tiempo real
+{
+  "type": "notification",
+  "data": {
+    "id": "uuid",
+    "type": "sync_complete|sync_error|price_change|stock_low|stock_out",
+    "message": "...",
+    "user_id": "...",
+    "created_at": "..."
+  }
+}
+```
 
 ## Backlog Futuro
-- [ ] Sistema de roles de usuario
-- [ ] Notificaciones push en tiempo real (WebSockets)
 - [ ] Alertas programadas por email
-- [ ] Wizard de mapeo de columnas más visual
+- [ ] Dashboard de analytics avanzado
+- [ ] Importación masiva de proveedores
+- [ ] API pública para integraciones
 
 ## Credenciales de Prueba
-- Email: test@test.com
+- Email: test@test.com (admin)
 - Password: test123
 
 ## Última Actualización
-Febrero 2026 - Ordenación de productos, gráficas de precios mejoradas, mejoras en detección de columnas CSV
+Febrero 2026 - Sistema de roles, WebSockets en tiempo real, asistente de mapeo de columnas
