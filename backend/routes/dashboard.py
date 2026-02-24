@@ -7,7 +7,7 @@ import io
 import csv
 
 from services.database import db
-from services.auth import get_current_user
+from services.auth import get_current_user, get_superadmin_user
 from services.sync import calculate_final_price
 from models.schemas import (
     DashboardStats, NotificationResponse, PriceHistoryResponse, ExportRequest, SyncHistoryResponse
