@@ -22,16 +22,25 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores.
 - [x] Extracción automática de ZIP y detección de roles de archivo
 - [x] Sincronización multi-archivo con fusión de datos por clave común
 - [x] Auto-selección del ZIP más reciente y StockFile al conectar al FTP
-- [x] Búsqueda dinámica del archivo más reciente durante sync automático (auto_latest)
+- [x] Búsqueda dinámica del archivo más reciente durante sync automático
 - [x] Sistema de notificaciones mejorado con alertas de cambio de precio
 - [x] Configuración centralizada de MongoDB (config.py)
 - [x] Historial de Sincronizaciones con gráficas
-- [x] Refactorización de componentes frontend (FtpFileBrowser, ProductDetailDialog)
-- [x] **Paginación de productos** (Febrero 2026)
-  - Controles de navegación (primera, anterior, números, siguiente, última)
-  - Selector de tamaño de página (10, 25, 50, 100)
-  - Contador de productos (ej. "Mostrando 1 - 25 de 83 productos")
-  - Endpoint `/api/products-unified/count` para total de productos
+- [x] Refactorización de componentes frontend
+- [x] Paginación de productos
+- [x] **Ordenación de columnas en productos** (Febrero 2026)
+  - Ordenar por nombre, precio, stock y número de proveedores
+  - Indicadores visuales ASC/DESC en cabeceras
+  - Integrado con paginación
+- [x] **Gráficas de evolución de precios mejoradas** (Febrero 2026)
+  - Gráfica de área con subidas (rojo) y bajadas (verde)
+  - Panel "Productos más activos" con número de cambios
+  - Vista detallada de evolución por producto con precio actual/min/max
+  - Nuevos endpoints: `/api/price-history/top-products` y `/api/price-history/product/{name}`
+- [x] **Mejoras en detección de columnas CSV** (Febrero 2026)
+  - Más aliases para columnas comunes (partnumber, item_code, etc.)
+  - Logging mejorado para depuración de columnas no detectadas
+  - Endpoint `/api/suppliers/{id}/preview-file` para previsualizar CSV
 
 ## Arquitectura
 - **Backend**: FastAPI modular + MongoDB + APScheduler
@@ -39,55 +48,39 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores.
 - **Estructura Backend**:
 ```
 /app/backend/
-├── config.py        # Configuración centralizada BD y notificaciones
+├── config.py        # Configuración centralizada
 ├── server.py        # Orquestador FastAPI
-├── models/
-│   └── schemas.py   # Modelos Pydantic (incluyendo SyncHistoryResponse)
+├── models/schemas.py
 ├── routes/
-│   ├── auth.py
-│   ├── catalogs.py
-│   ├── dashboard.py # Notificaciones, stats, sync-history, exportación
-│   ├── products.py
-│   ├── suppliers.py
+│   ├── auth.py, catalogs.py, dashboard.py
+│   ├── products.py  # Con sorting
+│   ├── suppliers.py # Con preview-file
 │   └── woocommerce.py
 └── services/
-    ├── auth.py
-    ├── database.py
-    └── sync.py      # Sincronización y record_sync_history
-```
-- **Estructura Frontend**:
-```
-/app/frontend/src/
-├── pages/
-│   ├── SyncHistory.jsx  # Nueva página de historial
-│   └── ...
-├── components/
-│   ├── FtpFileBrowser.jsx       # Explorador FTP refactorizado
-│   ├── ProductDetailDialog.jsx  # Ficha de producto refactorizada
-│   ├── CatalogSelectorDialog.jsx
-│   └── Sidebar.jsx              # Con enlace a sync-history
-└── ...
+    ├── auth.py, database.py
+    └── sync.py      # normalize_product_data mejorado
 ```
 
-## Nuevos Endpoints API
-- `GET /api/sync-history` - Lista de sincronizaciones con filtros
-- `GET /api/sync-history/stats` - Estadísticas para gráficas
+## Aliases de Columnas CSV (normalize_product_data)
+```python
+'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number', 'articulo', 'codigo_articulo', 'cod', 'item_code']
+'name': ['name', 'nombre', 'title', 'titulo', 'product_name', 'descripcion', 'description', 'producto', 'articulo_nombre', 'item_name']
+'price': ['price', 'precio', 'pvp', 'cost', 'coste', 'unit_price', 'tarifa', 'importe', 'pricen', 'precio_neto', 'net_price']
+'stock': ['stock', 'quantity', 'cantidad', 'qty', 'inventory', 'disponible', 'existencias', 'unidades', 'disponibilidad', 'units']
+```
 
-## Colecciones MongoDB
-- **sync_history**: Historial de sincronizaciones
-  - id, supplier_id, supplier_name, sync_type (manual/scheduled)
-  - status (success/error/partial), imported, updated, errors
-  - duration_seconds, error_message, user_id, created_at
+## Problema Conocido: FTP con CSV de columnas no estándar
+Si un archivo CSV tiene columnas con nombres diferentes a los aliases predefinidos, no se reconocerán los productos. **Solución**: Configurar el mapeo de columnas manualmente en la configuración del proveedor.
 
 ## Backlog Futuro
-- [ ] Gráficas de evolución de precios por producto
 - [ ] Sistema de roles de usuario
 - [ ] Notificaciones push en tiempo real (WebSockets)
-- [ ] Integración SFTP y APIs directas
+- [ ] Alertas programadas por email
+- [ ] Wizard de mapeo de columnas más visual
 
 ## Credenciales de Prueba
 - Email: test@test.com
 - Password: test123
 
 ## Última Actualización
-Febrero 2026 - Historial de sincronizaciones y refactorización de componentes frontend
+Febrero 2026 - Ordenación de productos, gráficas de precios mejoradas, mejoras en detección de columnas CSV
