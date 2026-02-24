@@ -8,88 +8,108 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../co
 import { Badge } from "../components/ui/badge";
 import { Switch } from "../components/ui/switch";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "../components/ui/dialog";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "../components/ui/alert-dialog";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../components/ui/table";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "../components/ui/dropdown-menu";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
 import {
-  ShoppingCart,
-  Plus,
-  MoreVertical,
-  Pencil,
-  Trash2,
-  RefreshCw,
-  Check,
-  X,
-  ExternalLink,
-  Upload,
-  Wifi,
-  WifiOff,
-  Store,
-  Package,
-  Key,
-  Link2,
-  BookOpen,
-  Clock,
-  Zap,
-  Settings
+  Store, Plus, MoreVertical, Trash2, RefreshCw, ExternalLink, Upload, 
+  Wifi, WifiOff, Package, Key, Link2, BookOpen, Clock, Zap, Settings,
+  ShoppingCart, ShoppingBag, Globe, Boxes, Sparkles
 } from "lucide-react";
 
-const WooCommerceExport = () => {
+// Platform configurations
+const PLATFORMS = {
+  woocommerce: {
+    id: "woocommerce",
+    name: "WooCommerce",
+    icon: ShoppingCart,
+    color: "bg-purple-100 text-purple-600",
+    borderColor: "border-purple-200",
+    fields: [
+      { key: "store_url", label: "URL de la tienda", type: "url", required: true, placeholder: "https://mitienda.com" },
+      { key: "consumer_key", label: "Consumer Key", type: "password", required: true, placeholder: "ck_xxxxxxxxxxxxxxxxxxxxxxxx" },
+      { key: "consumer_secret", label: "Consumer Secret", type: "password", required: true, placeholder: "cs_xxxxxxxxxxxxxxxxxxxxxxxx" },
+    ],
+    helpText: "En WooCommerce → Ajustes → Avanzado → API REST. Crea una clave con permisos de Lectura/Escritura."
+  },
+  prestashop: {
+    id: "prestashop",
+    name: "PrestaShop",
+    icon: ShoppingBag,
+    color: "bg-pink-100 text-pink-600",
+    borderColor: "border-pink-200",
+    fields: [
+      { key: "store_url", label: "URL de la tienda", type: "url", required: true, placeholder: "https://mitienda.com" },
+      { key: "api_key", label: "Clave Webservice API", type: "password", required: true, placeholder: "XXXXXXXXXXXXXXXXXXXXXXXXXX" },
+    ],
+    helpText: "En PrestaShop → Parámetros Avanzados → Webservice. Crea una nueva clave con permisos en productos y stocks."
+  },
+  shopify: {
+    id: "shopify",
+    name: "Shopify",
+    icon: Boxes,
+    color: "bg-green-100 text-green-600",
+    borderColor: "border-green-200",
+    fields: [
+      { key: "store_url", label: "URL de la tienda", type: "url", required: true, placeholder: "mitienda.myshopify.com" },
+      { key: "access_token", label: "Admin API Access Token", type: "password", required: true, placeholder: "shpat_xxxxxxxxxxxxxxxxxxxxxxxxxx" },
+      { key: "api_version", label: "Versión de API", type: "select", options: ["2024-01", "2024-04", "2024-07", "2024-10"], default: "2024-10" },
+    ],
+    helpText: "En Shopify Admin → Configuración → Apps → Desarrollar apps. Crea una app personalizada con permisos de productos."
+  },
+  wix: {
+    id: "wix",
+    name: "Wix eCommerce",
+    icon: Sparkles,
+    color: "bg-blue-100 text-blue-600",
+    borderColor: "border-blue-200",
+    fields: [
+      { key: "store_url", label: "URL del sitio", type: "url", required: true, placeholder: "https://mitienda.wixsite.com" },
+      { key: "api_key", label: "API Key", type: "password", required: true, placeholder: "IST.xxxxxxxxxxxx" },
+      { key: "site_id", label: "Site ID", type: "text", required: true, placeholder: "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" },
+    ],
+    helpText: "En Wix → Configuración del sitio → API Keys. También necesitas el Site ID de tu dashboard."
+  },
+  magento: {
+    id: "magento",
+    name: "Magento",
+    icon: Globe,
+    color: "bg-orange-100 text-orange-600",
+    borderColor: "border-orange-200",
+    fields: [
+      { key: "store_url", label: "URL de la tienda", type: "url", required: true, placeholder: "https://mitienda.com" },
+      { key: "access_token", label: "Integration Access Token", type: "password", required: true, placeholder: "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+      { key: "store_code", label: "Store Code", type: "text", default: "default", placeholder: "default" },
+    ],
+    helpText: "En Magento Admin → System → Integrations. Crea una integración y actívala para obtener el Access Token."
+  }
+};
+
+const StoresPage = () => {
   const [configs, setConfigs] = useState([]);
   const [catalogs, setCatalogs] = useState([]);
   const [selectedCatalogProducts, setSelectedCatalogProducts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [showPlatformSelector, setShowPlatformSelector] = useState(false);
   const [showDialog, setShowDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [selectedConfig, setSelectedConfig] = useState(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    store_url: "",
-    consumer_key: "",
-    consumer_secret: "",
-    catalog_id: "",
-    auto_sync_enabled: false
-  });
-  const [exportOptions, setExportOptions] = useState({
-    update_existing: true,
-    catalog_id: ""
-  });
+  const [selectedPlatform, setSelectedPlatform] = useState(null);
+  const [formData, setFormData] = useState({});
+  const [exportOptions, setExportOptions] = useState({ update_existing: true, catalog_id: "" });
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -100,13 +120,11 @@ const WooCommerceExport = () => {
   const fetchData = useCallback(async () => {
     try {
       const [configsRes, catalogsRes] = await Promise.all([
-        api.get("/woocommerce/configs"),
+        api.get("/stores/configs"),
         api.get("/catalogs")
       ]);
       setConfigs(configsRes.data);
       setCatalogs(catalogsRes.data);
-      
-      // Set default catalog
       const defaultCatalog = catalogsRes.data.find(c => c.is_default);
       if (defaultCatalog) {
         setExportOptions(prev => ({ ...prev, catalog_id: defaultCatalog.id }));
@@ -125,27 +143,43 @@ const WooCommerceExport = () => {
   }, [fetchData]);
 
   const resetForm = () => {
-    setFormData({
-      name: "",
-      store_url: "",
-      consumer_key: "",
-      consumer_secret: "",
-      catalog_id: "",
-      auto_sync_enabled: false
-    });
+    setFormData({ name: "", catalog_id: "", auto_sync_enabled: false });
     setSelectedConfig(null);
+    setSelectedPlatform(null);
+  };
+
+  const openAddStore = () => {
+    resetForm();
+    setShowPlatformSelector(true);
+  };
+
+  const selectPlatform = (platformId) => {
+    setSelectedPlatform(PLATFORMS[platformId]);
+    setShowPlatformSelector(false);
+    
+    // Initialize form with platform defaults
+    const platform = PLATFORMS[platformId];
+    const initialData = { name: "", platform: platformId, catalog_id: "", auto_sync_enabled: false };
+    platform.fields.forEach(field => {
+      if (field.default) initialData[field.key] = field.default;
+    });
+    setFormData(initialData);
+    setShowDialog(true);
   };
 
   const openEdit = (config) => {
     setSelectedConfig(config);
-    setFormData({
+    setSelectedPlatform(PLATFORMS[config.platform] || PLATFORMS.woocommerce);
+    
+    const editData = {
       name: config.name,
-      store_url: config.store_url,
-      consumer_key: "",
-      consumer_secret: "",
+      platform: config.platform,
       catalog_id: config.catalog_id || "",
-      auto_sync_enabled: config.auto_sync_enabled || false
-    });
+      auto_sync_enabled: config.auto_sync_enabled || false,
+      store_url: config.store_url || "",
+    };
+    // Don't populate sensitive fields for editing
+    setFormData(editData);
     setShowDialog(true);
   };
 
@@ -156,14 +190,13 @@ const WooCommerceExport = () => {
 
   const openExport = async (config) => {
     setSelectedConfig(config);
+    setSelectedPlatform(PLATFORMS[config.platform] || PLATFORMS.woocommerce);
     setExportResult(null);
     
-    // Set default catalog if not set
     if (!exportOptions.catalog_id && catalogs.length > 0) {
       const defaultCatalog = catalogs.find(c => c.is_default) || catalogs[0];
       setExportOptions(prev => ({ ...prev, catalog_id: defaultCatalog.id }));
       
-      // Load products for default catalog
       setLoadingCatalogProducts(true);
       try {
         const res = await api.get(`/catalogs/${defaultCatalog.id}/products?active_only=true`);
@@ -174,10 +207,9 @@ const WooCommerceExport = () => {
         setLoadingCatalogProducts(false);
       }
     }
-    
     setShowExportDialog(true);
   };
-  
+
   const handleCatalogChange = async (catalogId) => {
     setExportOptions(prev => ({ ...prev, catalog_id: catalogId }));
     setLoadingCatalogProducts(true);
@@ -193,31 +225,40 @@ const WooCommerceExport = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.store_url.trim()) {
+    if (!formData.name?.trim() || !formData.store_url?.trim()) {
       toast.error("Nombre y URL son obligatorios");
       return;
     }
 
-    if (!selectedConfig && (!formData.consumer_key || !formData.consumer_secret)) {
-      toast.error("Las credenciales API son obligatorias");
-      return;
+    // Validate required fields for new stores
+    if (!selectedConfig && selectedPlatform) {
+      const missingRequired = selectedPlatform.fields
+        .filter(f => f.required && !formData[f.key])
+        .map(f => f.label);
+      if (missingRequired.length > 0) {
+        toast.error(`Campos obligatorios: ${missingRequired.join(", ")}`);
+        return;
+      }
     }
 
     setSaving(true);
     try {
       const payload = { ...formData };
-      if (selectedConfig && !formData.consumer_key) {
-        delete payload.consumer_key;
-      }
-      if (selectedConfig && !formData.consumer_secret) {
-        delete payload.consumer_secret;
+      
+      // Remove empty credential fields when editing
+      if (selectedConfig) {
+        selectedPlatform?.fields.forEach(field => {
+          if (field.type === "password" && !payload[field.key]) {
+            delete payload[field.key];
+          }
+        });
       }
 
       if (selectedConfig) {
-        await api.put(`/woocommerce/configs/${selectedConfig.id}`, payload);
-        toast.success("Configuración actualizada");
+        await api.put(`/stores/configs/${selectedConfig.id}`, payload);
+        toast.success("Tienda actualizada");
       } else {
-        await api.post("/woocommerce/configs", payload);
+        await api.post("/stores/configs", payload);
         toast.success("Tienda añadida correctamente");
       }
       setShowDialog(false);
@@ -232,8 +273,8 @@ const WooCommerceExport = () => {
 
   const handleDelete = async () => {
     try {
-      await api.delete(`/woocommerce/configs/${selectedConfig.id}`);
-      toast.success("Configuración eliminada");
+      await api.delete(`/stores/configs/${selectedConfig.id}`);
+      toast.success("Tienda eliminada");
       setShowDeleteDialog(false);
       fetchData();
     } catch (error) {
@@ -244,7 +285,7 @@ const WooCommerceExport = () => {
   const handleSyncPriceStock = async (config) => {
     setSyncing(prev => ({ ...prev, [config.id]: true }));
     try {
-      const res = await api.post(`/woocommerce/configs/${config.id}/sync`);
+      const res = await api.post(`/stores/configs/${config.id}/sync`);
       if (res.data.status === "success") {
         toast.success(res.data.message);
         fetchData();
@@ -258,24 +299,12 @@ const WooCommerceExport = () => {
     }
   };
 
-  const formatDate = (dateStr) => {
-    if (!dateStr) return "Nunca";
-    const date = new Date(dateStr);
-    return date.toLocaleString("es-ES", {
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-      hour: "2-digit",
-      minute: "2-digit"
-    });
-  };
-
   const handleTestConnection = async (config) => {
     setTesting(true);
     try {
-      const res = await api.post(`/woocommerce/configs/${config.id}/test`);
+      const res = await api.post(`/stores/configs/${config.id}/test`);
       if (res.data.status === "success") {
-        toast.success(`Conexión exitosa: ${res.data.store_name}`);
+        toast.success(`Conexión exitosa: ${res.data.store_name || config.name}`);
         fetchData();
       } else {
         toast.error(res.data.message);
@@ -303,7 +332,7 @@ const WooCommerceExport = () => {
         catalog_id: exportOptions.catalog_id
       };
       
-      const res = await api.post("/woocommerce/export", payload);
+      const res = await api.post("/stores/export", payload);
       setExportResult(res.data);
       
       if (res.data.status === "success") {
@@ -313,13 +342,29 @@ const WooCommerceExport = () => {
       } else {
         toast.error("Error en la exportación");
       }
-      
       fetchData();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al exportar");
     } finally {
       setExporting(false);
     }
+  };
+
+  const formatDate = (dateStr) => {
+    if (!dateStr) return "Nunca";
+    return new Date(dateStr).toLocaleString("es-ES", {
+      day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit"
+    });
+  };
+
+  const getPlatformIcon = (platformId) => {
+    const platform = PLATFORMS[platformId];
+    return platform ? platform.icon : Store;
+  };
+
+  const getPlatformColor = (platformId) => {
+    const platform = PLATFORMS[platformId];
+    return platform ? platform.color : "bg-slate-100 text-slate-600";
   };
 
   if (loading) {
@@ -336,103 +381,54 @@ const WooCommerceExport = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-            Exportar a WooCommerce
+            Tiendas Online
           </h1>
           <p className="text-slate-500">
-            Conecta tus tiendas WooCommerce y exporta productos directamente vía API REST
+            Conecta tus tiendas eCommerce y sincroniza productos automáticamente
           </p>
         </div>
-        <Button 
-          onClick={() => { resetForm(); setShowDialog(true); }} 
-          className="btn-primary"
-          data-testid="add-woo-config-btn"
-        >
+        <Button onClick={openAddStore} className="btn-primary" data-testid="add-store-btn">
           <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
           Añadir Tienda
         </Button>
       </div>
 
-      {/* Info Card */}
-      <Card className="border-indigo-200 bg-indigo-50 mb-6">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3">
-            <ShoppingCart className="w-5 h-5 text-indigo-600 mt-0.5" strokeWidth={1.5} />
-            <div>
-              <p className="text-sm font-medium text-indigo-900 mb-1">¿Cómo obtener las credenciales API?</p>
-              <p className="text-sm text-indigo-700">
-                En tu panel de WordPress, ve a <strong>WooCommerce → Ajustes → Avanzado → API REST</strong>. 
-                Crea una nueva clave con permisos de <strong>Lectura/Escritura</strong> y copia el Consumer Key y Consumer Secret.
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <Card className="border-slate-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Tiendas Conectadas</p>
-                <p className="text-2xl font-bold text-slate-900">
-                  {configs.filter(c => c.is_connected).length}
-                </p>
-              </div>
-              <Store className="w-8 h-8 text-indigo-200" strokeWidth={1.5} />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Total Configuraciones</p>
-                <p className="text-2xl font-bold text-slate-900">{configs.length}</p>
-              </div>
-              <Key className="w-8 h-8 text-slate-200" strokeWidth={1.5} />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-emerald-200 bg-emerald-50">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-emerald-600">Catálogos Disponibles</p>
-                <p className="text-2xl font-bold text-emerald-700">{catalogs.length}</p>
-              </div>
-              <BookOpen className="w-8 h-8 text-emerald-200" strokeWidth={1.5} />
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="border-slate-200">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-slate-500">Productos Sincronizados</p>
-                <p className="text-2xl font-bold text-slate-900">
-                  {configs.reduce((sum, c) => sum + (c.products_synced || 0), 0)}
-                </p>
-              </div>
-              <Upload className="w-8 h-8 text-slate-200" strokeWidth={1.5} />
-            </div>
-          </CardContent>
-        </Card>
+      {/* Platform Stats */}
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+        {Object.values(PLATFORMS).map(platform => {
+          const Icon = platform.icon;
+          const count = configs.filter(c => c.platform === platform.id).length;
+          return (
+            <Card key={platform.id} className={`border-slate-200 ${count > 0 ? platform.borderColor : ""}`}>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-slate-500">{platform.name}</p>
+                    <p className="text-2xl font-bold text-slate-900">{count}</p>
+                  </div>
+                  <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${platform.color}`}>
+                    <Icon className="w-5 h-5" strokeWidth={1.5} />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {/* Configs Table */}
       {configs.length === 0 ? (
         <div className="empty-state">
           <div className="empty-state-icon">
-            <ShoppingCart className="w-10 h-10" strokeWidth={1.5} />
+            <Store className="w-10 h-10" strokeWidth={1.5} />
           </div>
           <h3 className="text-lg font-semibold text-slate-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
             No hay tiendas configuradas
           </h3>
           <p className="text-slate-500 mb-4">
-            Añade tu primera tienda WooCommerce para comenzar a exportar productos
+            Añade tu primera tienda para comenzar a sincronizar productos
           </p>
-          <Button onClick={() => { resetForm(); setShowDialog(true); }} className="btn-primary">
+          <Button onClick={openAddStore} className="btn-primary">
             <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
             Añadir Tienda
           </Button>
@@ -444,7 +440,7 @@ const WooCommerceExport = () => {
               <TableHeader>
                 <TableRow className="table-header">
                   <TableHead>Tienda</TableHead>
-                  <TableHead>URL</TableHead>
+                  <TableHead>Plataforma</TableHead>
                   <TableHead>Catálogo Asociado</TableHead>
                   <TableHead className="text-center">Auto-Sync</TableHead>
                   <TableHead className="text-center">Estado</TableHead>
@@ -454,150 +450,186 @@ const WooCommerceExport = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {configs.map((config) => (
-                  <TableRow key={config.id} className="table-row" data-testid={`woo-config-${config.id}`}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
-                          <ShoppingCart className="w-5 h-5 text-purple-600" strokeWidth={1.5} />
+                {configs.map((config) => {
+                  const PlatformIcon = getPlatformIcon(config.platform);
+                  const platformColor = getPlatformColor(config.platform);
+                  const platform = PLATFORMS[config.platform];
+                  
+                  return (
+                    <TableRow key={config.id} className="table-row" data-testid={`store-config-${config.id}`}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${platformColor}`}>
+                            <PlatformIcon className="w-5 h-5" strokeWidth={1.5} />
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-900">{config.name}</p>
+                            <a 
+                              href={config.store_url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-xs text-indigo-600 hover:text-indigo-700 flex items-center gap-1"
+                            >
+                              {config.store_url?.replace(/^https?:\/\//, '').slice(0, 30)}
+                              <ExternalLink className="w-3 h-3" />
+                            </a>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-slate-900">{config.name}</p>
-                          <p className="text-xs text-slate-500 font-mono">{config.consumer_key_masked}</p>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <a 
-                        href={config.store_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="flex items-center gap-1 text-indigo-600 hover:text-indigo-700 text-sm"
-                      >
-                        {config.store_url.replace(/^https?:\/\//, '').slice(0, 25)}
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    </TableCell>
-                    <TableCell>
-                      {config.catalog_name ? (
-                        <Badge className="bg-indigo-100 text-indigo-700 border-0">
-                          <BookOpen className="w-3 h-3 mr-1" />
-                          {config.catalog_name}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`${platformColor} border-0`}>
+                          {platform?.name || config.platform}
                         </Badge>
-                      ) : (
-                        <span className="text-sm text-slate-400">No configurado</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {config.auto_sync_enabled ? (
-                        <div className="flex flex-col items-center gap-1">
+                      </TableCell>
+                      <TableCell>
+                        {config.catalog_name ? (
+                          <Badge className="bg-indigo-100 text-indigo-700 border-0">
+                            <BookOpen className="w-3 h-3 mr-1" />
+                            {config.catalog_name}
+                          </Badge>
+                        ) : (
+                          <span className="text-sm text-slate-400">No configurado</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {config.auto_sync_enabled ? (
                           <Badge className="bg-emerald-100 text-emerald-700 border-0">
                             <Zap className="w-3 h-3 mr-1" />
                             Activo
                           </Badge>
-                          {config.next_sync && (
-                            <span className="text-xs text-slate-500">
-                              Próx: {formatDate(config.next_sync)}
-                            </span>
-                          )}
+                        ) : (
+                          <Badge variant="outline" className="text-slate-400">
+                            <Clock className="w-3 h-3 mr-1" />
+                            Desactivado
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-center">
+                        {config.is_connected ? (
+                          <Badge className="bg-emerald-100 text-emerald-700 border-0">
+                            <Wifi className="w-3 h-3 mr-1" />
+                            Conectado
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" className="text-slate-500">
+                            <WifiOff className="w-3 h-3 mr-1" />
+                            Sin probar
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right font-medium">
+                        {config.products_synced || 0}
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-500">
+                        {formatDate(config.last_sync)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleSyncPriceStock(config)}
+                            disabled={!config.catalog_id || syncing[config.id]}
+                            className="btn-secondary"
+                            title="Sincronizar precio y stock"
+                            data-testid={`sync-btn-${config.id}`}
+                          >
+                            <RefreshCw className={`w-3.5 h-3.5 ${syncing[config.id] ? "animate-spin" : ""}`} />
+                          </Button>
+                          <Button
+                            size="sm"
+                            onClick={() => openExport(config)}
+                            className="btn-primary"
+                            disabled={catalogs.length === 0}
+                            data-testid={`export-btn-${config.id}`}
+                          >
+                            <Upload className="w-3.5 h-3.5 mr-1" />
+                            Exportar
+                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreVertical className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => handleTestConnection(config)} disabled={testing}>
+                                <Wifi className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                                Probar Conexión
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openEdit(config)}>
+                                <Settings className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                                Configurar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => openDelete(config)}
+                                className="text-rose-600 focus:text-rose-600"
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                                Eliminar
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
-                      ) : (
-                        <Badge variant="outline" className="text-slate-400">
-                          <Clock className="w-3 h-3 mr-1" />
-                          Desactivado
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {config.is_connected ? (
-                        <Badge className="bg-emerald-100 text-emerald-700 border-0">
-                          <Wifi className="w-3 h-3 mr-1" />
-                          Conectado
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" className="text-slate-500">
-                          <WifiOff className="w-3 h-3 mr-1" />
-                          Sin probar
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {config.products_synced || 0}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-500">
-                      {formatDate(config.last_sync)}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleSyncPriceStock(config)}
-                          disabled={!config.catalog_id || syncing[config.id]}
-                          className="btn-secondary"
-                          title="Sincronizar solo precio y stock"
-                          data-testid={`sync-btn-${config.id}`}
-                        >
-                          {syncing[config.id] ? (
-                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                          ) : (
-                            <RefreshCw className="w-3.5 h-3.5" />
-                          )}
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={() => openExport(config)}
-                          className="btn-primary"
-                          disabled={catalogs.length === 0}
-                          data-testid={`export-btn-${config.id}`}
-                        >
-                          <Upload className="w-3.5 h-3.5 mr-1" />
-                          Exportar
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreVertical className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => handleTestConnection(config)} disabled={testing}>
-                              <Wifi className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                              Probar Conexión
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => openEdit(config)}>
-                              <Settings className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                              Configurar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              onClick={() => openDelete(config)}
-                              className="text-rose-600 focus:text-rose-600"
-                            >
-                              <Trash2 className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                              Eliminar
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </CardContent>
         </Card>
       )}
 
-      {/* Add/Edit Dialog */}
+      {/* Platform Selector Dialog */}
+      <Dialog open={showPlatformSelector} onOpenChange={setShowPlatformSelector}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+              <Store className="w-5 h-5 text-indigo-600" />
+              Seleccionar Plataforma
+            </DialogTitle>
+            <DialogDescription>
+              Elige el tipo de tienda que deseas conectar
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
+            {Object.values(PLATFORMS).map(platform => {
+              const Icon = platform.icon;
+              return (
+                <button
+                  key={platform.id}
+                  onClick={() => selectPlatform(platform.id)}
+                  className={`p-4 rounded-lg border-2 ${platform.borderColor} hover:shadow-md transition-all duration-200 text-left group`}
+                  data-testid={`select-platform-${platform.id}`}
+                >
+                  <div className={`w-12 h-12 rounded-lg ${platform.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
+                    <Icon className="w-6 h-6" strokeWidth={1.5} />
+                  </div>
+                  <h3 className="font-semibold text-slate-900 mb-1">{platform.name}</h3>
+                  <p className="text-xs text-slate-500">{platform.helpText?.slice(0, 50)}...</p>
+                </button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add/Edit Store Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-              <ShoppingCart className="w-5 h-5 text-purple-600" />
-              {selectedConfig ? "Editar Tienda" : "Nueva Tienda WooCommerce"}
+              {selectedPlatform && (
+                <div className={`w-8 h-8 rounded-lg ${selectedPlatform.color} flex items-center justify-center`}>
+                  <selectedPlatform.icon className="w-4 h-4" />
+                </div>
+              )}
+              {selectedConfig ? `Editar ${selectedPlatform?.name || "Tienda"}` : `Nueva Tienda ${selectedPlatform?.name || ""}`}
             </DialogTitle>
             <DialogDescription>
-              Introduce las credenciales de la API REST de tu tienda WooCommerce
+              {selectedPlatform?.helpText}
             </DialogDescription>
           </DialogHeader>
           
@@ -606,60 +638,57 @@ const WooCommerceExport = () => {
               <Label htmlFor="name">Nombre de la tienda *</Label>
               <Input
                 id="name"
-                value={formData.name}
+                value={formData.name || ""}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 placeholder="Mi Tienda Online"
                 className="input-base"
-                data-testid="woo-name-input"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="store_url">URL de la tienda *</Label>
-              <div className="relative">
-                <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                <Input
-                  id="store_url"
-                  value={formData.store_url}
-                  onChange={(e) => setFormData({ ...formData, store_url: e.target.value })}
-                  placeholder="https://mitienda.com"
-                  className="input-base pl-9"
-                  data-testid="woo-url-input"
-                />
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="consumer_key">
-                Consumer Key {!selectedConfig && "*"}
-              </Label>
-              <Input
-                id="consumer_key"
-                type="password"
-                value={formData.consumer_key}
-                onChange={(e) => setFormData({ ...formData, consumer_key: e.target.value })}
-                placeholder={selectedConfig ? "Dejar vacío para mantener actual" : "ck_xxxxxxxxxxxxxxxxxxxxxxxx"}
-                className="input-base font-mono"
-                data-testid="woo-key-input"
-              />
-            </div>
-            
-            <div className="space-y-2">
-              <Label htmlFor="consumer_secret">
-                Consumer Secret {!selectedConfig && "*"}
-              </Label>
-              <Input
-                id="consumer_secret"
-                type="password"
-                value={formData.consumer_secret}
-                onChange={(e) => setFormData({ ...formData, consumer_secret: e.target.value })}
-                placeholder={selectedConfig ? "Dejar vacío para mantener actual" : "cs_xxxxxxxxxxxxxxxxxxxxxxxx"}
-                className="input-base font-mono"
-                data-testid="woo-secret-input"
+                data-testid="store-name-input"
               />
             </div>
 
-            {/* Sync Configuration Section */}
+            {/* Platform-specific fields */}
+            {selectedPlatform?.fields.map(field => (
+              <div key={field.key} className="space-y-2">
+                <Label htmlFor={field.key}>
+                  {field.label} {field.required && !selectedConfig && "*"}
+                </Label>
+                {field.type === "select" ? (
+                  <Select
+                    value={formData[field.key] || field.default || ""}
+                    onValueChange={(val) => setFormData({ ...formData, [field.key]: val })}
+                  >
+                    <SelectTrigger className="input-base" data-testid={`store-${field.key}-select`}>
+                      <SelectValue placeholder={`Seleccionar ${field.label}`} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {field.options?.map(opt => (
+                        <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="relative">
+                    {field.type === "url" && (
+                      <Link2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    )}
+                    {field.type === "password" && (
+                      <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    )}
+                    <Input
+                      id={field.key}
+                      type={field.type === "url" ? "text" : field.type}
+                      value={formData[field.key] || ""}
+                      onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                      placeholder={selectedConfig && field.type === "password" ? "Dejar vacío para mantener actual" : field.placeholder}
+                      className={`input-base ${(field.type === "url" || field.type === "password") ? "pl-9" : ""} ${field.type === "password" ? "font-mono" : ""}`}
+                      data-testid={`store-${field.key}-input`}
+                    />
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Sync Configuration */}
             <div className="border-t border-slate-200 pt-4 mt-4">
               <p className="text-sm font-semibold text-slate-900 mb-3 flex items-center gap-2">
                 <RefreshCw className="w-4 h-4 text-indigo-600" strokeWidth={1.5} />
@@ -673,7 +702,7 @@ const WooCommerceExport = () => {
                     value={formData.catalog_id || "none"}
                     onValueChange={(val) => setFormData({ ...formData, catalog_id: val === "none" ? "" : val })}
                   >
-                    <SelectTrigger className="input-base" data-testid="woo-catalog-select">
+                    <SelectTrigger className="input-base" data-testid="store-catalog-select">
                       <BookOpen className="w-4 h-4 mr-2 text-slate-400" />
                       <SelectValue placeholder="Selecciona un catálogo" />
                     </SelectTrigger>
@@ -686,9 +715,6 @@ const WooCommerceExport = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-slate-500">
-                    Los productos de este catálogo se usarán para sincronizar precio y stock
-                  </p>
                 </div>
 
                 <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
@@ -697,9 +723,9 @@ const WooCommerceExport = () => {
                     <p className="text-xs text-slate-500">Sincronizar precio y stock cada 12 horas</p>
                   </div>
                   <Switch
-                    checked={formData.auto_sync_enabled}
+                    checked={formData.auto_sync_enabled || false}
                     onCheckedChange={(checked) => setFormData({ ...formData, auto_sync_enabled: checked })}
-                    data-testid="woo-auto-sync-switch"
+                    data-testid="store-auto-sync-switch"
                   />
                 </div>
               </div>
@@ -709,7 +735,7 @@ const WooCommerceExport = () => {
               <Button type="button" variant="outline" onClick={() => setShowDialog(false)} className="btn-secondary">
                 Cancelar
               </Button>
-              <Button type="submit" disabled={saving} className="btn-primary" data-testid="woo-submit-btn">
+              <Button type="submit" disabled={saving} className="btn-primary" data-testid="store-submit-btn">
                 {saving ? <RefreshCw className="w-4 h-4 animate-spin" /> : selectedConfig ? "Guardar Cambios" : "Añadir Tienda"}
               </Button>
             </DialogFooter>
@@ -731,13 +757,9 @@ const WooCommerceExport = () => {
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            {/* Catalog Selector */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Catálogo a exportar</Label>
-              <Select 
-                value={exportOptions.catalog_id} 
-                onValueChange={handleCatalogChange}
-              >
+              <Select value={exportOptions.catalog_id} onValueChange={handleCatalogChange}>
                 <SelectTrigger className="input-base">
                   <BookOpen className="w-4 h-4 mr-2 text-slate-400" />
                   <SelectValue placeholder="Selecciona un catálogo" />
@@ -745,17 +767,7 @@ const WooCommerceExport = () => {
                 <SelectContent>
                   {catalogs.map(catalog => (
                     <SelectItem key={catalog.id} value={catalog.id}>
-                      <div className="flex items-center gap-2">
-                        {catalog.name}
-                        {catalog.is_default && (
-                          <Badge className="bg-indigo-100 text-indigo-700 border-0 text-xs ml-1">
-                            Defecto
-                          </Badge>
-                        )}
-                        <span className="text-slate-500 text-xs">
-                          ({catalog.product_count} productos)
-                        </span>
-                      </div>
+                      {catalog.name} ({catalog.product_count} productos)
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -765,7 +777,7 @@ const WooCommerceExport = () => {
             <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
               <div>
                 <p className="font-medium text-slate-900">Actualizar productos existentes</p>
-                <p className="text-sm text-slate-500">Actualiza productos con el mismo SKU en lugar de crear duplicados</p>
+                <p className="text-sm text-slate-500">Actualiza productos con el mismo SKU</p>
               </div>
               <Switch
                 checked={exportOptions.update_existing}
@@ -785,7 +797,7 @@ const WooCommerceExport = () => {
                 </div>
               ) : (
                 <p className="text-sm text-indigo-700">
-                  Se exportarán <strong>{selectedCatalogProducts.length}</strong> productos del catálogo seleccionado
+                  Se exportarán <strong>{selectedCatalogProducts.length}</strong> productos
                 </p>
               )}
             </div>
@@ -796,8 +808,8 @@ const WooCommerceExport = () => {
                 exportResult.status === 'partial' ? 'bg-amber-50 border-amber-200' :
                 'bg-rose-50 border-rose-200'
               }`}>
-                <p className="font-medium mb-2">Resultado de la exportación:</p>
-                <div className="grid grid-cols-3 gap-4 text-center mb-2">
+                <p className="font-medium mb-2">Resultado:</p>
+                <div className="grid grid-cols-3 gap-4 text-center">
                   <div>
                     <p className="text-2xl font-bold text-emerald-600">{exportResult.created}</p>
                     <p className="text-xs text-slate-600">Creados</p>
@@ -811,13 +823,6 @@ const WooCommerceExport = () => {
                     <p className="text-xs text-slate-600">Errores</p>
                   </div>
                 </div>
-                {exportResult.errors && exportResult.errors.length > 0 && (
-                  <div className="mt-2 text-xs text-rose-700">
-                    {exportResult.errors.slice(0, 3).map((err, i) => (
-                      <p key={i}>• {err}</p>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
           </div>
@@ -854,7 +859,7 @@ const WooCommerceExport = () => {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>¿Eliminar configuración?</AlertDialogTitle>
+            <AlertDialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>¿Eliminar tienda?</AlertDialogTitle>
             <AlertDialogDescription>
               Se eliminará la configuración de "{selectedConfig?.name}". Esta acción no se puede deshacer.
             </AlertDialogDescription>
@@ -871,4 +876,4 @@ const WooCommerceExport = () => {
   );
 };
 
-export default WooCommerceExport;
+export default StoresPage;
