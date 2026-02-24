@@ -233,10 +233,39 @@ async def import_products(supplier_id: str, file: UploadFile = File(...), user: 
     return {"imported": imported, "updated": updated, "total": imported + updated}
 
 
+# Standard field aliases for auto-detection
+FIELD_ALIASES = {
+    'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number', 'articulo', 'codigo_articulo', 'cod', 'item_code'],
+    'name': ['name', 'nombre', 'title', 'titulo', 'product_name', 'descripcion', 'description', 'producto', 'articulo_nombre', 'item_name'],
+    'price': ['price', 'precio', 'pvp', 'cost', 'coste', 'unit_price', 'tarifa', 'importe', 'pricen', 'precio_neto', 'net_price'],
+    'stock': ['stock', 'quantity', 'cantidad', 'qty', 'inventory', 'disponible', 'existencias', 'unidades', 'disponibilidad', 'units'],
+    'category': ['category', 'categoria', 'cat', 'type', 'tipo', 'familia', 'family', 'grupo', 'group'],
+    'brand': ['brand', 'marca', 'manufacturer', 'fabricante', 'vendor', 'proveedor'],
+    'ean': ['ean', 'ean13', 'barcode', 'upc', 'codigo_barras', 'gtin', 'ean_code'],
+    'weight': ['weight', 'peso', 'kg', 'mass'],
+    'image_url': ['image', 'imagen', 'image_url', 'photo', 'foto', 'picture', 'url_imagen', 'img'],
+    'description': ['description', 'descripcion', 'desc', 'details', 'detalles', 'long_description', 'short_description']
+}
+
+
+def suggest_column_mapping(columns: list) -> dict:
+    """Auto-suggest column mappings based on column names"""
+    suggestions = {}
+    columns_lower = {c.lower().strip(): c for c in columns}
+    
+    for field, aliases in FIELD_ALIASES.items():
+        for alias in aliases:
+            if alias in columns_lower:
+                suggestions[field] = columns_lower[alias]
+                break
+    
+    return suggestions
+
+
 @router.post("/suppliers/{supplier_id}/preview-file")
 async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_current_user)):
-    """Previsualiza el archivo del proveedor y muestra las columnas detectadas"""
-    from services.sync import download_file_from_ftp, download_file_from_url, parse_csv_content
+    """Previsualiza el archivo del proveedor y muestra las columnas detectadas con sugerencias de mapeo"""
+    from services.sync import download_file_from_ftp, download_file_from_url
     
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
@@ -270,21 +299,34 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
         
         import csv
         reader = csv.DictReader(lines, delimiter=separator)
-        raw_products = list(reader)[:5]  # Just first 5 for preview
+        raw_products = list(reader)[:10]  # First 10 for preview
         
         columns = list(raw_products[0].keys()) if raw_products else []
         
+        # Auto-suggest mappings
+        suggested_mapping = suggest_column_mapping(columns)
+        
         # Show sample data
         samples = []
-        for row in raw_products[:3]:
-            samples.append({k: str(v)[:50] for k, v in row.items()})
+        for row in raw_products[:5]:
+            samples.append({k: str(v)[:100] for k, v in row.items()})
+        
+        # Calculate mapping coverage
+        required_fields = ['sku', 'name', 'price']
+        optional_fields = ['stock', 'category', 'brand', 'ean', 'weight', 'image_url', 'description']
+        missing_required = [f for f in required_fields if f not in suggested_mapping]
+        mapped_optional = [f for f in optional_fields if f in suggested_mapping]
         
         return {
             "status": "success",
             "columns": columns,
             "sample_data": samples,
             "total_rows": len(lines) - 1,
-            "message": f"Archivo con {len(columns)} columnas detectadas"
+            "suggested_mapping": suggested_mapping,
+            "missing_required": missing_required,
+            "mapped_optional": mapped_optional,
+            "mapping_coverage": f"{len(suggested_mapping)}/{len(FIELD_ALIASES)} campos detectados",
+            "message": f"Archivo con {len(columns)} columnas. {len(suggested_mapping)} campos auto-detectados."
         }
     except Exception as e:
         logger.error(f"Error previewing file: {e}")
