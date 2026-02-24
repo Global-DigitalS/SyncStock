@@ -7,11 +7,20 @@ from services.database import db, JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOUR
 
 security = HTTPBearer()
 
-# Role permissions
+# Role permissions - superadmin tiene control total
 ROLE_PERMISSIONS = {
-    "admin": ["read", "write", "delete", "manage_users", "manage_settings", "sync", "export"],
+    "superadmin": ["read", "write", "delete", "manage_users", "manage_limits", "manage_settings", "sync", "export", "unlimited"],
+    "admin": ["read", "write", "delete", "manage_settings", "sync", "export"],
     "user": ["read", "write", "delete", "sync", "export"],
     "viewer": ["read"]
+}
+
+# Default limits for new users
+DEFAULT_LIMITS = {
+    "superadmin": {"max_suppliers": 999999, "max_catalogs": 999999, "max_woocommerce_stores": 999999},
+    "admin": {"max_suppliers": 50, "max_catalogs": 20, "max_woocommerce_stores": 10},
+    "user": {"max_suppliers": 10, "max_catalogs": 5, "max_woocommerce_stores": 2},
+    "viewer": {"max_suppliers": 0, "max_catalogs": 0, "max_woocommerce_stores": 0}
 }
 
 
@@ -48,6 +57,46 @@ def require_permission(permission: str):
     return permission_checker
 
 
+async def check_user_limit(user: dict, resource_type: str) -> bool:
+    """Check if user has reached their resource limit"""
+    role = user.get("role", "user")
+    
+    # Superadmin has no limits
+    if role == "superadmin" or "unlimited" in ROLE_PERMISSIONS.get(role, []):
+        return True
+    
+    limit_field = f"max_{resource_type}"
+    user_limit = user.get(limit_field, DEFAULT_LIMITS.get(role, {}).get(limit_field, 0))
+    
+    # Count current resources
+    if resource_type == "suppliers":
+        count = await db.suppliers.count_documents({"user_id": user["id"]})
+    elif resource_type == "catalogs":
+        count = await db.catalogs.count_documents({"user_id": user["id"]})
+    elif resource_type == "woocommerce_stores":
+        count = await db.woocommerce_configs.count_documents({"user_id": user["id"]})
+    else:
+        return True
+    
+    return count < user_limit
+
+
+async def get_user_resource_usage(user: dict) -> dict:
+    """Get current resource usage for a user"""
+    suppliers = await db.suppliers.count_documents({"user_id": user["id"]})
+    catalogs = await db.catalogs.count_documents({"user_id": user["id"]})
+    stores = await db.woocommerce_configs.count_documents({"user_id": user["id"]})
+    
+    role = user.get("role", "user")
+    defaults = DEFAULT_LIMITS.get(role, DEFAULT_LIMITS["user"])
+    
+    return {
+        "suppliers": {"used": suppliers, "max": user.get("max_suppliers", defaults["max_suppliers"])},
+        "catalogs": {"used": catalogs, "max": user.get("max_catalogs", defaults["max_catalogs"])},
+        "woocommerce_stores": {"used": stores, "max": user.get("max_woocommerce_stores", defaults["max_woocommerce_stores"])}
+    }
+
+
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     try:
         payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
@@ -67,6 +116,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 async def get_admin_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
     """Get current user and verify admin role"""
     user = await get_current_user(credentials)
-    if user.get("role") != "admin":
+    if user.get("role") not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="Se requiere rol de administrador")
+    return user
+
+
+async def get_superadmin_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+    """Get current user and verify superadmin role"""
+    user = await get_current_user(credentials)
+    if user.get("role") != "superadmin":
+        raise HTTPException(status_code=403, detail="Se requiere rol de SuperAdmin")
     return user
