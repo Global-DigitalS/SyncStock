@@ -22,6 +22,7 @@ import SyncHistory from "./pages/SyncHistory";
 import UserManagement from "./pages/UserManagement";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import Subscriptions from "./pages/Subscriptions";
+import Webhooks from "./pages/Webhooks";
 
 // Components
 import Sidebar from "./components/Sidebar";
