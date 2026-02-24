@@ -125,12 +125,14 @@ async def get_unified_products(
             "total_stock": {"$sum": "$stock"},
             "supplier_count": {"$sum": 1}
         }},
-        {"$match": {"_id": {"$ne": None, "$ne": ""}}},
-        {"$skip": skip},
-        {"$limit": limit}
+        {"$match": {"_id": {"$ne": None, "$ne": ""}}}
     ]
     if min_stock is not None:
-        pipeline.insert(-2, {"$match": {"total_stock": {"$gte": min_stock}}})
+        pipeline.append({"$match": {"total_stock": {"$gte": min_stock}}})
+    # Add pagination at the end
+    pipeline.append({"$skip": skip})
+    pipeline.append({"$limit": limit})
+    
     results = await db.products.aggregate(pipeline).to_list(limit)
     unified_products = []
     for item in results:
@@ -154,6 +156,38 @@ async def get_unified_products(
             suppliers=suppliers, weight=best.get("weight")
         ))
     return unified_products
+
+
+@router.get("/products-unified/count")
+async def get_unified_products_count(
+    category: Optional[str] = None, search: Optional[str] = None,
+    min_stock: Optional[int] = None,
+    user: dict = Depends(get_current_user)
+):
+    """Obtener el total de productos unificados para paginación"""
+    match_query = {"user_id": user["id"], "ean": {"$ne": None, "$ne": ""}}
+    if category:
+        match_query["category"] = category
+    if search:
+        match_query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"sku": {"$regex": search, "$options": "i"}},
+            {"ean": {"$regex": search, "$options": "i"}}
+        ]
+    pipeline = [
+        {"$match": match_query},
+        {"$group": {
+            "_id": "$ean",
+            "total_stock": {"$sum": "$stock"}
+        }},
+        {"$match": {"_id": {"$ne": None, "$ne": ""}}}
+    ]
+    if min_stock is not None:
+        pipeline.append({"$match": {"total_stock": {"$gte": min_stock}}})
+    pipeline.append({"$count": "total"})
+    
+    result = await db.products.aggregate(pipeline).to_list(1)
+    return {"total": result[0]["total"] if result else 0}
 
 
 @router.get("/products-unified/{ean}", response_model=UnifiedProductResponse)
