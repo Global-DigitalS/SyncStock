@@ -136,26 +136,27 @@ def parse_xml_content(content: bytes) -> list:
 
 def normalize_product_data(raw: dict) -> dict:
     mapping = {
-        'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id'],
-        'name': ['name', 'nombre', 'title', 'titulo', 'product_name', 'description'],
-        'price': ['price', 'precio', 'pvp', 'cost', 'coste', 'unit_price'],
-        'stock': ['stock', 'quantity', 'cantidad', 'qty', 'inventory', 'disponible'],
-        'category': ['category', 'categoria', 'cat', 'type', 'tipo'],
-        'brand': ['brand', 'marca', 'manufacturer', 'fabricante'],
-        'ean': ['ean', 'ean13', 'barcode', 'upc', 'codigo_barras'],
-        'weight': ['weight', 'peso', 'kg'],
-        'image_url': ['image', 'imagen', 'image_url', 'photo', 'foto', 'picture'],
-        'description': ['description', 'descripcion', 'desc', 'details', 'detalles']
+        'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number', 'articulo', 'codigo_articulo', 'cod', 'item_code'],
+        'name': ['name', 'nombre', 'title', 'titulo', 'product_name', 'descripcion', 'description', 'producto', 'articulo_nombre', 'item_name'],
+        'price': ['price', 'precio', 'pvp', 'cost', 'coste', 'unit_price', 'tarifa', 'importe', 'pricen', 'precio_neto', 'net_price'],
+        'stock': ['stock', 'quantity', 'cantidad', 'qty', 'inventory', 'disponible', 'existencias', 'unidades', 'disponibilidad', 'units'],
+        'category': ['category', 'categoria', 'cat', 'type', 'tipo', 'familia', 'family', 'grupo', 'group'],
+        'brand': ['brand', 'marca', 'manufacturer', 'fabricante', 'vendor', 'proveedor'],
+        'ean': ['ean', 'ean13', 'barcode', 'upc', 'codigo_barras', 'gtin', 'ean_code'],
+        'weight': ['weight', 'peso', 'kg', 'mass'],
+        'image_url': ['image', 'imagen', 'image_url', 'photo', 'foto', 'picture', 'url_imagen', 'img'],
+        'description': ['description', 'descripcion', 'desc', 'details', 'detalles', 'long_description', 'short_description']
     }
     result = {}
     raw_lower = {str(k).lower().strip(): v for k, v in raw.items()}
+    logger.debug(f"Normalizing product - columns available: {list(raw_lower.keys())}")
     for field, aliases in mapping.items():
         for alias in aliases:
             if alias in raw_lower and raw_lower[alias]:
                 value = raw_lower[alias]
                 if field in ['price', 'weight']:
                     try:
-                        value = float(str(value).replace(',', '.').replace('€', '').strip())
+                        value = float(str(value).replace(',', '.').replace('€', '').replace('$', '').strip())
                     except Exception:
                         value = 0.0
                 elif field == 'stock':
@@ -165,6 +166,9 @@ def normalize_product_data(raw: dict) -> dict:
                         value = 0
                 result[field] = value
                 break
+    # Log what was detected
+    if not result.get('sku') or not result.get('name'):
+        logger.warning(f"Product missing required fields. SKU: {result.get('sku')}, Name: {result.get('name')}. Available columns: {list(raw_lower.keys())[:10]}")
     return result
 
 
