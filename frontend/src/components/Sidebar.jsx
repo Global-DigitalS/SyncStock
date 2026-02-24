@@ -20,7 +20,8 @@ import {
   Wifi,
   WifiOff,
   Crown,
-  CreditCard
+  CreditCard,
+  Webhook
 } from "lucide-react";
 
 const navItems = [
@@ -31,6 +32,7 @@ const navItems = [
   { path: "/margin-rules", label: "Reglas de Margen", icon: Percent },
   { path: "/export", label: "Exportar", icon: Download },
   { path: "/stores", label: "Tiendas", icon: Store },
+  { path: "/webhooks", label: "Webhooks", icon: Webhook },
   { path: "/price-history", label: "Historial de Precios", icon: TrendingUp },
   { path: "/sync-history", label: "Historial de Syncs", icon: History },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
