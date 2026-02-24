@@ -315,9 +315,21 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
         errors = 0
         needs_mapping = False
         if not column_mapping and detected_columns:
-            col_names_lower = [c.lower().strip() for c in detected_columns]
-            has_sku = any(x in col_names_lower for x in ['sku', 'codigo', 'referencia', 'ref', 'reference', 'id'])
-            has_name = any(x in col_names_lower for x in ['name', 'nombre', 'title', 'titulo', 'product', 'producto'])
+            col_names_lower = [c.lower().strip().replace(' ', '_').replace('-', '_') for c in detected_columns]
+            col_names_simple = [c.lower().strip() for c in detected_columns]
+            all_col_variants = col_names_lower + col_names_simple
+            
+            sku_aliases = ['sku', 'codigo', 'referencia', 'ref', 'reference', 'id', 'cod', 'articulo', 
+                          'codigo_articulo', 'product_id', 'item_code', 'code', 'producto']
+            name_aliases = ['name', 'nombre', 'title', 'titulo', 'product', 'producto', 'descripcion',
+                           'description', 'denominacion', 'item', 'articulo', 'desc']
+            
+            has_sku = any(alias in all_col_variants for alias in sku_aliases)
+            has_name = any(alias in all_col_variants for alias in name_aliases)
+            
+            if not has_sku or not has_name:
+                needs_mapping = True
+                logger.warning(f"Supplier {supplier.get('name')}: needs_mapping=True. Columns detected: {detected_columns[:10]}. has_sku={has_sku}, has_name={has_name}")
             if not has_sku or not has_name:
                 needs_mapping = True
         for raw in raw_products:
