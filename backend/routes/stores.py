@@ -11,6 +11,10 @@ from services.sync import (
     get_woocommerce_client, mask_key, calculate_final_price,
     sync_woocommerce_store_price_stock
 )
+from services.platforms import (
+    get_platform_client, PrestaShopClient, ShopifyClient, 
+    MagentoClient, WixClient
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
