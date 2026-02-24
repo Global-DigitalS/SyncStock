@@ -397,9 +397,19 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 logger.error(f"Error processing product: {e}")
                 errors += 1
         result = {"imported": imported, "updated": updated, "errors": errors, "detected_columns": detected_columns}
-        if needs_mapping and errors > 0 and (imported + updated) == 0:
-            result["message"] = "Se detectaron columnas pero no se pudieron importar productos. Configura el mapeo de columnas."
+        
+        # Provide better feedback about mapping needs
+        if needs_mapping:
             result["needs_mapping"] = True
+            if errors > 0 and (imported + updated) == 0:
+                result["message"] = f"Las columnas detectadas ({', '.join(detected_columns[:5])}...) no coinciden con los nombres estándar. Configura el mapeo de columnas para este proveedor."
+                result["status"] = "needs_mapping"
+            else:
+                result["message"] = "Importación parcial. Se recomienda configurar el mapeo de columnas para mejores resultados."
+        elif errors > 0 and (imported + updated) == 0:
+            result["message"] = f"No se pudieron importar productos. Verifica el formato del archivo y las columnas: {', '.join(detected_columns[:5])}"
+            result["status"] = "error"
+        
         return result
     except Exception as e:
         logger.error(f"Error processing file: {e}")
