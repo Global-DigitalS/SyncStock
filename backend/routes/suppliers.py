@@ -6,7 +6,7 @@ import uuid
 import logging
 
 from services.database import db
-from services.auth import get_current_user
+from services.auth import get_current_user, check_user_limit
 from services.sync import (
     sync_supplier, sync_supplier_multifile,
     parse_csv_content, parse_xlsx_content,
