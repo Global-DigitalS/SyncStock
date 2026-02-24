@@ -697,26 +697,35 @@ async def sync_supplier_multifile(supplier: dict) -> dict:
                 old_price = existing.get('price', 0)
                 new_price = product_doc['price']
                 if old_price != new_price and old_price > 0:
+                    change_pct = ((new_price - old_price) / old_price) * 100
                     await db.price_history.insert_one({
                         "id": str(uuid.uuid4()), "product_id": existing["id"],
                         "product_name": name, "old_price": old_price,
-                        "new_price": new_price,
-                        "change_percentage": ((new_price - old_price) / old_price) * 100,
+                        "new_price": new_price, "change_percentage": change_pct,
                         "user_id": supplier["user_id"], "created_at": now
                     })
+                    # Notificar si el cambio de precio supera el umbral configurado
+                    if abs(change_pct) >= PRICE_CHANGE_THRESHOLD_PERCENT:
+                        direction = "subido" if change_pct > 0 else "bajado"
+                        await db.notifications.insert_one({
+                            "id": str(uuid.uuid4()), "type": "price_change",
+                            "message": f"Precio de '{name[:40]}' ha {direction} {abs(change_pct):.1f}% ({old_price:.2f}€ → {new_price:.2f}€)",
+                            "product_id": existing["id"], "product_name": name,
+                            "user_id": supplier["user_id"], "read": False, "created_at": now
+                        })
                 old_stock = existing.get('stock', 0)
                 new_stock = product_doc['stock']
                 if old_stock > 0 and new_stock == 0:
                     await db.notifications.insert_one({
                         "id": str(uuid.uuid4()), "type": "stock_out",
-                        "message": f"Producto '{name}' sin stock",
+                        "message": f"Producto '{name[:40]}' sin stock",
                         "product_id": existing["id"], "product_name": name,
                         "user_id": supplier["user_id"], "read": False, "created_at": now
                     })
-                elif old_stock > 5 and 0 < new_stock <= 5:
+                elif old_stock > LOW_STOCK_THRESHOLD and 0 < new_stock <= LOW_STOCK_THRESHOLD:
                     await db.notifications.insert_one({
                         "id": str(uuid.uuid4()), "type": "stock_low",
-                        "message": f"Producto '{name}' con stock bajo ({new_stock} uds)",
+                        "message": f"Producto '{name[:40]}' con stock bajo ({new_stock} uds)",
                         "product_id": existing["id"], "product_name": name,
                         "user_id": supplier["user_id"], "read": False, "created_at": now
                     })
