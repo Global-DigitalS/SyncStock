@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 import uuid
 
 from services.database import db
-from services.auth import get_current_user
+from services.auth import get_current_user, check_user_limit
 from services.sync import calculate_final_price
 from models.schemas import (
     CatalogCreate, CatalogUpdate, CatalogResponse,
@@ -20,6 +20,14 @@ router = APIRouter()
 
 @router.post("/catalogs", response_model=CatalogResponse)
 async def create_catalog(catalog: CatalogCreate, user: dict = Depends(get_current_user)):
+    # Check user limit
+    can_create = await check_user_limit(user, "catalogs")
+    if not can_create:
+        raise HTTPException(
+            status_code=403, 
+            detail=f"Has alcanzado el límite de catálogos. Máximo: {user.get('max_catalogs', 5)}"
+        )
+    
     catalog_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
     if catalog.is_default:
