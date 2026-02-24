@@ -413,12 +413,15 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
         
         product_count = await db.products.count_documents({"supplier_id": supplier['id']})
         await db.suppliers.update_one({"id": supplier['id']}, {"$set": {"product_count": product_count, "last_sync": now.isoformat()}})
-        await db.notifications.insert_one({
+        
+        notification = {
             "id": str(uuid.uuid4()), "type": "sync_complete",
             "message": f"Sincronización completada: {supplier['name']} - {result['imported']} nuevos, {result['updated']} actualizados",
             "product_id": None, "product_name": None,
             "user_id": supplier["user_id"], "read": False, "created_at": now.isoformat()
-        })
+        }
+        await db.notifications.insert_one(notification)
+        await send_realtime_notification(supplier["user_id"], notification)
         
         final_result = {"status": "success", **result}
         await record_sync_history(supplier, final_result, sync_type, duration)
@@ -427,13 +430,17 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
     except Exception as e:
         duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         logger.error(f"Error syncing supplier {supplier['name']}: {e}")
-        await db.notifications.insert_one({
+        
+        notification = {
             "id": str(uuid.uuid4()), "type": "sync_error",
             "message": f"Error en sincronización: {supplier['name']} - {str(e)[:100]}",
             "product_id": None, "product_name": None,
             "user_id": supplier["user_id"], "read": False,
             "created_at": datetime.now(timezone.utc).isoformat()
-        })
+        }
+        await db.notifications.insert_one(notification)
+        await send_realtime_notification(supplier["user_id"], notification)
+        
         error_result = {"status": "error", "message": str(e), "imported": 0, "updated": 0, "errors": 1}
         await record_sync_history(supplier, error_result, sync_type, duration, str(e))
         return error_result
