@@ -89,6 +89,10 @@ const Products = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalProducts, setTotalProducts] = useState(0);
   const [pageSize, setPageSize] = useState(25);
+  
+  // Sorting state
+  const [sortBy, setSortBy] = useState(null);
+  const [sortOrder, setSortOrder] = useState("asc");
 
   const buildQueryParams = useCallback((page = currentPage, limit = pageSize) => {
     const params = { skip: (page - 1) * limit, limit };
@@ -97,8 +101,12 @@ const Products = () => {
     if (filters.stock === "available") {
       params.min_stock = 1;
     }
+    if (sortBy) {
+      params.sort_by = sortBy;
+      params.sort_order = sortOrder;
+    }
     return params;
-  }, [filters, currentPage, pageSize]);
+  }, [filters, currentPage, pageSize, sortBy, sortOrder]);
 
   const fetchData = useCallback(async (page = 1) => {
     setLoading(true);
