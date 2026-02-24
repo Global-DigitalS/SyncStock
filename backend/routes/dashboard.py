@@ -42,6 +42,83 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
     )
 
 
+@router.get("/dashboard/superadmin-stats")
+async def get_superadmin_dashboard_stats(superadmin: dict = Depends(get_superadmin_user)):
+    """Dashboard estadísticas globales para SuperAdmin"""
+    # User stats
+    total_users = await db.users.count_documents({})
+    users_by_role = {}
+    for role in ["superadmin", "admin", "user", "viewer"]:
+        users_by_role[role] = await db.users.count_documents({"role": role})
+    
+    # Resource stats (global)
+    total_suppliers = await db.suppliers.count_documents({})
+    total_products = await db.products.count_documents({})
+    total_catalogs = await db.catalogs.count_documents({})
+    total_wc_stores = await db.woocommerce_configs.count_documents({})
+    
+    # Sync stats
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    syncs_this_week = await db.sync_history.count_documents({"created_at": {"$gte": week_ago}})
+    sync_errors_this_week = await db.sync_history.count_documents({"created_at": {"$gte": week_ago}, "status": "error"})
+    
+    # Top users by resources
+    pipeline = [
+        {"$group": {
+            "_id": "$user_id",
+            "count": {"$sum": 1}
+        }},
+        {"$sort": {"count": -1}},
+        {"$limit": 5}
+    ]
+    top_users_suppliers = await db.suppliers.aggregate(pipeline).to_list(5)
+    top_users_products = await db.products.aggregate(pipeline).to_list(5)
+    
+    # Get user names for top users
+    all_user_ids = list(set([u["_id"] for u in top_users_suppliers] + [u["_id"] for u in top_users_products]))
+    users_map = {}
+    if all_user_ids:
+        users_list = await db.users.find({"id": {"$in": all_user_ids}}, {"_id": 0, "id": 1, "name": 1, "email": 1}).to_list(100)
+        users_map = {u["id"]: u for u in users_list}
+    
+    top_suppliers = [{"user_id": u["_id"], "name": users_map.get(u["_id"], {}).get("name", "Unknown"), "email": users_map.get(u["_id"], {}).get("email", ""), "count": u["count"]} for u in top_users_suppliers]
+    top_products = [{"user_id": u["_id"], "name": users_map.get(u["_id"], {}).get("name", "Unknown"), "email": users_map.get(u["_id"], {}).get("email", ""), "count": u["count"]} for u in top_users_products]
+    
+    # Recent user registrations
+    recent_users = await db.users.find({}, {"_id": 0, "password": 0}).sort("created_at", -1).limit(5).to_list(5)
+    
+    # WooCommerce stats
+    wc_connected = await db.woocommerce_configs.count_documents({"is_connected": True})
+    wc_auto_sync = await db.woocommerce_configs.count_documents({"auto_sync_enabled": True})
+    
+    return {
+        "users": {
+            "total": total_users,
+            "by_role": users_by_role,
+            "recent": recent_users
+        },
+        "resources": {
+            "suppliers": total_suppliers,
+            "products": total_products,
+            "catalogs": total_catalogs,
+            "woocommerce_stores": total_wc_stores
+        },
+        "sync": {
+            "this_week": syncs_this_week,
+            "errors_this_week": sync_errors_this_week
+        },
+        "woocommerce": {
+            "total": total_wc_stores,
+            "connected": wc_connected,
+            "auto_sync": wc_auto_sync
+        },
+        "top_users": {
+            "by_suppliers": top_suppliers,
+            "by_products": top_products
+        }
+    }
+
+
 @router.get("/dashboard/stock-alerts")
 async def get_stock_alerts(user: dict = Depends(get_current_user)):
     low_stock = await db.products.find({"user_id": user["id"], "stock": {"$gt": 0, "$lte": 5}}, {"_id": 0, "user_id": 0}).limit(10).to_list(10)
