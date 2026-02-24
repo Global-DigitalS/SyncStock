@@ -80,7 +80,7 @@ const FtpFileBrowser = ({
     if (!supplier?.ftp_host) return;
     setFtpLoading(true);
     try {
-      const res = await api.post("/suppliers/browse-ftp", {
+      const res = await api.post("/suppliers/ftp-browse", {
         host: supplier.ftp_host,
         port: supplier.ftp_port || 21,
         username: supplier.ftp_username || "",
