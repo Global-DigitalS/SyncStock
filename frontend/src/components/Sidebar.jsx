@@ -14,7 +14,8 @@ import {
   LogOut,
   Menu,
   X,
-  ChevronLeft
+  ChevronLeft,
+  History
 } from "lucide-react";
 
 const navItems = [
@@ -26,6 +27,7 @@ const navItems = [
   { path: "/export", label: "Exportar", icon: Download },
   { path: "/woocommerce", label: "WooCommerce", icon: ShoppingCart },
   { path: "/price-history", label: "Historial de Precios", icon: TrendingUp },
+  { path: "/sync-history", label: "Historial de Syncs", icon: History },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
 ];
 
