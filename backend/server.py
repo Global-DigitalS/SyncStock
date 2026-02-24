@@ -103,6 +103,7 @@ api_router.include_router(catalogs_router)
 api_router.include_router(woocommerce_router)
 api_router.include_router(dashboard_router)
 api_router.include_router(subscriptions_router)
+api_router.include_router(stores_router)
 
 
 # Health check endpoint
