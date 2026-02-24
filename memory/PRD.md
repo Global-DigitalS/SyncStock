@@ -3,7 +3,7 @@
 ## Problema Original
 Aplicación SaaS para gestionar catálogos de productos de proveedores.
 
-## Funcionalidades Implementadas
+## Funcionalidades Implementadas (100%)
 - [x] Autenticación JWT (registro, login, token)
 - [x] Gestión de proveedores CRUD
 - [x] Sincronización FTP/SFTP/URL de productos
@@ -23,58 +23,74 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores.
 - [x] Sincronización multi-archivo con fusión de datos por clave común
 - [x] Auto-selección del ZIP más reciente y StockFile al conectar al FTP
 - [x] Búsqueda dinámica del archivo más reciente durante sync automático (auto_latest)
-- [x] **Sistema de notificaciones mejorado** (Febrero 2026)
-  - Notificaciones de cambio de precio significativo (umbral configurable)
-  - Alertas de stock bajo y sin stock
-  - Notificaciones de sincronización (completadas y errores)
-  - Filtros por tipo y estado (leídas/sin leer)
-  - Estadísticas de notificaciones por tipo
-  - Eliminar notificaciones individuales y en lote
-- [x] **Configuración centralizada de MongoDB** (Febrero 2026)
-  - Archivo config.py con todas las configuraciones documentadas
-  - Umbrales configurables para notificaciones
-  - Opciones de conexión avanzadas para MongoDB
+- [x] Sistema de notificaciones mejorado con alertas de cambio de precio
+- [x] Configuración centralizada de MongoDB (config.py)
+- [x] **Historial de Sincronizaciones** (Febrero 2026)
+  - Página dedicada `/sync-history` con estadísticas
+  - Gráfica de barras por día (exitosas vs errores)
+  - Filtros por proveedor, estado y rango de días
+  - Tabla detallada con métricas (importados, actualizados, errores, duración)
+  - Registro automático de cada sincronización
+- [x] **Refactorización de componentes frontend** (Febrero 2026)
+  - FtpFileBrowser.jsx - Explorador FTP reutilizable
+  - ProductDetailDialog.jsx - Ficha de producto con pestañas
+  - CatalogSelectorDialog.jsx - Selector de catálogos
 
 ## Arquitectura
 - **Backend**: FastAPI modular + MongoDB + APScheduler
-- **Frontend**: React + TailwindCSS + Shadcn UI
-- **Estructura**:
+- **Frontend**: React + TailwindCSS + Shadcn UI + Recharts
+- **Estructura Backend**:
 ```
 /app/backend/
 ├── config.py        # Configuración centralizada BD y notificaciones
 ├── server.py        # Orquestador FastAPI
 ├── models/
-│   └── schemas.py   # Modelos Pydantic
+│   └── schemas.py   # Modelos Pydantic (incluyendo SyncHistoryResponse)
 ├── routes/
 │   ├── auth.py
 │   ├── catalogs.py
-│   ├── dashboard.py # Notificaciones, stats, exportación
+│   ├── dashboard.py # Notificaciones, stats, sync-history, exportación
 │   ├── products.py
 │   ├── suppliers.py
 │   └── woocommerce.py
 └── services/
     ├── auth.py
     ├── database.py
-    └── sync.py      # Sincronización y generación de notificaciones
+    └── sync.py      # Sincronización y record_sync_history
+```
+- **Estructura Frontend**:
+```
+/app/frontend/src/
+├── pages/
+│   ├── SyncHistory.jsx  # Nueva página de historial
+│   └── ...
+├── components/
+│   ├── FtpFileBrowser.jsx       # Explorador FTP refactorizado
+│   ├── ProductDetailDialog.jsx  # Ficha de producto refactorizada
+│   ├── CatalogSelectorDialog.jsx
+│   └── Sidebar.jsx              # Con enlace a sync-history
+└── ...
 ```
 
-## Configuración de Notificaciones (config.py)
-- `PRICE_CHANGE_THRESHOLD_PERCENT`: Umbral de cambio de precio para alertas (default: 10%)
-- `LOW_STOCK_THRESHOLD`: Umbral de stock bajo (default: 5 unidades)
-- `SUPPLIER_SYNC_INTERVAL_HOURS`: Intervalo de sincronización (default: 6 horas)
-- `WOOCOMMERCE_SYNC_INTERVAL_HOURS`: Intervalo sincronización WooCommerce (default: 12 horas)
+## Nuevos Endpoints API
+- `GET /api/sync-history` - Lista de sincronizaciones con filtros
+- `GET /api/sync-history/stats` - Estadísticas para gráficas
 
-## Backlog (P2-P3)
-- [ ] Mapeo de columnas para archivos TechData
-- [ ] Gráficas de evolución de precios
+## Colecciones MongoDB
+- **sync_history**: Historial de sincronizaciones
+  - id, supplier_id, supplier_name, sync_type (manual/scheduled)
+  - status (success/error/partial), imported, updated, errors
+  - duration_seconds, error_message, user_id, created_at
+
+## Backlog Futuro
+- [ ] Gráficas de evolución de precios por producto
 - [ ] Sistema de roles de usuario
-- [ ] Historial de sincronizaciones detallado
-- [ ] Refactorizar componentes grandes del frontend (Products.jsx, Suppliers.jsx)
-- [ ] Ampliar fuentes de datos (SFTP, APIs directas)
+- [ ] Notificaciones push en tiempo real (WebSockets)
+- [ ] Integración SFTP y APIs directas
 
 ## Credenciales de Prueba
 - Email: test@test.com
 - Password: test123
 
 ## Última Actualización
-Febrero 2026 - Sistema de notificaciones mejorado y configuración centralizada de MongoDB
+Febrero 2026 - Historial de sincronizaciones y refactorización de componentes frontend
