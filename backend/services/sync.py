@@ -18,6 +18,19 @@ from config import PRICE_CHANGE_THRESHOLD_PERCENT, LOW_STOCK_THRESHOLD
 logger = logging.getLogger(__name__)
 
 
+async def send_realtime_notification(user_id: str, notification: dict):
+    """Send notification via WebSocket if user is connected"""
+    try:
+        # Import here to avoid circular imports
+        from server import ws_manager
+        await ws_manager.send_to_user(user_id, {
+            "type": "notification",
+            "data": notification
+        })
+    except Exception as e:
+        logger.debug(f"Could not send realtime notification: {e}")
+
+
 # ==================== FILE DOWNLOAD ====================
 
 def download_file_from_ftp_sync(supplier: dict) -> bytes:
