@@ -100,7 +100,7 @@ async def add_products_to_multiple_catalogs(
 @router.get("/products-unified", response_model=List[UnifiedProductResponse])
 async def get_unified_products(
     category: Optional[str] = None, search: Optional[str] = None,
-    min_stock: Optional[int] = None, skip: int = 0, limit: int = 100,
+    min_stock: Optional[int] = None, skip: int = 0, limit: int = 50,
     user: dict = Depends(get_current_user)
 ):
     match_query = {"user_id": user["id"], "ean": {"$ne": None, "$ne": ""}}
