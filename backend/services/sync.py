@@ -774,6 +774,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
             logger.error(f"Error processing multi-file product: {e}")
             errors += 1
 
+    duration = (datetime.now(timezone.utc) - start_time).total_seconds()
     product_count = await db.products.count_documents({"supplier_id": supplier['id']})
     await db.suppliers.update_one({"id": supplier['id']}, {"$set": {
         "product_count": product_count, "last_sync": now,
@@ -787,12 +788,15 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
         "user_id": supplier["user_id"], "read": False, "created_at": now
     })
 
-    logger.info(f"Multi-file sync complete: {imported} imported, {updated} updated, {errors} errors")
-    return {
+    final_result = {
         "status": "success", "imported": imported, "updated": updated,
         "errors": errors, "files_processed": len(all_file_data),
         "detected_columns": all_detected_columns
     }
+    await record_sync_history(supplier, final_result, sync_type, duration)
+    
+    logger.info(f"Multi-file sync complete: {imported} imported, {updated} updated, {errors} errors")
+    return final_result
 
 
 # ==================== WOOCOMMERCE SYNC ====================
