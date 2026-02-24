@@ -151,6 +151,17 @@ const Products = () => {
     fetchData(newPage);
   };
 
+  const handleSort = (column) => {
+    if (sortBy === column) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(column);
+      setSortOrder("asc");
+    }
+    setCurrentPage(1);
+    setTimeout(() => fetchData(1), 0);
+  };
+
   const totalPages = Math.ceil(totalProducts / pageSize);
 
   // File upload handlers
