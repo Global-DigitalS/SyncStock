@@ -574,12 +574,13 @@ async def resolve_latest_file(supplier: dict, file_config: dict) -> str:
         return file_path
 
 
-async def sync_supplier_multifile(supplier: dict) -> dict:
+async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> dict:
     """Sync supplier with multiple file paths - downloads all, merges by key"""
     ftp_paths = supplier.get('ftp_paths', [])
     if not ftp_paths:
-        return await sync_supplier(supplier)
+        return await sync_supplier(supplier, sync_type)
 
+    start_time = datetime.now(timezone.utc)
     logger.info(f"Multi-file sync for {supplier['name']}: {len(ftp_paths)} files configured")
     all_file_data = {}
     all_detected_columns = {}
