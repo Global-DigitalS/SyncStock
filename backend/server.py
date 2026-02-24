@@ -108,9 +108,16 @@ api_router.include_router(stores_router)
 api_router.include_router(webhooks_router)
 
 
-# Health check endpoint
+# Health check endpoint under /api
 @api_router.get("/health")
+async def api_health_check():
+    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+# Root-level health check for Kubernetes deployment
+@app.get("/health")
 async def health_check():
+    """Health check endpoint at root level for Kubernetes liveness/readiness probes"""
     return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
