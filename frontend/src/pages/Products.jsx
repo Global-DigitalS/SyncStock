@@ -80,51 +80,66 @@ const Products = () => {
   const [editForm, setEditForm] = useState({});
   const [savingProduct, setSavingProduct] = useState(false);
   const [activeTab, setActiveTab] = useState("proveedores");
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const [pageSize, setPageSize] = useState(25);
 
-  const buildQueryParams = useCallback(() => {
-    const params = {};
+  const buildQueryParams = useCallback((page = currentPage, limit = pageSize) => {
+    const params = { skip: (page - 1) * limit, limit };
     if (filters.search) params.search = filters.search;
     if (filters.category) params.category = filters.category;
     if (filters.stock === "available") {
       params.min_stock = 1;
     }
     return params;
-  }, [filters]);
+  }, [filters, currentPage, pageSize]);
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (page = 1) => {
+    setLoading(true);
     try {
-      const [productsRes, categoriesRes, suppliersRes, catalogsRes] = await Promise.all([
-        api.get("/products-unified", { params: buildQueryParams() }),
+      const queryParams = buildQueryParams(page, pageSize);
+      const countParams = { ...queryParams };
+      delete countParams.skip;
+      delete countParams.limit;
+      
+      const [productsRes, countRes, categoriesRes, suppliersRes, catalogsRes] = await Promise.all([
+        api.get("/products-unified", { params: queryParams }),
+        api.get("/products-unified/count", { params: countParams }),
         api.get("/products/categories"),
         api.get("/suppliers"),
         api.get("/catalogs")
       ]);
       setProducts(productsRes.data);
+      setTotalProducts(countRes.data.total);
       setCategories(categoriesRes.data);
       setSuppliers(suppliersRes.data);
       setCatalogs(catalogsRes.data);
+      setCurrentPage(page);
     } catch (error) {
       toast.error("Error al cargar los productos");
     } finally {
       setLoading(false);
     }
-  }, [buildQueryParams]);
+  }, [buildQueryParams, pageSize]);
 
   useEffect(() => {
-    fetchData();
+    fetchData(1);
   }, []);
 
   const handleSearch = async () => {
-    setLoading(true);
-    try {
-      const res = await api.get("/products-unified", { params: buildQueryParams() });
-      setProducts(res.data);
-    } catch (error) {
-      toast.error("Error al buscar productos");
-    } finally {
-      setLoading(false);
-    }
+    setCurrentPage(1);
+    fetchData(1);
   };
+
+  const handlePageChange = (newPage) => {
+    if (newPage < 1 || newPage > totalPages) return;
+    setSelectedProducts(new Set());
+    fetchData(newPage);
+  };
+
+  const totalPages = Math.ceil(totalProducts / pageSize);
 
   // File upload handlers
   const handleFileUpload = async (file) => {
