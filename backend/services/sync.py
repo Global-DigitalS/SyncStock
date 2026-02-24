@@ -355,7 +355,29 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
         return {"imported": 0, "updated": 0, "errors": 1, "message": str(e), "detected_columns": []}
 
 
-async def sync_supplier(supplier: dict) -> dict:
+async def record_sync_history(supplier: dict, result: dict, sync_type: str, duration: float, error_message: str = None):
+    """Registrar historial de sincronización"""
+    status = "success" if result.get("status") == "success" else "error" if result.get("status") == "error" else "partial"
+    if result.get("errors", 0) > 0 and result.get("imported", 0) + result.get("updated", 0) > 0:
+        status = "partial"
+    
+    await db.sync_history.insert_one({
+        "id": str(uuid.uuid4()),
+        "supplier_id": supplier["id"],
+        "supplier_name": supplier["name"],
+        "sync_type": sync_type,
+        "status": status,
+        "imported": result.get("imported", 0),
+        "updated": result.get("updated", 0),
+        "errors": result.get("errors", 0),
+        "duration_seconds": round(duration, 2),
+        "error_message": error_message or result.get("message"),
+        "user_id": supplier["user_id"],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+
+
+async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
     connection_type = supplier.get('connection_type', 'ftp')
     if connection_type == 'url':
         if not supplier.get('file_url'):
@@ -363,22 +385,30 @@ async def sync_supplier(supplier: dict) -> dict:
     else:
         if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
             return {"status": "skipped", "message": "FTP no configurado"}
+    
+    start_time = datetime.now(timezone.utc)
     try:
         logger.info(f"Syncing supplier: {supplier['name']} (via {connection_type})")
         content = await download_file_from_url(supplier['file_url']) if connection_type == 'url' else await download_file_from_ftp(supplier)
         result = await process_supplier_file(supplier, content)
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        duration = (now - start_time).total_seconds()
+        
         product_count = await db.products.count_documents({"supplier_id": supplier['id']})
-        await db.suppliers.update_one({"id": supplier['id']}, {"$set": {"product_count": product_count, "last_sync": now}})
+        await db.suppliers.update_one({"id": supplier['id']}, {"$set": {"product_count": product_count, "last_sync": now.isoformat()}})
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()), "type": "sync_complete",
             "message": f"Sincronización completada: {supplier['name']} - {result['imported']} nuevos, {result['updated']} actualizados",
             "product_id": None, "product_name": None,
-            "user_id": supplier["user_id"], "read": False, "created_at": now
+            "user_id": supplier["user_id"], "read": False, "created_at": now.isoformat()
         })
+        
+        final_result = {"status": "success", **result}
+        await record_sync_history(supplier, final_result, sync_type, duration)
         logger.info(f"Sync complete for {supplier['name']}: {result}")
-        return {"status": "success", **result}
+        return final_result
     except Exception as e:
+        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
         logger.error(f"Error syncing supplier {supplier['name']}: {e}")
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()), "type": "sync_error",
@@ -387,7 +417,9 @@ async def sync_supplier(supplier: dict) -> dict:
             "user_id": supplier["user_id"], "read": False,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        return {"status": "error", "message": str(e)}
+        error_result = {"status": "error", "message": str(e), "imported": 0, "updated": 0, "errors": 1}
+        await record_sync_history(supplier, error_result, sync_type, duration, str(e))
+        return error_result
 
 
 async def sync_all_suppliers():
