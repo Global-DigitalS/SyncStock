@@ -24,6 +24,7 @@ from routes.woocommerce import router as woocommerce_router
 from routes.dashboard import router as dashboard_router
 from routes.subscriptions import router as subscriptions_router
 from routes.stores import router as stores_router
+from routes.webhooks import router as webhooks_router
 
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
