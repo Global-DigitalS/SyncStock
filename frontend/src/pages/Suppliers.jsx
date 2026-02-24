@@ -228,6 +228,28 @@ const Suppliers = () => {
     }
   };
 
+  const openMappingDialog = async (supplier) => {
+    setMappingSupplier(supplier);
+    setShowMappingDialog(true);
+    
+    // Try to load preview and suggested mapping from file
+    try {
+      const res = await api.post(`/suppliers/${supplier.id}/preview-file`);
+      if (res.data.status === "success") {
+        // Update supplier with detected columns and suggested mapping
+        setMappingSupplier({
+          ...supplier,
+          detected_columns: res.data.columns,
+          suggested_mapping: res.data.suggested_mapping
+        });
+        toast.success(`${res.data.columns.length} columnas detectadas automáticamente`);
+      }
+    } catch (error) {
+      // If preview fails, just use existing detected columns
+      console.log("Could not load preview:", error.response?.data?.detail);
+    }
+  };
+
   const handleDelete = async () => {
     try {
       await api.delete(`/suppliers/${selectedSupplier.id}`);
