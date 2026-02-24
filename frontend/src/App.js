@@ -18,6 +18,7 @@ import Export from "./pages/Export";
 import WooCommerceExport from "./pages/WooCommerceExport";
 import PriceHistory from "./pages/PriceHistory";
 import Notifications from "./pages/Notifications";
+import SyncHistory from "./pages/SyncHistory";
 
 // Components
 import Sidebar from "./components/Sidebar";
