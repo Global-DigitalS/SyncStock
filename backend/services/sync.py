@@ -149,24 +149,43 @@ def parse_xml_content(content: bytes) -> list:
 
 def normalize_product_data(raw: dict) -> dict:
     mapping = {
-        'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number', 'articulo', 'codigo_articulo', 'cod', 'item_code'],
-        'name': ['name', 'nombre', 'title', 'titulo', 'product_name', 'descripcion', 'description', 'producto', 'articulo_nombre', 'item_name'],
-        'price': ['price', 'precio', 'pvp', 'cost', 'coste', 'unit_price', 'tarifa', 'importe', 'pricen', 'precio_neto', 'net_price'],
-        'stock': ['stock', 'quantity', 'cantidad', 'qty', 'inventory', 'disponible', 'existencias', 'unidades', 'disponibilidad', 'units'],
-        'category': ['category', 'categoria', 'cat', 'type', 'tipo', 'familia', 'family', 'grupo', 'group'],
-        'brand': ['brand', 'marca', 'manufacturer', 'fabricante', 'vendor', 'proveedor'],
-        'ean': ['ean', 'ean13', 'barcode', 'upc', 'codigo_barras', 'gtin', 'ean_code'],
-        'weight': ['weight', 'peso', 'kg', 'mass'],
-        'image_url': ['image', 'imagen', 'image_url', 'photo', 'foto', 'picture', 'url_imagen', 'img'],
-        'description': ['description', 'descripcion', 'desc', 'details', 'detalles', 'long_description', 'short_description']
+        'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number', 
+                'articulo', 'codigo_articulo', 'cod', 'item_code', 'cod_articulo', 'ref_articulo', 'codigo_producto',
+                'product_code', 'item_id', 'article', 'article_id', 'num_art', 'numero_articulo', 'codigoarticulo',
+                'codart', 'refart', 'art', 'producto_id', 'id_producto', 'idproducto', 'producto'],
+        'name': ['name', 'nombre', 'title', 'titulo', 'product_name', 'descripcion', 'description', 'producto', 
+                 'articulo_nombre', 'item_name', 'denominacion', 'denominación', 'nombre_producto', 'product',
+                 'item', 'nombreprod', 'nombproducto', 'nombre_articulo', 'articulo', 'desc', 'descriptivo'],
+        'price': ['price', 'precio', 'pvp', 'cost', 'coste', 'unit_price', 'tarifa', 'importe', 'pricen', 
+                  'precio_neto', 'net_price', 'preciopvp', 'precioventa', 'precio_venta', 'preciofinal',
+                  'precio_final', 'priceunit', 'unitprice', 'precio_unitario', 'pvd', 'pvr', 'eur', 'euro'],
+        'stock': ['stock', 'quantity', 'cantidad', 'qty', 'inventory', 'disponible', 'existencias', 'unidades', 
+                  'disponibilidad', 'units', 'existencia', 'cantstock', 'stockdisponible', 'stock_disponible',
+                  'en_stock', 'enstock', 'cantidad_stock', 'total_stock', 'stockactual', 'stock_actual'],
+        'category': ['category', 'categoria', 'cat', 'type', 'tipo', 'familia', 'family', 'grupo', 'group',
+                     'categorie', 'categoria1', 'cat1', 'groupo', 'seccion', 'sección'],
+        'brand': ['brand', 'marca', 'manufacturer', 'fabricante', 'vendor', 'proveedor', 'make', 'brand_name',
+                  'nombremarca', 'nombre_marca', 'marcafabricante'],
+        'ean': ['ean', 'ean13', 'barcode', 'upc', 'codigo_barras', 'gtin', 'ean_code', 'codigobarras', 
+                'cod_barras', 'codigo_barra', 'bar_code', 'ean8', 'codean'],
+        'weight': ['weight', 'peso', 'kg', 'mass', 'peso_kg', 'pesokg', 'weightkg'],
+        'image_url': ['image', 'imagen', 'image_url', 'photo', 'foto', 'picture', 'url_imagen', 'img',
+                      'urlimagen', 'imageurl', 'fotografia', 'pic', 'imagen_url', 'url_image', 'link_imagen'],
+        'description': ['description', 'descripcion', 'desc', 'details', 'detalles', 'long_description', 
+                        'short_description', 'descripcion_larga', 'descripcion_corta', 'texto', 'detalle']
     }
     result = {}
-    raw_lower = {str(k).lower().strip(): v for k, v in raw.items()}
-    logger.debug(f"Normalizing product - columns available: {list(raw_lower.keys())}")
+    raw_lower = {str(k).lower().strip().replace(' ', '_').replace('-', '_'): v for k, v in raw.items()}
+    raw_original_lower = {str(k).lower().strip(): v for k, v in raw.items()}
+    # Merge both for more flexible matching
+    combined_raw = {**raw_original_lower, **raw_lower}
+    
+    logger.debug(f"Normalizing product - columns available: {list(combined_raw.keys())}")
+    
     for field, aliases in mapping.items():
         for alias in aliases:
-            if alias in raw_lower and raw_lower[alias]:
-                value = raw_lower[alias]
+            if alias in combined_raw and combined_raw[alias]:
+                value = combined_raw[alias]
                 if field in ['price', 'weight']:
                     try:
                         value = float(str(value).replace(',', '.').replace('€', '').replace('$', '').strip())
@@ -179,9 +198,12 @@ def normalize_product_data(raw: dict) -> dict:
                         value = 0
                 result[field] = value
                 break
+    
     # Log what was detected
     if not result.get('sku') or not result.get('name'):
-        logger.warning(f"Product missing required fields. SKU: {result.get('sku')}, Name: {result.get('name')}. Available columns: {list(raw_lower.keys())[:10]}")
+        available_cols = list(raw.keys())[:15]
+        logger.warning(f"Product missing required fields. SKU: {result.get('sku')}, Name: {result.get('name')}. Available columns: {available_cols}")
+    
     return result
 
 
