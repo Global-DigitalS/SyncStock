@@ -55,35 +55,50 @@ class SetupResponse(BaseModel):
 async def get_setup_status():
     """
     Verifica el estado de configuración de la aplicación.
-    Devuelve si la base de datos está conectada y si existe un SuperAdmin.
+    Devuelve si la base de datos está conectada, si existe un SuperAdmin,
+    y qué configuraciones faltan.
     """
-    from services.database import db
+    config = get_config()
     
-    try:
-        # Intentar conectar a la base de datos
-        await db.command("ping")
-        has_database = True
-        database_name = db.name
-    except Exception as e:
-        logger.error(f"Database connection error: {e}")
-        has_database = False
-        database_name = ""
-    
-    # Verificar si existe un SuperAdmin
+    has_database = False
     has_superadmin = False
-    if has_database:
+    database_name = ""
+    
+    # Verificar conexión a MongoDB si hay URL configurada
+    if config.mongo_url:
         try:
-            superadmin = await db.users.find_one({"role": "superadmin"})
+            from motor.motor_asyncio import AsyncIOMotorClient
+            test_client = AsyncIOMotorClient(
+                config.mongo_url,
+                connectTimeoutMS=5000,
+                serverSelectionTimeoutMS=5000,
+            )
+            await test_client.admin.command("ping")
+            has_database = True
+            database_name = config.db_name
+            
+            # Verificar si existe un SuperAdmin
+            test_db = test_client[config.db_name]
+            superadmin = await test_db.users.find_one({"role": "superadmin"})
             has_superadmin = superadmin is not None
+            
+            test_client.close()
         except Exception as e:
-            logger.error(f"Error checking superadmin: {e}")
+            logger.error(f"Database connection error: {e}")
+            has_database = False
     
-    is_configured = has_database and has_superadmin
+    is_configured = has_database and has_superadmin and bool(config.jwt_secret)
     
-    if not has_database:
-        message = "Base de datos no configurada. Por favor, configura la conexión a MongoDB."
+    # Determinar qué falta configurar
+    needs_mongo_config = not config.mongo_url or not has_database
+    needs_jwt_config = not config.jwt_secret
+    
+    if needs_mongo_config:
+        message = "Configura la conexión a MongoDB para comenzar."
+    elif needs_jwt_config:
+        message = "Falta configurar la seguridad de la aplicación."
     elif not has_superadmin:
-        message = "No hay usuario SuperAdmin. Por favor, crea el primer usuario administrador."
+        message = "Crea el usuario SuperAdmin para completar la configuración."
     else:
         message = "Aplicación configurada correctamente."
     
@@ -92,7 +107,10 @@ async def get_setup_status():
         has_database=has_database,
         has_superadmin=has_superadmin,
         database_name=database_name,
-        message=message
+        message=message,
+        needs_mongo_config=needs_mongo_config,
+        needs_jwt_config=needs_jwt_config,
+        current_cors=config.cors_origins
     )
 
 
