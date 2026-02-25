@@ -1,12 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../App";
 import axios from "axios";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { Switch } from "../components/ui/switch";
 import {
   Database,
   Server,
@@ -20,7 +20,14 @@ import {
   ArrowRight,
   Shield,
   Zap,
-  HelpCircle
+  HelpCircle,
+  Key,
+  Globe,
+  Settings,
+  Eye,
+  EyeOff,
+  Copy,
+  Check
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -28,16 +35,23 @@ const API = `${BACKEND_URL}/api`;
 
 const Setup = () => {
   const navigate = useNavigate();
-  const { login } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showJwtSecret, setShowJwtSecret] = useState(false);
+  const [useCustomJwt, setUseCustomJwt] = useState(false);
+  const [copied, setCopied] = useState(false);
   
   const [formData, setFormData] = useState({
+    // Paso 1: Configuración de la aplicación
     mongo_url: "",
     db_name: "supplier_sync_db",
+    jwt_secret: "",
+    cors_origins: "*",
+    // Paso 2: SuperAdmin
     admin_email: "",
     admin_password: "",
     admin_password_confirm: "",
@@ -57,11 +71,32 @@ const Setup = () => {
       } else if (res.data.has_database && !res.data.has_superadmin) {
         setStep(2);
       }
+      // Pre-fill CORS if available
+      if (res.data.current_cors) {
+        setFormData(prev => ({ ...prev, cors_origins: res.data.current_cors }));
+      }
     } catch (error) {
       console.log("Setup status check failed:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const generateJwtSecret = () => {
+    // Generar un JWT secret seguro en el cliente
+    const array = new Uint8Array(48);
+    crypto.getRandomValues(array);
+    const secret = Array.from(array, byte => byte.toString(16).padStart(2, '0')).join('');
+    setFormData({ ...formData, jwt_secret: secret });
+    setUseCustomJwt(true);
+    toast.success("JWT Secret generado");
+  };
+
+  const copyJwtSecret = () => {
+    navigator.clipboard.writeText(formData.jwt_secret);
+    setCopied(true);
+    toast.success("Copiado al portapapeles");
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const testConnection = async () => {
@@ -141,6 +176,8 @@ const Setup = () => {
       const res = await axios.post(`${API}/setup/configure`, {
         mongo_url: formData.mongo_url,
         db_name: formData.db_name,
+        jwt_secret: formData.jwt_secret, // Si vacío, el backend genera uno
+        cors_origins: formData.cors_origins,
         admin_email: formData.admin_email,
         admin_password: formData.admin_password,
         admin_name: formData.admin_name,
@@ -148,16 +185,21 @@ const Setup = () => {
       });
 
       if (res.data.success) {
-        toast.success("Configuración completada");
+        toast.success("¡Configuración completada!");
         
-        // Guardar token y redirigir
+        // Guardar token y usuario
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("user", JSON.stringify(res.data.user));
         
-        // Pequeño delay para que se guarde el token
+        // Si requiere reinicio, mostrar mensaje
+        if (res.data.requires_restart) {
+          toast.info("La aplicación se ha configurado. Redirigiendo...", { duration: 3000 });
+        }
+        
+        // Redirigir al dashboard
         setTimeout(() => {
           window.location.href = "/";
-        }, 500);
+        }, 1000);
       } else {
         toast.error(res.data.message);
       }
@@ -199,7 +241,7 @@ const Setup = () => {
               }`}>
                 1
               </div>
-              <span className="text-sm font-medium">Base de datos</span>
+              <span className="text-sm font-medium">Configuración</span>
             </div>
             <div className={`w-12 h-0.5 ${step >= 2 ? "bg-indigo-500" : "bg-slate-700"}`} />
             <div className={`flex items-center gap-2 ${step >= 2 ? "text-indigo-400" : "text-slate-600"}`}>
@@ -218,8 +260,8 @@ const Setup = () => {
             <CardTitle className="text-white flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
               {step === 1 ? (
                 <>
-                  <Database className="w-5 h-5 text-indigo-400" />
-                  Conexión a MongoDB
+                  <Settings className="w-5 h-5 text-indigo-400" />
+                  Configuración del Sistema
                 </>
               ) : (
                 <>
@@ -230,7 +272,7 @@ const Setup = () => {
             </CardTitle>
             <CardDescription className="text-slate-400">
               {step === 1 
-                ? "Configura la conexión a tu base de datos MongoDB" 
+                ? "Configura la base de datos y seguridad de la aplicación" 
                 : "Crea el usuario administrador principal"
               }
             </CardDescription>
@@ -243,7 +285,7 @@ const Setup = () => {
                   <div className="space-y-2">
                     <Label className="text-slate-300">URL de MongoDB *</Label>
                     <div className="relative">
-                      <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <Database className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                       <Input
                         type="text"
                         value={formData.mongo_url}
@@ -262,7 +304,7 @@ const Setup = () => {
                   <div className="space-y-2">
                     <Label className="text-slate-300">Nombre de la base de datos</Label>
                     <div className="relative">
-                      <Database className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                       <Input
                         type="text"
                         value={formData.db_name}
@@ -285,7 +327,7 @@ const Setup = () => {
                     {testing ? (
                       <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
                     ) : (
-                      <Server className="w-4 h-4 mr-2" />
+                      <Database className="w-4 h-4 mr-2" />
                     )}
                     Probar Conexión
                   </Button>
@@ -317,6 +359,104 @@ const Setup = () => {
                         </div>
                       </div>
                     </div>
+                  )}
+
+                  {/* Divider */}
+                  {connectionStatus?.success && (
+                    <>
+                      <div className="relative">
+                        <div className="absolute inset-0 flex items-center">
+                          <div className="w-full border-t border-slate-700"></div>
+                        </div>
+                        <div className="relative flex justify-center text-xs uppercase">
+                          <span className="bg-slate-800 px-2 text-slate-500">Seguridad (Opcional)</span>
+                        </div>
+                      </div>
+
+                      {/* JWT Secret */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <Label className="text-slate-300">JWT Secret</Label>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-slate-500">Personalizado</span>
+                            <Switch
+                              checked={useCustomJwt}
+                              onCheckedChange={setUseCustomJwt}
+                            />
+                          </div>
+                        </div>
+                        {useCustomJwt ? (
+                          <div className="space-y-2">
+                            <div className="relative">
+                              <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                              <Input
+                                type={showJwtSecret ? "text" : "password"}
+                                value={formData.jwt_secret}
+                                onChange={(e) => setFormData({ ...formData, jwt_secret: e.target.value })}
+                                placeholder="Tu JWT secret personalizado"
+                                className="pl-10 pr-20 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 font-mono text-sm"
+                                data-testid="jwt-secret-input"
+                              />
+                              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex gap-1">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-7 w-7 p-0 text-slate-400 hover:text-white"
+                                  onClick={() => setShowJwtSecret(!showJwtSecret)}
+                                >
+                                  {showJwtSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </Button>
+                                {formData.jwt_secret && (
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 w-7 p-0 text-slate-400 hover:text-white"
+                                    onClick={copyJwtSecret}
+                                  >
+                                    {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={generateJwtSecret}
+                              className="border-slate-600 text-slate-300 hover:bg-slate-700"
+                            >
+                              <Key className="w-3.5 h-3.5 mr-1.5" />
+                              Generar Secret Seguro
+                            </Button>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500 bg-slate-900/30 p-3 rounded-lg">
+                            Se generará automáticamente un JWT secret seguro. Activa "Personalizado" si prefieres usar uno propio.
+                          </p>
+                        )}
+                      </div>
+
+                      {/* CORS Origins */}
+                      <div className="space-y-2">
+                        <Label className="text-slate-300">Orígenes CORS permitidos</Label>
+                        <div className="relative">
+                          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                          <Input
+                            type="text"
+                            value={formData.cors_origins}
+                            onChange={(e) => setFormData({ ...formData, cors_origins: e.target.value })}
+                            placeholder="https://tudominio.com"
+                            className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
+                            data-testid="cors-input"
+                          />
+                        </div>
+                        <p className="text-xs text-slate-500">
+                          Usa * para permitir todos los orígenes (solo desarrollo) o especifica tu dominio para producción
+                        </p>
+                      </div>
+                    </>
                   )}
 
                   {/* Help Section */}
@@ -391,7 +531,7 @@ const Setup = () => {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                         <Input
-                          type="password"
+                          type={showPassword ? "text" : "password"}
                           value={formData.admin_password}
                           onChange={(e) => setFormData({ ...formData, admin_password: e.target.value })}
                           placeholder="••••••••"
@@ -405,7 +545,7 @@ const Setup = () => {
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                         <Input
-                          type="password"
+                          type={showPassword ? "text" : "password"}
                           value={formData.admin_password_confirm}
                           onChange={(e) => setFormData({ ...formData, admin_password_confirm: e.target.value })}
                           placeholder="••••••••"
@@ -415,7 +555,16 @@ const Setup = () => {
                       </div>
                     </div>
                   </div>
-                  <p className="text-xs text-slate-500">Mínimo 6 caracteres</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-slate-500">Mínimo 6 caracteres</p>
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="text-xs text-indigo-400 hover:text-indigo-300"
+                    >
+                      {showPassword ? "Ocultar" : "Mostrar"} contraseñas
+                    </button>
+                  </div>
 
                   {/* Info Box */}
                   <div className="p-4 bg-indigo-900/20 rounded-lg border border-indigo-700">
