@@ -185,6 +185,7 @@ class ProductUpdate(BaseModel):
     ean: Optional[str] = None
     weight: Optional[float] = None
     image_url: Optional[str] = None
+    is_selected: Optional[bool] = None
     referencia: Optional[str] = None
     part_number: Optional[str] = None
     asin: Optional[str] = None
