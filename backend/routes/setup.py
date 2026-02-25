@@ -117,7 +117,12 @@ async def get_setup_status():
 @router.post("/setup/configure", response_model=SetupResponse)
 async def configure_app(setup: SetupRequest):
     """
-    Configura la aplicación con la conexión a MongoDB y crea el SuperAdmin.
+    Configura la aplicación completamente desde la interfaz web:
+    - Conexión a MongoDB
+    - JWT Secret (genera uno si no se proporciona)
+    - Orígenes CORS
+    - Crea el usuario SuperAdmin
+    
     Este endpoint solo funciona si no hay ningún SuperAdmin existente.
     """
     from motor.motor_asyncio import AsyncIOMotorClient
@@ -136,6 +141,7 @@ async def configure_app(setup: SetupRequest):
         # Verificar si ya existe un SuperAdmin
         existing_superadmin = await test_db.users.find_one({"role": "superadmin"})
         if existing_superadmin:
+            test_client.close()
             return SetupResponse(
                 success=False,
                 message="Ya existe un SuperAdmin. Si olvidaste las credenciales, contacta con soporte."
@@ -144,10 +150,25 @@ async def configure_app(setup: SetupRequest):
         # Verificar si el email ya está en uso
         existing_user = await test_db.users.find_one({"email": setup.admin_email})
         if existing_user:
+            test_client.close()
             return SetupResponse(
                 success=False,
                 message="El email ya está registrado en la base de datos."
             )
+        
+        # Generar JWT secret si no se proporcionó
+        jwt_secret = setup.jwt_secret if setup.jwt_secret else generate_jwt_secret()
+        
+        # Guardar la configuración
+        new_config = AppConfig(
+            mongo_url=setup.mongo_url,
+            db_name=setup.db_name,
+            jwt_secret=jwt_secret,
+            cors_origins=setup.cors_origins,
+            is_configured=True
+        )
+        save_config(new_config)
+        logger.info("Configuration saved successfully")
         
         # Crear el SuperAdmin
         user_id = str(uuid.uuid4())
@@ -167,53 +188,23 @@ async def configure_app(setup: SetupRequest):
         }
         
         await test_db.users.insert_one(user_doc)
+        logger.info(f"SuperAdmin created: {setup.admin_email}")
         
-        # Crear token de autenticación
-        token = create_token(user_id, "superadmin")
-        
-        # Guardar la configuración en un archivo si es necesario
-        # (Nota: En producción, esto se haría mediante variables de entorno)
-        try:
-            env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env')
-            # Leer contenido existente
-            env_content = ""
-            if os.path.exists(env_path):
-                with open(env_path, 'r') as f:
-                    env_content = f.read()
-            
-            # Actualizar MONGO_URL si es diferente
-            lines = env_content.split('\n')
-            new_lines = []
-            mongo_updated = False
-            db_updated = False
-            
-            for line in lines:
-                if line.startswith('MONGO_URL='):
-                    new_lines.append(f'MONGO_URL={setup.mongo_url}')
-                    mongo_updated = True
-                elif line.startswith('DB_NAME='):
-                    new_lines.append(f'DB_NAME={setup.db_name}')
-                    db_updated = True
-                else:
-                    new_lines.append(line)
-            
-            if not mongo_updated:
-                new_lines.append(f'MONGO_URL={setup.mongo_url}')
-            if not db_updated:
-                new_lines.append(f'DB_NAME={setup.db_name}')
-            
-            with open(env_path, 'w') as f:
-                f.write('\n'.join(new_lines))
-            
-            logger.info("Environment file updated successfully")
-        except Exception as e:
-            logger.warning(f"Could not update .env file: {e}")
+        # Crear token de autenticación usando el nuevo secret
+        # Nota: Usamos una función especial ya que el secret cambió
+        import jwt as pyjwt
+        token_data = {
+            "user_id": user_id,
+            "role": "superadmin",
+            "exp": datetime.now(timezone.utc).timestamp() + 86400 * 7  # 7 días
+        }
+        token = pyjwt.encode(token_data, jwt_secret, algorithm="HS256")
         
         test_client.close()
         
         return SetupResponse(
             success=True,
-            message="Configuración completada. SuperAdmin creado exitosamente.",
+            message="¡Configuración completada! La aplicación está lista para usar.",
             token=token,
             user={
                 "id": user_id,
@@ -224,7 +215,8 @@ async def configure_app(setup: SetupRequest):
                 "max_suppliers": 999,
                 "max_catalogs": 999,
                 "max_woocommerce_stores": 999
-            }
+            },
+            requires_restart=True  # El backend debería reiniciarse para aplicar CORS
         )
         
     except Exception as e:
