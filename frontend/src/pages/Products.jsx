@@ -412,13 +412,21 @@ const Products = () => {
             Productos
           </h1>
           <p className="text-slate-500">
-            {products.length.toLocaleString()} productos únicos de tus proveedores
+            {totalProducts > 0 
+              ? `${totalProducts.toLocaleString()} productos seleccionados de tus proveedores`
+              : "Selecciona productos desde tus proveedores para gestionarlos aquí"}
           </p>
         </div>
-        <Button onClick={() => setShowUploadDialog(true)} className="btn-primary">
-          <Upload className="w-4 h-4 mr-2" />
-          Importar Productos
-        </Button>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" onClick={() => navigate("/suppliers")} className="btn-secondary">
+            <Truck className="w-4 h-4 mr-2" />
+            Ir a Proveedores
+          </Button>
+          <Button onClick={() => setShowUploadDialog(true)} className="btn-primary">
+            <Upload className="w-4 h-4 mr-2" />
+            Importar CSV
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
