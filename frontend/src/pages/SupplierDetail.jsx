@@ -588,6 +588,90 @@ const SupplierDetail = () => {
         </Card>
       )}
 
+      {/* Product Selection Stats Banner */}
+      {products.length > 0 && (
+        <Card className="border-emerald-200 bg-emerald-50 mb-6">
+          <CardContent className="p-4">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-emerald-100 rounded-lg flex items-center justify-center">
+                  <Layers className="w-6 h-6 text-emerald-600" strokeWidth={1.5} />
+                </div>
+                <div>
+                  <p className="font-semibold text-emerald-900">Flujo de Productos</p>
+                  <p className="text-sm text-emerald-700">
+                    <span className="font-bold">{selectionStats.selected}</span> de <span className="font-bold">{selectionStats.total}</span> productos 
+                    están en la sección <span className="font-medium">Productos</span>
+                    {selectionStats.total > 0 && (
+                      <span className="ml-2 text-xs bg-emerald-200 px-2 py-0.5 rounded-full">
+                        {selectionStats.percentage}%
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleSelectAllFromSupplier(true)}
+                  disabled={selectingProducts}
+                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                  data-testid="select-all-products-btn"
+                >
+                  <CheckCircle className="w-4 h-4 mr-1.5" />
+                  Seleccionar Todos
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleSelectAllFromSupplier(false)}
+                  disabled={selectingProducts}
+                  className="border-slate-300 text-slate-600 hover:bg-slate-100"
+                  data-testid="deselect-all-products-btn"
+                >
+                  <XCircle className="w-4 h-4 mr-1.5" />
+                  Quitar Todos
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => navigate("/products")}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                  data-testid="go-to-products-btn"
+                >
+                  <ArrowRight className="w-4 h-4 mr-1.5" />
+                  Ir a Productos
+                </Button>
+              </div>
+            </div>
+            
+            {/* Category Selection */}
+            {supplierCategories.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-emerald-200">
+                <p className="text-sm font-medium text-emerald-800 mb-2">Seleccionar por categoría:</p>
+                <div className="flex flex-wrap gap-2">
+                  {supplierCategories.map((cat) => (
+                    <div key={cat.category} className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleSelectByCategory(cat.category, true)}
+                        disabled={selectingProducts}
+                        className="text-xs px-3 py-1.5 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors"
+                        data-testid={`select-category-${cat.category}`}
+                      >
+                        <span className="font-medium">{cat.category}</span>
+                        <span className="ml-1 text-emerald-600">
+                          ({cat.selected_count}/{cat.count})
+                        </span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Selection Actions */}
       {selectedProducts.size > 0 && (
         <Card className="border-indigo-200 bg-indigo-50 mb-6 animate-slide-up">
