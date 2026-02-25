@@ -780,6 +780,19 @@ const SupplierDetail = () => {
                 <SelectItem value="out">Sin stock</SelectItem>
               </SelectContent>
             </Select>
+            <Select
+              value={filters.selection}
+              onValueChange={(value) => setFilters({ ...filters, selection: value })}
+            >
+              <SelectTrigger className="w-full lg:w-[180px] input-base" data-testid="filter-selection">
+                <SelectValue placeholder="Estado" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="selected">En Productos</SelectItem>
+                <SelectItem value="unselected">No en Productos</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </CardContent>
       </Card>
