@@ -230,3 +230,211 @@ async def get_unified_product(ean: str, user: dict = Depends(get_current_user)):
         total_stock=total_stock, supplier_count=len(products), suppliers=suppliers,
         weight=best.get("weight")
     )
+
+
+# ==================== PRODUCT SELECTION (Supplier -> Products flow) ====================
+
+@router.post("/products/select")
+async def select_products(
+    data: dict, user: dict = Depends(get_current_user)
+):
+    """
+    Seleccionar productos de un proveedor para que aparezcan en la sección Productos.
+    Los productos seleccionados podrán ser añadidos a catálogos posteriormente.
+    """
+    product_ids = data.get("product_ids", [])
+    if not product_ids:
+        raise HTTPException(status_code=400, detail="No se han proporcionado productos")
+    
+    result = await db.products.update_many(
+        {"id": {"$in": product_ids}, "user_id": user["id"]},
+        {"$set": {"is_selected": True, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {
+        "selected": result.modified_count,
+        "message": f"{result.modified_count} productos seleccionados"
+    }
+
+
+@router.post("/products/deselect")
+async def deselect_products(
+    data: dict, user: dict = Depends(get_current_user)
+):
+    """
+    Deseleccionar productos para que no aparezcan en la sección Productos.
+    """
+    product_ids = data.get("product_ids", [])
+    if not product_ids:
+        raise HTTPException(status_code=400, detail="No se han proporcionado productos")
+    
+    result = await db.products.update_many(
+        {"id": {"$in": product_ids}, "user_id": user["id"]},
+        {"$set": {"is_selected": False, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    return {
+        "deselected": result.modified_count,
+        "message": f"{result.modified_count} productos deseleccionados"
+    }
+
+
+@router.post("/products/select-by-supplier")
+async def select_products_by_supplier(
+    data: dict, user: dict = Depends(get_current_user)
+):
+    """
+    Seleccionar todos los productos de un proveedor o solo los de una categoría específica.
+    """
+    supplier_id = data.get("supplier_id")
+    category = data.get("category")  # Opcional: filtrar por categoría
+    select_all = data.get("select_all", True)  # True para seleccionar, False para deseleccionar
+    
+    if not supplier_id:
+        raise HTTPException(status_code=400, detail="Se requiere el ID del proveedor")
+    
+    # Verificar que el proveedor pertenece al usuario
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    
+    query = {"supplier_id": supplier_id, "user_id": user["id"]}
+    if category:
+        query["category"] = category
+    
+    result = await db.products.update_many(
+        query,
+        {"$set": {"is_selected": select_all, "updated_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    action = "seleccionados" if select_all else "deseleccionados"
+    category_msg = f" de la categoría '{category}'" if category else ""
+    
+    return {
+        "modified": result.modified_count,
+        "message": f"{result.modified_count} productos{category_msg} {action}"
+    }
+
+
+@router.get("/products/selected-count")
+async def get_selected_products_count(
+    supplier_id: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Obtener el conteo de productos seleccionados, opcionalmente filtrado por proveedor.
+    """
+    query = {"user_id": user["id"], "is_selected": True}
+    if supplier_id:
+        query["supplier_id"] = supplier_id
+    
+    count = await db.products.count_documents(query)
+    total = await db.products.count_documents({"user_id": user["id"]} if not supplier_id else {"user_id": user["id"], "supplier_id": supplier_id})
+    
+    return {
+        "selected": count,
+        "total": total,
+        "percentage": round((count / total * 100) if total > 0 else 0, 1)
+    }
+
+
+@router.get("/supplier/{supplier_id}/products", response_model=List[ProductResponse])
+async def get_supplier_products(
+    supplier_id: str,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    is_selected: Optional[bool] = None,
+    skip: int = 0,
+    limit: int = 100,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Obtener productos de un proveedor específico con filtros opcionales.
+    Incluye el estado de selección (is_selected) de cada producto.
+    """
+    # Verificar que el proveedor pertenece al usuario
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    
+    query = {"supplier_id": supplier_id, "user_id": user["id"]}
+    
+    if category:
+        query["category"] = category
+    if search:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"sku": {"$regex": search, "$options": "i"}},
+            {"ean": {"$regex": search, "$options": "i"}}
+        ]
+    if is_selected is not None:
+        query["is_selected"] = is_selected
+    
+    products = await db.products.find(query, {"_id": 0, "user_id": 0}).skip(skip).limit(limit).to_list(limit)
+    
+    return [ProductResponse(**p) for p in products]
+
+
+@router.get("/supplier/{supplier_id}/products/count")
+async def get_supplier_products_count(
+    supplier_id: str,
+    category: Optional[str] = None,
+    search: Optional[str] = None,
+    is_selected: Optional[bool] = None,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Obtener el conteo de productos de un proveedor con los mismos filtros.
+    """
+    query = {"supplier_id": supplier_id, "user_id": user["id"]}
+    
+    if category:
+        query["category"] = category
+    if search:
+        query["$or"] = [
+            {"name": {"$regex": search, "$options": "i"}},
+            {"sku": {"$regex": search, "$options": "i"}},
+            {"ean": {"$regex": search, "$options": "i"}}
+        ]
+    if is_selected is not None:
+        query["is_selected"] = is_selected
+    
+    count = await db.products.count_documents(query)
+    return {"total": count}
+
+
+@router.get("/supplier/{supplier_id}/categories")
+async def get_supplier_categories(
+    supplier_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Obtener las categorías disponibles para un proveedor específico.
+    Incluye el conteo de productos por categoría.
+    """
+    # Verificar que el proveedor pertenece al usuario
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    
+    pipeline = [
+        {"$match": {"supplier_id": supplier_id, "user_id": user["id"], "category": {"$ne": None}}},
+        {"$group": {
+            "_id": "$category",
+            "count": {"$sum": 1},
+            "selected_count": {"$sum": {"$cond": [{"$eq": ["$is_selected", True]}, 1, 0]}}
+        }},
+        {"$sort": {"_id": 1}}
+    ]
+    
+    results = await db.products.aggregate(pipeline).to_list(1000)
+    
+    return [
+        {
+            "category": r["_id"],
+            "count": r["count"],
+            "selected_count": r["selected_count"]
+        }
+        for r in results
+    ]
+
