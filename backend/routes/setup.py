@@ -1,16 +1,20 @@
 """
 Módulo de configuración inicial de la aplicación.
-Permite configurar la conexión a MongoDB y crear el usuario SuperAdmin
-cuando la aplicación se despliega por primera vez.
+Permite configurar la conexión a MongoDB, JWT, CORS y crear el usuario SuperAdmin
+completamente desde la interfaz web cuando la aplicación se despliega por primera vez.
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timezone
 import uuid
-import os
+import secrets
 import logging
 
 from services.auth import hash_password, create_token
+from services.config_manager import (
+    get_config, update_config, save_config, generate_jwt_secret,
+    is_app_configured, AppConfig
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
