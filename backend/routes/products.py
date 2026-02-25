@@ -345,28 +345,6 @@ async def select_products_by_supplier(
     }
 
 
-@router.get("/products/selected-count")
-async def get_selected_products_count(
-    supplier_id: Optional[str] = None,
-    user: dict = Depends(get_current_user)
-):
-    """
-    Obtener el conteo de productos seleccionados, opcionalmente filtrado por proveedor.
-    """
-    query = {"user_id": user["id"], "is_selected": True}
-    if supplier_id:
-        query["supplier_id"] = supplier_id
-    
-    count = await db.products.count_documents(query)
-    total = await db.products.count_documents({"user_id": user["id"]} if not supplier_id else {"user_id": user["id"], "supplier_id": supplier_id})
-    
-    return {
-        "selected": count,
-        "total": total,
-        "percentage": round((count / total * 100) if total > 0 else 0, 1)
-    }
-
-
 @router.get("/supplier/{supplier_id}/products", response_model=List[ProductResponse])
 async def get_supplier_products(
     supplier_id: str,
