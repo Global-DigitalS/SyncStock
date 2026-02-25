@@ -64,15 +64,18 @@ const SupplierDetail = () => {
   const [supplier, setSupplier] = useState(null);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [supplierCategories, setSupplierCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState(null);
   const [selectedProducts, setSelectedProducts] = useState(new Set());
+  const [selectionStats, setSelectionStats] = useState({ selected: 0, total: 0 });
   const [filters, setFilters] = useState({
     search: "",
     category: "all",
-    stock: "all"
+    stock: "all",
+    selection: "all" // all, selected, unselected
   });
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
@@ -83,6 +86,7 @@ const SupplierDetail = () => {
   const [catalogs, setCatalogs] = useState([]);
   const [selectedCatalogs, setSelectedCatalogs] = useState(new Set());
   const [productsToAdd, setProductsToAdd] = useState([]);
+  const [selectingProducts, setSelectingProducts] = useState(false);
   const fileInputRef = useRef(null);
 
   const fetchData = useCallback(async () => {
