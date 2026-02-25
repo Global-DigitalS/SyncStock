@@ -1,172 +1,202 @@
 <analysis>**original_problem_statement:**
-El usuario quiere construir una aplicación SaaS para gestionar catálogos de productos de proveedores. Las características clave incluyen:
+El usuario quiere construir una aplicación SaaS para gestionar catálogos de productos de proveedores.
+**Requerimientos del Producto (PRD):**
 1.  Descargar archivos de productos (CSV) desde FTP/SFTP o URL.
 2.  Ver precios y stocks de proveedores.
-3.  Crear múltiples catálogos de productos personalizados.
-4.  Asignar reglas de márgenes de beneficio a catálogos.
-5.  Exportar catálogos a CSV y a WooCommerce.
-6.  Autenticación de usuarios mediante JWT.
+3.  Crear múltiples catálogos de productos personalizados con reglas de márgenes de beneficio.
+4.  Exportar catálogos a CSV y a múltiples plataformas de eCommerce.
+5.  Autenticación de usuarios (JWT) y sistema de roles (Viewer, User, Admin, SuperAdmin).
+6.  Un  puede gestionar usuarios y establecer límites de recursos (proveedores, tiendas, catálogos).
 7.  Sincronización automática de datos de proveedores.
 8.  Mapeo de columnas para archivos CSV.
-9.  Unificar productos por EAN, mostrando el proveedor con el mejor precio y stock.
-10. Sincronización automática de precio y stock con WooCommerce.
-11. Paginación en la lista de productos.
-12. Sistema de roles de usuario (viewer, user, admin).
-13. **Requerimiento añadido:** En la ficha de producto, mostrar dos pestañas: una para comparar ofertas de proveedores y otra con datos editables del producto.
-14. **Requerimiento añadido:** Gestionar proveedores cuyo catálogo está dividido en múltiples archivos (p. ej., productos y stock por separado), incluyendo un explorador de archivos FTP en la interfaz.
-15. **Requerimiento añadido:** Mejorar la sincronización FTP para que, durante las sincronizaciones automáticas, se busque y utilice dinámicamente el archivo de catálogo más reciente.
-16. **Requerimiento añadido (en curso):** Crear un rol **SuperAdmin** con la capacidad de gestionar a todos los demás usuarios y establecer límites en la cantidad de proveedores, tiendas WooCommerce y catálogos que pueden crear.
+9.  Unificar productos por EAN.
+10. Sincronización de precio y stock con las tiendas eCommerce.
+11. Paginación y ordenación en las listas.
+12. Dashboard de SuperAdmin con estadísticas globales.
+13. Gestión de planes de suscripción, editables por el SuperAdmin.
+14. Soporte para múltiples plataformas de eCommerce: WooCommerce, PrestaShop, Shopify, Wix, y Magento.
+15. Sistema de Webhooks para notificaciones de eventos de las tiendas.
+16. **Nuevo Flujo de Productos:** Los productos deben ser seleccionados desde la vista de un proveedor para aparecer en la sección principal Productos. Desde Productos, se pueden asignar a los catálogos.
+17. **Mejora de Despliegue:** Simplificar la forma de conectar la base de datos MongoDB durante el despliegue a producción.
 
 **User's preferred language**: Spanish. The next agent MUST respond in Spanish.
 
 **what currently exists?**
-Se ha desarrollado una aplicación full-stack con un backend en FastAPI y un frontend en React.
--   **Backend**: Arquitectura modular (rutas, modelos, servicios) con autenticación JWT, notificaciones en tiempo real vía WebSockets, y un sistema de roles (viewer, user, admin). Implementa gestión de proveedores (FTP/URL), catálogos, unificación de productos por EAN y sincronización con WooCommerce. Incluye una página de historial de sincronizaciones y endpoints para soportar paginación y ordenación en el frontend. El trabajo actual se centra en añadir un rol  y la lógica para hacer cumplir los límites de recursos (proveedores, catálogos, tiendas).
--   **Frontend**: La aplicación React cuenta con un dashboard, páginas para gestionar proveedores, catálogos, productos, y configuración de WooCommerce. Se han añadido páginas para Notificaciones, Historial de Sincronizaciones y Gestión de Usuarios (visible para administradores). La página de Productos soporta paginación y ordenación por columnas. La página de Proveedores tiene un asistente de mapeo de columnas mejorado que previsualiza archivos CSV. El trabajo actual se centra en actualizar la página de Gestión de Usuarios para que el  pueda establecer límites a otros usuarios.
+Es una aplicación full-stack (React + FastAPI + MongoDB) con una arquitectura modular. El backend soporta autenticación JWT, un sistema de roles avanzado con un  que gestiona límites de recursos, y notificaciones por WebSockets. Se ha implementado la gestión de proveedores, catálogos, y la unificación de productos. Recientemente, se ha expandido para soportar múltiples plataformas de eCommerce (WooCommerce, Shopify, etc.), un sistema de gestión de suscripciones editable y un sistema de webhooks. El frontend refleja estas características con dashboards y páginas de gestión dedicadas para cada módulo. Se resolvió un problema crítico de despliegue añadiendo un endpoint de health check ().
 
 **Last working item**:
-    - Last item agent was working: Implementación del rol  y un sistema de límites de recursos. El agente modificó los modelos del backend, las rutas y el frontend para añadir la lógica de creación y verificación de límites (proveedores, catálogos, tiendas WooCommerce) que un  puede asignar a otros usuarios.
-    - Status: IN PROGRESS
+    - Last item agent was working: El agente estaba comenzando a trabajar en las dos últimas peticiones del usuario:
+        1. Implementar un nuevo flujo de selección de productos:  ->  -> .
+        2. Encontrar una solución para facilitar la configuración de la conexión a MongoDB en el despliegue.
+    - Status: NOT STARTED
     - Agent Testing Done: N
-    - Which testing method agent to use? both. Es un cambio importante que afecta a la autenticación, múltiples recursos y la UI. Se recomienda primero una prueba manual (reiniciar servicios, crear/actualizar un usuario a , probar los límites) y luego usar el  para una verificación completa.
+    - Which testing method agent to use? both. Se requerirán pruebas de backend para la nueva lógica de productos y pruebas de frontend para los cambios en la interfaz de usuario en las páginas de Proveedores y Productos.
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1:  Finalizar y probar la implementación del rol  y los límites de recursos (P0)
-  - Issue 2:  Corregir el bug de la conexión FTP que no reconoce productos en archivos CSV únicos (P1)
+  - Issue 1: Implementar el nuevo flujo de selección de productos (P0)
+  - Issue 2: Simplificar la configuración de la conexión a MongoDB para el despliegue (P1)
+  - Issue 3: Completar la refactorización de  y  (P2)
+  - Issue 4: Verificar la corrección del bug de conexión FTP (P2)
   
   Issues Detail:
   - Issue 1: 
-     - Attempted fixes: El agente ha modificado múltiples archivos para implementar la lógica del . Se actualizaron los modelos de usuario para incluir  y , se protegieron los endpoints de creación de recursos (, , ) con verificaciones de límites, y se actualizó la página de  para permitir a un  ver y editar estos límites.
+     - Attempted fixes: Ninguno. El agente estaba en la fase de exploración del código.
      - Next debug checklist: 
-        1. Reiniciar los servicios  y .
-        2. Promover un usuario existente (ej. ) a rol  a través de un script o directamente en la base de datos para poder probar.
-        3. Iniciar sesión como  y navegar a la página de Usuarios.
-        4. Verificar que se muestran los campos para editar los límites de otros usuarios.
-        5. Establecer un límite (ej. 1 proveedor) para un usuario normal.
-        6. Iniciar sesión como ese usuario y tratar de crear 2 proveedores. Verificar que el primero se crea y el segundo falla con un error claro.
-        7. Ejecutar el  para una regresión completa.
-     - Why fix this issue and what will be achieved with the fix? Para completar la última solicitud del usuario, añadiendo una capa fundamental de control y monetización para el modelo SaaS de la aplicación.
-     - Status:  IN PROGRESS
+        1. Modificar el backend para añadir un campo (ej.  o ) al modelo de productos del proveedor para marcar los productos que se transferirán.
+        2. Crear nuevos endpoints para seleccionar/deseleccionar productos desde la vista del proveedor.
+        3. Actualizar la página  para mostrar los productos de un proveedor con checkboxes para seleccionarlos. Añadir botones para Añadir a Productos por selección o por categoría.
+        4. Modificar el endpoint  para que solo devuelva los productos que han sido seleccionados.
+        5. Probar el flujo completo: seleccionar productos de un proveedor, verificar que aparecen en la página Productos y que los no seleccionados no aparecen.
+     - Why fix this issue and what will be achieved with the fix? Cumplir con un requisito clave del usuario que cambia fundamentalmente la forma en que se gestionan los productos en la aplicación.
+     - Status:  NOT STARTED
      - Is recurring issue? N
      - Should Test frontend/backend/both after fix? both
      - Blocked on other issue: No.
   - Issue 2: 
-     - Attempted fixes: El usuario informó que la sincronización FTP para proveedores con un solo archivo CSV no funciona. El agente investigó y mejoró la UI de mapeo de columnas para previsualizar el archivo CSV () y sugerir mapeos, ya que la causa más probable es el uso de nombres de columna no estándar sin un mapeo manual.
+     - Attempted fixes: Ninguno.
      - Next debug checklist: 
-        1. Solicitar al usuario las credenciales FTP de un proveedor que esté fallando para poder reproducir el error.
-        2. Utilizar el proveedor de prueba para abrir el diálogo de Mapeo de Columnas.
-        3. Verificar que la previsualización del archivo funciona y muestra las columnas y mapeos sugeridos.
-        4. Configurar el mapeo, guardar y ejecutar la sincronización.
-        5. Comprobar si los productos se importan correctamente.
-     - Why fix this issue and what will be achieved with the fix? Resolver un bug crítico que impide el funcionamiento de una de las características principales de la aplicación para ciertos proveedores.
-     - Status:  BLOCKED (A la espera de credenciales FTP del usuario para reproducir el bug).
-     - Is recurring issue? Y (La lógica de sincronización es compleja y ha requerido ajustes previos).
+        1. Investigar si la plataforma de despliegue permite configurar variables de entorno a través de una UI en el momento del despliegue.
+        2. Si no, proponer una solución alternativa:
+           - Crear una página de configuración inicial en la aplicación que se muestre si la variable  no está configurada, donde el usuario pueda pegarla.
+           - Crear un script de inicialización que guíe al usuario.
+           - Proporcionar instrucciones muy claras y un botón de copiar/pegar en la documentación.
+     - Why fix this issue and what will be achieved with the fix? Mejorar la experiencia de usuario durante un paso crítico y técnico como es el despliegue.
+     - Status:  NOT STARTED
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? backend (si se implementa una solución en el código) o ninguna si es solo documentación.
+     - Blocked on other issue: No.
+  - Issue 3: 
+     - Attempted fixes: Se crearon componentes compartidos (, , ) pero no se integraron completamente en  y  para reemplazar el código antiguo.
+     - Next debug checklist: 
+        1. Reemplazar la lógica de la tabla en  y  con el componente .
+        2. Reemplazar la lógica de paginación con el componente .
+        3. Integrar  en .
+        4. Eliminar el código duplicado y obsoleto de los archivos principales.
+     - Why fix this issue and what will be achieved with the fix? Mejorar la mantenibilidad, legibilidad y reutilización del código en dos de las páginas más complejas de la aplicación.
+     - Status:  IN PROGRESS
+     - Is recurring issue? N
+     - Should Test frontend/backend/both after fix? frontend
+     - Blocked on other issue: No.
+  - Issue 4: 
+     - Attempted fixes: El agente anterior mejoró la detección de columnas no estándar y el logging en  para proporcionar mensajes más claros cuando un mapeo es necesario.
+     - Next debug checklist: 
+        1. Solicitar al usuario (si es posible) credenciales FTP de un proveedor que falle para reproducir el bug.
+        2. Si no es posible, crear un archivo CSV de prueba con cabeceras no estándar y configurar un proveedor FTP local para simular el escenario.
+        3. Ejecutar la sincronización y verificar que los nuevos logs y mensajes de error guían correctamente al usuario para que realice el mapeo de columnas.
+     - Why fix this issue and what will be achieved with the fix? Resolver un bug crítico que impide la importación de productos para ciertos proveedores.
+     - Status:  BLOCKED (a la espera de datos para reproducir el bug, pero se puede intentar simular).
+     - Is recurring issue? Y
      - Should Test frontend/backend/both after fix? both
      - Blocked on other issue: No.
 
 **In progress Task List**:
-- No hay tareas en progreso más allá del 
-wtmp begins Tue Feb 24 07:51:44 2026.
+  - Task 1: 
+     - Where to resume: Integrar los componentes compartidos (, ) en las páginas  y .
+     - What will be achieved with this? Completar la refactorización iniciada.
+     - Status:  IN PROGRESS
+     - Should Test frontend/backend/both after fix? frontend
+     - Blocked on something: No.
 
 **Upcoming and Future Tasks**
     Upcoming Tasks:
     - **Task 1 (P2):** Ampliar las fuentes de datos para incluir SFTP o APIs directas, además de FTP y URL.
-    - **Task 2 (P2):** Implementar un dashboard para el  donde pueda ver estadísticas globales de uso de la plataforma (total de usuarios, proveedores, catálogos, etc.).
+    - **Task 2 (P2):** Implementar un dashboard para el  donde pueda ver estadísticas globales de uso de la plataforma (ya está creado, pero podría ampliarse).
     Future Tasks:
-    - **Task 3 (P3):** Refinar el frontend descomponiendo los componentes grandes  y  en componentes más pequeños y reutilizables.
-    - **Task 4 (P3):** Añadir más opciones de seguridad, como autenticación de dos factores (2FA).
+    - **Task 3 (P3):** Añadir más opciones de seguridad, como autenticación de dos factores (2FA).
 
 **Completed work in this session**
-- **Sistema de Roles y Gestión de Usuarios**: Se implementó un sistema de roles (admin, user, viewer) y una página de gestión de usuarios para que los admins puedan cambiar roles.
-- **Notificaciones en Tiempo Real (WebSockets)**: Se creó un sistema completo de notificaciones para eventos como errores de sincronización, bajo stock o cambios de precio, con una UI dedicada y actualizaciones en tiempo real.
-- **Historial de Sincronizaciones**: Se desarrolló una nueva página con estadísticas, gráficos y una tabla detallada que registra cada ejecución de sincronización de proveedores.
-- **Paginación y Ordenación de Productos**: Se añadió paginación completa y la capacidad de ordenar por columnas en la página de listado de productos.
-- **Mejora del Historial de Precios**: La página de historial de precios fue mejorada con gráficos de evolución por producto y una lista de los productos con más cambios.
-- **Mejora del Mapeo de Columnas**: Se optimizó el asistente de mapeo de columnas para previsualizar dinámicamente los archivos CSV del proveedor y sugerir mapeos automáticamente.
-- **Pruebas Exhaustivas**: Se utilizó el  repetidamente después de cada nueva funcionalidad importante, asegurando una alta calidad y detectando regresiones.
+- **SuperAdmin Role & Limits**: Rol de SuperAdmin implementado y probado, con capacidad para gestionar usuarios y establecer límites de recursos.
+- **SuperAdmin Dashboard**: Creada una página con estadísticas globales de la plataforma.
+- **Subscription Plans Management**: Implementada una página para crear y editar planes de suscripción, gestionable por el SuperAdmin.
+- **Multi-Platform E-commerce Stores**: Refactorizada la sección WooCommerce a Tiendas, añadiendo soporte completo (UI y backend) para WooCommerce, PrestaShop, Shopify, Wix y Magento.
+- **Webhook System**: Creado un sistema completo para gestionar webhooks de eventos de las tiendas, con UI y lógica de backend.
+- **Deployment Failure Fixed**: Solucionado un error de despliegue en producción mediante la adición de un endpoint  en la raíz del backend y la corrección del formato del archivo .
+- **Initial Refactoring**: Creados varios componentes de UI compartidos (, , ) para empezar a refactorizar las páginas más grandes.
+- **FTP Bug Improvements**: Mejorada la detección de columnas y el logging en el servicio de sincronización para facilitar la depuración de problemas de mapeo de CSV.
 
 **Earlier issues found/mentioned but not fixed**
-   - El único problema pendiente es el bug de la conexión FTP (Issue 2), que está bloqueado a la espera de información del usuario.
+   - El bug de conexión FTP (Issue 4) fue abordado con mejoras de logging, pero no se ha verificado si la solución es completa al no poder reproducir el error exacto del usuario.
 
 **Known issue recurrence from previous fork**
-  - La lógica de sincronización FTP/CSV es un área compleja que ha requerido múltiples iteraciones. El bug actual es un ejemplo de esto.
+  - La lógica de sincronización FTP/CSV sigue siendo un punto delicado y ha necesitado varios ajustes.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-- **Backend**: FastAPI, Pydantic, Motor (MongoDB), JWT, WebSockets, APScheduler, .
+- **Backend**: FastAPI, Pydantic, Motor (MongoDB), JWT, WebSockets, APScheduler, , , .
 - **Frontend**: React, React Router, Axios, TailwindCSS, Shadcn UI, Recharts, .
-- **Arquitectura**: API REST modular, Single Page Application (SPA), Role-Based Access Control (RBAC).
+- **Arquitectura**: API REST modular, SPA, RBAC, ahora con soporte para múltiples integraciones de terceros.
 
 **key DB schema**
-  - **users**: Contiene  (superadmin, admin, user, viewer) y un diccionario  con las claves , , y .
-  - **sync_history**: Nueva colección para registrar los resultados de cada sincronización.
-  - **notifications**: Colección para almacenar las notificaciones generadas por el sistema.
+  - **users**:  (superadmin, admin, user, viewer),  (, etc.).
+  - **stores**: Nueva colección para tiendas. Incluye  ('woocommerce', 'shopify', etc.) y .
+  - **subscriptions**: Nueva colección para los planes de suscripción.
+  - **webhooks**: Nueva colección para las configuraciones de webhooks.
+  -  está ahora obsoleto y reemplazado por .
 
 **changes in tech stack**
-  - Se ha integrado el uso de WebSockets directamente en FastAPI para las notificaciones en tiempo real.
+  - Se han añadido dependencias de backend para las integraciones de eCommerce, como  y .
 
 **All files of reference**
-- **SuperAdmin y Límites (en progreso)**:
-  - 
-  - , , , 
-  - 
-- **Funcionalidades completadas recientemente**:
-  -  (endpoint WebSocket)
-  - , 
-  - , 
-  -  (paginación y ordenación)
-  -  y  (mejora del mapeo)
+- **Nuevo Flujo (Pendiente)**: , , .
+- **Tiendas Multi-plataforma**: , , .
+- **Suscripciones**: , .
+- **Webhooks**: , .
+- **Refactorización (En Progreso)**: , , .
+- **Fix Despliegue**: .
 
 **Areas that need refactoring**:
-- Los archivos  y  siguen siendo grandes y se beneficiarían de una mayor descomposición en componentes más pequeños para mejorar su mantenimiento.
+- Completar la integración de los componentes compartidos en  y  para finalizar la refactorización iniciada.
 
 **key api endpoints**
-- : Actualizado para que un  establezca roles y límites.
-- , , : Ahora verifican los límites del usuario antes de crear un recurso.
-- : Nuevo endpoint WebSocket para notificaciones.
-- : Endpoint para el historial de sincronizaciones.
-- : Endpoint para analizar un archivo CSV de un proveedor.
-- : Actualizado para soportar paginación (, ) y ordenación (, ).
+- : CRUD para tiendas multi-plataforma.
+- : CRUD para planes de suscripción.
+- : CRUD para webhooks.
+- : Endpoint de health check para Kubernetes.
+- : Endpoint para el dashboard del SuperAdmin.
+- Las rutas bajo  están obsoletas.
 
 **Critical Info for New Agent**
-- La máxima prioridad es finalizar y probar la funcionalidad de  y los límites de recursos. Es un cambio complejo que requiere una verificación cuidadosa.
-- La segunda prioridad es el bug del FTP, pero está bloqueado. El agente debe estar preparado para actuar en cuanto el usuario proporcione las credenciales necesarias para la depuración.
-- El usuario ha definido claramente el flujo de trabajo para el . Siga esos requisitos de cerca.
+- La prioridad absoluta es el nuevo flujo de productos ( ->  -> ). Es un cambio fundamental en la lógica de la aplicación solicitado por el usuario.
+- La segunda prioridad es abordar la usabilidad de la conexión a MongoDB durante el despliegue.
+- La base del código ha crecido considerablemente. Familiarízate con los nuevos módulos de Tiendas, Suscripciones y Webhooks antes de empezar.
 
 **documents and test reports created in this job**
-  - Múltiples informes de prueba, siendo el último .
-  -  ha sido actualizado continuamente.
+  - Se han generado múltiples informes de prueba del . El último fue .
+  - El archivo  ha sido actualizado consistentemente.
 
 **Last 10 User Messages and any pending HUMAN messages** 
-- : Petición del usuario para crear el rol SuperAdmin y el sistema de límites. **(TAREA ACTUAL)**
-- : Pregunta del usuario que condujo a la creación de la tarea del SuperAdmin.
-- : Indicación del usuario para continuar con la tarea actual.
-- : Aprobación del plan para implementar roles, WebSockets y el asistente de mapeo.
-- : Reporte del bug de FTP. **(PENDIENTE)**
-- : Aprobación del plan para la ordenación y las gráficas de precios.
-- : Petición de la funcionalidad de paginación.
-- : Aprobación del plan de refactorización y el historial de sincronizaciones.
+- User:  (PENDING)
+- User:  (PENDING)
+- User:  (DONE)
+- User:  (DONE)
+- User:  (DONE)
+- User:  (DONE)
+- User:  (DONE)
 
 **Project Health Check:**
-- **Broken**: La funcionalidad de  está a medio implementar. La sincronización FTP para CSV únicos sin mapeo explícito está reportada como rota.
+- **Broken**: El flujo de gestión de productos no se alinea con el nuevo requisito del usuario. La selección de productos desde los proveedores para poblarlos en la página principal de productos no está implementada.
 - **Mocked**: N/A
 
 **3rd Party Integrations**
-- **WooCommerce**: Integrado vía API REST. Requiere URL de la tienda, Consumer Key y Consumer Secret.
+- **WooCommerce**: Integrado vía API REST.
+- **PrestaShop**: Integrado vía .
+- **Shopify**: Integrado vía  library.
+- **Wix eCommerce**: Solo UI y modelo, sin lógica de integración real.
+- **Magento**: Solo UI y modelo, sin lógica de integración real.
 
 **Testing status**
-  - Testing agent used after significant changes: YES. Se ha usado con éxito tras cada entrega de funcionalidad mayor.
+  - Testing agent used after significant changes: YES. Se utilizó con éxito después de implementar cada conjunto importante de características.
   - Troubleshoot agent used after agent stuck in loop: NO
   - Test files created: []
-  - Known regressions: Ninguna detectada por el . El bug del FTP fue reportado por el usuario.
+  - Known regressions: Ninguna conocida.
 
 **Credentials to test flow:**
 - **Email**: 
 - **Password**: 
-- **Rol actual**: . Para probar la nueva funcionalidad, este usuario deberá ser promovido a  (p. ej., mediante un script en la BD).
+- **Rol actual**: 
 
 **What agent forgot to execute**
-- El agente está en medio de la implementación de la característica de . No ha olvidado nada, pero la tarea está incompleta y sin probar.</analysis>
+- El agente no olvidó nada, pero fue interrumpido justo después de recibir dos nuevos requisitos importantes del usuario: el nuevo flujo de productos y la simplificación de la conexión a la base de datos para el despliegue. Ambas tareas están pendientes de iniciar.</analysis>
