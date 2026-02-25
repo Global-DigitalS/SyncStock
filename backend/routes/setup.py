@@ -26,11 +26,17 @@ class SetupStatus(BaseModel):
     has_superadmin: bool
     database_name: str = ""
     message: str = ""
+    # Información adicional para el setup
+    needs_mongo_config: bool = True
+    needs_jwt_config: bool = True
+    current_cors: str = "*"
 
 
 class SetupRequest(BaseModel):
     mongo_url: str
     db_name: str = "supplier_sync_db"
+    jwt_secret: str = ""  # Si vacío, se genera automáticamente
+    cors_origins: str = "*"
     admin_email: EmailStr
     admin_password: str
     admin_name: str
@@ -42,6 +48,7 @@ class SetupResponse(BaseModel):
     message: str
     token: str = ""
     user: dict = {}
+    requires_restart: bool = False
 
 
 @router.get("/setup/status", response_model=SetupStatus)
