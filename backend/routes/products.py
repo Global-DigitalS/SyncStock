@@ -102,9 +102,13 @@ async def get_unified_products(
     category: Optional[str] = None, search: Optional[str] = None,
     min_stock: Optional[int] = None, skip: int = 0, limit: int = 50,
     sort_by: Optional[str] = None, sort_order: Optional[str] = "asc",
+    include_all: Optional[bool] = False,
     user: dict = Depends(get_current_user)
 ):
+    # Solo mostrar productos seleccionados (is_selected=True) a menos que include_all=True
     match_query = {"user_id": user["id"], "ean": {"$ne": None, "$ne": ""}}
+    if not include_all:
+        match_query["is_selected"] = True
     if category:
         match_query["category"] = category
     if search:
