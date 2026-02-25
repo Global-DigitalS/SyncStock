@@ -169,8 +169,91 @@ const SupplierDetail = () => {
     if (filters.stock === "in" && product.stock === 0) {
       return false;
     }
+    if (filters.selection === "selected" && !product.is_selected) {
+      return false;
+    }
+    if (filters.selection === "unselected" && product.is_selected) {
+      return false;
+    }
     return true;
   });
+
+  // ==================== PRODUCT SELECTION HANDLERS ====================
+  
+  const handleSelectProductsForMain = async () => {
+    if (selectedProducts.size === 0) {
+      toast.error("Selecciona al menos un producto");
+      return;
+    }
+    
+    setSelectingProducts(true);
+    try {
+      const res = await api.post("/products/select", {
+        product_ids: Array.from(selectedProducts)
+      });
+      toast.success(`${res.data.selected} productos añadidos a la sección Productos`);
+      setSelectedProducts(new Set());
+      fetchData();
+    } catch (error) {
+      toast.error("Error al seleccionar productos");
+    } finally {
+      setSelectingProducts(false);
+    }
+  };
+
+  const handleDeselectProductsFromMain = async () => {
+    if (selectedProducts.size === 0) {
+      toast.error("Selecciona al menos un producto");
+      return;
+    }
+    
+    setSelectingProducts(true);
+    try {
+      const res = await api.post("/products/deselect", {
+        product_ids: Array.from(selectedProducts)
+      });
+      toast.success(`${res.data.deselected} productos quitados de la sección Productos`);
+      setSelectedProducts(new Set());
+      fetchData();
+    } catch (error) {
+      toast.error("Error al deseleccionar productos");
+    } finally {
+      setSelectingProducts(false);
+    }
+  };
+
+  const handleSelectByCategory = async (category, selectAll = true) => {
+    setSelectingProducts(true);
+    try {
+      const res = await api.post("/products/select-by-supplier", {
+        supplier_id: supplierId,
+        category: category === "all" ? null : category,
+        select_all: selectAll
+      });
+      toast.success(res.data.message);
+      fetchData();
+    } catch (error) {
+      toast.error("Error al seleccionar productos");
+    } finally {
+      setSelectingProducts(false);
+    }
+  };
+
+  const handleSelectAllFromSupplier = async (selectAll = true) => {
+    setSelectingProducts(true);
+    try {
+      const res = await api.post("/products/select-by-supplier", {
+        supplier_id: supplierId,
+        select_all: selectAll
+      });
+      toast.success(res.data.message);
+      fetchData();
+    } catch (error) {
+      toast.error("Error al seleccionar productos");
+    } finally {
+      setSelectingProducts(false);
+    }
+  };
 
   const handleFileUpload = async (file) => {
     const validExtensions = ['.csv', '.xlsx', '.xls', '.xml'];
