@@ -519,13 +519,15 @@ const Products = () => {
           <h3 className="text-lg font-semibold text-slate-900 mb-2">
             No hay productos
           </h3>
-          <p className="text-slate-500 mb-4">
-            {filters.search || filters.category ? "Prueba con otros filtros de búsqueda" : "Importa productos desde tus proveedores para comenzar"}
+          <p className="text-slate-500 mb-4 max-w-md mx-auto">
+            {filters.search || filters.category 
+              ? "Prueba con otros filtros de búsqueda" 
+              : "Los productos aparecen aquí después de seleccionarlos desde la vista del proveedor. Ve a Proveedores y selecciona los productos que quieres gestionar."}
           </p>
           {!filters.search && !filters.category && (
-            <Button onClick={() => setShowUploadDialog(true)} className="btn-primary">
-              <Upload className="w-4 h-4 mr-2" />
-              Importar Productos
+            <Button onClick={() => navigate("/suppliers")} className="btn-primary">
+              <Truck className="w-4 h-4 mr-2" />
+              Ir a Proveedores
             </Button>
           )}
         </div>
