@@ -7,6 +7,7 @@ import { Toaster, toast } from "sonner";
 // Pages
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import Setup from "./pages/Setup";
 import Dashboard from "./pages/Dashboard";
 import Suppliers from "./pages/Suppliers";
 import SupplierDetail from "./pages/SupplierDetail";
