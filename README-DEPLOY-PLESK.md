@@ -1,13 +1,13 @@
 # Guía de Despliegue en Plesk - SupplierSync Pro
 
-Esta guía detalla cómo desplegar SupplierSync Pro en un servidor Plesk con la nueva funcionalidad de configuración inicial simplificada.
+Esta guía detalla cómo desplegar SupplierSync Pro en un servidor Plesk. **Toda la configuración se realiza desde la interfaz web** - no necesitas editar archivos de configuración manualmente.
 
 ## Índice
 1. [Requisitos Previos](#requisitos-previos)
-2. [Preparación del Servidor](#preparación-del-servidor)
+2. [Despliegue Rápido (TL;DR)](#despliegue-rápido)
 3. [Despliegue del Backend](#despliegue-del-backend)
 4. [Despliegue del Frontend](#despliegue-del-frontend)
-5. [Configuración Inicial de la Aplicación](#configuración-inicial-de-la-aplicación)
+5. [Configuración Inicial desde la Web](#configuración-inicial-desde-la-web)
 6. [Verificación](#verificación)
 7. [Solución de Problemas](#solución-de-problemas)
 
@@ -17,13 +17,13 @@ Esta guía detalla cómo desplegar SupplierSync Pro en un servidor Plesk con la 
 
 ### Servidor
 - Plesk Obsidian 18.0+ con acceso SSH
-- Python 3.9+ instalado
-- Node.js 18+ instalado
-- Nginx o Apache configurado
+- Python 3.9+
+- Node.js 18+
+- Nginx o Apache
 
 ### Base de Datos
-- MongoDB 5.0+ (puede ser local o MongoDB Atlas)
-- Si usas MongoDB Atlas, necesitarás la URL de conexión
+- MongoDB 5.0+ (local o MongoDB Atlas)
+- **Nota**: La URL de conexión se configura desde la interfaz web
 
 ### Dominio
 - Un dominio o subdominio configurado en Plesk
@@ -31,78 +31,45 @@ Esta guía detalla cómo desplegar SupplierSync Pro en un servidor Plesk con la 
 
 ---
 
-## Preparación del Servidor
+## Despliegue Rápido
 
-### 1. Acceder por SSH
 ```bash
-ssh usuario@tu-servidor.com
-```
-
-### 2. Crear estructura de directorios
-```bash
-mkdir -p /var/www/vhosts/tu-dominio.com/app
+# 1. Subir código al servidor
 cd /var/www/vhosts/tu-dominio.com/app
-```
 
-### 3. Clonar o subir el código
-```bash
-# Opción 1: Git
-git clone tu-repositorio.git .
+# 2. Backend
+cd backend
+python3 -m venv venv && source venv/bin/activate
+pip install -r requirements.txt
 
-# Opción 2: Subir archivos via SFTP/FTP
-# Sube las carpetas 'backend' y 'frontend'
+# 3. Crear servicio (ver sección Backend)
+sudo systemctl enable --now suppliersync-backend
+
+# 4. Frontend
+cd ../frontend
+yarn install && yarn build
+
+# 5. Configurar Nginx en Plesk (ver sección Frontend)
+
+# 6. Abrir https://tu-dominio.com/setup en el navegador
+# 7. Configurar MongoDB + Crear SuperAdmin desde la web
+# ¡Listo!
 ```
 
 ---
 
 ## Despliegue del Backend
 
-### 1. Crear entorno virtual de Python
+### 1. Preparar el entorno
 ```bash
 cd /var/www/vhosts/tu-dominio.com/app/backend
 python3 -m venv venv
 source venv/bin/activate
-```
-
-### 2. Instalar dependencias
-```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Configurar variables de entorno
-
-Crea el archivo `.env` en la carpeta `backend`:
-
-```bash
-nano .env
-```
-
-**⚠️ IMPORTANTE: Configuración Mínima Inicial**
-
-Para el primer inicio, solo necesitas configurar:
-
-```env
-MONGO_URL=mongodb://localhost:27017
-DB_NAME=suppliersync_db
-CORS_ORIGINS=https://tu-dominio.com
-JWT_SECRET=genera-una-clave-secreta-larga-y-aleatoria
-```
-
-> **Nota**: La URL de MongoDB y la creación del SuperAdmin se pueden configurar desde la interfaz web en el primer inicio. Ver sección [Configuración Inicial](#configuración-inicial-de-la-aplicación).
-
-**Para MongoDB Atlas:**
-```env
-MONGO_URL=mongodb+srv://usuario:contraseña@cluster.mongodb.net
-DB_NAME=suppliersync_db
-CORS_ORIGINS=https://tu-dominio.com
-JWT_SECRET=genera-una-clave-secreta-larga-y-aleatoria
-```
-
-### 4. Configurar el servicio systemd
-
-Crea un archivo de servicio:
-
+### 2. Crear el servicio systemd
 ```bash
 sudo nano /etc/systemd/system/suppliersync-backend.service
 ```
@@ -126,63 +93,45 @@ RestartSec=10
 WantedBy=multi-user.target
 ```
 
-### 5. Iniciar el servicio
+### 3. Iniciar el servicio
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable suppliersync-backend
 sudo systemctl start suppliersync-backend
 ```
 
-### 6. Verificar que el backend está corriendo
+### 4. Verificar
 ```bash
-sudo systemctl status suppliersync-backend
 curl http://localhost:8001/health
+# Respuesta: {"status": "healthy", "service": "SupplierSync Pro API"}
 ```
 
-Respuesta esperada:
-```json
-{"status": "healthy", "service": "SupplierSync Pro API"}
-```
+**⚠️ NOTA IMPORTANTE**: No necesitas crear ningún archivo `.env`. Toda la configuración (MongoDB, JWT, CORS) se realiza desde la interfaz web en el primer acceso.
 
 ---
 
 ## Despliegue del Frontend
 
-### 1. Instalar dependencias
+### 1. Instalar dependencias y compilar
 ```bash
 cd /var/www/vhosts/tu-dominio.com/app/frontend
-npm install
-# o usar yarn
+
+# Crear archivo .env con la URL del backend
+echo "REACT_APP_BACKEND_URL=https://tu-dominio.com" > .env
+
+# Instalar y compilar
 yarn install
-```
-
-### 2. Configurar variables de entorno
-
-Crea el archivo `.env`:
-```bash
-nano .env
-```
-
-Contenido:
-```env
-REACT_APP_BACKEND_URL=https://tu-dominio.com
-```
-
-### 3. Compilar para producción
-```bash
-npm run build
-# o
 yarn build
 ```
 
-### 4. Configurar Nginx en Plesk
+### 2. Configurar Nginx en Plesk
 
-En Plesk, ve a:
-- **Dominios** → Tu dominio → **Configuración de Apache y Nginx**
-- En "Directivas adicionales de nginx", añade:
+En Plesk: **Dominios** → Tu dominio → **Configuración de Apache y Nginx**
+
+Añadir en "Directivas adicionales de nginx":
 
 ```nginx
-# Proxy para el backend API
+# API Backend
 location /api/ {
     proxy_pass http://127.0.0.1:8001/api/;
     proxy_http_version 1.1;
@@ -194,17 +143,16 @@ location /api/ {
     proxy_set_header X-Forwarded-Proto $scheme;
     proxy_cache_bypass $http_upgrade;
     proxy_read_timeout 300s;
-    proxy_connect_timeout 75s;
 }
 
-# Health check endpoint
+# Health check
 location /health {
     proxy_pass http://127.0.0.1:8001/health;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
 }
 
-# WebSocket para notificaciones en tiempo real
+# WebSocket
 location /ws/ {
     proxy_pass http://127.0.0.1:8001/ws/;
     proxy_http_version 1.1;
@@ -214,63 +162,67 @@ location /ws/ {
     proxy_read_timeout 86400;
 }
 
-# Servir frontend estático
+# Frontend
 location / {
     root /var/www/vhosts/tu-dominio.com/app/frontend/build;
     try_files $uri $uri/ /index.html;
 }
 ```
 
-### 5. Aplicar cambios
-Guarda la configuración en Plesk y reinicia Nginx:
+### 3. Aplicar cambios
 ```bash
 sudo systemctl reload nginx
 ```
 
 ---
 
-## Configuración Inicial de la Aplicación
+## Configuración Inicial desde la Web
 
-### 🎉 ¡Nueva Funcionalidad! Configuración desde la Web
+### 🎉 ¡Todo desde el navegador!
 
-Al acceder a la aplicación por primera vez, serás redirigido automáticamente a la **página de configuración inicial** (`/setup`).
+Al acceder a `https://tu-dominio.com` por primera vez, serás redirigido automáticamente a la página de configuración (`/setup`).
 
-### Paso 1: Configurar MongoDB
+### Paso 1: Configuración del Sistema
 
-1. Accede a `https://tu-dominio.com/setup`
-2. Introduce la **URL de conexión a MongoDB**:
-   - **MongoDB Local**: `mongodb://localhost:27017`
-   - **MongoDB Atlas**: `mongodb+srv://usuario:contraseña@cluster.mongodb.net`
-3. Opcionalmente, cambia el **nombre de la base de datos** (por defecto: `supplier_sync_db`)
-4. Haz clic en **"Probar Conexión"**
-5. Si la conexión es exitosa ✅, haz clic en **"Continuar"**
+![Setup Step 1](https://via.placeholder.com/800x400?text=Configuración+del+Sistema)
 
-### Paso 2: Crear Usuario SuperAdmin
+1. **URL de MongoDB**: Introduce tu cadena de conexión
+   - MongoDB Local: `mongodb://localhost:27017`
+   - MongoDB Atlas: `mongodb+srv://usuario:contraseña@cluster.mongodb.net`
 
-1. Completa el formulario:
-   - **Nombre completo**: Tu nombre
-   - **Email**: admin@tu-empresa.com
-   - **Empresa**: (opcional) Nombre de tu empresa
-   - **Contraseña**: Mínimo 6 caracteres
-   - **Confirmar contraseña**
+2. **Nombre de la base de datos**: Por defecto `supplier_sync_db`
 
-2. Haz clic en **"Completar Configuración"**
+3. **Probar Conexión**: Verifica que la conexión funciona antes de continuar
+
+4. **Seguridad (Opcional)**:
+   - **JWT Secret**: Se genera automáticamente, o puedes usar uno personalizado
+   - **CORS Origins**: Por defecto `*` (todos). Para producción, especifica tu dominio
+
+5. Click en **"Continuar"**
+
+### Paso 2: Crear SuperAdmin
+
+1. **Nombre completo**: Tu nombre
+2. **Email**: admin@tu-empresa.com
+3. **Empresa**: (opcional)
+4. **Contraseña**: Mínimo 6 caracteres
+
+5. Click en **"Completar Configuración"**
 
 ### ¡Listo! 🚀
 
-Serás redirigido automáticamente al dashboard con tu nueva cuenta SuperAdmin.
+La aplicación te redirigirá automáticamente al dashboard.
 
 ---
 
 ## Verificación
 
-### 1. Verificar el health check
+### Comprobar estado del sistema
 ```bash
+# Health check
 curl https://tu-dominio.com/health
-```
 
-### 2. Verificar estado de configuración
-```bash
+# Estado de configuración
 curl https://tu-dominio.com/api/setup/status
 ```
 
@@ -285,165 +237,121 @@ Respuesta cuando está configurado:
 }
 ```
 
-### 3. Probar login
-```bash
-curl -X POST https://tu-dominio.com/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@tu-empresa.com","password":"tu-contraseña"}'
-```
-
 ---
 
 ## Solución de Problemas
 
 ### El backend no inicia
-
-1. Verificar logs:
 ```bash
+# Ver logs
 sudo journalctl -u suppliersync-backend -f
-```
 
-2. Verificar permisos:
-```bash
+# Verificar permisos
 sudo chown -R www-data:www-data /var/www/vhosts/tu-dominio.com/app/backend
-```
-
-3. Verificar el archivo .env:
-```bash
-cat /var/www/vhosts/tu-dominio.com/app/backend/.env
 ```
 
 ### Error de conexión a MongoDB
 
-1. Si usas MongoDB local, verifica que está corriendo:
-```bash
-sudo systemctl status mongod
-```
-
-2. Si usas MongoDB Atlas:
-   - Verifica que tu IP está en la whitelist
-   - Verifica usuario y contraseña
-   - Prueba la conexión desde la terminal:
+1. **MongoDB Local**: Verifica que está corriendo
    ```bash
-   mongosh "mongodb+srv://usuario:contraseña@cluster.mongodb.net"
+   sudo systemctl status mongod
    ```
+
+2. **MongoDB Atlas**: 
+   - Verifica que tu IP está en la whitelist de Atlas
+   - Verifica usuario y contraseña
 
 ### La página de setup no aparece
 
-Si ya existe un SuperAdmin pero no puedes acceder:
+Si ya existe configuración pero no puedes acceder:
 
-1. Verificar en MongoDB:
-```bash
-mongosh
-use supplier_sync_db
-db.users.find({role: "superadmin"})
-```
+1. Eliminar el archivo de configuración para resetear:
+   ```bash
+   rm /var/www/vhosts/tu-dominio.com/app/backend/config.json
+   sudo systemctl restart suppliersync-backend
+   ```
 
-2. Si necesitas resetear, elimina el usuario:
-```bash
-db.users.deleteOne({role: "superadmin"})
-```
+2. Acceder a `https://tu-dominio.com/setup`
 
 ### Error 502 Bad Gateway
-
-1. Verificar que el backend está corriendo:
 ```bash
+# Verificar backend
 curl http://localhost:8001/health
-```
 
-2. Verificar configuración de Nginx:
-```bash
+# Verificar Nginx
 sudo nginx -t
-```
-
-3. Revisar logs de Nginx:
-```bash
 sudo tail -f /var/log/nginx/error.log
 ```
 
-### Frontend no carga correctamente
+---
 
-1. Verificar que el build se completó:
-```bash
-ls -la /var/www/vhosts/tu-dominio.com/app/frontend/build
+## Archivos de Configuración
+
+La aplicación guarda su configuración en:
+
+```
+/var/www/vhosts/tu-dominio.com/app/backend/config.json
 ```
 
-2. Verificar permisos:
-```bash
-sudo chown -R www-data:www-data /var/www/vhosts/tu-dominio.com/app/frontend/build
+Estructura del archivo (se genera automáticamente):
+```json
+{
+  "mongo_url": "mongodb://...",
+  "db_name": "supplier_sync_db",
+  "jwt_secret": "...(generado automáticamente)...",
+  "cors_origins": "*",
+  "is_configured": true
+}
 ```
+
+**⚠️ No edites este archivo manualmente**. Usa siempre la interfaz web o elimínalo para resetear la configuración.
 
 ---
 
 ## Comandos Útiles
 
-### Reiniciar servicios
 ```bash
-# Backend
+# Reiniciar backend
 sudo systemctl restart suppliersync-backend
 
-# Nginx
-sudo systemctl reload nginx
-```
-
-### Ver logs en tiempo real
-```bash
-# Backend
+# Ver logs en tiempo real
 sudo journalctl -u suppliersync-backend -f
 
-# Nginx
-sudo tail -f /var/log/nginx/access.log
-sudo tail -f /var/log/nginx/error.log
-```
+# Reiniciar Nginx
+sudo systemctl reload nginx
 
-### Actualizar la aplicación
-```bash
+# Actualizar aplicación
 cd /var/www/vhosts/tu-dominio.com/app
-
-# Obtener cambios
-git pull origin main
-
-# Actualizar backend
-cd backend
-source venv/bin/activate
-pip install -r requirements.txt
+git pull
+cd backend && source venv/bin/activate && pip install -r requirements.txt
 sudo systemctl restart suppliersync-backend
-
-# Actualizar frontend
-cd ../frontend
-yarn install
-yarn build
+cd ../frontend && yarn install && yarn build
 ```
 
 ---
 
-## Resumen del Flujo de Despliegue
+## Resumen del Flujo
 
 ```
 1. Subir código al servidor
          ↓
-2. Configurar backend (.env mínimo + systemd)
+2. Instalar dependencias (backend + frontend)
          ↓
-3. Compilar frontend (yarn build)
+3. Configurar servicios (systemd + nginx)
          ↓
-4. Configurar Nginx en Plesk
+4. Acceder a https://tu-dominio.com/setup
          ↓
-5. Acceder a https://tu-dominio.com/setup
+5. Configurar MongoDB (URL, nombre DB)
          ↓
-6. Configurar MongoDB + Crear SuperAdmin
+6. Configurar seguridad (JWT, CORS) - opcional
          ↓
-7. ¡Listo! Usar la aplicación
+7. Crear usuario SuperAdmin
+         ↓
+8. ¡Aplicación lista para usar!
 ```
 
 ---
 
-## Soporte
-
-Si tienes problemas con el despliegue:
-1. Revisa los logs del backend y Nginx
-2. Verifica la conectividad a MongoDB
-3. Asegúrate de que los puertos necesarios están abiertos
-
----
-
 **SupplierSync Pro** - Gestión inteligente de catálogos de proveedores
+
+© 2026 - Toda la configuración desde la web, sin archivos de configuración manuales.
