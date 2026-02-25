@@ -51,7 +51,11 @@ import {
   Globe,
   Columns,
   BookOpen,
-  Star
+  Star,
+  CheckCircle,
+  XCircle,
+  ArrowRight,
+  Layers
 } from "lucide-react";
 
 const SupplierDetail = () => {
