@@ -1,9 +1,21 @@
 import jwt
 import bcrypt
+import os
 from datetime import datetime, timezone, timedelta
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from services.database import db, JWT_SECRET, JWT_ALGORITHM, JWT_EXPIRATION_HOURS
+from services.database import db
+
+# Cargar JWT config desde config_manager o variables de entorno
+try:
+    from services.config_manager import get_config, ensure_jwt_secret
+    config = get_config()
+    JWT_SECRET = config.jwt_secret if config.jwt_secret else ensure_jwt_secret()
+except ImportError:
+    JWT_SECRET = os.environ.get('JWT_SECRET', 'default-secret-change-in-production')
+
+JWT_ALGORITHM = "HS256"
+JWT_EXPIRATION_HOURS = int(os.environ.get('JWT_EXPIRATION_HOURS', 168))  # 7 días por defecto
 
 security = HTTPBearer()
 

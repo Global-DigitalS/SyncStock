@@ -1,0 +1,7 @@
+{
+  "mongo_url": "mongodb://localhost:27017",
+  "db_name": "supplier_sync_db",
+  "jwt_secret": "ns2OoPAnFxkgz0cU2idsdw84tciayMK2XIfXsWUrVQ0lMFv2miKL_qQxjKw4pd7TNCdDouPP1FyE5AodCmSTJg",
+  "cors_origins": "*",
+  "is_configured": false
+}
