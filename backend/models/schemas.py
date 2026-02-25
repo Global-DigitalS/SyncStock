@@ -136,6 +136,8 @@ class ProductResponse(ProductBase):
     supplier_name: str
     created_at: str
     updated_at: str
+    # Selection flag for product flow: Supplier -> Products -> Catalogs
+    is_selected: bool = False
     # Extended editable fields
     referencia: Optional[str] = None
     part_number: Optional[str] = None
