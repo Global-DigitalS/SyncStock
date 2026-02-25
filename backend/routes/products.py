@@ -48,6 +48,28 @@ async def get_categories(user: dict = Depends(get_current_user)):
     return await db.products.distinct("category", {"user_id": user["id"], "category": {"$ne": None}})
 
 
+@router.get("/products/selected-count")
+async def get_selected_products_count(
+    supplier_id: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Obtener el conteo de productos seleccionados, opcionalmente filtrado por proveedor.
+    """
+    query = {"user_id": user["id"], "is_selected": True}
+    if supplier_id:
+        query["supplier_id"] = supplier_id
+    
+    count = await db.products.count_documents(query)
+    total = await db.products.count_documents({"user_id": user["id"]} if not supplier_id else {"user_id": user["id"], "supplier_id": supplier_id})
+    
+    return {
+        "selected": count,
+        "total": total,
+        "percentage": round((count / total * 100) if total > 0 else 0, 1)
+    }
+
+
 @router.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(product_id: str, user: dict = Depends(get_current_user)):
     product = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "user_id": 0})
