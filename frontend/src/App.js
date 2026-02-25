@@ -255,6 +255,9 @@ function App() {
           }}
         />
         <Routes>
+          {/* Setup Route */}
+          <Route path="/setup" element={<Setup />} />
+          
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
