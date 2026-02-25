@@ -182,10 +182,13 @@ async def get_unified_products(
 async def get_unified_products_count(
     category: Optional[str] = None, search: Optional[str] = None,
     min_stock: Optional[int] = None,
+    include_all: Optional[bool] = False,
     user: dict = Depends(get_current_user)
 ):
     """Obtener el total de productos unificados para paginación"""
     match_query = {"user_id": user["id"], "ean": {"$ne": None, "$ne": ""}}
+    if not include_all:
+        match_query["is_selected"] = True
     if category:
         match_query["category"] = category
     if search:
