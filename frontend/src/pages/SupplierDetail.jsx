@@ -91,18 +91,22 @@ const SupplierDetail = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const [supplierRes, productsRes, categoriesRes, syncStatusRes, catalogsRes] = await Promise.all([
+      const [supplierRes, productsRes, categoriesRes, syncStatusRes, catalogsRes, supplierCatsRes, selectionStatsRes] = await Promise.all([
         api.get(`/suppliers/${supplierId}`),
-        api.get("/products", { params: { supplier_id: supplierId } }),
+        api.get(`/supplier/${supplierId}/products`),
         api.get("/products/categories"),
         api.get(`/suppliers/${supplierId}/sync-status`).catch(() => ({ data: null })),
-        api.get("/catalogs")
+        api.get("/catalogs"),
+        api.get(`/supplier/${supplierId}/categories`).catch(() => ({ data: [] })),
+        api.get("/products/selected-count", { params: { supplier_id: supplierId } }).catch(() => ({ data: { selected: 0, total: 0 } }))
       ]);
       setSupplier(supplierRes.data);
       setProducts(productsRes.data);
       setCategories(categoriesRes.data);
       setSyncStatus(syncStatusRes.data);
       setCatalogs(catalogsRes.data);
+      setSupplierCategories(supplierCatsRes.data);
+      setSelectionStats(selectionStatsRes.data);
     } catch (error) {
       toast.error("Error al cargar los datos del proveedor");
       navigate("/suppliers");
