@@ -125,7 +125,7 @@ async def test_smtp_connection(req: SmtpTestRequest):
 
 
 @router.post("/email/send-test")
-async def send_test_email(req: SendTestEmailRequest, user: dict = Depends(require_superadmin)):
+async def send_test_email(req: SendTestEmailRequest, user: dict = Depends(get_superadmin_user)):
     """Envía un correo de prueba"""
     email_service = get_email_service()
     
