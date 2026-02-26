@@ -81,7 +81,7 @@ async def get_email_config(user: dict = Depends(get_superadmin_user)):
 
 
 @router.post("/email/config")
-async def save_email_config(req: SmtpConfigRequest, user: dict = Depends(require_superadmin)):
+async def save_email_config(req: SmtpConfigRequest, user: dict = Depends(get_superadmin_user)):
     """Guarda la configuración de email"""
     try:
         update_config(
