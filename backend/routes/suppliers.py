@@ -141,6 +141,7 @@ async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_use
 
 @router.post("/suppliers/ftp-browse")
 async def ftp_browse(req: FtpBrowseRequest, user: dict = Depends(get_current_user)):
+    """Navega por el servidor FTP y lista archivos/carpetas"""
     try:
         result = await browse_ftp_directory({
             "ftp_schema": req.ftp_schema, "ftp_host": req.ftp_host,
@@ -150,7 +151,115 @@ async def ftp_browse(req: FtpBrowseRequest, user: dict = Depends(get_current_use
         return result
     except Exception as e:
         logger.error(f"FTP browse error: {e}")
-        return {"status": "error", "message": str(e), "files": []}
+        return {"status": "error", "message": str(e), "files": [], "path": req.path}
+
+
+class FtpTestRequest(BaseModel):
+    ftp_schema: str = "ftp"
+    ftp_host: str
+    ftp_user: Optional[str] = ""
+    ftp_password: Optional[str] = ""
+    ftp_port: Optional[int] = 21
+    ftp_mode: Optional[str] = "passive"
+
+
+@router.post("/suppliers/ftp-test")
+async def ftp_test_connection(req: FtpTestRequest, user: dict = Depends(get_current_user)):
+    """
+    Prueba la conexión FTP sin descargar archivos.
+    Útil para verificar credenciales antes de configurar el proveedor.
+    """
+    import ftplib
+    import paramiko
+    
+    schema = req.ftp_schema.lower()
+    host = req.ftp_host
+    port = req.ftp_port or (22 if schema == 'sftp' else 21)
+    user = req.ftp_user or ''
+    password = req.ftp_password or ''
+    mode = req.ftp_mode or 'passive'
+    
+    if not host:
+        return {"status": "error", "message": "Host FTP requerido", "connected": False}
+    
+    try:
+        if schema == 'sftp':
+            transport = paramiko.Transport((host, port))
+            transport.connect(username=user, password=password)
+            sftp = paramiko.SFTPClient.from_transport(transport)
+            
+            # Obtener directorio actual
+            current_dir = sftp.getcwd() or "/"
+            files_count = len(sftp.listdir(current_dir))
+            
+            sftp.close()
+            transport.close()
+            
+            return {
+                "status": "ok",
+                "message": f"Conexión SFTP exitosa a {host}:{port}",
+                "connected": True,
+                "protocol": "SFTP",
+                "current_dir": current_dir,
+                "files_in_root": files_count
+            }
+        else:
+            ftp = ftplib.FTP_TLS() if schema == 'ftps' else ftplib.FTP()
+            ftp.connect(host, port, timeout=10)
+            ftp.login(user or 'anonymous', password or '')
+            
+            if schema == 'ftps':
+                ftp.prot_p()
+            ftp.set_pasv(mode == 'passive')
+            
+            # Obtener información del servidor
+            current_dir = ftp.pwd()
+            files = []
+            ftp.dir(current_dir, files.append)
+            
+            # Obtener mensaje de bienvenida si está disponible
+            welcome = getattr(ftp, 'welcome', '')
+            
+            ftp.quit()
+            
+            return {
+                "status": "ok",
+                "message": f"Conexión {'FTPS' if schema == 'ftps' else 'FTP'} exitosa a {host}:{port}",
+                "connected": True,
+                "protocol": "FTPS" if schema == 'ftps' else "FTP",
+                "mode": "Pasivo" if mode == 'passive' else "Activo",
+                "current_dir": current_dir,
+                "files_in_root": len(files),
+                "welcome": welcome[:200] if welcome else None
+            }
+            
+    except ftplib.error_perm as e:
+        return {
+            "status": "error",
+            "message": f"Error de autenticación: {str(e)}",
+            "connected": False,
+            "suggestion": "Verifica el usuario y contraseña"
+        }
+    except paramiko.AuthenticationException as e:
+        return {
+            "status": "error", 
+            "message": f"Error de autenticación SFTP: {str(e)}",
+            "connected": False,
+            "suggestion": "Verifica el usuario y contraseña"
+        }
+    except (ConnectionRefusedError, OSError) as e:
+        return {
+            "status": "error",
+            "message": f"No se puede conectar al servidor: {str(e)}",
+            "connected": False,
+            "suggestion": f"Verifica que el host {host} y puerto {port} sean correctos"
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error de conexión: {str(e)}",
+            "connected": False
+        }
 
 
 @router.post("/suppliers/{supplier_id}/ftp-browse")
