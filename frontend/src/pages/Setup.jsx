@@ -58,8 +58,21 @@ const Setup = () => {
     admin_password: "",
     admin_password_confirm: "",
     admin_name: "",
-    company: ""
+    company: "",
+    // Paso 3: SMTP (Opcional)
+    smtp_host: "",
+    smtp_port: 587,
+    smtp_user: "",
+    smtp_password: "",
+    smtp_from_email: "",
+    smtp_from_name: "SupplierSync Pro",
+    smtp_use_tls: true,
+    smtp_use_ssl: false
   });
+  
+  const [smtpTestResult, setSmtpTestResult] = useState(null);
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [skipSmtp, setSkipSmtp] = useState(false);
 
   useEffect(() => {
     checkSetupStatus();
