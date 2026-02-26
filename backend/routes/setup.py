@@ -168,13 +168,23 @@ async def configure_app(setup: SetupRequest):
         # Generar JWT secret si no se proporcionó
         jwt_secret = setup.jwt_secret if setup.jwt_secret else generate_jwt_secret()
         
-        # Guardar la configuración
+        # Guardar la configuración (incluyendo SMTP si se proporciona)
         new_config = AppConfig(
             mongo_url=setup.mongo_url,
             db_name=setup.db_name,
             jwt_secret=jwt_secret,
             cors_origins=setup.cors_origins,
-            is_configured=True
+            is_configured=True,
+            # SMTP Configuration
+            smtp_host=setup.smtp_host,
+            smtp_port=setup.smtp_port,
+            smtp_user=setup.smtp_user,
+            smtp_password=setup.smtp_password,
+            smtp_from_email=setup.smtp_from_email or setup.smtp_user,
+            smtp_from_name=setup.smtp_from_name,
+            smtp_use_tls=setup.smtp_use_tls,
+            smtp_use_ssl=setup.smtp_use_ssl,
+            smtp_configured=bool(setup.smtp_host and setup.smtp_user and setup.smtp_password)
         )
         save_config(new_config)
         logger.info("Configuration saved successfully")
