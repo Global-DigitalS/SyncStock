@@ -63,7 +63,7 @@ class SendTestEmailRequest(BaseModel):
 # ==================== SMTP CONFIGURATION ====================
 
 @router.get("/email/config")
-async def get_email_config(user: dict = Depends(require_superadmin)):
+async def get_email_config(user: dict = Depends(get_superadmin_user)):
     """Obtiene la configuración actual de email (sin contraseña)"""
     config = get_config()
     
