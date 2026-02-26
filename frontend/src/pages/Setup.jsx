@@ -666,6 +666,224 @@ const Setup = () => {
                 </>
               )}
 
+              {/* Step 3: SMTP Configuration */}
+              {step === 3 && (
+                <>
+                  {/* Skip SMTP Option */}
+                  <div className="p-4 bg-slate-900/30 rounded-lg border border-slate-700 mb-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-start gap-3">
+                        <Mail className="w-5 h-5 text-slate-400 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-slate-300">Configuración de Email</p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Configura SMTP para enviar emails de bienvenida, recuperación de contraseña y notificaciones.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-slate-500">Saltar</span>
+                        <Switch
+                          checked={skipSmtp}
+                          onCheckedChange={setSkipSmtp}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {!skipSmtp && (
+                    <>
+                      {/* SMTP Host & Port */}
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="col-span-2 space-y-2">
+                          <Label className="text-slate-300">Servidor SMTP *</Label>
+                          <div className="relative">
+                            <Server className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                            <Input
+                              type="text"
+                              value={formData.smtp_host}
+                              onChange={(e) => setFormData({ ...formData, smtp_host: e.target.value })}
+                              placeholder="smtp.gmail.com"
+                              className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 font-mono text-sm"
+                              data-testid="smtp-host-input"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Puerto</Label>
+                          <Input
+                            type="number"
+                            value={formData.smtp_port}
+                            onChange={(e) => setFormData({ ...formData, smtp_port: parseInt(e.target.value) || 587 })}
+                            placeholder="587"
+                            className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500 font-mono"
+                            data-testid="smtp-port-input"
+                          />
+                        </div>
+                      </div>
+
+                      {/* SMTP Credentials */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Usuario SMTP *</Label>
+                          <div className="relative">
+                            <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                            <Input
+                              type="text"
+                              value={formData.smtp_user}
+                              onChange={(e) => setFormData({ ...formData, smtp_user: e.target.value })}
+                              placeholder="tu@email.com"
+                              className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
+                              data-testid="smtp-user-input"
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Contraseña SMTP *</Label>
+                          <div className="relative">
+                            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                            <Input
+                              type="password"
+                              value={formData.smtp_password}
+                              onChange={(e) => setFormData({ ...formData, smtp_password: e.target.value })}
+                              placeholder="••••••••"
+                              className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
+                              data-testid="smtp-password-input"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* From Email & Name */}
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Email remitente</Label>
+                          <div className="relative">
+                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                            <Input
+                              type="email"
+                              value={formData.smtp_from_email}
+                              onChange={(e) => setFormData({ ...formData, smtp_from_email: e.target.value })}
+                              placeholder="noreply@empresa.com"
+                              className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
+                              data-testid="smtp-from-email-input"
+                            />
+                          </div>
+                          <p className="text-xs text-slate-500">Dejar vacío para usar el usuario SMTP</p>
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Nombre remitente</Label>
+                          <Input
+                            type="text"
+                            value={formData.smtp_from_name}
+                            onChange={(e) => setFormData({ ...formData, smtp_from_name: e.target.value })}
+                            placeholder="SupplierSync Pro"
+                            className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
+                            data-testid="smtp-from-name-input"
+                          />
+                        </div>
+                      </div>
+
+                      {/* TLS/SSL Options */}
+                      <div className="flex items-center gap-6">
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={formData.smtp_use_tls}
+                            onCheckedChange={(checked) => setFormData({ 
+                              ...formData, 
+                              smtp_use_tls: checked,
+                              smtp_use_ssl: checked ? false : formData.smtp_use_ssl
+                            })}
+                          />
+                          <span className="text-sm text-slate-400">Usar TLS (STARTTLS)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Switch
+                            checked={formData.smtp_use_ssl}
+                            onCheckedChange={(checked) => setFormData({ 
+                              ...formData, 
+                              smtp_use_ssl: checked,
+                              smtp_use_tls: checked ? false : formData.smtp_use_tls
+                            })}
+                          />
+                          <span className="text-sm text-slate-400">Usar SSL</span>
+                        </div>
+                      </div>
+
+                      {/* Test Connection Button */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={testSmtpConnection}
+                        disabled={testingSmtp || !formData.smtp_host || !formData.smtp_user || !formData.smtp_password}
+                        className="w-full border-slate-600 text-slate-300 hover:bg-slate-700"
+                        data-testid="smtp-test-btn"
+                      >
+                        {testingSmtp ? (
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4 mr-2" />
+                        )}
+                        Probar Conexión SMTP
+                      </Button>
+
+                      {/* SMTP Test Result */}
+                      {smtpTestResult && (
+                        <div className={`p-4 rounded-lg border ${
+                          smtpTestResult.success 
+                            ? "bg-emerald-900/20 border-emerald-700" 
+                            : "bg-rose-900/20 border-rose-700"
+                        }`}>
+                          <div className="flex items-start gap-3">
+                            {smtpTestResult.success ? (
+                              <CheckCircle className="w-5 h-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                            ) : (
+                              <XCircle className="w-5 h-5 text-rose-400 flex-shrink-0 mt-0.5" />
+                            )}
+                            <div>
+                              <p className={`font-medium ${smtpTestResult.success ? "text-emerald-300" : "text-rose-300"}`}>
+                                {smtpTestResult.success ? "Conexión SMTP exitosa" : "Error de conexión"}
+                              </p>
+                              <p className="text-sm text-slate-400 mt-1">{smtpTestResult.message}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* SMTP Help */}
+                      <div className="p-4 bg-slate-900/30 rounded-lg border border-slate-700">
+                        <div className="flex items-start gap-3">
+                          <HelpCircle className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5" />
+                          <div className="text-sm text-slate-400">
+                            <p className="font-medium text-slate-300 mb-2">Configuraciones comunes</p>
+                            <ul className="space-y-1 text-xs">
+                              <li>• <strong>Gmail:</strong> smtp.gmail.com:587 (TLS) - Requiere "App Password"</li>
+                              <li>• <strong>Outlook:</strong> smtp.office365.com:587 (TLS)</li>
+                              <li>• <strong>Yahoo:</strong> smtp.mail.yahoo.com:465 (SSL)</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {skipSmtp && (
+                    <div className="p-4 bg-amber-900/20 rounded-lg border border-amber-700">
+                      <div className="flex items-start gap-3">
+                        <Mail className="w-5 h-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div className="text-sm text-slate-400">
+                          <p className="font-medium text-amber-300 mb-1">Email desactivado</p>
+                          <p className="text-xs">
+                            No se enviarán emails de bienvenida ni de recuperación de contraseña.
+                            Puedes configurar esto más tarde desde el panel de SuperAdmin.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
               {/* Navigation Buttons */}
               <div className="flex items-center gap-3 pt-4">
                 {step === 2 && (
