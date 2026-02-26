@@ -95,13 +95,25 @@ const Login = () => {
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" strokeWidth={1.5} />
                 <Input
                   id="password"
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="pl-10 h-12 input-base"
+                  className="pl-10 pr-10 h-12 input-base"
                   data-testid="login-password"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  data-testid="toggle-password"
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" strokeWidth={1.5} />
+                  ) : (
+                    <Eye className="w-5 h-5" strokeWidth={1.5} />
+                  )}
+                </button>
               </div>
             </div>
 
