@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Package, Mail, Lock, User, Building2, ArrowRight } from "lucide-react";
+import { Package, Mail, Lock, User, Building2, ArrowRight, Eye, EyeOff } from "lucide-react";
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -15,6 +15,7 @@ const Register = () => {
     confirmPassword: "",
     company: ""
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const { register, user } = useAuth();
   const navigate = useNavigate();
