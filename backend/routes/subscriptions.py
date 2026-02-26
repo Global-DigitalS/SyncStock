@@ -169,6 +169,13 @@ async def subscribe_to_plan(plan_id: str, billing_cycle: str = "monthly", user: 
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
     
+    # Get current subscription to know the old plan name
+    current_subscription = await db.user_subscriptions.find_one(
+        {"user_id": user["id"], "status": "active"},
+        {"_id": 0}
+    )
+    old_plan_name = current_subscription.get("plan_name", "Free") if current_subscription else "Free"
+    
     # Cancel existing subscription
     await db.user_subscriptions.update_many(
         {"user_id": user["id"], "status": "active"},
@@ -204,6 +211,18 @@ async def subscribe_to_plan(plan_id: str, billing_cycle: str = "monthly", user: 
     
     # Remove _id added by MongoDB insert_one
     subscription_doc.pop("_id", None)
+    
+    # Send subscription change email
+    try:
+        await send_subscription_change_email(
+            user_email=user.get("email"),
+            user_name=user.get("name", "Usuario"),
+            old_plan=old_plan_name,
+            new_plan=plan["name"]
+        )
+        logger.info(f"Subscription change email sent to {user.get('email')}")
+    except Exception as e:
+        logger.error(f"Failed to send subscription change email: {e}")
     
     return {
         "message": f"Suscrito al plan {plan['name']} exitosamente",
