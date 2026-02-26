@@ -2,10 +2,15 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 import uuid
+import logging
 
 from services.database import db
 from services.auth import get_current_user, get_superadmin_user, DEFAULT_LIMITS
 from models.schemas import SubscriptionPlan, UserSubscription
+from routes.email import send_subscription_change_email
+
+router = APIRouter()
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
