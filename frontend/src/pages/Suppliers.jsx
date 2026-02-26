@@ -118,6 +118,10 @@ const Suppliers = () => {
   const [ftpBrowsing, setFtpBrowsing] = useState(false);
   const [ftpCurrentPath, setFtpCurrentPath] = useState("/");
   const [selectedFtpFiles, setSelectedFtpFiles] = useState([]);
+  const [ftpConnectionStatus, setFtpConnectionStatus] = useState(null);
+  const [ftpTestingConnection, setFtpTestingConnection] = useState(false);
+  const [ftpStats, setFtpStats] = useState(null);
+  const [ftpListingAll, setFtpListingAll] = useState(false);
 
   const fetchSuppliers = useCallback(async () => {
     try {
