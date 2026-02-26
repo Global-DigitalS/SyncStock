@@ -743,5 +743,160 @@ main() {
     print_summary
 }
 
-# Ejecutar
+#-------------------------------------------------------------------------------
+# Función de reparación rápida para Plesk (ejecutar si hay problemas)
+#-------------------------------------------------------------------------------
+fix_plesk_spa() {
+    echo ""
+    echo -e "${PURPLE}╔════════════════════════════════════════════════════════════════╗${NC}"
+    echo -e "${PURPLE}║${NC}     ${CYAN}SupplierSync Pro - Reparación SPA para Plesk${NC}             ${PURPLE}║${NC}"
+    echo -e "${PURPLE}╚════════════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    
+    read -p "  Introduce tu dominio: " DOMAIN
+    
+    if [ -z "$DOMAIN" ]; then
+        echo -e "${RED}  ✗ El dominio es obligatorio${NC}"
+        exit 1
+    fi
+    
+    # Detectar directorio de la app
+    APP_DIR="/var/www/vhosts/$DOMAIN/app"
+    if [ ! -d "$APP_DIR" ]; then
+        APP_DIR="/var/www/vhosts/$DOMAIN/httpdocs/app"
+    fi
+    
+    PLESK_HTTPDOCS="/var/www/vhosts/$DOMAIN/httpdocs"
+    PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
+    
+    echo ""
+    echo -e "${CYAN}  ℹ Directorio de la app: $APP_DIR${NC}"
+    echo -e "${CYAN}  ℹ Httpdocs: $PLESK_HTTPDOCS${NC}"
+    echo -e "${CYAN}  ℹ Nginx config: $PLESK_NGINX_DIR${NC}"
+    echo ""
+    
+    # 1. Verificar que existe el build
+    if [ ! -d "$APP_DIR/frontend/build" ]; then
+        echo -e "${YELLOW}  ⚠ No se encontró el build del frontend${NC}"
+        echo -e "${CYAN}  ℹ Compilando frontend...${NC}"
+        cd "$APP_DIR/frontend"
+        npm run build
+    fi
+    
+    # 2. Copiar build a httpdocs
+    echo -e "${CYAN}  ℹ Copiando frontend a httpdocs...${NC}"
+    
+    # Limpiar httpdocs pero mantener archivos ocultos importantes
+    find "$PLESK_HTTPDOCS" -mindepth 1 -maxdepth 1 ! -name '.*' -exec rm -rf {} \; 2>/dev/null || true
+    
+    # Copiar build
+    cp -r "$APP_DIR/frontend/build/"* "$PLESK_HTTPDOCS/"
+    
+    # Establecer permisos
+    PLESK_USER=$(stat -c '%U' "/var/www/vhosts/$DOMAIN")
+    if [ -n "$PLESK_USER" ] && [ "$PLESK_USER" != "root" ]; then
+        chown -R "$PLESK_USER:psacln" "$PLESK_HTTPDOCS"
+    fi
+    chmod -R 755 "$PLESK_HTTPDOCS"
+    
+    echo -e "${GREEN}  ✓ Frontend copiado${NC}"
+    
+    # 3. Crear/actualizar configuración de Nginx
+    echo -e "${CYAN}  ℹ Actualizando configuración de Nginx...${NC}"
+    
+    mkdir -p "$PLESK_NGINX_DIR"
+    
+    cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_CONF'
+# SupplierSync Pro - Configuración Nginx para Plesk
+# Reparación automática
+
+# API Backend
+location /api/ {
+    proxy_pass http://127.0.0.1:8001/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 75s;
+}
+
+# Health check
+location /health {
+    proxy_pass http://127.0.0.1:8001/health;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+}
+
+# WebSocket
+location /ws/ {
+    proxy_pass http://127.0.0.1:8001/ws/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 86400;
+}
+
+# SPA Fallback - CRÍTICO para React Router
+location / {
+    try_files $uri $uri/ /index.html;
+}
+
+# Cache para estáticos
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+    try_files $uri =404;
+}
+NGINX_CONF
+
+    echo -e "${GREEN}  ✓ Configuración de Nginx actualizada${NC}"
+    
+    # 4. Recargar Nginx
+    echo -e "${CYAN}  ℹ Recargando Nginx...${NC}"
+    
+    if nginx -t 2>/dev/null; then
+        systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null
+        echo -e "${GREEN}  ✓ Nginx recargado${NC}"
+    else
+        echo -e "${RED}  ✗ Error en configuración de Nginx${NC}"
+        nginx -t
+        exit 1
+    fi
+    
+    # 5. Verificar que el backend está corriendo
+    echo -e "${CYAN}  ℹ Verificando backend...${NC}"
+    
+    if systemctl is-active --quiet suppliersync-backend 2>/dev/null; then
+        echo -e "${GREEN}  ✓ Backend está corriendo${NC}"
+    else
+        echo -e "${YELLOW}  ⚠ Backend no está corriendo. Iniciando...${NC}"
+        systemctl start suppliersync-backend 2>/dev/null || true
+    fi
+    
+    echo ""
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${GREEN}  ✓ Reparación completada${NC}"
+    echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  Prueba acceder a: ${CYAN}https://$DOMAIN/setup${NC}"
+    echo ""
+    echo -e "  Si sigue sin funcionar, ve a Plesk:"
+    echo -e "    ${YELLOW}Dominios → $DOMAIN → Apache & nginx Settings${NC}"
+    echo -e "    Y asegúrate de que 'Proxy mode' esté ${GREEN}DESACTIVADO${NC}"
+    echo ""
+}
+
+# Verificar si se ejecutó con argumento --fix-plesk
+if [ "$1" == "--fix-plesk" ] || [ "$1" == "-f" ]; then
+    fix_plesk_spa
+    exit 0
+fi
+
+# Ejecutar instalación normal
 main "$@"
