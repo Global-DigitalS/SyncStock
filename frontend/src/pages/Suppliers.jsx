@@ -67,9 +67,15 @@ import {
   FileArchive,
   X,
   CheckCircle,
-  ChevronRight
+  ChevronRight,
+  Wifi,
+  WifiOff,
+  FileSpreadsheet,
+  Search,
+  FolderTree
 } from "lucide-react";
 import ColumnMappingDialog from "../components/ColumnMappingDialog";
+import { Badge } from "../components/ui/badge";
 
 const defaultFormData = {
   name: "",
