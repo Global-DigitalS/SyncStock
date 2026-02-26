@@ -41,6 +41,15 @@ class SetupRequest(BaseModel):
     admin_password: str
     admin_name: str
     company: str = ""
+    # SMTP Configuration (optional)
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "SupplierSync Pro"
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
 
 
 class SetupResponse(BaseModel):
