@@ -1,0 +1,33 @@
+# Docker ignore file for production deployments
+# Exclude local development configuration
+
+# Local MongoDB config - DO NOT deploy to production
+backend/config.json
+
+# Environment files (use Kubernetes secrets instead)
+**/.env
+**/.env.*
+
+# Development files
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/node_modules
+**/.git
+**/.gitignore
+
+# Test files
+**/test_reports
+**/tests
+
+# IDE files
+**/.vscode
+**/.idea
+
+# Logs
+**/*.log
+
+# Build artifacts
+**/build
+**/dist
+**/.next
