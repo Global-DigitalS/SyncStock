@@ -21,7 +21,8 @@ import {
   WifiOff,
   Crown,
   CreditCard,
-  Webhook
+  Webhook,
+  Mail
 } from "lucide-react";
 
 const navItems = [
@@ -38,6 +39,7 @@ const navItems = [
   { path: "/notifications", label: "Notificaciones", icon: Bell },
   { path: "/subscriptions", label: "Suscripciones", icon: CreditCard },
   { path: "/users", label: "Usuarios", icon: Users, adminOnly: true },
+  { path: "/email-config", label: "Config. Email", icon: Mail, superadminOnly: true },
   { path: "/superadmin", label: "Dashboard Admin", icon: Crown, superadminOnly: true },
 ];
 
