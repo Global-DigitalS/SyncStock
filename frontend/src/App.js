@@ -431,6 +431,16 @@ function App() {
               </ProtectedRoute>
             }
           />
+          <Route
+            path="/email-config"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <EmailConfig />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
