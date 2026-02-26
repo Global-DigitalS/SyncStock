@@ -130,3 +130,8 @@ xlrd==2.0.2
 xmltodict==1.0.3
 yarl==1.22.0
 zipp==3.23.0
+
+# eCommerce integrations
+woocommerce>=3.0.0
+prestapyt>=0.11.0
+ShopifyAPI>=12.0.0
