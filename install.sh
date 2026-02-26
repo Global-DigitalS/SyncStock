@@ -430,20 +430,15 @@ EOF
 # Configuración de Nginx para Plesk
 #-------------------------------------------------------------------------------
 setup_nginx_plesk() {
-    print_step "Configurando Nginx para Plesk (Document Root: app/)"
+    print_step "Configurando Nginx para Plesk (Document Root: app/frontend/build)"
     
-    # En Plesk con Document Root en app/, el frontend build debe copiarse a app/
-    # porque Plesk sirve directamente desde esa carpeta
+    # En Plesk, el Document Root debe ser app/frontend/build
+    # NO copiamos archivos, el build ya está en su lugar
     
-    print_info "Copiando frontend build a la raíz de app/..."
+    FRONTEND_BUILD="$APP_DIR/frontend/build"
     
-    # Copiar el contenido del build a la raíz de APP_DIR (app/)
-    # Esto pone index.html, static/, etc. directamente en app/
-    if [ -d "$APP_DIR/frontend/build" ]; then
-        cp -r "$APP_DIR/frontend/build/"* "$APP_DIR/"
-        print_success "Frontend copiado a $APP_DIR"
-    else
-        print_error "No se encontró el build del frontend"
+    if [ ! -d "$FRONTEND_BUILD" ]; then
+        print_error "No se encontró el build del frontend en $FRONTEND_BUILD"
         exit 1
     fi
     
@@ -465,7 +460,7 @@ setup_nginx_plesk() {
     
     cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
 # SupplierSync Pro - Configuración Nginx para Plesk
-# Document Root: app/
+# Document Root: app/frontend/build
 # Generado automáticamente por install.sh v2.0
 
 # ==============================================
@@ -569,18 +564,33 @@ yarn install
 # Compilar
 yarn build
 
-# Copiar a la raíz
-cp -r build/* $APP_DIR/
-
 # Establecer permisos
 chown -R $PLESK_USER:psacln $APP_DIR
 chmod -R 755 $APP_DIR
+
+# Recargar nginx por si acaso
+systemctl reload nginx 2>/dev/null || true
 
 echo "Frontend actualizado correctamente"
 EOF
     chmod +x "$APP_DIR/update-frontend.sh"
     
     print_success "Script de actualización creado: $APP_DIR/update-frontend.sh"
+    
+    # Mostrar instrucciones para configurar Document Root en Plesk
+    echo ""
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  ⚠ IMPORTANTE: Configurar Document Root en Plesk${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  ${CYAN}1. Ve a Plesk → Dominios → $DOMAIN${NC}"
+    echo -e "  ${CYAN}2. Haz clic en 'Hosting Settings'${NC}"
+    echo -e "  ${CYAN}3. Cambia 'Document Root' a:${NC}"
+    echo ""
+    echo -e "     ${GREEN}app/frontend/build${NC}"
+    echo ""
+    echo -e "  ${CYAN}4. Guarda los cambios${NC}"
+    echo ""
 }
 
 #-------------------------------------------------------------------------------
