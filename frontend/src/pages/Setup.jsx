@@ -18,6 +18,7 @@ import {
   XCircle,
   RefreshCw,
   ArrowRight,
+  ArrowLeft,
   Shield,
   Zap,
   HelpCircle,
@@ -27,7 +28,8 @@ import {
   Eye,
   EyeOff,
   Copy,
-  Check
+  Check,
+  Send
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
