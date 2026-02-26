@@ -8,7 +8,7 @@ from datetime import datetime, timezone, timedelta
 import uuid
 import logging
 
-from services.auth import get_current_user, require_superadmin, hash_password
+from services.auth import get_current_user, get_superadmin_user, hash_password
 from services.database import db
 from services.config_manager import get_config, update_config
 from services.email_service import (
