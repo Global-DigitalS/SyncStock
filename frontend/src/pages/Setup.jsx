@@ -167,37 +167,56 @@ const Setup = () => {
       return;
     }
 
-    // Validaciones del paso 2
-    if (!formData.admin_name.trim()) {
-      toast.error("El nombre es obligatorio");
-      return;
-    }
-    if (!formData.admin_email.trim()) {
-      toast.error("El email es obligatorio");
-      return;
-    }
-    if (formData.admin_password.length < 6) {
-      toast.error("La contraseña debe tener al menos 6 caracteres");
-      return;
-    }
-    if (formData.admin_password !== formData.admin_password_confirm) {
-      toast.error("Las contraseñas no coinciden");
+    if (step === 2) {
+      // Validaciones del paso 2
+      if (!formData.admin_name.trim()) {
+        toast.error("El nombre es obligatorio");
+        return;
+      }
+      if (!formData.admin_email.trim()) {
+        toast.error("El email es obligatorio");
+        return;
+      }
+      if (formData.admin_password.length < 6) {
+        toast.error("La contraseña debe tener al menos 6 caracteres");
+        return;
+      }
+      if (formData.admin_password !== formData.admin_password_confirm) {
+        toast.error("Las contraseñas no coinciden");
+        return;
+      }
+      setStep(3);
       return;
     }
 
+    // Paso 3: Configuración final
     setSubmitting(true);
 
     try {
-      const res = await axios.post(`${API}/setup/configure`, {
+      const payload = {
         mongo_url: formData.mongo_url,
         db_name: formData.db_name,
-        jwt_secret: formData.jwt_secret, // Si vacío, el backend genera uno
+        jwt_secret: formData.jwt_secret,
         cors_origins: formData.cors_origins,
         admin_email: formData.admin_email,
         admin_password: formData.admin_password,
         admin_name: formData.admin_name,
         company: formData.company
-      });
+      };
+      
+      // Incluir SMTP solo si no se salta
+      if (!skipSmtp && formData.smtp_host) {
+        payload.smtp_host = formData.smtp_host;
+        payload.smtp_port = formData.smtp_port;
+        payload.smtp_user = formData.smtp_user;
+        payload.smtp_password = formData.smtp_password;
+        payload.smtp_from_email = formData.smtp_from_email || formData.smtp_user;
+        payload.smtp_from_name = formData.smtp_from_name;
+        payload.smtp_use_tls = formData.smtp_use_tls;
+        payload.smtp_use_ssl = formData.smtp_use_ssl;
+      }
+      
+      const res = await axios.post(`${API}/setup/configure`, payload);
 
       if (res.data.success) {
         toast.success("¡Configuración completada!");
@@ -222,6 +241,40 @@ const Setup = () => {
       toast.error(error.response?.data?.message || "Error en la configuración");
     } finally {
       setSubmitting(false);
+    }
+  };
+  
+  const testSmtpConnection = async () => {
+    if (!formData.smtp_host || !formData.smtp_user || !formData.smtp_password) {
+      toast.error("Completa los campos obligatorios de SMTP");
+      return;
+    }
+    
+    setTestingSmtp(true);
+    setSmtpTestResult(null);
+    
+    try {
+      const res = await axios.post(`${API}/email/test-connection`, {
+        smtp_host: formData.smtp_host,
+        smtp_port: formData.smtp_port,
+        smtp_user: formData.smtp_user,
+        smtp_password: formData.smtp_password,
+        smtp_use_tls: formData.smtp_use_tls,
+        smtp_use_ssl: formData.smtp_use_ssl
+      });
+      
+      setSmtpTestResult(res.data);
+      
+      if (res.data.success) {
+        toast.success("Conexión SMTP exitosa");
+      } else {
+        toast.error(res.data.message || "Error de conexión");
+      }
+    } catch (error) {
+      setSmtpTestResult({ success: false, message: error.response?.data?.message || "Error de conexión" });
+      toast.error("Error al probar la conexión SMTP");
+    } finally {
+      setTestingSmtp(false);
     }
   };
 
