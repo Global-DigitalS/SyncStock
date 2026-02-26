@@ -25,6 +25,16 @@ class AppConfig(BaseModel):
     jwt_secret: str = ""
     cors_origins: str = "*"
     is_configured: bool = False
+    # SMTP Email Configuration
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = "SupplierSync Pro"
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    smtp_configured: bool = False
 
 
 def generate_jwt_secret() -> str:
