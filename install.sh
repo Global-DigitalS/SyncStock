@@ -791,24 +791,22 @@ fix_plesk() {
         yarn build
     fi
     
-    # 3. Copiar build a la raíz de app/
-    print_info "Copiando frontend a la raíz..."
-    cp -r "$APP_DIR/frontend/build/"* "$APP_DIR/"
+    print_success "Frontend build existe en $APP_DIR/frontend/build"
     
-    # 4. Establecer permisos
+    # 3. Establecer permisos
     if [ -n "$PLESK_USER" ] && [ "$PLESK_USER" != "root" ]; then
         chown -R "$PLESK_USER:psacln" "$APP_DIR"
         chmod -R 755 "$APP_DIR"
+        print_success "Permisos establecidos"
     fi
     
-    print_success "Frontend copiado"
-    
-    # 5. Configurar Nginx
+    # 4. Configurar Nginx
     PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
     mkdir -p "$PLESK_NGINX_DIR"
     
     cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
-# SupplierSync Pro - Reparación Plesk
+# SupplierSync Pro - Configuración para Plesk
+# Document Root debe ser: app/frontend/build
 
 location /api/ {
     proxy_pass http://127.0.0.1:8001/api/;
@@ -839,7 +837,7 @@ NGINX_EOF
     
     print_success "Configuración Nginx actualizada"
     
-    # 6. Recargar Nginx
+    # 5. Recargar Nginx
     if nginx -t 2>&1; then
         systemctl reload nginx 2>/dev/null || service nginx reload
         print_success "Nginx recargado"
@@ -847,7 +845,7 @@ NGINX_EOF
         print_warning "Verifica la configuración de Nginx manualmente"
     fi
     
-    # 7. Verificar backend
+    # 6. Verificar backend
     if systemctl is-active --quiet ${APP_NAME}-backend 2>/dev/null; then
         print_success "Backend está corriendo"
     else
@@ -860,6 +858,12 @@ NGINX_EOF
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo -e "${GREEN}  ✓ Reparación completada${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "${YELLOW}  ⚠ IMPORTANTE: Verifica el Document Root en Plesk${NC}"
+    echo ""
+    echo -e "  ${CYAN}1. Ve a Plesk → Dominios → $DOMAIN → Hosting Settings${NC}"
+    echo -e "  ${CYAN}2. Document Root debe ser: ${GREEN}app/frontend/build${NC}"
+    echo -e "  ${CYAN}3. Guarda si hiciste cambios${NC}"
     echo ""
     echo -e "  Prueba: ${CYAN}https://$DOMAIN/setup${NC}"
     echo ""
