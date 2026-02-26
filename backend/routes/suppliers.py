@@ -264,6 +264,7 @@ async def ftp_test_connection(req: FtpTestRequest, user: dict = Depends(get_curr
 
 @router.post("/suppliers/{supplier_id}/ftp-browse")
 async def ftp_browse_supplier(supplier_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Navega por el FTP del proveedor específico"""
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
@@ -273,6 +274,62 @@ async def ftp_browse_supplier(supplier_id: str, data: dict, user: dict = Depends
         return result
     except Exception as e:
         logger.error(f"FTP browse error: {e}")
+        return {"status": "error", "message": str(e), "files": [], "path": path}
+
+
+@router.post("/suppliers/{supplier_id}/ftp-list-all")
+async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """
+    Lista todos los archivos soportados en una carpeta y subcarpetas (máximo 2 niveles).
+    Útil para ver todos los archivos disponibles del proveedor.
+    """
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    
+    base_path = data.get("path", "/")
+    max_depth = min(data.get("max_depth", 2), 3)  # Máximo 3 niveles para evitar timeout
+    
+    all_files = []
+    dirs_to_scan = [(base_path, 0)]
+    
+    try:
+        while dirs_to_scan:
+            current_path, depth = dirs_to_scan.pop(0)
+            
+            result = await browse_ftp_directory(supplier, current_path)
+            
+            if result.get("status") != "ok":
+                continue
+            
+            for item in result.get("files", []):
+                if item["is_dir"]:
+                    if depth < max_depth:
+                        dirs_to_scan.append((item["path"], depth + 1))
+                elif item.get("is_supported"):
+                    item["relative_path"] = item["path"].replace(base_path, "").lstrip("/")
+                    item["depth"] = depth
+                    all_files.append(item)
+        
+        # Agrupar por extensión
+        by_extension = {}
+        for f in all_files:
+            ext = f.get("extension", "other")
+            if ext not in by_extension:
+                by_extension[ext] = []
+            by_extension[ext].append(f)
+        
+        return {
+            "status": "ok",
+            "base_path": base_path,
+            "total_files": len(all_files),
+            "files": all_files,
+            "by_extension": by_extension,
+            "extensions_found": list(by_extension.keys())
+        }
+        
+    except Exception as e:
+        logger.error(f"FTP list all error: {e}")
         return {"status": "error", "message": str(e), "files": []}
 
 
