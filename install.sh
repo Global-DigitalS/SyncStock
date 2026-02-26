@@ -408,54 +408,165 @@ setup_nginx() {
 }
 
 setup_nginx_plesk() {
-    # Para Plesk, crear archivo de configuración adicional
-    PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
+    # Para Plesk, configurar correctamente el frontend SPA y el proxy del API
+    print_info "Configurando Nginx para Plesk..."
     
+    # Directorios de Plesk
+    PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
+    PLESK_HTTPDOCS="/var/www/vhosts/$DOMAIN/httpdocs"
+    
+    # 1. Copiar el frontend build a httpdocs (donde Plesk sirve los archivos)
+    if [ -d "$APP_DIR/frontend/build" ]; then
+        print_info "Copiando frontend build a httpdocs..."
+        
+        # Hacer backup del httpdocs actual si existe contenido
+        if [ -d "$PLESK_HTTPDOCS" ] && [ "$(ls -A $PLESK_HTTPDOCS 2>/dev/null)" ]; then
+            BACKUP_DIR="/var/www/vhosts/$DOMAIN/httpdocs_backup_$(date +%Y%m%d_%H%M%S)"
+            mv "$PLESK_HTTPDOCS" "$BACKUP_DIR"
+            print_info "Backup creado en: $BACKUP_DIR"
+        fi
+        
+        # Crear httpdocs y copiar el build
+        mkdir -p "$PLESK_HTTPDOCS"
+        cp -r "$APP_DIR/frontend/build/"* "$PLESK_HTTPDOCS/"
+        
+        # Establecer permisos correctos para Plesk
+        PLESK_USER=$(stat -c '%U' "/var/www/vhosts/$DOMAIN")
+        if [ -n "$PLESK_USER" ] && [ "$PLESK_USER" != "root" ]; then
+            chown -R "$PLESK_USER:psacln" "$PLESK_HTTPDOCS"
+        fi
+        chmod -R 755 "$PLESK_HTTPDOCS"
+        
+        print_success "Frontend copiado a httpdocs"
+    else
+        print_warning "No se encontró el build del frontend en $APP_DIR/frontend/build"
+        print_info "Ejecuta 'cd $APP_DIR/frontend && npm run build' primero"
+    fi
+    
+    # 2. Crear configuración de Nginx para el proxy del API
     if [ -d "$PLESK_NGINX_DIR" ]; then
-        cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << EOF
-# SupplierSync Pro - Configuración Nginx
+        cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
+# SupplierSync Pro - Configuración Nginx para Plesk
 # Generado automáticamente por install.sh
+# =====================================================
 
+# API Backend - Proxy a FastAPI
 location /api/ {
     proxy_pass http://127.0.0.1:8001/api/;
     proxy_http_version 1.1;
-    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection 'upgrade';
-    proxy_set_header Host \$host;
-    proxy_set_header X-Real-IP \$remote_addr;
-    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto \$scheme;
-    proxy_cache_bypass \$http_upgrade;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
     proxy_read_timeout 300s;
     proxy_connect_timeout 75s;
+    proxy_send_timeout 300s;
+    
+    # Buffer settings para respuestas grandes
+    proxy_buffering on;
+    proxy_buffer_size 128k;
+    proxy_buffers 4 256k;
+    proxy_busy_buffers_size 256k;
 }
 
+# Health check endpoint
 location /health {
     proxy_pass http://127.0.0.1:8001/health;
     proxy_http_version 1.1;
-    proxy_set_header Host \$host;
+    proxy_set_header Host $host;
+    proxy_read_timeout 10s;
 }
 
+# WebSocket para notificaciones en tiempo real
 location /ws/ {
     proxy_pass http://127.0.0.1:8001/ws/;
     proxy_http_version 1.1;
-    proxy_set_header Upgrade \$http_upgrade;
+    proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection "upgrade";
-    proxy_set_header Host \$host;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
     proxy_read_timeout 86400;
+    proxy_send_timeout 86400;
 }
 
+# SPA Fallback - Todas las rutas no encontradas van a index.html
+# Esto es CRÍTICO para que funcionen las rutas de React Router
 location / {
-    root $APP_DIR/frontend/build;
-    try_files \$uri \$uri/ /index.html;
+    try_files $uri $uri/ /index.html;
 }
-EOF
-        print_success "Configuración de Plesk creada"
-        print_warning "Recarga la configuración de Nginx en Plesk"
+
+# Cache para archivos estáticos
+location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+    expires 1y;
+    add_header Cache-Control "public, immutable";
+    try_files $uri =404;
+}
+NGINX_EOF
+        
+        print_success "Configuración de Nginx creada en $PLESK_NGINX_DIR/nginx_custom.conf"
     else
-        print_warning "No se encontró el directorio de configuración de Plesk"
-        setup_nginx_standard
+        print_warning "No se encontró el directorio de configuración de Plesk: $PLESK_NGINX_DIR"
+        print_info "Creando directorio..."
+        mkdir -p "$PLESK_NGINX_DIR"
+        # Reintentar crear el archivo
+        setup_nginx_plesk
+        return
     fi
+    
+    # 3. Crear script de actualización del frontend para futuros deploys
+    cat > "$APP_DIR/update-frontend.sh" << EOF
+#!/bin/bash
+# Script para actualizar el frontend en Plesk
+# Uso: sudo bash update-frontend.sh
+
+cd $APP_DIR/frontend
+npm run build
+
+# Copiar a httpdocs
+rm -rf $PLESK_HTTPDOCS/*
+cp -r build/* $PLESK_HTTPDOCS/
+
+# Establecer permisos
+PLESK_USER=\$(stat -c '%U' "/var/www/vhosts/$DOMAIN")
+if [ -n "\$PLESK_USER" ] && [ "\$PLESK_USER" != "root" ]; then
+    chown -R "\$PLESK_USER:psacln" "$PLESK_HTTPDOCS"
+fi
+chmod -R 755 $PLESK_HTTPDOCS
+
+echo "Frontend actualizado correctamente"
+EOF
+    chmod +x "$APP_DIR/update-frontend.sh"
+    print_success "Script de actualización creado: $APP_DIR/update-frontend.sh"
+    
+    # 4. Recargar configuración de Nginx
+    print_info "Recargando configuración de Nginx..."
+    if nginx -t 2>/dev/null; then
+        systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null
+        print_success "Nginx recargado correctamente"
+    else
+        print_error "Error en la configuración de Nginx. Verifica manualmente con: nginx -t"
+    fi
+    
+    # 5. Mostrar instrucciones adicionales para Plesk
+    echo ""
+    print_info "═══════════════════════════════════════════════════════════════"
+    print_info "  CONFIGURACIÓN ADICIONAL EN PLESK (si es necesario):"
+    print_info "═══════════════════════════════════════════════════════════════"
+    echo ""
+    echo -e "${YELLOW}  Si las rutas SPA siguen dando 404, ve a Plesk y:${NC}"
+    echo ""
+    echo -e "${CYAN}  1. Dominios → $DOMAIN → Apache & nginx Settings${NC}"
+    echo -e "${CYAN}  2. En 'Additional nginx directives', verifica que esté:${NC}"
+    echo ""
+    echo -e "${GREEN}     location / {${NC}"
+    echo -e "${GREEN}         try_files \$uri \$uri/ /index.html;${NC}"
+    echo -e "${GREEN}     }${NC}"
+    echo ""
+    echo -e "${CYAN}  3. Guarda y aplica los cambios${NC}"
+    echo ""
 }
 
 setup_nginx_standard() {
