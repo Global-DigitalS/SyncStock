@@ -288,6 +288,7 @@ const Suppliers = () => {
       if (res.data.status === "ok") {
         setFtpFiles(res.data.files);
         setFtpCurrentPath(res.data.path);
+        setFtpStats(res.data.stats);
         
         // Auto-select: only on first browse (root path) and no files selected yet
         if (path === "/" && selectedFtpFiles.length === 0) {
@@ -321,11 +322,101 @@ const Suppliers = () => {
         }
       } else {
         toast.error(res.data.message || "Error al explorar FTP");
+        setFtpConnectionStatus({ connected: false, message: res.data.message });
       }
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error conectando al FTP");
+      setFtpConnectionStatus({ connected: false, message: error.response?.data?.detail || "Error de conexión" });
     } finally {
       setFtpBrowsing(false);
+    }
+  };
+
+  const handleFtpTestConnection = async () => {
+    if (!formData.ftp_host) {
+      toast.error("Introduce el host FTP");
+      return;
+    }
+    
+    setFtpTestingConnection(true);
+    setFtpConnectionStatus(null);
+    
+    try {
+      const res = await api.post("/suppliers/ftp-test", {
+        ftp_schema: formData.ftp_schema || "ftp",
+        ftp_host: formData.ftp_host,
+        ftp_user: formData.ftp_user,
+        ftp_password: formData.ftp_password || "",
+        ftp_port: parseInt(formData.ftp_port) || 21,
+        ftp_mode: formData.ftp_mode || "passive"
+      });
+      
+      setFtpConnectionStatus(res.data);
+      
+      if (res.data.connected) {
+        toast.success(res.data.message);
+      } else {
+        toast.error(res.data.message);
+      }
+    } catch (error) {
+      setFtpConnectionStatus({ 
+        connected: false, 
+        message: error.response?.data?.detail || "Error de conexión" 
+      });
+      toast.error("Error al probar la conexión");
+    } finally {
+      setFtpTestingConnection(false);
+    }
+  };
+
+  const handleFtpListAllFiles = async () => {
+    if (!selectedSupplier?.id) {
+      toast.error("Guarda el proveedor primero para usar esta función");
+      return;
+    }
+    
+    setFtpListingAll(true);
+    
+    try {
+      const res = await api.post(`/suppliers/${selectedSupplier.id}/ftp-list-all`, {
+        path: ftpCurrentPath,
+        max_depth: 2
+      });
+      
+      if (res.data.status === "ok" && res.data.files.length > 0) {
+        // Mostrar archivos encontrados y preguntar si quiere añadirlos
+        toast.success(`Encontrados ${res.data.total_files} archivos soportados`);
+        
+        // Convertir a formato de selectedFtpFiles
+        const newFiles = res.data.files.map(f => ({
+          path: f.path,
+          role: guessFileRole(f.name),
+          label: f.name,
+          separator: ";",
+          header_row: 1,
+          merge_key: null,
+          size: f.size_formatted
+        }));
+        
+        // Añadir solo los que no estén ya seleccionados
+        const existingPaths = new Set(selectedFtpFiles.map(f => f.path));
+        const toAdd = newFiles.filter(f => !existingPaths.has(f.path));
+        
+        if (toAdd.length > 0) {
+          setSelectedFtpFiles(prev => [...prev, ...toAdd]);
+          toast.success(`Añadidos ${toAdd.length} archivos nuevos`);
+        } else {
+          toast.info("Todos los archivos ya están seleccionados");
+        }
+      } else if (res.data.total_files === 0) {
+        toast.info("No se encontraron archivos soportados en esta carpeta");
+      } else {
+        toast.error(res.data.message || "Error al listar archivos");
+      }
+    } catch (error) {
+      toast.error("Error al listar archivos");
+    } finally {
+      setFtpListingAll(false);
     }
   };
 
