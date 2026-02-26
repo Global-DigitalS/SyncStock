@@ -886,13 +886,14 @@ const Setup = () => {
 
               {/* Navigation Buttons */}
               <div className="flex items-center gap-3 pt-4">
-                {step === 2 && (
+                {(step === 2 || step === 3) && (
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setStep(1)}
+                    onClick={() => setStep(step - 1)}
                     className="flex-1 border-slate-600 text-slate-300 hover:bg-slate-700"
                   >
+                    <ArrowLeft className="w-4 h-4 mr-2" />
                     Volver
                   </Button>
                 )}
@@ -907,7 +908,7 @@ const Setup = () => {
                   ) : (
                     <ArrowRight className="w-4 h-4 mr-2" />
                   )}
-                  {step === 1 ? "Continuar" : "Completar Configuración"}
+                  {step === 1 ? "Continuar" : step === 2 ? "Continuar" : "Completar Configuración"}
                 </Button>
               </div>
             </form>
