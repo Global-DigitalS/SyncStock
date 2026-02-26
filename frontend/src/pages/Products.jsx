@@ -46,18 +46,13 @@ import {
   Upload,
   FileUp,
   Save,
-  Pencil,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown
+  Pencil
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Label } from "../components/ui/label";
 import { Switch } from "../components/ui/switch";
+import DataTablePagination from "../components/shared/DataTablePagination";
+import SortableTableHead from "../components/shared/SortableTableHead";
 
 const Products = () => {
   const [searchParams] = useSearchParams();
