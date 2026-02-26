@@ -40,6 +40,16 @@ async def register(user: UserCreate):
     }
     await db.users.insert_one(user_doc)
     token = create_token(user_id, role)
+    
+    # Send welcome email (async, don't block registration)
+    try:
+        from routes.email import send_welcome_email
+        await send_welcome_email(user.email, user.name)
+    except Exception as e:
+        # Don't fail registration if email fails
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send welcome email: {e}")
+    
     return {
         "token": token,
         "user": {
