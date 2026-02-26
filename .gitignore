@@ -207,3 +207,7 @@ frontend/node_modules/.cache/default-development/13.pack
 
 # Local configuration (should not be deployed)
 backend/config.json
+-e 
+# Environment files
+*.env
+*.env.*
