@@ -515,6 +515,10 @@ async def sync_all_suppliers():
 # ==================== FTP BROWSER ====================
 
 def browse_ftp_sync(config: dict, path: str = "/") -> dict:
+    """
+    Navega por el servidor FTP/SFTP y lista archivos y carpetas.
+    Soporta: FTP, FTPS, SFTP
+    """
     schema = config.get('ftp_schema', 'ftp').lower()
     host = config.get('ftp_host')
     port = config.get('ftp_port', 21)
@@ -523,60 +527,132 @@ def browse_ftp_sync(config: dict, path: str = "/") -> dict:
     mode = config.get('ftp_mode', 'passive')
 
     if not host:
-        return {"status": "error", "message": "FTP host is required", "files": []}
+        return {"status": "error", "message": "FTP host is required", "files": [], "path": path}
 
     files = []
-    if schema == 'sftp':
-        port = port or 22
-        transport = paramiko.Transport((host, port))
-        transport.connect(username=user, password=password)
-        sftp = paramiko.SFTPClient.from_transport(transport)
-        try:
-            for attr in sftp.listdir_attr(path):
-                is_dir = attr.st_mode and (attr.st_mode & 0o170000 == 0o040000)
-                files.append({
-                    "name": attr.filename,
-                    "path": f"{path.rstrip('/')}/{attr.filename}",
-                    "size": attr.st_size,
-                    "is_dir": is_dir,
-                    "modified": str(datetime.fromtimestamp(attr.st_mtime)) if attr.st_mtime else None
-                })
-        finally:
-            sftp.close()
-            transport.close()
-    else:
-        port = port or 21
-        ftp = ftplib.FTP_TLS() if schema == 'ftps' else ftplib.FTP()
-        try:
-            ftp.connect(host, port, timeout=15)
-            ftp.login(user or 'anonymous', password or '')
-            if schema == 'ftps':
-                ftp.prot_p()
-            ftp.set_pasv(mode == 'passive')
-            raw_lines = []
-            ftp.dir(path, raw_lines.append)
-            for line in raw_lines:
-                parts = line.split(None, 8)
-                if len(parts) >= 9:
-                    name = parts[8]
-                    is_dir = line.startswith('d')
-                    size = int(parts[4]) if not is_dir else 0
-                    date_str = f"{parts[5]} {parts[6]} {parts[7]}"
-                    files.append({
-                        "name": name,
-                        "path": f"{path.rstrip('/')}/{name}",
-                        "size": size,
-                        "is_dir": is_dir,
-                        "modified": date_str
-                    })
-        finally:
+    error_message = None
+    
+    try:
+        if schema == 'sftp':
+            port = port or 22
+            transport = paramiko.Transport((host, port))
+            transport.connect(username=user, password=password)
+            sftp = paramiko.SFTPClient.from_transport(transport)
             try:
-                ftp.quit()
-            except Exception:
-                pass
+                for attr in sftp.listdir_attr(path):
+                    is_dir = attr.st_mode and (attr.st_mode & 0o170000 == 0o040000)
+                    file_ext = attr.filename.rsplit('.', 1)[-1].lower() if '.' in attr.filename else ''
+                    files.append({
+                        "name": attr.filename,
+                        "path": f"{path.rstrip('/')}/{attr.filename}",
+                        "size": attr.st_size,
+                        "size_formatted": format_file_size(attr.st_size),
+                        "is_dir": is_dir,
+                        "is_supported": file_ext in ['csv', 'xlsx', 'xls', 'xml', 'zip', 'txt'],
+                        "extension": file_ext,
+                        "modified": str(datetime.fromtimestamp(attr.st_mtime)) if attr.st_mtime else None
+                    })
+            finally:
+                sftp.close()
+                transport.close()
+        else:
+            port = port or 21
+            ftp = ftplib.FTP_TLS() if schema == 'ftps' else ftplib.FTP()
+            try:
+                ftp.connect(host, port, timeout=15)
+                ftp.login(user or 'anonymous', password or '')
+                if schema == 'ftps':
+                    ftp.prot_p()
+                ftp.set_pasv(mode == 'passive')
+                
+                # Intentar usar MLSD primero (más información)
+                try:
+                    for name, facts in ftp.mlsd(path):
+                        if name in ['.', '..']:
+                            continue
+                        is_dir = facts.get('type') == 'dir'
+                        size = int(facts.get('size', 0)) if not is_dir else 0
+                        file_ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+                        modified = facts.get('modify', '')
+                        if modified and len(modified) >= 14:
+                            modified = f"{modified[:4]}-{modified[4:6]}-{modified[6:8]} {modified[8:10]}:{modified[10:12]}"
+                        files.append({
+                            "name": name,
+                            "path": f"{path.rstrip('/')}/{name}",
+                            "size": size,
+                            "size_formatted": format_file_size(size),
+                            "is_dir": is_dir,
+                            "is_supported": file_ext in ['csv', 'xlsx', 'xls', 'xml', 'zip', 'txt'],
+                            "extension": file_ext,
+                            "modified": modified
+                        })
+                except Exception:
+                    # Fallback a DIR si MLSD no está soportado
+                    raw_lines = []
+                    ftp.dir(path, raw_lines.append)
+                    for line in raw_lines:
+                        parts = line.split(None, 8)
+                        if len(parts) >= 9:
+                            name = parts[8]
+                            if name in ['.', '..']:
+                                continue
+                            is_dir = line.startswith('d')
+                            size = int(parts[4]) if not is_dir else 0
+                            date_str = f"{parts[5]} {parts[6]} {parts[7]}"
+                            file_ext = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+                            files.append({
+                                "name": name,
+                                "path": f"{path.rstrip('/')}/{name}",
+                                "size": size,
+                                "size_formatted": format_file_size(size),
+                                "is_dir": is_dir,
+                                "is_supported": file_ext in ['csv', 'xlsx', 'xls', 'xml', 'zip', 'txt'],
+                                "extension": file_ext,
+                                "modified": date_str
+                            })
+            finally:
+                try:
+                    ftp.quit()
+                except Exception:
+                    pass
+    except ftplib.error_perm as e:
+        error_message = f"Error de permisos FTP: {str(e)}"
+        logger.error(f"FTP permission error browsing {path}: {e}")
+    except Exception as e:
+        error_message = f"Error de conexión: {str(e)}"
+        logger.error(f"FTP browse error for {path}: {e}")
 
+    # Ordenar: carpetas primero, luego archivos por nombre
     files.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
-    return {"status": "ok", "path": path, "files": files}
+    
+    # Calcular estadísticas
+    total_files = len([f for f in files if not f["is_dir"]])
+    supported_files = len([f for f in files if f.get("is_supported")])
+    total_dirs = len([f for f in files if f["is_dir"]])
+    
+    return {
+        "status": "ok" if not error_message else "error",
+        "message": error_message,
+        "path": path,
+        "files": files,
+        "stats": {
+            "total_files": total_files,
+            "supported_files": supported_files,
+            "total_dirs": total_dirs
+        }
+    }
+
+
+def format_file_size(size: int) -> str:
+    """Formatea el tamaño de archivo en formato legible"""
+    if size < 1024:
+        return f"{size} B"
+    elif size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    elif size < 1024 * 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    else:
+        return f"{size / (1024 * 1024 * 1024):.1f} GB"
 
 
 async def browse_ftp_directory(config: dict, path: str = "/") -> dict:
