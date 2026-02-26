@@ -98,22 +98,48 @@ async def add_products_to_multiple_catalogs(
 ):
     product_ids = data.get("product_ids", [])
     catalog_ids = data.get("catalog_ids", [])
-    added = 0
-    for catalog_id in catalog_ids:
-        catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
-        if not catalog:
-            continue
+    
+    if not product_ids or not catalog_ids:
+        return {"added": 0, "message": "No hay productos o catálogos seleccionados"}
+    
+    # Obtener todos los catálogos válidos en una sola consulta
+    catalog_docs = await db.catalogs.find(
+        {"id": {"$in": catalog_ids}, "user_id": user["id"]}
+    ).to_list(100)
+    valid_catalog_ids = {c["id"] for c in catalog_docs}
+    
+    if not valid_catalog_ids:
+        return {"added": 0, "message": "No se encontraron catálogos válidos"}
+    
+    # Obtener items existentes en una sola consulta
+    existing_items = await db.catalog_items.find({
+        "catalog_id": {"$in": list(valid_catalog_ids)},
+        "product_id": {"$in": product_ids}
+    }).to_list(10000)
+    existing_pairs = {(item["catalog_id"], item["product_id"]) for item in existing_items}
+    
+    # Preparar inserción en lote
+    items_to_insert = []
+    now = datetime.now(timezone.utc).isoformat()
+    for catalog_id in valid_catalog_ids:
         for product_id in product_ids:
-            existing = await db.catalog_items.find_one({"catalog_id": catalog_id, "product_id": product_id})
-            if existing:
-                continue
-            await db.catalog_items.insert_one({
-                "id": str(uuid.uuid4()), "catalog_id": catalog_id,
-                "product_id": product_id, "user_id": user["id"],
-                "custom_price": None, "custom_name": None, "active": True,
-                "created_at": datetime.now(timezone.utc).isoformat()
-            })
-            added += 1
+            if (catalog_id, product_id) not in existing_pairs:
+                items_to_insert.append({
+                    "id": str(uuid.uuid4()),
+                    "catalog_id": catalog_id,
+                    "product_id": product_id,
+                    "user_id": user["id"],
+                    "custom_price": None,
+                    "custom_name": None,
+                    "active": True,
+                    "created_at": now
+                })
+    
+    # Insertar todo en una sola operación
+    if items_to_insert:
+        await db.catalog_items.insert_many(items_to_insert)
+    
+    added = len(items_to_insert)
     return {"added": added, "message": f"{added} productos añadidos"}
 
 

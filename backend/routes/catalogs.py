@@ -47,14 +47,40 @@ async def create_catalog(catalog: CatalogCreate, user: dict = Depends(get_curren
 @router.get("/catalogs", response_model=List[CatalogResponse])
 async def get_catalogs(user: dict = Depends(get_current_user)):
     catalogs = await db.catalogs.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+    
+    if not catalogs:
+        return []
+    
+    # Obtener IDs de catálogos
+    catalog_ids = [c["id"] for c in catalogs]
+    
+    # Obtener conteos de productos en una sola consulta con agregación
+    items_pipeline = [
+        {"$match": {"catalog_id": {"$in": catalog_ids}}},
+        {"$group": {"_id": "$catalog_id", "count": {"$sum": 1}}}
+    ]
+    items_counts_list = await db.catalog_items.aggregate(items_pipeline).to_list(100)
+    items_counts = {doc["_id"]: doc["count"] for doc in items_counts_list}
+    
+    # Obtener conteos de reglas en una sola consulta con agregación
+    rules_pipeline = [
+        {"$match": {"catalog_id": {"$in": catalog_ids}}},
+        {"$group": {"_id": "$catalog_id", "count": {"$sum": 1}}}
+    ]
+    rules_counts_list = await db.catalog_margin_rules.aggregate(rules_pipeline).to_list(100)
+    rules_counts = {doc["_id"]: doc["count"] for doc in rules_counts_list}
+    
+    # Construir respuesta
     result = []
     for cat in catalogs:
-        product_count = await db.catalog_items.count_documents({"catalog_id": cat["id"]})
-        rules_count = await db.catalog_margin_rules.count_documents({"catalog_id": cat["id"]})
         result.append(CatalogResponse(
-            id=cat["id"], name=cat["name"], description=cat.get("description"),
-            is_default=cat.get("is_default", False), product_count=product_count,
-            margin_rules_count=rules_count, created_at=cat["created_at"]
+            id=cat["id"],
+            name=cat["name"],
+            description=cat.get("description"),
+            is_default=cat.get("is_default", False),
+            product_count=items_counts.get(cat["id"], 0),
+            margin_rules_count=rules_counts.get(cat["id"], 0),
+            created_at=cat["created_at"]
         ))
     return result
 
