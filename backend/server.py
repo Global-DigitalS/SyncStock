@@ -109,6 +109,7 @@ api_router.include_router(subscriptions_router)
 api_router.include_router(stores_router)
 api_router.include_router(webhooks_router)
 api_router.include_router(setup_router)
+api_router.include_router(email_router)
 
 
 # Health check endpoint under /api
