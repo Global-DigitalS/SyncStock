@@ -309,16 +309,25 @@ const Setup = () => {
               }`}>
                 1
               </div>
-              <span className="text-sm font-medium">Configuración</span>
+              <span className="text-sm font-medium hidden sm:inline">Configuración</span>
             </div>
-            <div className={`w-12 h-0.5 ${step >= 2 ? "bg-indigo-500" : "bg-slate-700"}`} />
+            <div className={`w-8 sm:w-12 h-0.5 ${step >= 2 ? "bg-indigo-500" : "bg-slate-700"}`} />
             <div className={`flex items-center gap-2 ${step >= 2 ? "text-indigo-400" : "text-slate-600"}`}>
               <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
                 step >= 2 ? "bg-indigo-600 text-white" : "bg-slate-700 text-slate-400"
               }`}>
                 2
               </div>
-              <span className="text-sm font-medium">SuperAdmin</span>
+              <span className="text-sm font-medium hidden sm:inline">SuperAdmin</span>
+            </div>
+            <div className={`w-8 sm:w-12 h-0.5 ${step >= 3 ? "bg-indigo-500" : "bg-slate-700"}`} />
+            <div className={`flex items-center gap-2 ${step >= 3 ? "text-indigo-400" : "text-slate-600"}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                step >= 3 ? "bg-indigo-600 text-white" : "bg-slate-700 text-slate-400"
+              }`}>
+                3
+              </div>
+              <span className="text-sm font-medium hidden sm:inline">Email</span>
             </div>
           </div>
         </div>
