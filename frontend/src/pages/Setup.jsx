@@ -340,17 +340,24 @@ const Setup = () => {
                   <Settings className="w-5 h-5 text-indigo-400" />
                   Configuración del Sistema
                 </>
-              ) : (
+              ) : step === 2 ? (
                 <>
                   <Shield className="w-5 h-5 text-indigo-400" />
                   Crear SuperAdmin
+                </>
+              ) : (
+                <>
+                  <Mail className="w-5 h-5 text-indigo-400" />
+                  Configuración de Email
                 </>
               )}
             </CardTitle>
             <CardDescription className="text-slate-400">
               {step === 1 
                 ? "Configura la base de datos y seguridad de la aplicación" 
-                : "Crea el usuario administrador principal"
+                : step === 2
+                  ? "Crea el usuario administrador principal"
+                  : "Configura el envío de emails (opcional)"
               }
             </CardDescription>
           </CardHeader>
