@@ -161,13 +161,25 @@ const Register = () => {
                   <Input
                     id="password"
                     name="password"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={formData.password}
                     onChange={handleChange}
                     placeholder="••••••••"
-                    className="pl-10 h-12 input-base"
+                    className="pl-10 pr-10 h-12 input-base"
                     data-testid="register-password"
                   />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    data-testid="toggle-password"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="w-5 h-5" strokeWidth={1.5} />
+                    ) : (
+                      <Eye className="w-5 h-5" strokeWidth={1.5} />
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -180,7 +192,7 @@ const Register = () => {
                   <Input
                     id="confirmPassword"
                     name="confirmPassword"
-                    type="password"
+                    type={showPassword ? "text" : "password"}
                     value={formData.confirmPassword}
                     onChange={handleChange}
                     placeholder="••••••••"
