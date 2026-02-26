@@ -8,6 +8,7 @@ import { Toaster, toast } from "sonner";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Setup from "./pages/Setup";
+import ForgotPassword from "./pages/ForgotPassword";
 import Dashboard from "./pages/Dashboard";
 import Suppliers from "./pages/Suppliers";
 import SupplierDetail from "./pages/SupplierDetail";
@@ -24,6 +25,7 @@ import UserManagement from "./pages/UserManagement";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import Subscriptions from "./pages/Subscriptions";
 import Webhooks from "./pages/Webhooks";
+import EmailConfig from "./pages/EmailConfig";
 
 // Components
 import Sidebar from "./components/Sidebar";
