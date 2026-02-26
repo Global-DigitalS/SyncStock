@@ -894,6 +894,72 @@ const Suppliers = () => {
                       <p className="text-xs text-slate-500">Ruta única, o usa el explorador FTP para múltiples archivos</p>
                     </div>
 
+                    {/* Test Connection Button */}
+                    <div className="flex items-center gap-3">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleFtpTestConnection}
+                        disabled={ftpTestingConnection || !formData.ftp_host}
+                        className="flex-1"
+                        data-testid="ftp-test-btn"
+                      >
+                        {ftpTestingConnection ? (
+                          <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        ) : (
+                          <Wifi className="w-4 h-4 mr-2" />
+                        )}
+                        Probar Conexión
+                      </Button>
+                    </div>
+
+                    {/* Connection Status */}
+                    {ftpConnectionStatus && (
+                      <div className={`p-3 rounded-lg border ${
+                        ftpConnectionStatus.connected 
+                          ? "bg-emerald-50 border-emerald-200" 
+                          : "bg-rose-50 border-rose-200"
+                      }`}>
+                        <div className="flex items-start gap-3">
+                          {ftpConnectionStatus.connected ? (
+                            <CheckCircle className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                          ) : (
+                            <WifiOff className="w-5 h-5 text-rose-500 flex-shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className={`font-medium text-sm ${
+                              ftpConnectionStatus.connected ? "text-emerald-800" : "text-rose-800"
+                            }`}>
+                              {ftpConnectionStatus.connected ? "Conexión exitosa" : "Error de conexión"}
+                            </p>
+                            <p className="text-xs text-slate-600 mt-0.5">{ftpConnectionStatus.message}</p>
+                            {ftpConnectionStatus.connected && (
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                <Badge variant="outline" className="text-xs">
+                                  {ftpConnectionStatus.protocol}
+                                </Badge>
+                                {ftpConnectionStatus.mode && (
+                                  <Badge variant="outline" className="text-xs">
+                                    Modo {ftpConnectionStatus.mode}
+                                  </Badge>
+                                )}
+                                {ftpConnectionStatus.files_in_root !== undefined && (
+                                  <Badge variant="outline" className="text-xs">
+                                    {ftpConnectionStatus.files_in_root} items en raíz
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+                            {ftpConnectionStatus.suggestion && (
+                              <p className="text-xs text-amber-700 mt-2 bg-amber-50 px-2 py-1 rounded">
+                                💡 {ftpConnectionStatus.suggestion}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {/* FTP File Browser */}
                     <div className="border border-slate-200 rounded-lg overflow-hidden mt-4">
                       <div className="bg-slate-50 px-4 py-3 flex items-center justify-between border-b border-slate-200">
@@ -906,17 +972,54 @@ const Suppliers = () => {
                             </span>
                           )}
                         </div>
-                        <Button
-                          type="button" size="sm" variant="outline"
-                          onClick={() => handleFtpBrowse(ftpCurrentPath)}
-                          disabled={ftpBrowsing || !formData.ftp_host}
-                          className="text-xs h-7"
-                          data-testid="ftp-browse-btn"
-                        >
-                          {ftpBrowsing ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <FolderOpen className="w-3 h-3 mr-1" />}
-                          Conectar
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          {selectedSupplier?.id && (
+                            <Button
+                              type="button" size="sm" variant="outline"
+                              onClick={handleFtpListAllFiles}
+                              disabled={ftpListingAll || ftpBrowsing || !formData.ftp_host}
+                              className="text-xs h-7"
+                              title="Buscar todos los archivos en subcarpetas"
+                              data-testid="ftp-list-all-btn"
+                            >
+                              {ftpListingAll ? (
+                                <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                              ) : (
+                                <FolderTree className="w-3 h-3 mr-1" />
+                              )}
+                              Buscar en carpetas
+                            </Button>
+                          )}
+                          <Button
+                            type="button" size="sm" variant="outline"
+                            onClick={() => handleFtpBrowse(ftpCurrentPath)}
+                            disabled={ftpBrowsing || !formData.ftp_host}
+                            className="text-xs h-7"
+                            data-testid="ftp-browse-btn"
+                          >
+                            {ftpBrowsing ? <RefreshCw className="w-3 h-3 mr-1 animate-spin" /> : <FolderOpen className="w-3 h-3 mr-1" />}
+                            Explorar
+                          </Button>
+                        </div>
                       </div>
+
+                      {/* FTP Stats */}
+                      {ftpStats && (
+                        <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center gap-4">
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                            <FolderOpen className="w-3.5 h-3.5 text-amber-500" />
+                            <span>{ftpStats.total_dirs} carpetas</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-slate-600">
+                            <FileText className="w-3.5 h-3.5 text-slate-400" />
+                            <span>{ftpStats.total_files} archivos</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-emerald-600">
+                            <FileSpreadsheet className="w-3.5 h-3.5" />
+                            <span>{ftpStats.supported_files} soportados</span>
+                          </div>
+                        </div>
+                      )}
 
                       {/* Selected Files */}
                       {selectedFtpFiles.length > 0 && (
