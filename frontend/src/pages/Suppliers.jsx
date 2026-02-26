@@ -145,6 +145,8 @@ const Suppliers = () => {
     setSelectedFtpFiles([]);
     setFtpFiles([]);
     setFtpCurrentPath("/");
+    setFtpConnectionStatus(null);
+    setFtpStats(null);
   };
 
   const openCreate = () => {
