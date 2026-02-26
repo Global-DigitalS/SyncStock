@@ -101,7 +101,16 @@ def update_config(
     db_name: Optional[str] = None,
     jwt_secret: Optional[str] = None,
     cors_origins: Optional[str] = None,
-    is_configured: Optional[bool] = None
+    is_configured: Optional[bool] = None,
+    smtp_host: Optional[str] = None,
+    smtp_port: Optional[int] = None,
+    smtp_user: Optional[str] = None,
+    smtp_password: Optional[str] = None,
+    smtp_from_email: Optional[str] = None,
+    smtp_from_name: Optional[str] = None,
+    smtp_use_tls: Optional[bool] = None,
+    smtp_use_ssl: Optional[bool] = None,
+    smtp_configured: Optional[bool] = None
 ) -> AppConfig:
     """
     Actualiza la configuración con los valores proporcionados.
@@ -118,6 +127,25 @@ def update_config(
         config.cors_origins = cors_origins
     if is_configured is not None:
         config.is_configured = is_configured
+    # SMTP fields
+    if smtp_host is not None:
+        config.smtp_host = smtp_host
+    if smtp_port is not None:
+        config.smtp_port = smtp_port
+    if smtp_user is not None:
+        config.smtp_user = smtp_user
+    if smtp_password is not None:
+        config.smtp_password = smtp_password
+    if smtp_from_email is not None:
+        config.smtp_from_email = smtp_from_email
+    if smtp_from_name is not None:
+        config.smtp_from_name = smtp_from_name
+    if smtp_use_tls is not None:
+        config.smtp_use_tls = smtp_use_tls
+    if smtp_use_ssl is not None:
+        config.smtp_use_ssl = smtp_use_ssl
+    if smtp_configured is not None:
+        config.smtp_configured = smtp_configured
     
     save_config(config)
     return config
