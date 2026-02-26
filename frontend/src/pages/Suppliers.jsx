@@ -1065,15 +1065,18 @@ const Suppliers = () => {
                                 const parent = ftpCurrentPath.split("/").slice(0, -1).join("/") || "/";
                                 handleFtpBrowse(parent);
                               }} className="text-xs text-indigo-600 hover:text-indigo-700 ml-2 font-medium">
-                                Subir
+                                ↑ Subir
                               </button>
                             )}
                           </div>
                           {ftpFiles.map((file) => {
                             const isSelected = selectedFtpFiles.some(f => f.path === file.path);
+                            const isSupported = file.is_supported;
                             return (
                               <div key={file.path}
-                                className={`flex items-center gap-3 px-3 py-2 border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer ${isSelected ? "bg-indigo-50" : ""}`}
+                                className={`flex items-center gap-3 px-3 py-2 border-b border-slate-100 hover:bg-slate-50 transition-colors ${
+                                  file.is_dir ? "cursor-pointer" : ""
+                                } ${isSelected ? "bg-indigo-50" : ""} ${!file.is_dir && !isSupported ? "opacity-50" : ""}`}
                                 onClick={() => file.is_dir ? handleFtpBrowse(file.path) : null}
                                 data-testid={`ftp-file-${file.name}`}
                               >
@@ -1081,6 +1084,8 @@ const Suppliers = () => {
                                   <FolderOpen className="w-4 h-4 text-amber-500 flex-shrink-0" />
                                 ) : file.name.endsWith('.zip') ? (
                                   <FileArchive className="w-4 h-4 text-purple-500 flex-shrink-0" />
+                                ) : file.extension === 'csv' || file.extension === 'xlsx' || file.extension === 'xls' ? (
+                                  <FileSpreadsheet className="w-4 h-4 text-emerald-500 flex-shrink-0" />
                                 ) : (
                                   <FileText className="w-4 h-4 text-slate-400 flex-shrink-0" />
                                 )}
@@ -1089,19 +1094,29 @@ const Suppliers = () => {
                                 </span>
                                 {!file.is_dir && (
                                   <>
-                                    <span className="text-xs text-slate-400">{formatFileSize(file.size)}</span>
-                                    <span className="text-xs text-slate-400">{file.modified}</span>
+                                    {file.extension && (
+                                      <span className={`text-xs px-1.5 py-0.5 rounded ${
+                                        isSupported ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"
+                                      }`}>
+                                        {file.extension.toUpperCase()}
+                                      </span>
+                                    )}
+                                    <span className="text-xs text-slate-400 min-w-[60px] text-right">
+                                      {file.size_formatted || formatFileSize(file.size)}
+                                    </span>
                                     {isSelected ? (
-                                      <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+                                      <span className="text-xs text-emerald-600 font-medium flex items-center gap-1 min-w-[70px]">
                                         <CheckCircle className="w-3 h-3" /> Añadido
                                       </span>
-                                    ) : (
+                                    ) : isSupported ? (
                                       <button type="button" onClick={(e) => { e.stopPropagation(); addFtpFile(file); }}
-                                        className="text-xs bg-indigo-600 text-white px-2.5 py-1 rounded-md hover:bg-indigo-700 transition-colors font-medium"
+                                        className="text-xs bg-indigo-600 text-white px-2.5 py-1 rounded-md hover:bg-indigo-700 transition-colors font-medium min-w-[70px]"
                                         data-testid={`add-file-${file.name}`}
                                       >
                                         Añadir
                                       </button>
+                                    ) : (
+                                      <span className="text-xs text-slate-400 min-w-[70px]">No soportado</span>
                                     )}
                                   </>
                                 )}
