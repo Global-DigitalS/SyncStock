@@ -225,15 +225,39 @@ const Setup = () => {
         localStorage.setItem("token", res.data.token);
         localStorage.setItem("user", JSON.stringify(res.data.user));
         
-        // Si requiere reinicio, mostrar mensaje
+        // Si requiere reinicio, mostrar mensaje y esperar
         if (res.data.requires_restart) {
-          toast.info("La aplicación se ha configurado. Redirigiendo...", { duration: 3000 });
+          toast.info("El servidor se está reiniciando. Espera unos segundos...", { duration: 5000 });
+          
+          // Esperar a que el servidor se reinicie y luego redirigir
+          setTimeout(async () => {
+            // Intentar verificar que el servidor está listo
+            let attempts = 0;
+            const maxAttempts = 10;
+            
+            const checkServer = async () => {
+              try {
+                await axios.get(`${API}/health`, { timeout: 2000 });
+                window.location.href = "/#/";
+              } catch (e) {
+                attempts++;
+                if (attempts < maxAttempts) {
+                  setTimeout(checkServer, 1000);
+                } else {
+                  // Redirigir de todos modos después de varios intentos
+                  window.location.href = "/#/";
+                }
+              }
+            };
+            
+            checkServer();
+          }, 3000);
+        } else {
+          // Redirigir al dashboard
+          setTimeout(() => {
+            window.location.href = "/#/";
+          }, 1000);
         }
-        
-        // Redirigir al dashboard
-        setTimeout(() => {
-          window.location.href = "/";
-        }, 1000);
       } else {
         toast.error(res.data.message);
       }
