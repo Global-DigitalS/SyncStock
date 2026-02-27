@@ -448,7 +448,7 @@ class SupplierOffer(BaseModel):
     product_id: str
 
 class UnifiedProductResponse(BaseModel):
-    ean: str
+    ean: Optional[str] = None
     name: str
     description: Optional[str] = None
     category: Optional[str] = None
