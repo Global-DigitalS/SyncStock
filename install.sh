@@ -676,8 +676,9 @@ print_summary() {
     echo ""
     echo -e "  ${PURPLE}Accede a tu aplicación:${NC}"
     echo ""
-    echo -e "    ${CYAN}https://$DOMAIN/setup${NC}  ← Configuración inicial"
-    echo -e "    ${CYAN}https://$DOMAIN${NC}        ← Aplicación"
+    echo -e "    ${CYAN}https://$DOMAIN/#/setup${NC}  ← Configuración inicial"
+    echo -e "    ${CYAN}https://$DOMAIN/#/login${NC}  ← Iniciar sesión"
+    echo -e "    ${CYAN}https://$DOMAIN${NC}          ← Aplicación"
     echo ""
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
@@ -697,13 +698,13 @@ print_summary() {
     
     if [ -z "$MONGODB_URL" ]; then
         echo -e "  ${YELLOW}⚠ IMPORTANTE:${NC}"
-        echo -e "    Debes configurar MongoDB en ${CYAN}https://$DOMAIN/setup${NC}"
+        echo -e "    Debes configurar MongoDB en ${CYAN}https://$DOMAIN/#/setup${NC}"
         echo ""
     fi
     
     if [ "$IS_PLESK" == "yes" ]; then
         echo -e "  ${YELLOW}Configuración de Plesk:${NC}"
-        echo -e "    • Document Root: ${CYAN}app/${NC}"
+        echo -e "    • Document Root: ${CYAN}app/frontend/build${NC}"
         echo -e "    • SSL: Configurar desde Plesk → SSL/TLS Certificates"
         echo ""
     fi
