@@ -432,9 +432,6 @@ EOF
 setup_nginx_plesk() {
     print_step "Configurando Nginx para Plesk (Document Root: app/frontend/build)"
     
-    # En Plesk, el Document Root debe ser app/frontend/build
-    # NO copiamos archivos, el build ya está en su lugar
-    
     FRONTEND_BUILD="$APP_DIR/frontend/build"
     
     if [ ! -d "$FRONTEND_BUILD" ]; then
@@ -450,6 +447,8 @@ setup_nginx_plesk() {
     fi
     
     # Crear configuración de Nginx para Plesk
+    # NOTA: En Plesk NO podemos usar "location /" porque ya existe
+    # Usamos error_page 404 para el fallback de SPA
     PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
     
     if [ ! -d "$PLESK_NGINX_DIR" ]; then
@@ -461,11 +460,9 @@ setup_nginx_plesk() {
     cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
 # SupplierSync Pro - Configuración Nginx para Plesk
 # Document Root: app/frontend/build
-# Generado automáticamente por install.sh v2.0
+# IMPORTANTE: No usar "location /" - Plesk ya lo define
 
-# ==============================================
 # API Backend - Proxy a FastAPI (puerto 8001)
-# ==============================================
 location /api/ {
     proxy_pass http://127.0.0.1:8001/api/;
     proxy_http_version 1.1;
@@ -479,17 +476,9 @@ location /api/ {
     proxy_read_timeout 300s;
     proxy_connect_timeout 75s;
     proxy_send_timeout 300s;
-    
-    # Buffer para respuestas grandes (exportación CSV, etc.)
-    proxy_buffering on;
-    proxy_buffer_size 128k;
-    proxy_buffers 4 256k;
-    proxy_busy_buffers_size 256k;
 }
 
-# ==============================================
 # Health Check
-# ==============================================
 location /health {
     proxy_pass http://127.0.0.1:8001/health;
     proxy_http_version 1.1;
@@ -497,9 +486,7 @@ location /health {
     proxy_read_timeout 10s;
 }
 
-# ==============================================
 # WebSocket para notificaciones en tiempo real
-# ==============================================
 location /ws/ {
     proxy_pass http://127.0.0.1:8001/ws/;
     proxy_http_version 1.1;
@@ -511,28 +498,8 @@ location /ws/ {
     proxy_send_timeout 86400;
 }
 
-# ==============================================
-# SPA Fallback - CRÍTICO para React Router
-# Todas las rutas que no sean archivos van a index.html
-# ==============================================
-location / {
-    try_files $uri $uri/ /index.html;
-}
-
-# ==============================================
-# Cache para archivos estáticos
-# ==============================================
-location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot|map)$ {
-    expires 1y;
-    add_header Cache-Control "public, immutable";
-    access_log off;
-    try_files $uri =404;
-}
-
-# Seguridad adicional
-location ~ /\. {
-    deny all;
-}
+# SPA Fallback - Redirige 404 a index.html para React Router
+error_page 404 /index.html;
 NGINX_EOF
     
     print_success "Configuración de Nginx creada"
@@ -568,7 +535,7 @@ yarn build
 chown -R $PLESK_USER:psacln $APP_DIR
 chmod -R 755 $APP_DIR
 
-# Recargar nginx por si acaso
+# Recargar nginx
 systemctl reload nginx 2>/dev/null || true
 
 echo "Frontend actualizado correctamente"
@@ -580,7 +547,7 @@ EOF
     # Mostrar instrucciones para configurar Document Root en Plesk
     echo ""
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${YELLOW}  ⚠ IMPORTANTE: Configurar Document Root en Plesk${NC}"
+    echo -e "${YELLOW}  ⚠ IMPORTANTE: Configurar en Plesk${NC}"
     echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo -e "  ${CYAN}1. Ve a Plesk → Dominios → $DOMAIN${NC}"
