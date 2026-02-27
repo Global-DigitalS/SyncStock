@@ -216,7 +216,7 @@ async def get_unified_products(
                 is_best_offer=(p["id"] == best["id"]), product_id=p.get("id", "")
             ))
         unified_products.append(UnifiedProductResponse(
-            ean=ean, name=best.get("name", ""), description=best.get("description"),
+            ean=ean if ean else "", name=best.get("name", ""), description=best.get("description"),
             category=best.get("category"), brand=best.get("brand"),
             image_url=best.get("image_url"), best_price=best.get("price", 0),
             best_supplier=best.get("supplier_name", ""), best_supplier_id=best.get("supplier_id", ""),
