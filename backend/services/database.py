@@ -36,66 +36,11 @@ def get_mongo_config():
     logger.info("Using default localhost MongoDB config")
     return 'mongodb://localhost:27017', 'supplier_sync_db'
 
-# Variables globales para el cliente
-_client = None
-_db = None
-MONGO_URL = None
-DB_NAME = None
 
-def get_database():
-    """Obtiene la instancia de la base de datos, creando el cliente si es necesario"""
-    global _client, _db, MONGO_URL, DB_NAME
-    
-    current_url, current_db_name = get_mongo_config()
-    
-    # Si la URL cambió o no hay cliente, crear uno nuevo
-    if _client is None or MONGO_URL != current_url:
-        if _client is not None:
-            _client.close()
-            logger.info("Closing previous MongoDB connection")
-        
-        MONGO_URL = current_url
-        DB_NAME = current_db_name
-        
-        # Importar configuración de timeouts
-        try:
-            from config import (
-                MONGO_CONNECT_TIMEOUT_MS,
-                MONGO_SERVER_SELECTION_TIMEOUT_MS,
-                MONGO_MAX_POOL_SIZE,
-                MONGO_MIN_POOL_SIZE,
-            )
-        except ImportError:
-            MONGO_CONNECT_TIMEOUT_MS = 5000
-            MONGO_SERVER_SELECTION_TIMEOUT_MS = 5000
-            MONGO_MAX_POOL_SIZE = 10
-            MONGO_MIN_POOL_SIZE = 1
-        
-        _client = AsyncIOMotorClient(
-            MONGO_URL,
-            connectTimeoutMS=MONGO_CONNECT_TIMEOUT_MS,
-            serverSelectionTimeoutMS=MONGO_SERVER_SELECTION_TIMEOUT_MS,
-            maxPoolSize=MONGO_MAX_POOL_SIZE,
-            minPoolSize=MONGO_MIN_POOL_SIZE,
-        )
-        _db = _client[DB_NAME]
-        logger.info(f"Connected to MongoDB: {MONGO_URL[:30]}... DB: {DB_NAME}")
-    
-    return _db
-
-def reconnect_database():
-    """Fuerza una reconexión a la base de datos (llamar después de cambiar config)"""
-    global _client, _db, MONGO_URL
-    if _client is not None:
-        _client.close()
-    _client = None
-    _db = None
-    MONGO_URL = None
-    return get_database()
-
-# Inicializar la primera conexión
+# Obtener configuración inicial
 MONGO_URL, DB_NAME = get_mongo_config()
 
+# Importar configuración de timeouts
 try:
     from config import (
         MONGO_CONNECT_TIMEOUT_MS,
@@ -109,6 +54,7 @@ except ImportError:
     MONGO_MAX_POOL_SIZE = 10
     MONGO_MIN_POOL_SIZE = 1
 
+# Crear cliente global
 client = AsyncIOMotorClient(
     MONGO_URL,
     connectTimeoutMS=MONGO_CONNECT_TIMEOUT_MS,
@@ -117,10 +63,8 @@ client = AsyncIOMotorClient(
     minPoolSize=MONGO_MIN_POOL_SIZE,
 )
 db = client[DB_NAME]
-_client = client
-_db = db
 
-logger.info(f"Initial MongoDB connection: {MONGO_URL[:30]}... DB: {DB_NAME}")
+logger.info(f"MongoDB connection initialized: {MONGO_URL[:40]}... DB: {DB_NAME}")
 
 # Base de datos principal
 db = client[DB_NAME]
