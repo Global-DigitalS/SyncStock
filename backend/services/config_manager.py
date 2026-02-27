@@ -77,12 +77,24 @@ def load_config() -> AppConfig:
 
 def save_config(config: AppConfig) -> bool:
     """
-    Guarda la configuración en el archivo JSON.
+    Guarda la configuración en el archivo JSON y actualiza el .env
     """
     try:
+        # Guardar en config.json
         with open(CONFIG_FILE, 'w') as f:
             json.dump(config.model_dump(), f, indent=2)
         logger.info(f"Configuration saved to {CONFIG_FILE}")
+        
+        # También actualizar el archivo .env para compatibilidad
+        env_file = CONFIG_DIR / ".env"
+        env_content = f"""MONGO_URL={config.mongo_url}
+DB_NAME={config.db_name}
+CORS_ORIGINS={config.cors_origins}
+"""
+        with open(env_file, 'w') as f:
+            f.write(env_content)
+        logger.info(f"Environment file updated: {env_file}")
+        
         return True
     except Exception as e:
         logger.error(f"Error saving config file: {e}")
