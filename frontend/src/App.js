@@ -247,7 +247,7 @@ const AuthProvider = ({ children }) => {
 
 function App() {
   return (
-    <BrowserRouter>
+    <HashRouter>
       <AuthProvider>
         <Toaster 
           position="top-right" 
