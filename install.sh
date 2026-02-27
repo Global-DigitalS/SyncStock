@@ -447,8 +447,8 @@ setup_nginx_plesk() {
     fi
     
     # Crear configuración de Nginx para Plesk
-    # NOTA: En Plesk NO podemos usar "location /" porque ya existe
-    # Usamos error_page 404 para el fallback de SPA
+    # Con HashRouter no necesitamos configuración especial para SPA
+    # Solo proxy para el API
     PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
     
     if [ ! -d "$PLESK_NGINX_DIR" ]; then
@@ -460,7 +460,7 @@ setup_nginx_plesk() {
     cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
 # SupplierSync Pro - Configuración Nginx para Plesk
 # Document Root: app/frontend/build
-# IMPORTANTE: No usar "location /" - Plesk ya lo define
+# Nota: Usamos HashRouter, no se requiere configuración especial para SPA
 
 # API Backend - Proxy a FastAPI (puerto 8001)
 location /api/ {
@@ -497,9 +497,6 @@ location /ws/ {
     proxy_read_timeout 86400;
     proxy_send_timeout 86400;
 }
-
-# SPA Fallback - Redirige 404 a index.html para React Router
-error_page 404 /index.html;
 NGINX_EOF
     
     print_success "Configuración de Nginx creada"
@@ -529,14 +526,11 @@ cd $APP_DIR/frontend
 yarn install
 
 # Compilar
-yarn build
+GENERATE_SOURCEMAP=false yarn build
 
 # Establecer permisos
 chown -R $PLESK_USER:psacln $APP_DIR
 chmod -R 755 $APP_DIR
-
-# Recargar nginx
-systemctl reload nginx 2>/dev/null || true
 
 echo "Frontend actualizado correctamente"
 EOF
