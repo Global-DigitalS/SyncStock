@@ -767,13 +767,14 @@ fix_plesk() {
         print_success "Permisos establecidos"
     fi
     
-    # 4. Configurar Nginx
+    # 4. Configurar Nginx - SIN location / (Plesk ya lo tiene)
     PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
     mkdir -p "$PLESK_NGINX_DIR"
     
     cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
 # SupplierSync Pro - Configuración para Plesk
 # Document Root debe ser: app/frontend/build
+# NOTA: No usar "location /" - Plesk ya lo define
 
 location /api/ {
     proxy_pass http://127.0.0.1:8001/api/;
@@ -797,9 +798,8 @@ location /ws/ {
     proxy_read_timeout 86400;
 }
 
-location / {
-    try_files $uri $uri/ /index.html;
-}
+# SPA Fallback - Redirige 404 a index.html para React Router
+error_page 404 /index.html;
 NGINX_EOF
     
     print_success "Configuración Nginx actualizada"
@@ -826,7 +826,7 @@ NGINX_EOF
     echo -e "${GREEN}  ✓ Reparación completada${NC}"
     echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
-    echo -e "${YELLOW}  ⚠ IMPORTANTE: Verifica el Document Root en Plesk${NC}"
+    echo -e "${YELLOW}  ⚠ IMPORTANTE: Verifica en Plesk${NC}"
     echo ""
     echo -e "  ${CYAN}1. Ve a Plesk → Dominios → $DOMAIN → Hosting Settings${NC}"
     echo -e "  ${CYAN}2. Document Root debe ser: ${GREEN}app/frontend/build${NC}"
