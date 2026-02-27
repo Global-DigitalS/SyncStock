@@ -221,9 +221,36 @@ async def configure_app(setup: SetupRequest):
         
         test_client.close()
         
+        # Programar reinicio del backend en segundo plano (después de responder)
+        import subprocess
+        import threading
+        
+        def restart_backend():
+            import time
+            time.sleep(2)  # Esperar 2 segundos para que la respuesta llegue al cliente
+            try:
+                # Intentar reiniciar el servicio systemd
+                subprocess.run(['systemctl', 'restart', 'suppliersync-backend'], 
+                             capture_output=True, timeout=10)
+                logger.info("Backend service restarted via systemctl")
+            except Exception as e:
+                logger.warning(f"Could not restart via systemctl: {e}")
+                try:
+                    # Fallback: reiniciar via supervisorctl (para desarrollo)
+                    subprocess.run(['supervisorctl', 'restart', 'backend'], 
+                                 capture_output=True, timeout=10)
+                    logger.info("Backend service restarted via supervisorctl")
+                except Exception as e2:
+                    logger.warning(f"Could not restart via supervisorctl: {e2}")
+        
+        # Iniciar el reinicio en un hilo separado
+        restart_thread = threading.Thread(target=restart_backend, daemon=True)
+        restart_thread.start()
+        logger.info("Backend restart scheduled in 2 seconds")
+        
         return SetupResponse(
             success=True,
-            message="¡Configuración completada! La aplicación está lista para usar.",
+            message="¡Configuración completada! El servidor se reiniciará automáticamente.",
             token=token,
             user={
                 "id": user_id,
@@ -235,7 +262,7 @@ async def configure_app(setup: SetupRequest):
                 "max_catalogs": 999,
                 "max_woocommerce_stores": 999
             },
-            requires_restart=True  # El backend debería reiniciarse para aplicar CORS
+            requires_restart=True
         )
         
     except Exception as e:
