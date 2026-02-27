@@ -189,6 +189,14 @@ async def configure_app(setup: SetupRequest):
         save_config(new_config)
         logger.info("Configuration saved successfully")
         
+        # Forzar reconexión de la base de datos global
+        try:
+            from services.database import reconnect_database
+            reconnect_database()
+            logger.info("Database reconnected with new configuration")
+        except Exception as e:
+            logger.warning(f"Could not reconnect database: {e}")
+        
         # Crear el SuperAdmin
         user_id = str(uuid.uuid4())
         now = datetime.now(timezone.utc).isoformat()
