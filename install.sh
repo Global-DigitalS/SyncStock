@@ -749,7 +749,7 @@ fix_plesk() {
         fi
         
         yarn install
-        yarn build
+        GENERATE_SOURCEMAP=false yarn build
     fi
     
     print_success "Frontend build existe en $APP_DIR/frontend/build"
@@ -761,14 +761,14 @@ fix_plesk() {
         print_success "Permisos establecidos"
     fi
     
-    # 4. Configurar Nginx - SIN location / (Plesk ya lo tiene)
+    # 4. Configurar Nginx - Solo proxy para API (HashRouter no necesita más)
     PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
     mkdir -p "$PLESK_NGINX_DIR"
     
     cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
 # SupplierSync Pro - Configuración para Plesk
-# Document Root debe ser: app/frontend/build
-# NOTA: No usar "location /" - Plesk ya lo define
+# Document Root: app/frontend/build
+# Nota: Usamos HashRouter, no se requiere configuración especial para SPA
 
 location /api/ {
     proxy_pass http://127.0.0.1:8001/api/;
@@ -791,9 +791,6 @@ location /ws/ {
     proxy_set_header Connection "upgrade";
     proxy_read_timeout 86400;
 }
-
-# SPA Fallback - Redirige 404 a index.html para React Router
-error_page 404 /index.html;
 NGINX_EOF
     
     print_success "Configuración Nginx actualizada"
@@ -826,7 +823,7 @@ NGINX_EOF
     echo -e "  ${CYAN}2. Document Root debe ser: ${GREEN}app/frontend/build${NC}"
     echo -e "  ${CYAN}3. Guarda si hiciste cambios${NC}"
     echo ""
-    echo -e "  Prueba: ${CYAN}https://$DOMAIN/setup${NC}"
+    echo -e "  ${GREEN}Accede a: https://$DOMAIN/#/setup${NC}"
     echo ""
 }
 
