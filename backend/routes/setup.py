@@ -327,11 +327,13 @@ async def test_mongo_connection(data: dict):
         
         # Mensajes de error más amigables
         if "Authentication failed" in error_msg:
-            error_msg = "Error de autenticación. Verifica el usuario y contraseña."
-        elif "ServerSelectionTimeoutError" in error_msg:
-            error_msg = "No se pudo conectar al servidor. Verifica la URL y que el servidor esté accesible."
+            error_msg = "Error de autenticación. Verifica el usuario y contraseña en la URL de MongoDB."
+        elif "ServerSelectionTimeoutError" in error_msg or "No servers found" in error_msg:
+            error_msg = "No se pudo conectar al servidor MongoDB. Posibles causas: 1) El servidor no está accesible desde esta red, 2) El puerto 27017 está bloqueado por firewall, 3) MongoDB no está corriendo, 4) bindIp en mongod.conf no permite conexiones externas."
         elif "Invalid URI" in error_msg:
-            error_msg = "URL de MongoDB inválida. Formato correcto: mongodb://[usuario:contraseña@]host:puerto"
+            error_msg = "URL de MongoDB inválida. Formato correcto: mongodb://[usuario:contraseña@]host:puerto/?authSource=admin"
+        elif "connection refused" in error_msg.lower():
+            error_msg = "Conexión rechazada. Verifica que MongoDB esté corriendo y el puerto esté abierto."
         
         return {
             "success": False,
