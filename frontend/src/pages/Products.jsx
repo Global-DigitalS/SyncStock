@@ -114,6 +114,8 @@ const Products = () => {
       delete countParams.skip;
       delete countParams.limit;
       
+      console.log("Fetching products with params:", queryParams);
+      
       const [productsRes, countRes, categoriesRes, suppliersRes, catalogsRes] = await Promise.all([
         api.get("/products-unified", { params: queryParams }),
         api.get("/products-unified/count", { params: countParams }),
@@ -121,14 +123,20 @@ const Products = () => {
         api.get("/suppliers"),
         api.get("/catalogs")
       ]);
-      setProducts(productsRes.data);
-      setTotalProducts(countRes.data.total);
-      setCategories(categoriesRes.data);
-      setSuppliers(suppliersRes.data);
-      setCatalogs(catalogsRes.data);
+      
+      console.log("Products response:", productsRes.data?.length || 0, "products");
+      
+      setProducts(productsRes.data || []);
+      setTotalProducts(countRes.data?.total || 0);
+      setCategories(categoriesRes.data || []);
+      setSuppliers(suppliersRes.data || []);
+      setCatalogs(catalogsRes.data || []);
       setCurrentPage(page);
     } catch (error) {
-      toast.error("Error al cargar los productos");
+      console.error("Error fetching products:", error);
+      toast.error("Error al cargar los productos: " + (error.response?.data?.detail || error.message));
+      setProducts([]);
+      setTotalProducts(0);
     } finally {
       setLoading(false);
     }
@@ -136,7 +144,7 @@ const Products = () => {
 
   useEffect(() => {
     fetchData(1);
-  }, []);
+  }, [fetchData]);
 
   const handleSearch = async () => {
     setCurrentPage(1);

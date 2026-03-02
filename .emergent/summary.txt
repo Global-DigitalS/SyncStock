@@ -1,12 +1,13 @@
 <analysis>**original_problem_statement:**
 El usuario quiere construir una aplicación SaaS para gestionar catálogos de productos de proveedores.
+
 **Requerimientos del Producto (PRD):**
-1.  Descargar archivos de productos (CSV) desde FTP/SFTP o URL.
+1.  Descargar archivos de productos (CSV, etc.) desde FTP/SFTP o URL.
 2.  Ver precios y stocks de proveedores.
 3.  Crear múltiples catálogos de productos personalizados con reglas de márgenes de beneficio.
 4.  Exportar catálogos a CSV y a múltiples plataformas de eCommerce.
 5.  Autenticación de usuarios (JWT) y sistema de roles (Viewer, User, Admin, SuperAdmin).
-6.  Un  puede gestionar usuarios y establecer límites de recursos (proveedores, tiendas, catálogos).
+6.  Un  puede gestionar usuarios y establecer límites de recursos.
 7.  Sincronización automática de datos de proveedores.
 8.  Mapeo de columnas para archivos CSV.
 9.  Unificar productos por EAN.
@@ -17,181 +18,155 @@ El usuario quiere construir una aplicación SaaS para gestionar catálogos de pr
 14. Soporte para múltiples plataformas de eCommerce: WooCommerce, PrestaShop, Shopify, Wix, y Magento.
 15. Sistema de Webhooks para notificaciones de eventos de las tiendas.
 16. **Nuevo Flujo de Productos:** Los productos deben ser seleccionados desde la vista de un proveedor para aparecer en la sección principal Productos. Desde Productos, se pueden asignar a los catálogos.
-17. **Mejora de Despliegue:** Simplificar la forma de conectar la base de datos MongoDB durante el despliegue a producción.
+17. **Mejora de Despliegue:** Simplificar la forma de conectar la base de datos MongoDB y toda la configuración inicial, idealmente con un script de instalación automática.
+18. **Gestión de Emails:** Configurar el envío de correos transaccionales (bienvenida, recuperación de contraseña, cambio de plan) vía SMTP, con gestión desde la UI.
+19. **Mejoras de UX:** Añadir botón de mostrar/ocultar contraseña en los formularios de login y registro.
 
 **User's preferred language**: Spanish. The next agent MUST respond in Spanish.
 
 **what currently exists?**
-Es una aplicación full-stack (React + FastAPI + MongoDB) con una arquitectura modular. El backend soporta autenticación JWT, un sistema de roles avanzado con un  que gestiona límites de recursos, y notificaciones por WebSockets. Se ha implementado la gestión de proveedores, catálogos, y la unificación de productos. Recientemente, se ha expandido para soportar múltiples plataformas de eCommerce (WooCommerce, Shopify, etc.), un sistema de gestión de suscripciones editable y un sistema de webhooks. El frontend refleja estas características con dashboards y páginas de gestión dedicadas para cada módulo. Se resolvió un problema crítico de despliegue añadiendo un endpoint de health check ().
+La aplicación es un SaaS full-stack (React + FastAPI) que gestiona catálogos de productos. El backend soporta autenticación JWT, roles y gestión de proveedores, catálogos y tiendas. La configuración inicial (MongoDB, SuperAdmin, SMTP) se realiza a través de una interfaz web en , que guarda los datos en  y , y reinicia el backend automáticamente. Para solucionar problemas de despliegue en Plesk, el enrutamiento del frontend se cambió a  (ej. ), simplificando la configuración de Nginx. Se ha creado un script  para despliegues y un script  para facilitar las actualizaciones a través de Git.
 
 **Last working item**:
-    - Last item agent was working: El agente estaba comenzando a trabajar en las dos últimas peticiones del usuario:
-        1. Implementar un nuevo flujo de selección de productos:  ->  -> .
-        2. Encontrar una solución para facilitar la configuración de la conexión a MongoDB en el despliegue.
-    - Status: NOT STARTED
-    - Agent Testing Done: N
-    - Which testing method agent to use? both. Se requerirán pruebas de backend para la nueva lógica de productos y pruebas de frontend para los cambios en la interfaz de usuario en las páginas de Proveedores y Productos.
+    - Last item agent was working: El usuario informa que no puede ver ningún producto en la sección Productos, a pesar de que el agente anterior confirmó que el endpoint de la API devuelve productos y que se muestran correctamente en el entorno de vista previa. El usuario, no convencido de que sea un problema de caché, solicitó una revisión y optimización del código. El agente estaba analizando  para mejorar su robustez.
+    - Status: IN PROGRESS
+    - Agent Testing Done: Y (El agente verificó con screenshots que los productos se cargan, pero el usuario sigue reportando el problema).
+    - Which testing method agent to use? frontend testing agent. El objetivo es verificar de forma concluyente si los productos se renderizan en la página Productos bajo condiciones normales y de error, y confirmar si el problema es de código o de entorno/caché.
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - Issue 1: Implementar el nuevo flujo de selección de productos (P0)
-  - Issue 2: Simplificar la configuración de la conexión a MongoDB para el despliegue (P1)
-  - Issue 3: Completar la refactorización de  y  (P2)
-  - Issue 4: Verificar la corrección del bug de conexión FTP (P2)
+  - Issue 1: Productos no visibles en la sección Productos (P0)
+  - Issue 2: Verificar la corrección del bug de conexión FTP (P1)
   
   Issues Detail:
   - Issue 1: 
-     - Attempted fixes: Ninguno. El agente estaba en la fase de exploración del código.
+     - Attempted fixes: El agente anterior corrigió un error de validación en el modelo Pydantic () y una consulta incorrecta en MongoDB ( en lugar de  duplicado) en . Verificó que la API devolvía 83 productos y que la página se renderizaba correctamente en la vista previa, atribuyendo el problema del usuario a la caché del navegador. El usuario insistió en que el código fuera revisado.
      - Next debug checklist: 
-        1. Modificar el backend para añadir un campo (ej.  o ) al modelo de productos del proveedor para marcar los productos que se transferirán.
-        2. Crear nuevos endpoints para seleccionar/deseleccionar productos desde la vista del proveedor.
-        3. Actualizar la página  para mostrar los productos de un proveedor con checkboxes para seleccionarlos. Añadir botones para Añadir a Productos por selección o por categoría.
-        4. Modificar el endpoint  para que solo devuelva los productos que han sido seleccionados.
-        5. Probar el flujo completo: seleccionar productos de un proveedor, verificar que aparecen en la página Productos y que los no seleccionados no aparecen.
-     - Why fix this issue and what will be achieved with the fix? Cumplir con un requisito clave del usuario que cambia fundamentalmente la forma en que se gestionan los productos en la aplicación.
-     - Status:  NOT STARTED
-     - Is recurring issue? N
-     - Should Test frontend/backend/both after fix? both
-     - Blocked on other issue: No.
-  - Issue 2: 
-     - Attempted fixes: Ninguno.
-     - Next debug checklist: 
-        1. Investigar si la plataforma de despliegue permite configurar variables de entorno a través de una UI en el momento del despliegue.
-        2. Si no, proponer una solución alternativa:
-           - Crear una página de configuración inicial en la aplicación que se muestre si la variable  no está configurada, donde el usuario pueda pegarla.
-           - Crear un script de inicialización que guíe al usuario.
-           - Proporcionar instrucciones muy claras y un botón de copiar/pegar en la documentación.
-     - Why fix this issue and what will be achieved with the fix? Mejorar la experiencia de usuario durante un paso crítico y técnico como es el despliegue.
-     - Status:  NOT STARTED
-     - Is recurring issue? N
-     - Should Test frontend/backend/both after fix? backend (si se implementa una solución en el código) o ninguna si es solo documentación.
-     - Blocked on other issue: No.
-  - Issue 3: 
-     - Attempted fixes: Se crearon componentes compartidos (, , ) pero no se integraron completamente en  y  para reemplazar el código antiguo.
-     - Next debug checklist: 
-        1. Reemplazar la lógica de la tabla en  y  con el componente .
-        2. Reemplazar la lógica de paginación con el componente .
-        3. Integrar  en .
-        4. Eliminar el código duplicado y obsoleto de los archivos principales.
-     - Why fix this issue and what will be achieved with the fix? Mejorar la mantenibilidad, legibilidad y reutilización del código en dos de las páginas más complejas de la aplicación.
+        1. Revisar  para optimizar el  que obtiene los datos, asegurando que las dependencias sean correctas.
+        2. Añadir un manejo de errores más explícito en el frontend para mostrar un mensaje claro si la llamada a la API falla o devuelve una lista vacía.
+        3. Usar el  para simular la navegación del usuario, limpiar la caché y verificar si los productos se cargan.
+     - Why fix this issue and what will be achieved with the fix? Es la funcionalidad principal de la aplicación. Solucionarlo desbloqueará el uso de la plataforma para el usuario.
      - Status:  IN PROGRESS
-     - Is recurring issue? N
+     - Is recurring issue? Y
      - Should Test frontend/backend/both after fix? frontend
      - Blocked on other issue: No.
-  - Issue 4: 
-     - Attempted fixes: El agente anterior mejoró la detección de columnas no estándar y el logging en  para proporcionar mensajes más claros cuando un mapeo es necesario.
+  - Issue 2: 
+     - Attempted fixes: En un fork anterior, se crearon nuevos endpoints de backend (, ) y se mejoró la UI para la conexión FTP.
      - Next debug checklist: 
-        1. Solicitar al usuario (si es posible) credenciales FTP de un proveedor que falle para reproducir el bug.
-        2. Si no es posible, crear un archivo CSV de prueba con cabeceras no estándar y configurar un proveedor FTP local para simular el escenario.
-        3. Ejecutar la sincronización y verificar que los nuevos logs y mensajes de error guían correctamente al usuario para que realice el mapeo de columnas.
-     - Why fix this issue and what will be achieved with the fix? Resolver un bug crítico que impide la importación de productos para ciertos proveedores.
-     - Status:  BLOCKED (a la espera de datos para reproducir el bug, pero se puede intentar simular).
+        1. Solicitar explícitamente al usuario que pruebe la funcionalidad de conexión FTP con un proveedor que anteriormente daba problemas.
+        2. Registrar los resultados de la prueba del usuario.
+     - Why fix this issue and what will be achieved with the fix? Para cerrar un bug crítico anterior y asegurar que la importación de productos desde FTP es fiable.
+     - Status:  USER VERIFICATION PENDING
      - Is recurring issue? Y
      - Should Test frontend/backend/both after fix? both
      - Blocked on other issue: No.
 
 **In progress Task List**:
-  - Task 1: 
-     - Where to resume: Integrar los componentes compartidos (, ) en las páginas  y .
-     - What will be achieved with this? Completar la refactorización iniciada.
+  - Task 1:  Optimizar  (P0)
+     - Where to resume: Continuar con el análisis de  para añadirle un mejor manejo de estado (loading, error) y optimizar la obtención de datos.
+     - What will be achieved with this? Hacer el componente más robusto y, con suerte, resolver el problema de visualización que reporta el usuario.
      - Status:  IN PROGRESS
      - Should Test frontend/backend/both after fix? frontend
      - Blocked on something: No.
 
 **Upcoming and Future Tasks**
     Upcoming Tasks:
-    - **Task 1 (P2):** Ampliar las fuentes de datos para incluir SFTP o APIs directas, además de FTP y URL.
-    - **Task 2 (P2):** Implementar un dashboard para el  donde pueda ver estadísticas globales de uso de la plataforma (ya está creado, pero podría ampliarse).
+    - **Task 1 (P1):** Ampliar las fuentes de datos para incluir SFTP o APIs directas, además de FTP y URL.
+    - **Task 2 (P2):** Actualizar la UI del navegador FTP en  para permitir la selección múltiple de archivos.
     Future Tasks:
-    - **Task 3 (P3):** Añadir más opciones de seguridad, como autenticación de dos factores (2FA).
+    - **Task 3 (P3):** Añadir autenticación de dos factores (2FA).
+    - **Task 4 (P3):** Ampliar el dashboard del  con más estadísticas.
 
 **Completed work in this session**
-- **SuperAdmin Role & Limits**: Rol de SuperAdmin implementado y probado, con capacidad para gestionar usuarios y establecer límites de recursos.
-- **SuperAdmin Dashboard**: Creada una página con estadísticas globales de la plataforma.
-- **Subscription Plans Management**: Implementada una página para crear y editar planes de suscripción, gestionable por el SuperAdmin.
-- **Multi-Platform E-commerce Stores**: Refactorizada la sección WooCommerce a Tiendas, añadiendo soporte completo (UI y backend) para WooCommerce, PrestaShop, Shopify, Wix y Magento.
-- **Webhook System**: Creado un sistema completo para gestionar webhooks de eventos de las tiendas, con UI y lógica de backend.
-- **Deployment Failure Fixed**: Solucionado un error de despliegue en producción mediante la adición de un endpoint  en la raíz del backend y la corrección del formato del archivo .
-- **Initial Refactoring**: Creados varios componentes de UI compartidos (, , ) para empezar a refactorizar las páginas más grandes.
-- **FTP Bug Improvements**: Mejorada la detección de columnas y el logging en el servicio de sincronización para facilitar la depuración de problemas de mapeo de CSV.
+- **Solución de Despliegue en Plesk:** Se resolvieron múltiples errores de despliegue cambiando el frontend a  para evitar conflictos con la configuración de Nginx de Plesk.
+- **Corrección de Configuración de BD:** Se solucionó un bug crítico donde la configuración de MongoDB desde  no se aplicaba correctamente. Ahora  y  se actualizan, y el backend se reinicia automáticamente.
+- **Optimización de Consultas:** Se corrigieron problemas de N+1 en las consultas de productos y catálogos.
+- **Corrección de Bugs de Productos:** Se arregló un crash causado por EANs nulos y una consulta de filtrado de EAN incorrecta en .
+- **Integración de Email Completada:** Se añadió la configuración SMTP al flujo de  y se implementó el envío de correo al cambiar de plan, completando la tarea.
+- **Scripts de Automatización:** Se mejoró  para ser compatible con Plesk y se creó un nuevo script  para facilitar las actualizaciones del servidor a través de Git.
+- **Configuración de Git en Servidor:** Se proporcionaron instrucciones detalladas para configurar el repositorio Git en el servidor del usuario con claves SSH para un flujo de actualización sencillo.
 
 **Earlier issues found/mentioned but not fixed**
-   - El bug de conexión FTP (Issue 4) fue abordado con mejoras de logging, pero no se ha verificado si la solución es completa al no poder reproducir el error exacto del usuario.
+   - No hay problemas anteriores que no estén ya listados en la sección .
 
 **Known issue recurrence from previous fork**
-  - La lógica de sincronización FTP/CSV sigue siendo un punto delicado y ha necesitado varios ajustes.
+  - **Problemas de Despliegue/Entorno:** La mayor parte de la sesión se dedicó a resolver problemas de configuración específicos del entorno de producción del usuario (Plesk, Nginx, MongoDB), que no se manifestaban en el entorno de desarrollo.
+  - **Fiabilidad de la Sincronización FTP:** Aunque se han hecho mejoras, la importación de datos sigue siendo un punto delicado y pendiente de validación completa por parte del usuario.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-- **Backend**: FastAPI, Pydantic, Motor (MongoDB), JWT, WebSockets, APScheduler, , , .
-- **Frontend**: React, React Router, Axios, TailwindCSS, Shadcn UI, Recharts, .
-- **Arquitectura**: API REST modular, SPA, RBAC, ahora con soporte para múltiples integraciones de terceros.
+- **Backend**: FastAPI, Pydantic, Motor (MongoDB), JWT, .
+- **Frontend**: React, React Router (), Axios, TailwindCSS, Shadcn UI.
+- **Despliegue**: Scripts de Bash para Plesk (Nginx, Systemd),  para routing de SPA.
+- **Arquitectura**: Configuración centralizada en  con sincronización a .
 
 **key DB schema**
-  - **users**:  (superadmin, admin, user, viewer),  (, etc.).
-  - **stores**: Nueva colección para tiendas. Incluye  ('woocommerce', 'shopify', etc.) y .
-  - **subscriptions**: Nueva colección para los planes de suscripción.
-  - **webhooks**: Nueva colección para las configuraciones de webhooks.
-  -  está ahora obsoleto y reemplazado por .
+  - :  (boolean),  (string, puede ser nulo).
+  - : Almacena usuarios y roles.
+  - La configuración de la aplicación se gestiona desde la UI y se guarda en .
 
 **changes in tech stack**
-  - Se han añadido dependencias de backend para las integraciones de eCommerce, como  y .
+  - Se cambió  de  a  para simplificar la configuración del servidor web.
+  - Se añadieron dependencias de backend (, , ) al .
 
 **All files of reference**
-- **Nuevo Flujo (Pendiente)**: , , .
-- **Tiendas Multi-plataforma**: , , .
-- **Suscripciones**: , .
-- **Webhooks**: , .
-- **Refactorización (En Progreso)**: , , .
-- **Fix Despliegue**: .
+- **Problema actual**: .
+- **Lógica de Configuración**: , , , .
+- **Enrutamiento Frontend**: .
+- **Scripts de Despliegue/Actualización**: , .
 
 **Areas that need refactoring**:
-- Completar la integración de los componentes compartidos en  y  para finalizar la refactorización iniciada.
+- La refactorización de  para usar componentes compartidos (como ) fue omitida y sigue pendiente del fork anterior.
 
 **key api endpoints**
-- : CRUD para tiendas multi-plataforma.
-- : CRUD para planes de suscripción.
-- : CRUD para webhooks.
-- : Endpoint de health check para Kubernetes.
-- : Endpoint para el dashboard del SuperAdmin.
-- Las rutas bajo  están obsoletas.
+- : Configura la aplicación y ahora reinicia el backend automáticamente.
+- : Obtiene los productos unificados por EAN. Fue corregido para filtrar y validar EANs nulos correctamente.
 
 **Critical Info for New Agent**
-- La prioridad absoluta es el nuevo flujo de productos ( ->  -> ). Es un cambio fundamental en la lógica de la aplicación solicitado por el usuario.
-- La segunda prioridad es abordar la usabilidad de la conexión a MongoDB durante el despliegue.
-- La base del código ha crecido considerablemente. Familiarízate con los nuevos módulos de Tiendas, Suscripciones y Webhooks antes de empezar.
+- **Prioridad #1 (Bloqueante del Usuario)**: El usuario insiste en que la página de Productos no muestra nada. Aunque el agente anterior lo atribuyó a un problema de caché, debes tratarlo como un bug real. Investiga  a fondo. Considera añadir un estado de carga explícito y un mensaje de error claro. Utiliza el  para obtener una verificación imparcial.
+- **Contexto de Despliegue (Plesk)**: La aplicación ha tenido numerosos problemas de despliegue en el servidor Plesk del usuario. La solución de usar  fue un cambio significativo para evitar la complejidad de la configuración de Nginx. Ten esto en cuenta si necesitas hacer cambios relacionados con el enrutamiento.
+- **Flujo de Actualización**: Se ha configurado un flujo de actualización basado en  y un script . Debes guiar al usuario para que utilice este método en lugar de transferencias manuales de archivos.
+- **Configuración de la Base de Datos**: La configuración de la base de datos se realiza a través de la UI (). El backend está diseñado para reiniciar el servicio automáticamente después de guardar la configuración.
 
 **documents and test reports created in this job**
-  - Se han generado múltiples informes de prueba del . El último fue .
-  - El archivo  ha sido actualizado consistentemente.
+- 
+- 
+[0;35m╔════════════════════════════════════════════════════════════════╗[0m
+[0;35m║[0m        [0;36mSupplierSync Pro - Instalación Automática[0m            [0;35m║[0m
+[0;35m║[0m              [1;33mOptimizado para Plesk Obsidian[0m                 [0;35m║[0m
+[0;35m╚════════════════════════════════════════════════════════════════╝[0m
+
+[0;36m  ℹ Sistema detectado: Debian GNU/Linux[0m
+[0;36m  ℹ Plesk no detectado - usando configuración estándar[0m (actualizado)
+- El  se ejecutó con éxito y validó la integración de correo electrónico y otras funcionalidades.
 
 **Last 10 User Messages and any pending HUMAN messages** 
-- User:  (PENDING)
-- User:  (PENDING)
-- User:  (DONE)
-- User:  (DONE)
-- User:  (DONE)
-- User:  (DONE)
-- User:  (DONE)
+1.  **User**:  - El usuario reporta el problema principal.
+2.  **User**:  - El usuario no acepta la explicación de la caché e insiste en una revisión del código.
+3.  **Agent**: Inicia la revisión y optimización de .
+4.  **System**: El pod se reinicia por exceso de memoria.
+5.  **Agent**: Continúa la tarea de revisión de .
+6.  ... (El agente estaba en medio de la revisión de  cuando terminó la sesión).
 
 **Project Health Check:**
-- **Broken**: El flujo de gestión de productos no se alinea con el nuevo requisito del usuario. La selección de productos desde los proveedores para poblarlos en la página principal de productos no está implementada.
+- **Broken**: Para el usuario, la página de Productos no funciona, lo que bloquea el uso principal de la aplicación.
 - **Mocked**: N/A
 
 **3rd Party Integrations**
 - **WooCommerce**: Integrado vía API REST.
 - **PrestaShop**: Integrado vía .
 - **Shopify**: Integrado vía  library.
-- **Wix eCommerce**: Solo UI y modelo, sin lógica de integración real.
-- **Magento**: Solo UI y modelo, sin lógica de integración real.
+- **Wix eCommerce**: Solo UI y modelo.
+- **Magento**: Solo UI y modelo.
+- **SMTP Genérico**: Integrado vía .
 
 **Testing status**
-  - Testing agent used after significant changes: YES. Se utilizó con éxito después de implementar cada conjunto importante de características.
+  - Testing agent used after significant changes: YES (para la integración de email y la página de setup).
   - Troubleshoot agent used after agent stuck in loop: NO
   - Test files created: []
-  - Known regressions: Ninguna conocida.
+  - Known regressions: El usuario reporta que la página de productos, que antes funcionaba, ahora no muestra nada.
 
 **Credentials to test flow:**
 - **Email**: 
@@ -199,4 +174,5 @@ Es una aplicación full-stack (React + FastAPI + MongoDB) con una arquitectura m
 - **Rol actual**: 
 
 **What agent forgot to execute**
-- El agente no olvidó nada, pero fue interrumpido justo después de recibir dos nuevos requisitos importantes del usuario: el nuevo flujo de productos y la simplificación de la conexión a la base de datos para el despliegue. Ambas tareas están pendientes de iniciar.</analysis>
+- No se completó la refactorización de  para usar componentes compartidos, una tarea pendiente del fork anterior.
+- No se ha cerrado el ticket sobre el bug de conexión FTP, que sigue pendiente de la validación del usuario.</analysis>
