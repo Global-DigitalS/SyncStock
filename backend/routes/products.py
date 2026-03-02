@@ -184,7 +184,7 @@ async def get_unified_products(
             "min_price": {"$min": "$price"},
             "first_name": {"$first": "$name"}
         }},
-        {"$match": {"_id": {"$ne": None, "$ne": ""}}}
+        {"$match": {"_id": {"$nin": [None, ""]}}}
     ]
     if min_stock is not None:
         pipeline.append({"$match": {"total_stock": {"$gte": min_stock}}})
