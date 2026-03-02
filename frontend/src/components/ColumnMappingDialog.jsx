@@ -41,7 +41,7 @@ const SYSTEM_FIELDS = [
   { key: "subcategory", label: "Subcategoría", required: false, description: "Subcategoría" },
   { key: "subcategory2", label: "Subcategoría 2", required: false, description: "Subcategoría nivel 2" },
   { key: "brand", label: "Marca", required: false, description: "Marca o fabricante" },
-  { key: "ean", label: "EAN / Código de barras", required: false, description: "Código EAN13 o UPC" },
+  { key: "ean", label: "EAN / Código de barras", required: false, critical: true, description: "Requerido para ver productos en 'Productos'" },
   { key: "weight", label: "Peso (kg)", required: false, description: "Peso en kilogramos" },
   { key: "image_url", label: "URL Imagen 1", required: false, description: "URL de la imagen principal" },
   { key: "image_url2", label: "URL Imagen 2", required: false, description: "URL de imagen secundaria" },
@@ -144,6 +144,7 @@ const ColumnMappingDialog = ({
 
   const requiredFieldsMapped = SYSTEM_FIELDS.filter(f => f.required).every(f => mapping[f.key]);
   const mappedCount = Object.keys(mapping).length;
+  const eanMapped = !!mapping.ean;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -169,9 +170,27 @@ const ColumnMappingDialog = ({
           </CardContent>
         </Card>
 
+        {/* EAN Warning Banner */}
+        {!eanMapped && (
+          <Card className="border-rose-300 bg-rose-50 shrink-0" data-testid="ean-warning-banner">
+            <CardContent className="p-3 flex items-start gap-2">
+              <AlertCircle className="w-5 h-5 text-rose-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-rose-800">
+                  ¡Importante! El campo EAN no está mapeado
+                </p>
+                <p className="text-xs text-rose-700 mt-1">
+                  Sin el EAN, los productos <strong>no aparecerán</strong> en la sección "Productos". 
+                  El EAN es necesario para unificar productos de diferentes proveedores y compararlos.
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Actions */}
         <div className="flex items-center justify-between shrink-0 py-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="secondary" className="bg-indigo-100 text-indigo-700">
               {mappedCount} campos mapeados
             </Badge>
@@ -184,6 +203,17 @@ const ColumnMappingDialog = ({
               <Badge variant="secondary" className="bg-rose-100 text-rose-700">
                 <X className="w-3 h-3 mr-1" />
                 Faltan campos requeridos
+              </Badge>
+            )}
+            {eanMapped ? (
+              <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
+                <Check className="w-3 h-3 mr-1" />
+                EAN mapeado
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="bg-rose-100 text-rose-700">
+                <AlertCircle className="w-3 h-3 mr-1" />
+                EAN sin mapear
               </Badge>
             )}
           </div>
@@ -217,8 +247,11 @@ const ColumnMappingDialog = ({
                       ? 'bg-emerald-50 border-emerald-200' 
                       : field.required 
                         ? 'bg-rose-50 border-rose-200' 
-                        : 'bg-slate-50 border-slate-200'
+                        : field.critical
+                          ? 'bg-amber-50 border-amber-300 ring-2 ring-amber-200'
+                          : 'bg-slate-50 border-slate-200'
                   }`}
+                  data-testid={`mapping-row-${field.key}`}
                 >
                   {/* System Field */}
                   <div className="w-1/3 min-w-0">
@@ -226,9 +259,12 @@ const ColumnMappingDialog = ({
                       <span className="font-medium text-sm text-slate-900">
                         {field.label}
                         {field.required && <span className="text-rose-500 ml-0.5">*</span>}
+                        {field.critical && !field.required && <span className="text-amber-500 ml-0.5">⚠</span>}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-500 truncate">{field.description}</p>
+                    <p className={`text-xs truncate ${field.critical && !mapping[field.key] ? 'text-amber-700 font-medium' : 'text-slate-500'}`}>
+                      {field.description}
+                    </p>
                   </div>
 
                   {/* Arrow */}
