@@ -238,7 +238,10 @@ async def get_unified_products_count(
     user: dict = Depends(get_current_user)
 ):
     """Obtener el total de productos unificados para paginación"""
-    match_query = {"user_id": user["id"], "ean": {"$ne": None, "$ne": ""}}
+    match_query = {
+        "user_id": user["id"],
+        "ean": {"$nin": [None, ""]},
+    }
     if not include_all:
         match_query["is_selected"] = True
     if category:
@@ -255,7 +258,7 @@ async def get_unified_products_count(
             "_id": "$ean",
             "total_stock": {"$sum": "$stock"}
         }},
-        {"$match": {"_id": {"$ne": None, "$ne": ""}}}
+        {"$match": {"_id": {"$nin": [None, ""]}}}
     ]
     if min_stock is not None:
         pipeline.append({"$match": {"total_stock": {"$gte": min_stock}}})
