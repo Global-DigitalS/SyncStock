@@ -19,13 +19,47 @@ El script automáticamente:
 - ✅ Compila el frontend con React
 - ✅ Configura Nginx (detecta Plesk automáticamente)
 - ✅ Opcionalmente configura SSL con Let's Encrypt
+- ✅ **Configura almacenamiento persistente** para la configuración
 
 ### Después de la instalación:
 
-1. Abre `https://tu-dominio.com/setup` en tu navegador
+1. Abre `https://tu-dominio.com/#/setup` en tu navegador
 2. Configura MongoDB (si no lo hiciste durante la instalación)
 3. Crea tu usuario SuperAdmin
 4. ¡Listo!
+
+---
+
+## 🔒 Configuración Persistente
+
+**Tu configuración NO se perderá al actualizar la aplicación.**
+
+La configuración (MongoDB, JWT, SMTP, etc.) se guarda en:
+```
+/etc/suppliersync/config.json
+```
+
+Esta ubicación está **fuera** del directorio de la aplicación, por lo que:
+- ✅ Actualizar el código no afecta tu configuración
+- ✅ El SuperAdmin y conexión a MongoDB se preservan
+- ✅ Los backups automáticos se guardan en `/etc/suppliersync/backups/`
+
+---
+
+## 🔄 Actualizar la Aplicación
+
+Para actualizar sin perder la configuración:
+
+```bash
+sudo bash update.sh
+```
+
+El script de actualización:
+- Crea un backup automático de tu configuración
+- Actualiza el código (git pull o manual)
+- Reinstala dependencias si es necesario
+- Recompila el frontend
+- **Preserva toda tu configuración**
 
 ---
 
@@ -59,7 +93,12 @@ Si prefieres control total, consulta [README-DEPLOY-PLESK.md](README-DEPLOY-PLES
 │   │   └── components/    # Componentes reutilizables
 │   └── build/             # Archivos compilados
 ├── install.sh             # Script de instalación automática
+├── update.sh              # Script de actualización (preserva config)
 └── README.md              # Este archivo
+
+/etc/suppliersync/          # Configuración persistente (fuera del app)
+├── config.json            # Configuración principal
+└── backups/               # Backups automáticos
 ```
 
 ---
@@ -78,6 +117,15 @@ sudo systemctl restart suppliersync-backend
 
 # Health check
 curl http://localhost:8001/health
+
+# Ver información de configuración
+curl http://localhost:8001/api/setup/config-info
+
+# Crear backup manual de configuración
+curl -X POST http://localhost:8001/api/setup/backup
+
+# Ver backups disponibles
+curl http://localhost:8001/api/setup/backups
 ```
 
 ---

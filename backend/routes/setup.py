@@ -13,7 +13,7 @@ import logging
 from services.auth import hash_password, create_token
 from services.config_manager import (
     get_config, update_config, save_config, generate_jwt_secret,
-    is_app_configured, AppConfig
+    is_app_configured, AppConfig, get_config_info, backup_config, list_backups
 )
 
 router = APIRouter()
@@ -30,6 +30,9 @@ class SetupStatus(BaseModel):
     needs_mongo_config: bool = True
     needs_jwt_config: bool = True
     current_cors: str = "*"
+    # Información de persistencia de configuración
+    config_path: str = ""
+    config_is_persistent: bool = False
 
 
 class SetupRequest(BaseModel):
@@ -68,6 +71,7 @@ async def get_setup_status():
     y qué configuraciones faltan.
     """
     config = get_config()
+    config_info = get_config_info()
     
     has_database = False
     has_superadmin = False
@@ -119,7 +123,9 @@ async def get_setup_status():
         message=message,
         needs_mongo_config=needs_mongo_config,
         needs_jwt_config=needs_jwt_config,
-        current_cors=config.cors_origins
+        current_cors=config.cors_origins,
+        config_path=config_info["config_path"],
+        config_is_persistent=config_info["is_persistent"]
     )
 
 
@@ -331,3 +337,47 @@ async def test_mongo_connection(data: dict):
             "success": False,
             "message": error_msg
         }
+
+
+
+@router.get("/setup/config-info")
+async def get_configuration_info():
+    """
+    Devuelve información detallada sobre la ubicación y estado de la configuración.
+    Útil para debugging y para que el usuario sepa dónde se guarda su configuración.
+    """
+    return get_config_info()
+
+
+@router.post("/setup/backup")
+async def create_backup():
+    """
+    Crea una copia de seguridad de la configuración actual.
+    Útil antes de actualizar la aplicación.
+    """
+    backup_path = backup_config()
+    
+    if backup_path:
+        return {
+            "success": True,
+            "message": "Copia de seguridad creada correctamente",
+            "backup_path": backup_path
+        }
+    else:
+        return {
+            "success": False,
+            "message": "No se pudo crear la copia de seguridad o no hay configuración que respaldar"
+        }
+
+
+@router.get("/setup/backups")
+async def get_backups():
+    """
+    Lista todas las copias de seguridad disponibles.
+    """
+    backups = list_backups()
+    return {
+        "success": True,
+        "backups": backups,
+        "count": len(backups)
+    }

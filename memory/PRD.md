@@ -33,7 +33,15 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] Paso 2: Creación de SuperAdmin
 - [x] Paso 3: Configuración SMTP (opcional)
 - [x] Test de conexión MongoDB
-- [x] Guardado en config.json Y .env automáticamente
+- [x] **Configuración persistente en `/etc/suppliersync/`**
+- [x] **Backups automáticos de configuración**
+- [x] Información de ubicación de configuración en API
+
+### ✅ Sistema de Actualización
+- [x] Script `update.sh` que preserva configuración
+- [x] Detección automática de instalación existente
+- [x] Migración automática de config.json a ubicación persistente
+- [x] Backups previos a actualización
 
 ### ✅ Sistema de Email
 - [x] Configuración SMTP genérica
@@ -46,38 +54,72 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] Document Root: `app/frontend/build`
 - [x] Script de instalación automática (`install.sh`)
 - [x] Script de reparación (`install.sh --fix-plesk`)
+- [x] Script de actualización (`update.sh`)
 
 ## Arquitectura
 
 ```
 /app/
 ├── backend/
-│   ├── config.json          # Configuración principal (MongoDB, JWT, SMTP)
 │   ├── .env                  # Variables de entorno (auto-actualizado)
 │   ├── services/
 │   │   ├── database.py      # Conexión MongoDB (lee de config.json primero)
-│   │   ├── config_manager.py # Guarda en config.json Y .env
+│   │   ├── config_manager.py # Guarda en /etc/suppliersync/config.json
 │   │   └── email_service.py
 │   ├── routes/
-│   │   ├── setup.py         # Configuración inicial vía web
+│   │   ├── setup.py         # Configuración inicial vía web + backups
 │   │   ├── auth.py
 │   │   ├── products.py
 │   │   └── ...
 │   └── server.py
-└── frontend/
-    ├── src/
-    │   ├── App.js           # HashRouter para compatibilidad con Plesk
-    │   └── pages/
-    │       ├── Setup.jsx    # 3 pasos de configuración
-    │       └── ...
-    └── build/               # Document Root para Plesk
+├── frontend/
+│   ├── src/
+│   │   ├── App.js           # HashRouter para compatibilidad con Plesk
+│   │   └── pages/
+│   │       ├── Setup.jsx    # 3 pasos de configuración
+│   │       └── ...
+│   └── build/               # Document Root para Plesk
+├── install.sh               # Instalación inicial
+└── update.sh                # Actualización preservando configuración
+
+/etc/suppliersync/            # ⭐ CONFIGURACIÓN PERSISTENTE
+├── config.json              # MongoDB, JWT, SMTP (NO se pierde al actualizar)
+└── backups/                 # Backups automáticos
 ```
+
+## Ubicación de Configuración (Persistente)
+
+La configuración ahora se guarda en **`/etc/suppliersync/config.json`**, que es una ubicación:
+- ✅ **Fuera del directorio de la aplicación** - No se sobrescribe al actualizar
+- ✅ **Estándar de Linux** - `/etc/` es para configuraciones del sistema
+- ✅ **Con backups automáticos** - En `/etc/suppliersync/backups/`
+
+### Prioridad de búsqueda de configuración:
+1. `/etc/suppliersync/config.json` (producción - persistente)
+2. `~/.suppliersync/config.json` (desarrollo local)
+3. `[APP_DIR]/backend/config.json` (fallback - se migra automáticamente)
 
 ## URLs de la Aplicación (HashRouter)
 - `https://tudominio.com/#/setup` - Configuración inicial
 - `https://tudominio.com/#/login` - Iniciar sesión
 - `https://tudominio.com/#/register` - Registro
 - `https://tudominio.com/#/` - Dashboard
+
+## API de Configuración
+
+```bash
+# Estado de configuración
+GET /api/setup/status
+
+# Información de ubicación de configuración
+GET /api/setup/config-info
+
+# Crear backup manual
+POST /api/setup/backup
+
+# Listar backups
+GET /api/setup/backups
+```
 
 ## Instalación en Plesk
 
@@ -86,25 +128,14 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 sudo bash install.sh
 ```
 
+### Actualización (Preserva configuración)
+```bash
+sudo bash update.sh
+```
+
 ### Reparación Rápida
 ```bash
 sudo bash install.sh --fix-plesk
-```
-
-### Configuración Manual en Plesk
-1. Document Root: `app/frontend/build`
-2. En "Apache & nginx Settings" → "Additional nginx directives":
-```nginx
-location /api/ {
-    proxy_pass http://127.0.0.1:8001/api/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_read_timeout 300s;
-}
-
-location /health {
-    proxy_pass http://127.0.0.1:8001/health;
-}
 ```
 
 ## Credenciales de Prueba
@@ -113,6 +144,13 @@ location /health {
 - **Rol**: superadmin
 
 ## Historial de Cambios
+
+### 02/03/2026
+- ✅ **Configuración persistente en `/etc/suppliersync/`**
+- ✅ **Script `update.sh` para actualizar sin perder configuración**
+- ✅ Migración automática de config.json a ubicación persistente
+- ✅ API para backups de configuración
+- ✅ Documentación actualizada
 
 ### 27/02/2026
 - ✅ Cambiado a HashRouter para compatibilidad con Plesk

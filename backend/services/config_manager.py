@@ -1,7 +1,13 @@
 """
 Gestión de configuración de la aplicación.
 Permite configurar la aplicación completamente desde la interfaz web.
-La configuración se guarda en un archivo JSON y se carga al iniciar.
+La configuración se guarda en un archivo JSON FUERA del directorio de la aplicación
+para que persista entre actualizaciones.
+
+Ubicaciones de configuración (en orden de prioridad):
+1. /etc/suppliersync/config.json (producción - persistente entre actualizaciones)
+2. ~/.suppliersync/config.json (desarrollo local)
+3. [APP_DIR]/backend/config.json (fallback, sobrescrito en actualizaciones)
 """
 import os
 import json
@@ -13,9 +19,46 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-# Ruta del archivo de configuración
-CONFIG_DIR = Path(__file__).parent.parent
-CONFIG_FILE = CONFIG_DIR / "config.json"
+# Rutas de configuración en orden de prioridad
+SYSTEM_CONFIG_DIR = Path("/etc/suppliersync")
+USER_CONFIG_DIR = Path.home() / ".suppliersync"
+APP_CONFIG_DIR = Path(__file__).parent.parent
+
+# Determinar la ruta del archivo de configuración
+def get_config_path() -> Path:
+    """
+    Determina la ruta del archivo de configuración.
+    Prioriza ubicaciones persistentes que no se sobrescriben en actualizaciones.
+    """
+    # 1. Ubicación del sistema (producción) - más persistente
+    system_config = SYSTEM_CONFIG_DIR / "config.json"
+    if system_config.exists():
+        return system_config
+    
+    # 2. Ubicación del usuario (desarrollo)
+    user_config = USER_CONFIG_DIR / "config.json"
+    if user_config.exists():
+        return user_config
+    
+    # 3. Ubicación de la aplicación (fallback)
+    app_config = APP_CONFIG_DIR / "config.json"
+    if app_config.exists():
+        return app_config
+    
+    # Si no existe ninguno, usar la ubicación del sistema si es posible crear
+    try:
+        SYSTEM_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        return system_config
+    except PermissionError:
+        # Si no tenemos permisos, usar ubicación del usuario
+        try:
+            USER_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            return user_config
+        except Exception:
+            # Último recurso: ubicación de la aplicación
+            return app_config
+
+CONFIG_FILE = get_config_path()
 
 
 class AppConfig(BaseModel):
@@ -45,20 +88,48 @@ def generate_jwt_secret() -> str:
 def load_config() -> AppConfig:
     """
     Carga la configuración desde el archivo JSON.
-    Si no existe, crea una configuración vacía.
+    Busca en múltiples ubicaciones para soportar migración y persistencia.
     También considera las variables de entorno como fallback.
     """
+    global CONFIG_FILE
     config = AppConfig()
     
-    # Primero intentar cargar desde archivo
-    if CONFIG_FILE.exists():
-        try:
-            with open(CONFIG_FILE, 'r') as f:
-                data = json.load(f)
-                config = AppConfig(**data)
-                logger.info(f"Configuration loaded from {CONFIG_FILE}")
-        except Exception as e:
-            logger.error(f"Error loading config file: {e}")
+    # Buscar configuración en todas las ubicaciones posibles
+    config_locations = [
+        SYSTEM_CONFIG_DIR / "config.json",  # Producción (persistente)
+        USER_CONFIG_DIR / "config.json",     # Desarrollo
+        APP_CONFIG_DIR / "config.json"       # Fallback
+    ]
+    
+    config_loaded = False
+    for config_path in config_locations:
+        if config_path.exists():
+            try:
+                with open(config_path, 'r') as f:
+                    data = json.load(f)
+                    config = AppConfig(**data)
+                    CONFIG_FILE = config_path  # Actualizar la ruta actual
+                    logger.info(f"Configuration loaded from {config_path}")
+                    config_loaded = True
+                    
+                    # Si encontramos config en ubicación de app, migrar a ubicación persistente
+                    if str(config_path).startswith(str(APP_CONFIG_DIR)) and config.is_configured:
+                        try:
+                            SYSTEM_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+                            new_path = SYSTEM_CONFIG_DIR / "config.json"
+                            with open(new_path, 'w') as nf:
+                                json.dump(data, nf, indent=2)
+                            CONFIG_FILE = new_path
+                            logger.info(f"Configuration migrated to persistent location: {new_path}")
+                        except Exception as e:
+                            logger.warning(f"Could not migrate config: {e}")
+                    
+                    break
+            except Exception as e:
+                logger.error(f"Error loading config from {config_path}: {e}")
+    
+    if not config_loaded:
+        logger.info("No configuration file found, using defaults/environment")
     
     # Fallback a variables de entorno si el archivo no tiene valores
     if not config.mongo_url:
@@ -78,22 +149,46 @@ def load_config() -> AppConfig:
 def save_config(config: AppConfig) -> bool:
     """
     Guarda la configuración en el archivo JSON y actualiza el .env
+    Intenta guardar en ubicación persistente (/etc/suppliersync) primero.
     """
+    global CONFIG_FILE
+    
     try:
+        # Intentar guardar en ubicación del sistema primero
+        config_path = CONFIG_FILE
+        config_dir = config_path.parent
+        
+        # Si estamos en ubicación de app, intentar migrar a ubicación del sistema
+        if str(config_path).startswith(str(APP_CONFIG_DIR)):
+            try:
+                SYSTEM_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+                config_path = SYSTEM_CONFIG_DIR / "config.json"
+                config_dir = SYSTEM_CONFIG_DIR
+                CONFIG_FILE = config_path  # Actualizar la variable global
+                logger.info(f"Migrating config to persistent location: {config_path}")
+            except PermissionError:
+                logger.warning(f"Cannot create system config dir, using: {config_path}")
+        
+        # Asegurar que el directorio existe
+        config_dir.mkdir(parents=True, exist_ok=True)
+        
         # Guardar en config.json
-        with open(CONFIG_FILE, 'w') as f:
+        with open(config_path, 'w') as f:
             json.dump(config.model_dump(), f, indent=2)
-        logger.info(f"Configuration saved to {CONFIG_FILE}")
+        logger.info(f"Configuration saved to {config_path}")
         
         # También actualizar el archivo .env para compatibilidad
-        env_file = CONFIG_DIR / ".env"
+        env_file = APP_CONFIG_DIR / ".env"
         env_content = f"""MONGO_URL={config.mongo_url}
 DB_NAME={config.db_name}
 CORS_ORIGINS={config.cors_origins}
 """
-        with open(env_file, 'w') as f:
-            f.write(env_content)
-        logger.info(f"Environment file updated: {env_file}")
+        try:
+            with open(env_file, 'w') as f:
+                f.write(env_content)
+            logger.info(f"Environment file updated: {env_file}")
+        except Exception as e:
+            logger.warning(f"Could not update .env file: {e}")
         
         return True
     except Exception as e:
@@ -184,3 +279,84 @@ def ensure_jwt_secret() -> str:
         logger.info("Generated new JWT secret")
     
     return config.jwt_secret
+
+
+
+def get_config_info() -> dict:
+    """
+    Devuelve información sobre la ubicación y estado de la configuración.
+    Útil para debugging y para mostrar al usuario dónde se guarda la config.
+    """
+    config = load_config()
+    
+    return {
+        "config_path": str(CONFIG_FILE),
+        "is_persistent": str(CONFIG_FILE).startswith("/etc/suppliersync"),
+        "is_configured": config.is_configured,
+        "locations_checked": [
+            {"path": str(SYSTEM_CONFIG_DIR / "config.json"), "exists": (SYSTEM_CONFIG_DIR / "config.json").exists(), "type": "system"},
+            {"path": str(USER_CONFIG_DIR / "config.json"), "exists": (USER_CONFIG_DIR / "config.json").exists(), "type": "user"},
+            {"path": str(APP_CONFIG_DIR / "config.json"), "exists": (APP_CONFIG_DIR / "config.json").exists(), "type": "app"}
+        ],
+        "recommendation": "La configuración se guarda en /etc/suppliersync/ para persistir entre actualizaciones." if str(CONFIG_FILE).startswith("/etc/suppliersync") else "Considera mover la configuración a /etc/suppliersync/ para que persista entre actualizaciones."
+    }
+
+
+def backup_config() -> Optional[str]:
+    """
+    Crea una copia de seguridad de la configuración actual.
+    Útil antes de actualizar la aplicación.
+    """
+    config = load_config()
+    if not config.is_configured:
+        return None
+    
+    from datetime import datetime
+    backup_dir = SYSTEM_CONFIG_DIR / "backups"
+    try:
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"config_backup_{timestamp}.json"
+        
+        with open(backup_path, 'w') as f:
+            json.dump(config.model_dump(), f, indent=2)
+        
+        logger.info(f"Configuration backup created: {backup_path}")
+        return str(backup_path)
+    except Exception as e:
+        logger.error(f"Could not create backup: {e}")
+        return None
+
+
+def restore_config(backup_path: str) -> bool:
+    """
+    Restaura la configuración desde una copia de seguridad.
+    """
+    try:
+        with open(backup_path, 'r') as f:
+            data = json.load(f)
+            config = AppConfig(**data)
+            save_config(config)
+            logger.info(f"Configuration restored from {backup_path}")
+            return True
+    except Exception as e:
+        logger.error(f"Could not restore backup: {e}")
+        return False
+
+
+def list_backups() -> list:
+    """
+    Lista las copias de seguridad disponibles.
+    """
+    backup_dir = SYSTEM_CONFIG_DIR / "backups"
+    backups = []
+    
+    if backup_dir.exists():
+        for backup_file in sorted(backup_dir.glob("config_backup_*.json"), reverse=True):
+            backups.append({
+                "path": str(backup_file),
+                "filename": backup_file.name,
+                "created": backup_file.stat().st_mtime
+            })
+    
+    return backups

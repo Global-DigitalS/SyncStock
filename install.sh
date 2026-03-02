@@ -335,15 +335,33 @@ setup_backend() {
     pip install --upgrade pip -q
     pip install -r requirements.txt -q
     
+    # Verificar si existe configuración persistente
+    PERSISTENT_CONFIG="/etc/suppliersync/config.json"
+    if [ -f "$PERSISTENT_CONFIG" ]; then
+        print_success "Configuración existente detectada en $PERSISTENT_CONFIG"
+        print_info "La configuración se preservará durante la actualización"
+        
+        # Extraer MONGO_URL y DB_NAME de la configuración existente para el .env
+        if command -v python3 &> /dev/null; then
+            EXISTING_MONGO=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('mongo_url',''))" 2>/dev/null || echo "")
+            EXISTING_DB=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('db_name','supplier_sync_db'))" 2>/dev/null || echo "supplier_sync_db")
+            
+            if [ -n "$EXISTING_MONGO" ]; then
+                MONGODB_URL="$EXISTING_MONGO"
+                print_success "Usando MongoDB URL de la configuración existente"
+            fi
+        fi
+    else
+        print_info "No se encontró configuración existente"
+        print_info "Configurarás la aplicación desde https://$DOMAIN/#/setup"
+    fi
+    
     # Crear archivo .env para el backend
     cat > .env << EOF
 MONGO_URL=${MONGODB_URL:-mongodb://localhost:27017}
-DB_NAME=supplier_sync_db
+DB_NAME=${EXISTING_DB:-supplier_sync_db}
 CORS_ORIGINS=https://$DOMAIN,https://www.$DOMAIN
 EOF
-    
-    # NO crear config.json - dejar que se configure desde /setup
-    # Esto asegura que el usuario configure MongoDB Atlas desde la UI
     
     print_success "Backend configurado"
     
@@ -377,7 +395,12 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-    # Ajustar permisos
+    # Crear directorio de configuración persistente y establecer permisos
+    mkdir -p /etc/suppliersync
+    chown -R $SERVICE_USER:$SERVICE_GROUP /etc/suppliersync 2>/dev/null || true
+    chmod 755 /etc/suppliersync
+    
+    # Ajustar permisos del backend
     chown -R $SERVICE_USER:$SERVICE_GROUP "$APP_DIR/backend"
     
     # Habilitar e iniciar servicio
@@ -682,6 +705,12 @@ print_summary() {
     echo ""
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
+    echo -e "  ${GREEN}✓ CONFIGURACIÓN PERSISTENTE${NC}"
+    echo -e "    La configuración se guardará en: ${CYAN}/etc/suppliersync/${NC}"
+    echo -e "    Esta ubicación NO se sobrescribe al actualizar la aplicación."
+    echo ""
+    echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
     echo -e "  ${YELLOW}Comandos útiles:${NC}"
     echo ""
     echo -e "    Ver logs del backend:"
@@ -690,7 +719,10 @@ print_summary() {
     echo -e "    Reiniciar backend:"
     echo -e "    ${CYAN}systemctl restart ${APP_NAME}-backend${NC}"
     echo ""
-    echo -e "    Actualizar frontend después de cambios:"
+    echo -e "    ${GREEN}Actualizar la aplicación (preserva configuración):${NC}"
+    echo -e "    ${CYAN}sudo bash $APP_DIR/update.sh${NC}"
+    echo ""
+    echo -e "    Actualizar solo frontend después de cambios:"
     echo -e "    ${CYAN}sudo bash $APP_DIR/update-frontend.sh${NC}"
     echo ""
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -699,6 +731,7 @@ print_summary() {
     if [ -z "$MONGODB_URL" ]; then
         echo -e "  ${YELLOW}⚠ IMPORTANTE:${NC}"
         echo -e "    Debes configurar MongoDB en ${CYAN}https://$DOMAIN/#/setup${NC}"
+        echo -e "    Una vez configurado, tu configuración se guardará de forma persistente."
         echo ""
     fi
     
