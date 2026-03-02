@@ -59,6 +59,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
+import { CategoryCascadeFilter } from "../components/suppliers";
 
 const SupplierDetail = () => {
   const { supplierId } = useParams();
@@ -66,7 +67,6 @@ const SupplierDetail = () => {
   const [supplier, setSupplier] = useState(null);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
-  const [supplierCategories, setSupplierCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -75,10 +75,13 @@ const SupplierDetail = () => {
   const [selectionStats, setSelectionStats] = useState({ selected: 0, total: 0 });
   const [filters, setFilters] = useState({
     search: "",
-    category: "all",
+    category: "",
+    subcategory: "",
+    subcategory2: "",
     stock: "all",
     selection: "all" // all, selected, unselected
   });
+  const [categoryHierarchy, setCategoryHierarchy] = useState([]);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -103,18 +106,20 @@ const SupplierDetail = () => {
       productParams.append("skip", String((page - 1) * pageSize));
       productParams.append("limit", String(pageSize));
       if (filters.search) productParams.append("search", filters.search);
-      if (filters.category && filters.category !== "all") productParams.append("category", filters.category);
+      if (filters.category) productParams.append("category", filters.category);
+      if (filters.subcategory) productParams.append("subcategory", filters.subcategory);
+      if (filters.subcategory2) productParams.append("subcategory2", filters.subcategory2);
       if (filters.selection === "selected") productParams.append("is_selected", "true");
       if (filters.selection === "unselected") productParams.append("is_selected", "false");
 
-      const [supplierRes, productsRes, countRes, categoriesRes, syncStatusRes, catalogsRes, supplierCatsRes, selectionStatsRes] = await Promise.all([
+      const [supplierRes, productsRes, countRes, categoriesRes, syncStatusRes, catalogsRes, hierarchyRes, selectionStatsRes] = await Promise.all([
         api.get(`/suppliers/${supplierId}`),
         api.get(`/supplier/${supplierId}/products?${productParams.toString()}`),
         api.get(`/supplier/${supplierId}/products/count?${productParams.toString()}`),
         api.get("/products/categories"),
         api.get(`/suppliers/${supplierId}/sync-status`).catch(() => ({ data: null })),
         api.get("/catalogs"),
-        api.get(`/supplier/${supplierId}/categories`).catch(() => ({ data: [] })),
+        api.get(`/products/category-hierarchy?supplier_id=${supplierId}`).catch(() => ({ data: [] })),
         api.get("/products/selected-count", { params: { supplier_id: supplierId } }).catch(() => ({ data: { selected: 0, total: 0 } }))
       ]);
       setSupplier(supplierRes.data);
@@ -123,7 +128,7 @@ const SupplierDetail = () => {
       setCategories(categoriesRes.data);
       setSyncStatus(syncStatusRes.data);
       setCatalogs(catalogsRes.data);
-      setSupplierCategories(supplierCatsRes.data);
+      setCategoryHierarchy(hierarchyRes.data || []);
       setSelectionStats(selectionStatsRes.data);
       setCurrentPage(page);
     } catch (error) {
@@ -143,7 +148,7 @@ const SupplierDetail = () => {
     if (!loading) {
       fetchData(1);
     }
-  }, [filters.category, filters.selection]);
+  }, [filters.category, filters.subcategory, filters.subcategory2, filters.selection]);
 
   const handleSearch = () => {
     fetchData(1);
@@ -670,19 +675,19 @@ const SupplierDetail = () => {
             </div>
             
             {/* Category Selection */}
-            {supplierCategories.length > 0 && (
+            {categoryHierarchy.length > 0 && (
               <div className="mt-4 pt-4 border-t border-emerald-200">
                 <p className="text-sm font-medium text-emerald-800 mb-2">Seleccionar por categoría:</p>
                 <div className="flex flex-wrap gap-2">
-                  {supplierCategories.map((cat) => (
-                    <div key={cat.category} className="flex items-center gap-1">
+                  {categoryHierarchy.map((cat) => (
+                    <div key={cat.name} className="flex items-center gap-1">
                       <button
-                        onClick={() => handleSelectByCategory(cat.category, true)}
+                        onClick={() => handleSelectByCategory(cat.name, true)}
                         disabled={selectingProducts}
                         className="text-xs px-3 py-1.5 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors"
-                        data-testid={`select-category-${cat.category}`}
+                        data-testid={`select-category-${cat.name}`}
                       >
-                        <span className="font-medium">{cat.category}</span>
+                        <span className="font-medium">{cat.name}</span>
                         <span className="ml-1 text-emerald-600">
                           ({cat.selected_count}/{cat.count})
                         </span>
@@ -765,59 +770,67 @@ const SupplierDetail = () => {
       {/* Filters */}
       <Card className="border-slate-200 mb-6">
         <CardContent className="p-4">
-          <div className="flex flex-col lg:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" strokeWidth={1.5} />
-              <Input
-                placeholder="Buscar por nombre, SKU o EAN..."
-                value={filters.search}
-                onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-                className="pl-9 input-base"
-                data-testid="search-products"
+          <div className="flex flex-col gap-4">
+            {/* Search and basic filters row */}
+            <div className="flex flex-col lg:flex-row gap-4">
+              <div className="flex-1 relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" strokeWidth={1.5} />
+                <Input
+                  placeholder="Buscar por nombre, SKU o EAN..."
+                  value={filters.search}
+                  onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                  onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  className="pl-9 input-base"
+                  data-testid="search-products"
+                />
+              </div>
+              <Select
+                value={filters.stock}
+                onValueChange={(value) => setFilters({ ...filters, stock: value })}
+              >
+                <SelectTrigger className="w-full lg:w-[150px] input-base" data-testid="filter-stock">
+                  <SelectValue placeholder="Stock" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todo el stock</SelectItem>
+                  <SelectItem value="in">Con stock</SelectItem>
+                  <SelectItem value="low">Stock bajo</SelectItem>
+                  <SelectItem value="out">Sin stock</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select
+                value={filters.selection}
+                onValueChange={(value) => setFilters({ ...filters, selection: value })}
+              >
+                <SelectTrigger className="w-full lg:w-[180px] input-base" data-testid="filter-selection">
+                  <SelectValue placeholder="Estado" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos</SelectItem>
+                  <SelectItem value="selected">En Productos</SelectItem>
+                  <SelectItem value="unselected">No en Productos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* Category cascade filters row */}
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-slate-600">Filtrar por categoría:</span>
+              <CategoryCascadeFilter
+                hierarchy={categoryHierarchy}
+                selectedCategory={filters.category}
+                selectedSubcategory={filters.subcategory}
+                selectedSubcategory2={filters.subcategory2}
+                onFilterChange={({ category, subcategory, subcategory2 }) => {
+                  setFilters(prev => ({
+                    ...prev,
+                    category,
+                    subcategory,
+                    subcategory2
+                  }));
+                }}
               />
             </div>
-            <Select
-              value={filters.category}
-              onValueChange={(value) => setFilters({ ...filters, category: value })}
-            >
-              <SelectTrigger className="w-full lg:w-[180px] input-base" data-testid="filter-category">
-                <SelectValue placeholder="Categoría" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todas las categorías</SelectItem>
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select
-              value={filters.stock}
-              onValueChange={(value) => setFilters({ ...filters, stock: value })}
-            >
-              <SelectTrigger className="w-full lg:w-[150px] input-base" data-testid="filter-stock">
-                <SelectValue placeholder="Stock" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todo el stock</SelectItem>
-                <SelectItem value="in">Con stock</SelectItem>
-                <SelectItem value="low">Stock bajo</SelectItem>
-                <SelectItem value="out">Sin stock</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select
-              value={filters.selection}
-              onValueChange={(value) => setFilters({ ...filters, selection: value })}
-            >
-              <SelectTrigger className="w-full lg:w-[180px] input-base" data-testid="filter-selection">
-                <SelectValue placeholder="Estado" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Todos</SelectItem>
-                <SelectItem value="selected">En Productos</SelectItem>
-                <SelectItem value="unselected">No en Productos</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </CardContent>
       </Card>

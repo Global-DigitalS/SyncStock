@@ -48,6 +48,115 @@ async def get_categories(user: dict = Depends(get_current_user)):
     return await db.products.distinct("category", {"user_id": user["id"], "category": {"$ne": None}})
 
 
+@router.get("/products/category-hierarchy")
+async def get_category_hierarchy(
+    supplier_id: Optional[str] = None,
+    user: dict = Depends(get_current_user)
+):
+    """
+    Obtener la jerarquía completa de categorías con subcategorías.
+    Devuelve un árbol de categorías con sus conteos.
+    """
+    query = {"user_id": user["id"]}
+    if supplier_id:
+        query["supplier_id"] = supplier_id
+    
+    # Agregación para obtener la jerarquía
+    pipeline = [
+        {"$match": query},
+        {"$group": {
+            "_id": {
+                "category": "$category",
+                "subcategory": "$subcategory",
+                "subcategory2": "$subcategory2"
+            },
+            "count": {"$sum": 1},
+            "selected_count": {"$sum": {"$cond": ["$is_selected", 1, 0]}}
+        }},
+        {"$sort": {"_id.category": 1, "_id.subcategory": 1, "_id.subcategory2": 1}}
+    ]
+    
+    results = await db.products.aggregate(pipeline).to_list(1000)
+    
+    # Construir árbol jerárquico
+    hierarchy = {}
+    for item in results:
+        _id = item.get("_id", {})
+        cat = _id.get("category") or "Sin categoría"
+        subcat = _id.get("subcategory")
+        subcat2 = _id.get("subcategory2")
+        count = item["count"]
+        selected = item["selected_count"]
+        
+        if cat not in hierarchy:
+            hierarchy[cat] = {
+                "name": cat,
+                "count": 0,
+                "selected_count": 0,
+                "subcategories": {}
+            }
+        
+        hierarchy[cat]["count"] += count
+        hierarchy[cat]["selected_count"] += selected
+        
+        if subcat:
+            if subcat not in hierarchy[cat]["subcategories"]:
+                hierarchy[cat]["subcategories"][subcat] = {
+                    "name": subcat,
+                    "count": 0,
+                    "selected_count": 0,
+                    "subcategories": {}
+                }
+            
+            hierarchy[cat]["subcategories"][subcat]["count"] += count
+            hierarchy[cat]["subcategories"][subcat]["selected_count"] += selected
+            
+            if subcat2:
+                if subcat2 not in hierarchy[cat]["subcategories"][subcat]["subcategories"]:
+                    hierarchy[cat]["subcategories"][subcat]["subcategories"][subcat2] = {
+                        "name": subcat2,
+                        "count": 0,
+                        "selected_count": 0
+                    }
+                
+                hierarchy[cat]["subcategories"][subcat]["subcategories"][subcat2]["count"] += count
+                hierarchy[cat]["subcategories"][subcat]["subcategories"][subcat2]["selected_count"] += selected
+    
+    # Convertir a lista ordenada
+    result = []
+    for cat_name in sorted(hierarchy.keys()):
+        cat_data = hierarchy[cat_name]
+        cat_item = {
+            "name": cat_data["name"],
+            "count": cat_data["count"],
+            "selected_count": cat_data["selected_count"],
+            "subcategories": []
+        }
+        
+        for subcat_name in sorted(cat_data["subcategories"].keys()):
+            subcat_data = cat_data["subcategories"][subcat_name]
+            subcat_item = {
+                "name": subcat_data["name"],
+                "count": subcat_data["count"],
+                "selected_count": subcat_data["selected_count"],
+                "subcategories": []
+            }
+            
+            for subcat2_name in sorted(subcat_data["subcategories"].keys()):
+                subcat2_data = subcat_data["subcategories"][subcat2_name]
+                subcat_item["subcategories"].append({
+                    "name": subcat2_data["name"],
+                    "count": subcat2_data["count"],
+                    "selected_count": subcat2_data["selected_count"]
+                })
+            
+            cat_item["subcategories"].append(subcat_item)
+        
+        result.append(cat_item)
+    
+    return result
+
+
 @router.get("/products/selected-count")
 async def get_selected_products_count(
     supplier_id: Optional[str] = None,
@@ -382,6 +491,8 @@ async def select_products_by_supplier(
 async def get_supplier_products(
     supplier_id: str,
     category: Optional[str] = None,
+    subcategory: Optional[str] = None,
+    subcategory2: Optional[str] = None,
     search: Optional[str] = None,
     is_selected: Optional[bool] = None,
     skip: int = 0,
@@ -391,6 +502,7 @@ async def get_supplier_products(
     """
     Obtener productos de un proveedor específico con filtros opcionales.
     Incluye el estado de selección (is_selected) de cada producto.
+    Soporta filtrado jerárquico por categoría, subcategoría y subcategoría2.
     """
     # Verificar que el proveedor pertenece al usuario
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
@@ -401,6 +513,10 @@ async def get_supplier_products(
     
     if category:
         query["category"] = category
+    if subcategory:
+        query["subcategory"] = subcategory
+    if subcategory2:
+        query["subcategory2"] = subcategory2
     if search:
         query["$or"] = [
             {"name": {"$regex": search, "$options": "i"}},
@@ -419,17 +535,24 @@ async def get_supplier_products(
 async def get_supplier_products_count(
     supplier_id: str,
     category: Optional[str] = None,
+    subcategory: Optional[str] = None,
+    subcategory2: Optional[str] = None,
     search: Optional[str] = None,
     is_selected: Optional[bool] = None,
     user: dict = Depends(get_current_user)
 ):
     """
     Obtener el conteo de productos de un proveedor con los mismos filtros.
+    Soporta filtrado jerárquico por categoría, subcategoría y subcategoría2.
     """
     query = {"supplier_id": supplier_id, "user_id": user["id"]}
     
     if category:
         query["category"] = category
+    if subcategory:
+        query["subcategory"] = subcategory
+    if subcategory2:
+        query["subcategory2"] = subcategory2
     if search:
         query["$or"] = [
             {"name": {"$regex": search, "$options": "i"}},
