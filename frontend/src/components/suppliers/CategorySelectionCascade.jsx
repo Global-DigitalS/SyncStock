@@ -209,33 +209,6 @@ const CategorySelectionCascade = ({
           </Button>
         </div>
       )}
-
-      {/* Quick Category Buttons */}
-      <div className="flex flex-wrap gap-1.5 pt-2 border-t border-emerald-100">
-        <span className="text-xs text-emerald-600 mr-1 py-1">Acceso rápido:</span>
-        {hierarchy.map((cat) => (
-          <button
-            key={cat.name}
-            onClick={() => {
-              setSelectedCategory(cat.name);
-              setSelectedSubcategory("");
-              setSelectedSubcategory2("");
-            }}
-            disabled={disabled}
-            className={`text-xs px-2 py-1 rounded transition-colors ${
-              selectedCategory === cat.name
-                ? "bg-emerald-600 text-white"
-                : "bg-white border border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-            }`}
-            data-testid={`quick-select-${cat.name}`}
-          >
-            {cat.name}
-            <span className={`ml-1 ${selectedCategory === cat.name ? "text-emerald-200" : "text-emerald-500"}`}>
-              ({cat.selected_count}/{cat.count})
-            </span>
-          </button>
-        ))}
-      </div>
     </div>
   );
 };
