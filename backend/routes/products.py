@@ -455,10 +455,13 @@ async def select_products_by_supplier(
     data: dict, user: dict = Depends(get_current_user)
 ):
     """
-    Seleccionar todos los productos de un proveedor o solo los de una categoría específica.
+    Seleccionar todos los productos de un proveedor o filtrados por categoría/subcategoría.
+    Soporta filtrado jerárquico por categoría, subcategoría y subcategoría2.
     """
     supplier_id = data.get("supplier_id")
-    category = data.get("category")  # Opcional: filtrar por categoría
+    category = data.get("category")
+    subcategory = data.get("subcategory")
+    subcategory2 = data.get("subcategory2")
     select_all = data.get("select_all", True)  # True para seleccionar, False para deseleccionar
     
     if not supplier_id:
@@ -472,6 +475,10 @@ async def select_products_by_supplier(
     query = {"supplier_id": supplier_id, "user_id": user["id"]}
     if category:
         query["category"] = category
+    if subcategory:
+        query["subcategory"] = subcategory
+    if subcategory2:
+        query["subcategory2"] = subcategory2
     
     result = await db.products.update_many(
         query,
@@ -479,11 +486,21 @@ async def select_products_by_supplier(
     )
     
     action = "seleccionados" if select_all else "deseleccionados"
-    category_msg = f" de la categoría '{category}'" if category else ""
+    
+    # Construir mensaje descriptivo
+    filter_parts = []
+    if category:
+        filter_parts.append(category)
+    if subcategory:
+        filter_parts.append(subcategory)
+    if subcategory2:
+        filter_parts.append(subcategory2)
+    
+    filter_msg = f" de '{' > '.join(filter_parts)}'" if filter_parts else ""
     
     return {
         "modified": result.modified_count,
-        "message": f"{result.modified_count} productos{category_msg} {action}"
+        "message": f"{result.modified_count} productos{filter_msg} {action}"
     }
 
 

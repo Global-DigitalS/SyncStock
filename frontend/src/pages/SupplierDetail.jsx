@@ -59,7 +59,7 @@ import {
   ChevronLeft,
   ChevronRight
 } from "lucide-react";
-import { CategoryCascadeFilter } from "../components/suppliers";
+import { CategoryCascadeFilter, CategorySelectionCascade } from "../components/suppliers";
 
 const SupplierDetail = () => {
   const { supplierId } = useParams();
@@ -251,18 +251,39 @@ const SupplierDetail = () => {
     }
   };
 
-  const handleSelectByCategory = async (category, selectAll = true) => {
+  const handleSelectByCategory = async (category, subcategory = null, subcategory2 = null, selectAll = true) => {
     setSelectingProducts(true);
     try {
       const res = await api.post("/products/select-by-supplier", {
         supplier_id: supplierId,
-        category: category === "all" ? null : category,
+        category: category || null,
+        subcategory: subcategory || null,
+        subcategory2: subcategory2 || null,
         select_all: selectAll
       });
       toast.success(res.data.message);
       fetchData();
     } catch (error) {
       toast.error("Error al seleccionar productos");
+    } finally {
+      setSelectingProducts(false);
+    }
+  };
+
+  const handleDeselectByCategory = async (category, subcategory = null, subcategory2 = null) => {
+    setSelectingProducts(true);
+    try {
+      const res = await api.post("/products/select-by-supplier", {
+        supplier_id: supplierId,
+        category: category || null,
+        subcategory: subcategory || null,
+        subcategory2: subcategory2 || null,
+        select_all: false
+      });
+      toast.success(res.data.message);
+      fetchData();
+    } catch (error) {
+      toast.error("Error al deseleccionar productos");
     } finally {
       setSelectingProducts(false);
     }
@@ -674,27 +695,16 @@ const SupplierDetail = () => {
               </div>
             </div>
             
-            {/* Category Selection */}
+            {/* Category Selection with Cascade */}
             {categoryHierarchy.length > 0 && (
               <div className="mt-4 pt-4 border-t border-emerald-200">
-                <p className="text-sm font-medium text-emerald-800 mb-2">Seleccionar por categoría:</p>
-                <div className="flex flex-wrap gap-2">
-                  {categoryHierarchy.map((cat) => (
-                    <div key={cat.name} className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleSelectByCategory(cat.name, true)}
-                        disabled={selectingProducts}
-                        className="text-xs px-3 py-1.5 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 transition-colors"
-                        data-testid={`select-category-${cat.name}`}
-                      >
-                        <span className="font-medium">{cat.name}</span>
-                        <span className="ml-1 text-emerald-600">
-                          ({cat.selected_count}/{cat.count})
-                        </span>
-                      </button>
-                    </div>
-                  ))}
-                </div>
+                <p className="text-sm font-medium text-emerald-800 mb-3">Seleccionar por categoría:</p>
+                <CategorySelectionCascade
+                  hierarchy={categoryHierarchy}
+                  onSelectCategory={(cat, subcat, subcat2) => handleSelectByCategory(cat, subcat, subcat2, true)}
+                  onDeselectCategory={(cat, subcat, subcat2) => handleDeselectByCategory(cat, subcat, subcat2)}
+                  disabled={selectingProducts}
+                />
               </div>
             )}
           </CardContent>

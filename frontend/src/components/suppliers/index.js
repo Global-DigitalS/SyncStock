@@ -5,3 +5,4 @@ export { default as FtpConnectionStatus } from './FtpConnectionStatus';
 export { default as SelectedFilesList, ROLE_LABELS, ROLE_COLORS } from './SelectedFilesList';
 export { default as ConnectionTypeSelector } from './ConnectionTypeSelector';
 export { default as CategoryCascadeFilter } from './CategoryCascadeFilter';
+export { default as CategorySelectionCascade } from './CategorySelectionCascade';
