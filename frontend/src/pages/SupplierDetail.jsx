@@ -55,7 +55,9 @@ import {
   CheckCircle,
   XCircle,
   ArrowRight,
-  Layers
+  Layers,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 
 const SupplierDetail = () => {
@@ -88,12 +90,27 @@ const SupplierDetail = () => {
   const [productsToAdd, setProductsToAdd] = useState([]);
   const [selectingProducts, setSelectingProducts] = useState(false);
   const fileInputRef = useRef(null);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
+  const pageSize = 50;
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (page = currentPage) => {
     try {
-      const [supplierRes, productsRes, categoriesRes, syncStatusRes, catalogsRes, supplierCatsRes, selectionStatsRes] = await Promise.all([
+      // Build query params for pagination and filters
+      const productParams = new URLSearchParams();
+      productParams.append("skip", String((page - 1) * pageSize));
+      productParams.append("limit", String(pageSize));
+      if (filters.search) productParams.append("search", filters.search);
+      if (filters.category && filters.category !== "all") productParams.append("category", filters.category);
+      if (filters.selection === "selected") productParams.append("is_selected", "true");
+      if (filters.selection === "unselected") productParams.append("is_selected", "false");
+
+      const [supplierRes, productsRes, countRes, categoriesRes, syncStatusRes, catalogsRes, supplierCatsRes, selectionStatsRes] = await Promise.all([
         api.get(`/suppliers/${supplierId}`),
-        api.get(`/supplier/${supplierId}/products`),
+        api.get(`/supplier/${supplierId}/products?${productParams.toString()}`),
+        api.get(`/supplier/${supplierId}/products/count?${productParams.toString()}`),
         api.get("/products/categories"),
         api.get(`/suppliers/${supplierId}/sync-status`).catch(() => ({ data: null })),
         api.get("/catalogs"),
@@ -102,22 +119,43 @@ const SupplierDetail = () => {
       ]);
       setSupplier(supplierRes.data);
       setProducts(productsRes.data);
+      setTotalProducts(countRes.data?.total || 0);
       setCategories(categoriesRes.data);
       setSyncStatus(syncStatusRes.data);
       setCatalogs(catalogsRes.data);
       setSupplierCategories(supplierCatsRes.data);
       setSelectionStats(selectionStatsRes.data);
+      setCurrentPage(page);
     } catch (error) {
       toast.error("Error al cargar los datos del proveedor");
       navigate("/suppliers");
     } finally {
       setLoading(false);
     }
-  }, [supplierId, navigate]);
+  }, [supplierId, navigate, filters, currentPage]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    fetchData(1);
+  }, [supplierId]);
+
+  // Refetch when filters change
+  useEffect(() => {
+    if (!loading) {
+      fetchData(1);
+    }
+  }, [filters.category, filters.selection]);
+
+  const handleSearch = () => {
+    fetchData(1);
+  };
+
+  const handlePageChange = (newPage) => {
+    const totalPages = Math.ceil(totalProducts / pageSize);
+    if (newPage >= 1 && newPage <= totalPages) {
+      setSelectedProducts(new Set());
+      fetchData(newPage);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -148,18 +186,8 @@ const SupplierDetail = () => {
     }
   };
 
+  // Local filtering only for stock (search, category, and selection are now server-side)
   const filteredProducts = products.filter((product) => {
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
-      if (!product.name.toLowerCase().includes(searchLower) && 
-          !product.sku.toLowerCase().includes(searchLower) &&
-          !(product.ean && product.ean.toLowerCase().includes(searchLower))) {
-        return false;
-      }
-    }
-    if (filters.category && filters.category !== "all" && product.category !== filters.category) {
-      return false;
-    }
     if (filters.stock === "low" && (product.stock === 0 || product.stock > 5)) {
       return false;
     }
@@ -169,14 +197,10 @@ const SupplierDetail = () => {
     if (filters.stock === "in" && product.stock === 0) {
       return false;
     }
-    if (filters.selection === "selected" && !product.is_selected) {
-      return false;
-    }
-    if (filters.selection === "unselected" && product.is_selected) {
-      return false;
-    }
     return true;
   });
+
+  const totalPages = Math.ceil(totalProducts / pageSize);
 
   // ==================== PRODUCT SELECTION HANDLERS ====================
   
@@ -537,7 +561,7 @@ const SupplierDetail = () => {
             </div>
             <div>
               <p className="text-sm text-slate-500">Productos</p>
-              <p className="font-mono text-xl font-semibold text-slate-900">{products.length.toLocaleString()}</p>
+              <p className="font-mono text-xl font-semibold text-slate-900">{totalProducts > 0 ? totalProducts.toLocaleString() : products.length.toLocaleString()}</p>
             </div>
             <div>
               <p className="text-sm text-slate-500">Última sincronización</p>
@@ -748,6 +772,7 @@ const SupplierDetail = () => {
                 placeholder="Buscar por nombre, SKU o EAN..."
                 value={filters.search}
                 onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
                 className="pl-9 input-base"
                 data-testid="search-products"
               />
@@ -930,6 +955,38 @@ const SupplierDetail = () => {
               </TableBody>
             </Table>
           </CardContent>
+          
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200" data-testid="pagination">
+              <p className="text-sm text-slate-500">
+                Mostrando {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalProducts)} de {totalProducts.toLocaleString()} productos
+              </p>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage - 1)} 
+                  disabled={currentPage === 1}
+                  data-testid="prev-page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </Button>
+                <span className="text-sm text-slate-600 px-2">
+                  Página {currentPage} de {totalPages}
+                </span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => handlePageChange(currentPage + 1)} 
+                  disabled={currentPage === totalPages}
+                  data-testid="next-page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
