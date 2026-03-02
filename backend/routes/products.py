@@ -154,7 +154,11 @@ async def get_unified_products(
     user: dict = Depends(get_current_user)
 ):
     # Solo mostrar productos seleccionados (is_selected=True) a menos que include_all=True
-    match_query = {"user_id": user["id"], "ean": {"$ne": None, "$ne": ""}}
+    # Filtrar productos con EAN válido (no null y no vacío)
+    match_query = {
+        "user_id": user["id"],
+        "ean": {"$nin": [None, ""]},
+    }
     if not include_all:
         match_query["is_selected"] = True
     if category:
