@@ -1,177 +1,129 @@
-# SupplierSync Pro - PRD
+# SupplierSync Pro - Product Requirements Document (PRD)
 
 ## Descripción del Producto
-Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos CSV de productos desde FTP/SFTP o URL, ver precios y stocks, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
+Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
-## Usuarios y Roles
-| Rol | Descripción | Permisos |
-|-----|-------------|----------|
-| **SuperAdmin** | Administrador global | Gestión de usuarios, límites, planes, SMTP |
-| **Admin** | Administrador de organización | Gestión completa de proveedores, productos, catálogos |
-| **User** | Usuario operativo | CRUD dentro de sus límites |
-| **Viewer** | Solo lectura | Visualización sin modificación |
+## Estado Actual
+**Versión:** 2.0.0  
+**Última actualización:** 2026-03-03  
+**Estado:** ✅ Producción - Funcionando en menuboard.es
+
+---
 
 ## Funcionalidades Implementadas
 
-### ✅ Core
-- [x] Login/Registro con JWT
-- [x] Sistema de roles
-- [x] Límites de recursos por usuario
-- [x] Botón mostrar/ocultar contraseña
-- [x] Recuperación de contraseña vía email
-- [x] CRUD de proveedores (FTP, URL)
-- [x] Sincronización de archivos CSV
-- [x] Mapeo de columnas flexible
-- [x] Explorador FTP mejorado
-- [x] Selección de productos desde proveedor
-- [x] Catálogos con reglas de margen
-- [x] Exportación a CSV
-- [x] Tiendas multi-plataforma (WooCommerce, PrestaShop, Shopify)
+### Core
+- [x] Autenticación JWT con sistema de roles (Viewer, User, Admin, SuperAdmin)
+- [x] Gestión de proveedores con soporte FTP/URL
+- [x] Importación de productos desde CSV con mapeo de columnas
+- [x] Creación de catálogos con reglas de márgenes de beneficio
+- [x] Exportación de catálogos a CSV
+- [x] Unificación de productos por EAN
+- [x] Paginación y ordenación en listas
 
-### ✅ Configuración Web (/setup)
-- [x] Paso 1: Configuración MongoDB y JWT
-- [x] Paso 2: Creación de SuperAdmin
-- [x] Paso 3: Configuración SMTP (opcional)
-- [x] Test de conexión MongoDB
-- [x] **Configuración persistente en `/etc/suppliersync/`**
-- [x] **Backups automáticos de configuración**
-- [x] Información de ubicación de configuración en API
+### Integraciones eCommerce
+- [x] WooCommerce (API REST completa)
+- [x] PrestaShop (via prestapyt)
+- [x] Shopify (via ShopifyAPI)
+- [ ] Wix eCommerce (solo UI/modelo)
+- [ ] Magento (solo UI/modelo)
 
-### ✅ Sistema de Actualización
-- [x] Script `update.sh` que preserva configuración
-- [x] Detección automática de instalación existente
-- [x] Migración automática de config.json a ubicación persistente
-- [x] Backups previos a actualización
+### Sistema de Configuración (Actualizado 2026-03-03)
+- [x] **Configuración persistente** en `/etc/suppliersync/config.json`
+- [x] **Migración automática** de configuración antigua
+- [x] **Backups automáticos** en `/etc/suppliersync/backups/`
+- [x] **Scripts de instalación/actualización** que preservan configuración
+- [x] Endpoints de gestión de configuración:
+  - `GET /api/setup/status` - Estado de configuración
+  - `GET /api/setup/config-info` - Info de ubicación de config
+  - `POST /api/setup/backup` - Crear backup
+  - `GET /api/setup/backups` - Listar backups
 
-### ✅ Sistema de Email
-- [x] Configuración SMTP genérica
-- [x] Email de bienvenida
-- [x] Email de recuperación de contraseña
-- [x] Email de cambio de suscripción
+### Administración
+- [x] Dashboard SuperAdmin con estadísticas
+- [x] Gestión de usuarios y límites de recursos
+- [x] Gestión de planes de suscripción
+- [x] Configuración SMTP para emails transaccionales
+- [x] Logs de sincronización e historial
 
-### ✅ Optimizado para Plesk
-- [x] HashRouter para URLs con # (no requiere configuración especial de nginx)
-- [x] Document Root: `app/frontend/build`
-- [x] Script de instalación automática (`install.sh`)
-- [x] Script de reparación (`install.sh --fix-plesk`)
-- [x] Script de actualización (`update.sh`)
+---
+
+## Despliegue en Producción (Plesk)
+
+### Configuración Actual
+- **Dominio:** menuboard.es
+- **Backend:** FastAPI en puerto 8001 (systemd service)
+- **Frontend:** React build en `/var/www/vhosts/menuboard.es/app/frontend/build`
+- **MongoDB:** Docker container con autenticación
+- **Configuración:** `/etc/suppliersync/config.json` (persistente)
+
+### IMPORTANTE: Configuración de Nginx en Plesk
+Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualmente:
+
+1. Plesk → Dominios → menuboard.es → Apache & nginx Settings
+2. Sección "Additional nginx directives"
+3. Añadir configuración de proxy para `/api/` y `/health`
+
+---
+
+## Tareas Pendientes
+
+### P1 - Alta Prioridad
+- [ ] Ampliar fuentes de datos: SFTP y APIs directas
+- [ ] Selección múltiple de archivos en navegador FTP
+
+### P2 - Media Prioridad
+- [ ] Completar integración Wix eCommerce
+- [ ] Completar integración Magento
+
+### P3 - Baja Prioridad
+- [ ] Autenticación de dos factores (2FA)
+- [ ] Ampliar dashboard SuperAdmin con más estadísticas
+- [ ] Webhooks para notificaciones de eventos
+
+---
 
 ## Arquitectura
 
 ```
-/app/
+/var/www/vhosts/menuboard.es/app/
 ├── backend/
-│   ├── .env                  # Variables de entorno (auto-actualizado)
-│   ├── services/
-│   │   ├── database.py      # Conexión MongoDB (lee de config.json primero)
-│   │   ├── config_manager.py # Guarda en /etc/suppliersync/config.json
-│   │   └── email_service.py
-│   ├── routes/
-│   │   ├── setup.py         # Configuración inicial vía web + backups
-│   │   ├── auth.py
-│   │   ├── products.py
-│   │   └── ...
-│   └── server.py
+│   ├── routes/          # Endpoints API
+│   ├── services/        # Lógica de negocio
+│   ├── models/          # Esquemas Pydantic
+│   └── server.py        # Entrada FastAPI
 ├── frontend/
-│   ├── src/
-│   │   ├── App.js           # HashRouter para compatibilidad con Plesk
-│   │   └── pages/
-│   │       ├── Setup.jsx    # 3 pasos de configuración
-│   │       └── ...
-│   └── build/               # Document Root para Plesk
-├── install.sh               # Instalación inicial
-└── update.sh                # Actualización preservando configuración
+│   ├── src/pages/       # Páginas React
+│   ├── src/components/  # Componentes
+│   └── build/           # Producción
+├── install.sh           # Instalación inicial
+├── update.sh            # Actualizaciones
+└── README.md
 
-/etc/suppliersync/            # ⭐ CONFIGURACIÓN PERSISTENTE
-├── config.json              # MongoDB, JWT, SMTP (NO se pierde al actualizar)
-└── backups/                 # Backups automáticos
+/etc/suppliersync/        # Configuración persistente
+├── config.json          # Config principal
+└── backups/             # Backups automáticos
 ```
 
-## Ubicación de Configuración (Persistente)
-
-La configuración ahora se guarda en **`/etc/suppliersync/config.json`**, que es una ubicación:
-- ✅ **Fuera del directorio de la aplicación** - No se sobrescribe al actualizar
-- ✅ **Estándar de Linux** - `/etc/` es para configuraciones del sistema
-- ✅ **Con backups automáticos** - En `/etc/suppliersync/backups/`
-
-### Prioridad de búsqueda de configuración:
-1. `/etc/suppliersync/config.json` (producción - persistente)
-2. `~/.suppliersync/config.json` (desarrollo local)
-3. `[APP_DIR]/backend/config.json` (fallback - se migra automáticamente)
-
-## URLs de la Aplicación (HashRouter)
-- `https://tudominio.com/#/setup` - Configuración inicial
-- `https://tudominio.com/#/login` - Iniciar sesión
-- `https://tudominio.com/#/register` - Registro
-- `https://tudominio.com/#/` - Dashboard
-
-## API de Configuración
-
-```bash
-# Estado de configuración
-GET /api/setup/status
-
-# Información de ubicación de configuración
-GET /api/setup/config-info
-
-# Crear backup manual
-POST /api/setup/backup
-
-# Listar backups
-GET /api/setup/backups
-```
-
-## Instalación en Plesk
-
-### Instalación Automática
-```bash
-sudo bash install.sh
-```
-
-### Actualización (Preserva configuración)
-```bash
-sudo bash update.sh
-```
-
-### Reparación Rápida
-```bash
-sudo bash install.sh --fix-plesk
-```
+---
 
 ## Credenciales de Prueba
-- **Email**: test@test.com
-- **Password**: test123
-- **Rol**: superadmin
+- **Email:** test@test.com
+- **Password:** test123
+- **Rol:** superadmin
+
+---
 
 ## Historial de Cambios
 
-### 02/03/2026
-- ✅ **Configuración persistente en `/etc/suppliersync/`**
-- ✅ **Script `update.sh` para actualizar sin perder configuración**
-- ✅ Migración automática de config.json a ubicación persistente
-- ✅ API para backups de configuración
-- ✅ Documentación actualizada
+### 2026-03-03
+- ✅ Solucionado problema de configuración de nginx en Plesk
+- ✅ Actualizados scripts install.sh y update.sh con instrucciones claras
+- ✅ Actualizado README.md con sección de configuración de Plesk
+- ✅ Verificada conexión a MongoDB en producción
+- ✅ Confirmado sistema de configuración persistente funcionando
 
-### 27/02/2026
-- ✅ Cambiado a HashRouter para compatibilidad con Plesk
-- ✅ config_manager.py ahora guarda en config.json Y .env
-- ✅ database.py prioriza config.json sobre variables de entorno
-- ✅ Simplificado install.sh para Plesk
-
-### 26/02/2026
-- ✅ Configuración SMTP en página /setup (paso 3)
-- ✅ Email de notificación al cambiar de plan
-- ✅ Refactorización con componentes compartidos
-- ✅ Corrección de N+1 queries en productos y catálogos
-
-## Tareas Pendientes
-
-### P2 - Media
-- [ ] Verificar corrección FTP con datos reales
-- [ ] Integración SFTP
-- [ ] Selección múltiple de archivos en navegador FTP
-
-### P3 - Backlog
-- [ ] Autenticación 2FA
-- [ ] Integración real con Wix y Magento
-- [ ] Dashboard SuperAdmin ampliado
+### 2026-03-02
+- ✅ Implementado sistema de configuración persistente
+- ✅ Creado script update.sh para actualizaciones seguras
+- ✅ Añadidos endpoints de backup de configuración
