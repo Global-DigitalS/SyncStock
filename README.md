@@ -89,6 +89,19 @@ Esta ubicación está **fuera** del directorio de la aplicación, por lo que:
 - ✅ El SuperAdmin y conexión a MongoDB se preservan
 - ✅ Los backups automáticos se guardan en `/etc/suppliersync/backups/`
 
+### Recarga Dinámica de Configuración
+
+Si cambias la configuración de MongoDB y no quieres reiniciar el servidor:
+
+```bash
+curl -X POST http://localhost:8001/api/setup/reload-database
+```
+
+O desde la URL externa:
+```bash
+curl -X POST https://tu-dominio.com/api/setup/reload-database
+```
+
 ---
 
 ## 🔄 Actualizar la Aplicación
@@ -171,6 +184,9 @@ curl -X POST http://localhost:8001/api/setup/backup
 
 # Ver backups disponibles
 curl http://localhost:8001/api/setup/backups
+
+# Recargar configuración de MongoDB sin reiniciar el servidor
+curl -X POST http://localhost:8001/api/setup/reload-database
 ```
 
 ---

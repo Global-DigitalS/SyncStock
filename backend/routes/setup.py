@@ -228,17 +228,41 @@ async def configure_app(setup: SetupRequest):
         test_client.close()
         
         # Programar reinicio del backend en segundo plano (después de responder)
+        # Primero intentamos recargar la configuración dinámicamente
         import subprocess
         import threading
         
-        def restart_backend():
+        def reload_and_restart():
             import time
-            time.sleep(2)  # Esperar 2 segundos para que la respuesta llegue al cliente
+            time.sleep(1)  # Pequeña espera para que la respuesta llegue al cliente
+            
+            # Intentar recargar la configuración dinámicamente
             try:
-                # Intentar reiniciar el servicio systemd
-                subprocess.run(['systemctl', 'restart', 'suppliersync-backend'], 
-                             capture_output=True, timeout=10)
-                logger.info("Backend service restarted via systemctl")
+                from services.database import reload_database_config
+                reload_database_config()
+                logger.info("Database configuration reloaded dynamically")
+            except Exception as e:
+                logger.warning(f"Could not reload database config dynamically: {e}")
+            
+            # También programar un reinicio del servicio para asegurar
+            time.sleep(1)
+            try:
+                # Intentar reiniciar el servicio systemd con sudo
+                result = subprocess.run(
+                    ['sudo', 'systemctl', 'restart', 'suppliersync-backend'], 
+                    capture_output=True, 
+                    timeout=15
+                )
+                if result.returncode == 0:
+                    logger.info("Backend service restarted via systemctl")
+                else:
+                    # Intentar sin sudo (por si el usuario tiene permisos)
+                    subprocess.run(
+                        ['systemctl', 'restart', 'suppliersync-backend'], 
+                        capture_output=True, 
+                        timeout=15
+                    )
+                    logger.info("Backend service restarted via systemctl (no sudo)")
             except Exception as e:
                 logger.warning(f"Could not restart via systemctl: {e}")
                 try:
@@ -248,11 +272,12 @@ async def configure_app(setup: SetupRequest):
                     logger.info("Backend service restarted via supervisorctl")
                 except Exception as e2:
                     logger.warning(f"Could not restart via supervisorctl: {e2}")
+                    logger.info("Manual restart may be required: sudo systemctl restart suppliersync-backend")
         
-        # Iniciar el reinicio en un hilo separado
-        restart_thread = threading.Thread(target=restart_backend, daemon=True)
+        # Iniciar la recarga/reinicio en un hilo separado
+        restart_thread = threading.Thread(target=reload_and_restart, daemon=True)
         restart_thread.start()
-        logger.info("Backend restart scheduled in 2 seconds")
+        logger.info("Database reload and backend restart scheduled")
         
         return SetupResponse(
             success=True,
@@ -383,3 +408,30 @@ async def get_backups():
         "backups": backups,
         "count": len(backups)
     }
+
+
+
+@router.post("/setup/reload-database")
+async def reload_database():
+    """
+    Recarga la configuración de la base de datos.
+    Útil después de cambiar la URL de MongoDB sin reiniciar el servidor.
+    """
+    try:
+        from services.database import reload_database_config
+        reload_database_config()
+        
+        # Verificar que la conexión funciona
+        from services.database import db
+        await db.command("ping")
+        
+        return {
+            "success": True,
+            "message": "Configuración de base de datos recargada correctamente"
+        }
+    except Exception as e:
+        logger.error(f"Error reloading database config: {e}")
+        return {
+            "success": False,
+            "message": f"Error al recargar la configuración: {str(e)}"
+        }
