@@ -30,6 +30,51 @@ El script automáticamente:
 
 ---
 
+## ⚠️ IMPORTANTE: Configuración de Nginx en Plesk
+
+**Plesk NO carga automáticamente los archivos `nginx_custom.conf`.**
+
+Después de instalar, **DEBES** añadir manualmente la configuración del proxy:
+
+### Pasos:
+
+1. Ve a **Plesk → Dominios → tu-dominio.com**
+2. Haz clic en **"Apache & nginx Settings"**
+3. Busca la sección **"Additional nginx directives"**
+4. **Copia y pega** el siguiente contenido:
+
+```nginx
+# API Backend - Proxy a FastAPI (puerto 8001)
+location /api/ {
+    proxy_pass http://127.0.0.1:8001/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 75s;
+    proxy_send_timeout 300s;
+}
+
+# Health Check
+location /health {
+    proxy_pass http://127.0.0.1:8001/health;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_read_timeout 10s;
+}
+```
+
+5. Haz clic en **OK** o **Apply**
+
+**Sin esta configuración, las llamadas a `/api/*` devolverán error 404.**
+
+---
+
 ## 🔒 Configuración Persistente
 
 **Tu configuración NO se perderá al actualizar la aplicación.**

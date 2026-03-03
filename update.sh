@@ -315,6 +315,100 @@ GENERATE_SOURCEMAP=false"
 }
 
 #-------------------------------------------------------------------------------
+# Verificar configuración de Nginx en Plesk
+#-------------------------------------------------------------------------------
+verify_nginx_plesk() {
+    if [ "$IS_PLESK" != "yes" ]; then
+        return
+    fi
+    
+    print_step "Verificando configuración de Nginx para Plesk"
+    
+    PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
+    
+    # Actualizar archivo de referencia
+    mkdir -p "$PLESK_NGINX_DIR"
+    
+    cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
+# SupplierSync Pro - Configuración Nginx para Plesk
+# IMPORTANTE: Este archivo es solo de REFERENCIA.
+# Debes copiar su contenido en Plesk → Apache & nginx Settings → Additional nginx directives
+
+# API Backend - Proxy a FastAPI (puerto 8001)
+location /api/ {
+    proxy_pass http://127.0.0.1:8001/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 75s;
+    proxy_send_timeout 300s;
+}
+
+# Health Check
+location /health {
+    proxy_pass http://127.0.0.1:8001/health;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_read_timeout 10s;
+}
+
+# WebSocket para notificaciones en tiempo real
+location /ws/ {
+    proxy_pass http://127.0.0.1:8001/ws/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_read_timeout 86400;
+    proxy_send_timeout 86400;
+}
+NGINX_EOF
+
+    print_success "Archivo de referencia nginx actualizado"
+    
+    # Verificar si la API responde
+    print_info "Verificando si el proxy de la API está configurado..."
+    
+    API_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8001/health" 2>/dev/null || echo "000")
+    
+    if [ "$API_RESPONSE" == "200" ]; then
+        print_success "Backend responde correctamente en puerto 8001"
+        
+        # Intentar verificar desde el dominio
+        if [ -n "$DOMAIN" ]; then
+            EXTERNAL_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "https://$DOMAIN/api/setup/status" 2>/dev/null || echo "000")
+            
+            if [ "$EXTERNAL_RESPONSE" == "200" ]; then
+                print_success "Proxy de API funcionando correctamente"
+            else
+                echo ""
+                echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo -e "${YELLOW}  ⚠ ATENCIÓN: El proxy de API puede no estar configurado${NC}"
+                echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+                echo ""
+                echo -e "  ${CYAN}El backend funciona, pero las peticiones a /api/ no llegan.${NC}"
+                echo -e "  ${CYAN}Verifica en Plesk → $DOMAIN → Apache & nginx Settings:${NC}"
+                echo ""
+                echo -e "  ${CYAN}1. Busca 'Additional nginx directives'${NC}"
+                echo -e "  ${CYAN}2. Debe contener la configuración de proxy para /api/${NC}"
+                echo -e "  ${CYAN}3. Si está vacío, copia el contenido de:${NC}"
+                echo -e "     ${GREEN}$PLESK_NGINX_DIR/nginx_custom.conf${NC}"
+                echo ""
+            fi
+        fi
+    else
+        print_warning "Backend no responde - verificar servicio"
+    fi
+}
+
+#-------------------------------------------------------------------------------
 # Verificar estado
 #-------------------------------------------------------------------------------
 verify_update() {
@@ -401,6 +495,7 @@ main() {
     update_code
     update_backend
     update_frontend
+    verify_nginx_plesk
     verify_update
     print_summary
 }

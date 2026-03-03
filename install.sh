@@ -522,18 +522,60 @@ location /ws/ {
 }
 NGINX_EOF
     
-    print_success "Configuración de Nginx creada"
+    print_success "Archivo de referencia Nginx creado"
     
-    # Verificar y recargar Nginx
-    print_info "Verificando configuración de Nginx..."
+    # IMPORTANTE: En Plesk, nginx_custom.conf NO se carga automáticamente
+    # Hay que añadir la configuración manualmente en el panel de Plesk
+    echo ""
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${RED}  ⚠ PASO OBLIGATORIO: Configurar Nginx en Plesk${NC}"
+    echo -e "${RED}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  ${YELLOW}Plesk NO carga automáticamente archivos nginx_custom.conf${NC}"
+    echo -e "  ${YELLOW}Debes añadir la configuración manualmente:${NC}"
+    echo ""
+    echo -e "  ${CYAN}1. Ve a Plesk → Dominios → $DOMAIN${NC}"
+    echo -e "  ${CYAN}2. Haz clic en 'Apache & nginx Settings'${NC}"
+    echo -e "  ${CYAN}3. Busca la sección 'Additional nginx directives'${NC}"
+    echo -e "  ${CYAN}4. Copia y pega el siguiente contenido:${NC}"
+    echo ""
+    echo -e "${GREEN}─────────────── INICIO COPIAR ───────────────${NC}"
+    cat << 'NGINX_DISPLAY'
+# API Backend - Proxy a FastAPI (puerto 8001)
+location /api/ {
+    proxy_pass http://127.0.0.1:8001/api/;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection 'upgrade';
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_cache_bypass $http_upgrade;
+    proxy_read_timeout 300s;
+    proxy_connect_timeout 75s;
+    proxy_send_timeout 300s;
+}
+
+# Health Check
+location /health {
+    proxy_pass http://127.0.0.1:8001/health;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_read_timeout 10s;
+}
+NGINX_DISPLAY
+    echo -e "${GREEN}─────────────── FIN COPIAR ───────────────${NC}"
+    echo ""
+    echo -e "  ${CYAN}5. Haz clic en 'OK' o 'Apply'${NC}"
+    echo ""
+    echo -e "  ${YELLOW}También puedes encontrar este contenido en:${NC}"
+    echo -e "  ${CYAN}$PLESK_NGINX_DIR/nginx_custom.conf${NC}"
+    echo ""
     
-    if nginx -t 2>&1; then
-        systemctl reload nginx 2>/dev/null || service nginx reload 2>/dev/null
-        print_success "Nginx recargado correctamente"
-    else
-        print_warning "Advertencia en configuración de Nginx"
-        print_info "Puede ser necesario recargar manualmente desde Plesk"
-    fi
+    # Esperar confirmación del usuario
+    echo -e "${YELLOW}  Presiona ENTER cuando hayas completado este paso...${NC}"
+    read -r
     
     # Crear script de actualización para futuros deploys
     cat > "$APP_DIR/update-frontend.sh" << EOF
@@ -827,15 +869,26 @@ location /ws/ {
 }
 NGINX_EOF
     
-    print_success "Configuración Nginx actualizada"
+    print_success "Archivo de referencia Nginx actualizado"
     
-    # 5. Recargar Nginx
-    if nginx -t 2>&1; then
-        systemctl reload nginx 2>/dev/null || service nginx reload
-        print_success "Nginx recargado"
-    else
-        print_warning "Verifica la configuración de Nginx manualmente"
-    fi
+    # IMPORTANTE: Mostrar instrucciones de Plesk
+    echo ""
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo -e "${YELLOW}  ⚠ VERIFICAR: Configuración de Nginx en Plesk${NC}"
+    echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+    echo ""
+    echo -e "  ${CYAN}Si es la PRIMERA instalación, asegúrate de haber añadido${NC}"
+    echo -e "  ${CYAN}la configuración de nginx en Plesk:${NC}"
+    echo ""
+    echo -e "  ${CYAN}1. Ve a Plesk → Dominios → $DOMAIN${NC}"
+    echo -e "  ${CYAN}2. Haz clic en 'Apache & nginx Settings'${NC}"
+    echo -e "  ${CYAN}3. Verifica que 'Additional nginx directives' contenga:${NC}"
+    echo ""
+    echo -e "     ${GREEN}location /api/ { proxy_pass http://127.0.0.1:8001/api/; ... }${NC}"
+    echo ""
+    echo -e "  ${CYAN}Si no está configurado, copia el contenido de:${NC}"
+    echo -e "  ${CYAN}$PLESK_NGINX_DIR/nginx_custom.conf${NC}"
+    echo ""
     
     # 6. Verificar backend
     if systemctl is-active --quiet ${APP_NAME}-backend 2>/dev/null; then
