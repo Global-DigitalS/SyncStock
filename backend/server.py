@@ -27,6 +27,7 @@ from routes.stores import router as stores_router
 from routes.webhooks import router as webhooks_router
 from routes.setup import router as setup_router
 from routes.email import router as email_router
+from routes.admin import router as admin_router
 
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
@@ -110,6 +111,7 @@ api_router.include_router(stores_router)
 api_router.include_router(webhooks_router)
 api_router.include_router(setup_router)
 api_router.include_router(email_router)
+api_router.include_router(admin_router)
 
 
 # Health check endpoint under /api

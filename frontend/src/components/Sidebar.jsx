@@ -21,7 +21,12 @@ import {
   Crown,
   CreditCard,
   Webhook,
-  Mail
+  Mail,
+  Palette,
+  FileText,
+  Settings,
+  ChevronDown,
+  ChevronRight
 } from "lucide-react";
 
 const navItems = [
@@ -36,9 +41,15 @@ const navItems = [
   { path: "/sync-history", label: "Historial de Syncs", icon: History },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
   { path: "/subscriptions", label: "Suscripciones", icon: CreditCard },
-  { path: "/users", label: "Usuarios", icon: Users, adminOnly: true },
-  { path: "/email-config", label: "Config. Email", icon: Mail, superadminOnly: true },
-  { path: "/superadmin", label: "Dashboard Admin", icon: Crown, superadminOnly: true },
+];
+
+const adminItems = [
+  { path: "/admin/dashboard", label: "Dashboard Admin", icon: Crown },
+  { path: "/admin/users", label: "Usuarios", icon: Users },
+  { path: "/admin/plans", label: "Planes", icon: CreditCard },
+  { path: "/admin/branding", label: "Personalización", icon: Palette },
+  { path: "/admin/email-config", label: "Config. Email", icon: Mail },
+  { path: "/admin/email-templates", label: "Plantillas Email", icon: FileText },
 ];
 
 const Sidebar = ({ open, onToggle }) => {
@@ -47,6 +58,7 @@ const Sidebar = ({ open, onToggle }) => {
   const { user, logout } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [adminExpanded, setAdminExpanded] = useState(false);
 
   useEffect(() => {
     const fetchUnread = async () => {
@@ -63,6 +75,13 @@ const Sidebar = ({ open, onToggle }) => {
     return () => clearInterval(interval);
   }, []);
 
+  // Auto-expand admin section if on admin route
+  useEffect(() => {
+    if (location.pathname.startsWith("/admin")) {
+      setAdminExpanded(true);
+    }
+  }, [location.pathname]);
+
   const handleLogout = () => {
     logout();
     navigate("/login");
@@ -72,6 +91,8 @@ const Sidebar = ({ open, onToggle }) => {
     if (path === "/") return location.pathname === "/";
     return location.pathname.startsWith(path);
   };
+
+  const isSuperAdmin = user?.role === "superadmin";
 
   const NavContent = () => (
     <>
@@ -93,11 +114,6 @@ const Sidebar = ({ open, onToggle }) => {
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
         {navItems.map((item) => {
-          // Skip admin-only items for non-admin/superadmin users
-          if (item.adminOnly && !["admin", "superadmin"].includes(user?.role)) return null;
-          // Skip superadmin-only items for non-superadmin users
-          if (item.superadminOnly && user?.role !== "superadmin") return null;
-          
           const Icon = item.icon;
           const active = isActive(item.path);
           const showBadge = item.path === "/notifications" && unreadCount > 0;
@@ -120,6 +136,52 @@ const Sidebar = ({ open, onToggle }) => {
             </Link>
           );
         })}
+
+        {/* Admin Section - Only visible for SuperAdmin */}
+        {isSuperAdmin && (
+          <div className="pt-4 mt-4 border-t border-slate-200">
+            <button
+              onClick={() => setAdminExpanded(!adminExpanded)}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-sm text-slate-600 hover:bg-slate-50 transition-all duration-200 font-medium"
+              data-testid="admin-section-toggle"
+            >
+              <div className="flex items-center gap-3">
+                <Settings className="w-5 h-5 text-purple-600" strokeWidth={1.5} />
+                <span className="text-purple-700 font-semibold">Administración</span>
+              </div>
+              {adminExpanded ? (
+                <ChevronDown className="w-4 h-4 text-purple-500" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-purple-500" />
+              )}
+            </button>
+
+            {adminExpanded && (
+              <div className="mt-1 ml-2 space-y-1">
+                {adminItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item.path);
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      data-testid={`nav-${item.path.replace("/admin/", "admin-")}`}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-sm text-sm transition-all duration-200 ${
+                        active 
+                          ? "bg-purple-100 text-purple-700 font-medium" 
+                          : "text-slate-600 hover:bg-purple-50 hover:text-purple-700"
+                      }`}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      <Icon className="w-4 h-4" strokeWidth={1.5} />
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </nav>
 
       {/* User Section */}

@@ -26,6 +26,11 @@ import Subscriptions from "./pages/Subscriptions";
 import Webhooks from "./pages/Webhooks";
 import EmailConfig from "./pages/EmailConfig";
 
+// Admin Pages
+import AdminBranding from "./pages/AdminBranding";
+import AdminPlans from "./pages/AdminPlans";
+import AdminEmailTemplates from "./pages/AdminEmailTemplates";
+
 // Components
 import Sidebar from "./components/Sidebar";
 
@@ -434,6 +439,72 @@ function App() {
               </ProtectedRoute>
             }
           />
+
+          {/* Admin Routes */}
+          <Route
+            path="/admin/dashboard"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <SuperAdminDashboard />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/users"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <UserManagement />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/plans"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AdminPlans />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/branding"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AdminBranding />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/email-config"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <EmailConfig />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/email-templates"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AdminEmailTemplates />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Legacy redirects */}
+          <Route path="/superadmin" element={<Navigate to="/admin/dashboard" replace />} />
+          <Route path="/users" element={<Navigate to="/admin/users" replace />} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
