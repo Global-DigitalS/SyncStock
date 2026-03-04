@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
+import logging
 
 from services.database import db
 from services.auth import get_current_user, check_user_limit
@@ -15,6 +16,7 @@ from models.schemas import (
     BulkCategoryAssignment
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -397,8 +399,10 @@ async def build_category_tree(categories: List[dict], parent_id: Optional[str] =
                 "catalog_id": cat["catalog_id"],
                 "category_ids": cat["id"]
             })
+            # Explicitly exclude _id to prevent serialization issues
+            cat_data = {k: v for k, v in cat.items() if k != "_id"}
             tree.append({
-                **cat,
+                **cat_data,
                 "children": children,
                 "product_count": product_count
             })
@@ -458,27 +462,39 @@ async def create_catalog_category(catalog_id: str, category: CatalogCategoryCrea
 @router.get("/catalogs/{catalog_id}/categories")
 async def get_catalog_categories(catalog_id: str, flat: bool = False, user: dict = Depends(get_current_user)):
     """Get all categories for a catalog (tree or flat structure)"""
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
-    if not catalog:
-        raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    
-    categories = await db.catalog_categories.find(
-        {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
-    ).sort("position", 1).to_list(500)
-    
-    if flat:
-        # Return flat list with product counts
-        result = []
-        for cat in categories:
-            product_count = await db.catalog_items.count_documents({
-                "catalog_id": catalog_id,
-                "category_ids": cat["id"]
-            })
-            result.append({**cat, "product_count": product_count, "children": []})
-        return result
-    
-    # Return tree structure
-    return await build_category_tree(categories)
+    try:
+        catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+        if not catalog:
+            raise HTTPException(status_code=404, detail="Catálogo no encontrado")
+        
+        categories = await db.catalog_categories.find(
+            {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
+        ).sort("position", 1).to_list(500)
+        
+        if flat:
+            # Return flat list with product counts
+            result = []
+            for cat in categories:
+                try:
+                    product_count = await db.catalog_items.count_documents({
+                        "catalog_id": catalog_id,
+                        "category_ids": cat["id"]
+                    })
+                    # Explicitly exclude _id to prevent serialization issues
+                    cat_data = {k: v for k, v in cat.items() if k != "_id"}
+                    result.append({**cat_data, "product_count": product_count, "children": []})
+                except Exception as e:
+                    logger.error(f"Error processing category {cat.get('id')}: {e}")
+                    continue
+            return result
+        
+        # Return tree structure
+        return await build_category_tree(categories)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching categories for catalog {catalog_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al cargar categorías: {str(e)}")
 
 
 @router.get("/catalogs/{catalog_id}/categories/{category_id}", response_model=CatalogCategoryResponse)
