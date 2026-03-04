@@ -271,6 +271,8 @@ class CatalogMarginRuleCreate(BaseModel):
     value: float
     apply_to: str = "all"
     apply_to_value: Optional[str] = None
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
     priority: int = 0
 
 class CatalogMarginRuleResponse(BaseModel):
@@ -281,6 +283,8 @@ class CatalogMarginRuleResponse(BaseModel):
     value: float
     apply_to: str
     apply_to_value: Optional[str] = None
+    min_price: Optional[float] = None
+    max_price: Optional[float] = None
     priority: int
     created_at: str
 

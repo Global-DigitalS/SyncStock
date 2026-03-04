@@ -15,7 +15,6 @@ import SupplierDetail from "./pages/SupplierDetail";
 import Products from "./pages/Products";
 import Catalogs from "./pages/Catalogs";
 import CatalogDetail from "./pages/CatalogDetail";
-import MarginRules from "./pages/MarginRules";
 import Export from "./pages/Export";
 import WooCommerceExport from "./pages/WooCommerceExport";
 import PriceHistory from "./pages/PriceHistory";
@@ -333,13 +332,7 @@ function App() {
           />
           <Route
             path="/margin-rules"
-            element={
-              <ProtectedRoute>
-                <MainLayout>
-                  <MarginRules />
-                </MainLayout>
-              </ProtectedRoute>
-            }
+            element={<Navigate to="/catalogs" replace />}
           />
           <Route
             path="/export"

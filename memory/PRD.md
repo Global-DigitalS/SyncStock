@@ -4,8 +4,8 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 2.0.0  
-**Última actualización:** 2026-03-03  
+**Versión:** 2.1.0  
+**Última actualización:** 2026-03-04  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
 ---
@@ -16,7 +16,12 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] Autenticación JWT con sistema de roles (Viewer, User, Admin, SuperAdmin)
 - [x] Gestión de proveedores con soporte FTP/URL
 - [x] Importación de productos desde CSV con mapeo de columnas
-- [x] Creación de catálogos con reglas de márgenes de beneficio
+- [x] **Reglas de Margen por Catálogo** (NUEVO - 2026-03-04)
+  - Cada catálogo tiene sus propias reglas de margen independientes
+  - Soporte para porcentajes y cantidades fijas
+  - Filtros por categoría, proveedor o marca
+  - Tramos de precios (precio mínimo y máximo)
+  - Sistema de prioridades
 - [x] Exportación de catálogos a CSV
 - [x] Unificación de productos por EAN
 - [x] Paginación y ordenación en listas
@@ -116,7 +121,19 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 
 ## Historial de Cambios
 
-### 2026-03-04
+### 2026-03-04 (Sesión actual)
+- ✅ **Reglas de Margen movidas a nivel de Catálogo**
+  - Eliminada la sección global "Reglas de Margen" del menú lateral
+  - Las reglas ahora se configuran dentro de cada catálogo
+  - Añadidos campos para tramos de precios (min_price, max_price)
+  - UI mejorada con selectores de categorías y proveedores
+  - Funcionalidad de edición de reglas existentes
+  - Nuevo endpoint PUT `/api/catalogs/{catalog_id}/margin-rules/{rule_id}`
+- ✅ Ruta `/margin-rules` ahora redirige a `/catalogs`
+- ✅ Validados scripts de despliegue multi-dominio (confirmado por usuario)
+- ✅ Verificada conexión FTP (confirmado por usuario)
+
+### 2026-03-04 (Fork anterior)
 - ✅ Solucionado problema de instalación en subdominios de Plesk
 - ✅ Actualizado `install.sh` para detectar automáticamente subdominios (ej: app.sync-stock.com)
 - ✅ Añadido soporte para múltiples instalaciones con puertos dinámicos (8001, 8002, etc.)

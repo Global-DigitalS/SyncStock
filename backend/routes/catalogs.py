@@ -211,6 +211,7 @@ async def create_catalog_margin_rule(catalog_id: str, rule: CatalogMarginRuleCre
         "id": rule_id, "catalog_id": catalog_id, "user_id": user["id"],
         "name": rule.name, "rule_type": rule.rule_type, "value": rule.value,
         "apply_to": rule.apply_to, "apply_to_value": rule.apply_to_value,
+        "min_price": rule.min_price, "max_price": rule.max_price,
         "priority": rule.priority, "created_at": now
     }
     await db.catalog_margin_rules.insert_one(rule_doc)
@@ -224,6 +225,25 @@ async def get_catalog_margin_rules(catalog_id: str, user: dict = Depends(get_cur
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
     rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}).sort("priority", -1).to_list(100)
     return [CatalogMarginRuleResponse(**r) for r in rules]
+
+
+@router.put("/catalogs/{catalog_id}/margin-rules/{rule_id}", response_model=CatalogMarginRuleResponse)
+async def update_catalog_margin_rule(catalog_id: str, rule_id: str, rule: CatalogMarginRuleCreate, user: dict = Depends(get_current_user)):
+    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    if not catalog:
+        raise HTTPException(status_code=404, detail="Catálogo no encontrado")
+    existing = await db.catalog_margin_rules.find_one({"id": rule_id, "catalog_id": catalog_id, "user_id": user["id"]})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+    update_data = {
+        "name": rule.name, "rule_type": rule.rule_type, "value": rule.value,
+        "apply_to": rule.apply_to, "apply_to_value": rule.apply_to_value,
+        "min_price": rule.min_price, "max_price": rule.max_price,
+        "priority": rule.priority
+    }
+    await db.catalog_margin_rules.update_one({"id": rule_id}, {"$set": update_data})
+    updated = await db.catalog_margin_rules.find_one({"id": rule_id}, {"_id": 0, "user_id": 0})
+    return CatalogMarginRuleResponse(**updated)
 
 
 @router.delete("/catalogs/{catalog_id}/margin-rules/{rule_id}")

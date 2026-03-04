@@ -77,14 +77,20 @@ const Catalogs = () => {
   
   // Rules state
   const [catalogRules, setCatalogRules] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [ruleForm, setRuleForm] = useState({
     name: "",
     rule_type: "percentage",
     value: "",
     apply_to: "all",
     apply_to_value: "",
+    min_price: "",
+    max_price: "",
     priority: 0
   });
+  const [editingRule, setEditingRule] = useState(null);
+  const [savingRule, setSavingRule] = useState(false);
 
   const fetchCatalogs = useCallback(async () => {
     try {
@@ -97,9 +103,23 @@ const Catalogs = () => {
     }
   }, []);
 
+  const fetchSuppliersAndCategories = useCallback(async () => {
+    try {
+      const [suppliersRes, categoriesRes] = await Promise.all([
+        api.get("/suppliers"),
+        api.get("/products/categories")
+      ]);
+      setSuppliers(suppliersRes.data);
+      setCategories(categoriesRes.data);
+    } catch (error) {
+      console.error("Error fetching suppliers/categories:", error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchCatalogs();
-  }, [fetchCatalogs]);
+    fetchSuppliersAndCategories();
+  }, [fetchCatalogs, fetchSuppliersAndCategories]);
 
   const resetForm = () => {
     setFormData({ name: "", description: "", is_default: false });
@@ -123,6 +143,17 @@ const Catalogs = () => {
 
   const openRules = async (catalog) => {
     setSelectedCatalog(catalog);
+    setEditingRule(null);
+    setRuleForm({
+      name: "",
+      rule_type: "percentage",
+      value: "",
+      apply_to: "all",
+      apply_to_value: "",
+      min_price: "",
+      max_price: "",
+      priority: 0
+    });
     try {
       const res = await api.get(`/catalogs/${catalog.id}/margin-rules`);
       setCatalogRules(res.data);
@@ -169,6 +200,20 @@ const Catalogs = () => {
     }
   };
 
+  const resetRuleForm = () => {
+    setRuleForm({
+      name: "",
+      rule_type: "percentage",
+      value: "",
+      apply_to: "all",
+      apply_to_value: "",
+      min_price: "",
+      max_price: "",
+      priority: 0
+    });
+    setEditingRule(null);
+  };
+
   const handleAddRule = async (e) => {
     e.preventDefault();
     if (!ruleForm.name.trim() || !ruleForm.value) {
@@ -176,20 +221,51 @@ const Catalogs = () => {
       return;
     }
 
+    setSavingRule(true);
     try {
-      await api.post(`/catalogs/${selectedCatalog.id}/margin-rules`, {
-        ...ruleForm,
+      const payload = {
         catalog_id: selectedCatalog.id,
+        name: ruleForm.name,
+        rule_type: ruleForm.rule_type,
         value: parseFloat(ruleForm.value),
+        apply_to: ruleForm.apply_to,
+        apply_to_value: ruleForm.apply_to !== "all" ? ruleForm.apply_to_value : null,
+        min_price: ruleForm.min_price ? parseFloat(ruleForm.min_price) : null,
+        max_price: ruleForm.max_price ? parseFloat(ruleForm.max_price) : null,
         priority: parseInt(ruleForm.priority) || 0
-      });
-      toast.success("Regla añadida");
+      };
+
+      if (editingRule) {
+        await api.put(`/catalogs/${selectedCatalog.id}/margin-rules/${editingRule.id}`, payload);
+        toast.success("Regla actualizada");
+      } else {
+        await api.post(`/catalogs/${selectedCatalog.id}/margin-rules`, payload);
+        toast.success("Regla añadida");
+      }
+      
       const res = await api.get(`/catalogs/${selectedCatalog.id}/margin-rules`);
       setCatalogRules(res.data);
-      setRuleForm({ name: "", rule_type: "percentage", value: "", apply_to: "all", apply_to_value: "", priority: 0 });
+      resetRuleForm();
+      fetchCatalogs(); // Update margin_rules_count
     } catch (error) {
-      toast.error("Error al añadir regla");
+      toast.error(error.response?.data?.detail || "Error al guardar regla");
+    } finally {
+      setSavingRule(false);
     }
+  };
+
+  const handleEditRule = (rule) => {
+    setEditingRule(rule);
+    setRuleForm({
+      name: rule.name,
+      rule_type: rule.rule_type,
+      value: rule.value.toString(),
+      apply_to: rule.apply_to,
+      apply_to_value: rule.apply_to_value || "",
+      min_price: rule.min_price?.toString() || "",
+      max_price: rule.max_price?.toString() || "",
+      priority: rule.priority
+    });
   };
 
   const handleDeleteRule = async (ruleId) => {
@@ -197,6 +273,7 @@ const Catalogs = () => {
       await api.delete(`/catalogs/${selectedCatalog.id}/margin-rules/${ruleId}`);
       toast.success("Regla eliminada");
       setCatalogRules(catalogRules.filter(r => r.id !== ruleId));
+      fetchCatalogs(); // Update margin_rules_count
     } catch (error) {
       toast.error("Error al eliminar regla");
     }
@@ -459,37 +536,54 @@ const Catalogs = () => {
       </Dialog>
 
       {/* Margin Rules Dialog */}
-      <Dialog open={showRulesDialog} onOpenChange={setShowRulesDialog}>
-        <DialogContent className="sm:max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+      <Dialog open={showRulesDialog} onOpenChange={(open) => { setShowRulesDialog(open); if (!open) resetRuleForm(); }}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
               <Percent className="w-5 h-5 text-indigo-600" />
               Reglas de Margen - {selectedCatalog?.name}
             </DialogTitle>
             <DialogDescription>
-              Configura los márgenes de beneficio para este catálogo específico
+              Configura los márgenes de beneficio para este catálogo. Las reglas se aplican por prioridad (mayor número = mayor prioridad).
             </DialogDescription>
           </DialogHeader>
           
-          <div className="flex-1 overflow-y-auto space-y-4">
-            {/* Add Rule Form */}
-            <Card className="border-indigo-200 bg-indigo-50">
-              <CardContent className="p-4">
-                <form onSubmit={handleAddRule} className="space-y-3">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2">
+            {/* Add/Edit Rule Form */}
+            <Card className={`border-2 ${editingRule ? 'border-amber-300 bg-amber-50' : 'border-indigo-200 bg-indigo-50'}`}>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-medium flex items-center gap-2">
+                  {editingRule ? (
+                    <>
+                      <Pencil className="w-4 h-4 text-amber-600" />
+                      Editando: {editingRule.name}
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-4 h-4 text-indigo-600" />
+                      Nueva Regla de Margen
+                    </>
+                  )}
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="p-4 pt-2">
+                <form onSubmit={handleAddRule} className="space-y-4">
+                  {/* Row 1: Name and Type */}
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Nombre de la regla</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Nombre de la regla *</Label>
                       <Input
                         value={ruleForm.name}
                         onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
-                        placeholder="Ej: Margen general"
+                        placeholder="Ej: Margen general 30%"
                         className="input-base h-9"
+                        data-testid="rule-name-input"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Tipo</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Tipo de margen</Label>
                       <Select value={ruleForm.rule_type} onValueChange={(v) => setRuleForm({ ...ruleForm, rule_type: v })}>
-                        <SelectTrigger className="input-base h-9">
+                        <SelectTrigger className="input-base h-9" data-testid="rule-type-select">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -499,22 +593,28 @@ const Catalogs = () => {
                       </Select>
                     </div>
                   </div>
+                  
+                  {/* Row 2: Value, Apply To, Priority */}
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Valor</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Valor *</Label>
                       <Input
                         type="number"
                         step="0.01"
                         value={ruleForm.value}
                         onChange={(e) => setRuleForm({ ...ruleForm, value: e.target.value })}
-                        placeholder={ruleForm.rule_type === 'percentage' ? '15' : '5.00'}
-                        className="input-base h-9"
+                        placeholder={ruleForm.rule_type === 'percentage' ? '30' : '10.00'}
+                        className="input-base h-9 font-mono"
+                        data-testid="rule-value-input"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Aplicar a</Label>
-                      <Select value={ruleForm.apply_to} onValueChange={(v) => setRuleForm({ ...ruleForm, apply_to: v })}>
-                        <SelectTrigger className="input-base h-9">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Aplicar a</Label>
+                      <Select 
+                        value={ruleForm.apply_to} 
+                        onValueChange={(v) => setRuleForm({ ...ruleForm, apply_to: v, apply_to_value: "" })}
+                      >
+                        <SelectTrigger className="input-base h-9" data-testid="rule-apply-to-select">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -525,64 +625,227 @@ const Catalogs = () => {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Prioridad</Label>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Prioridad</Label>
                       <Input
                         type="number"
                         value={ruleForm.priority}
                         onChange={(e) => setRuleForm({ ...ruleForm, priority: e.target.value })}
                         placeholder="0"
-                        className="input-base h-9"
+                        className="input-base h-9 font-mono"
+                        data-testid="rule-priority-input"
                       />
+                      <p className="text-[10px] text-slate-500">Mayor = más prioridad</p>
                     </div>
                   </div>
-                  {ruleForm.apply_to !== 'all' && (
-                    <div className="space-y-1">
-                      <Label className="text-xs">
-                        {ruleForm.apply_to === 'category' ? 'Categoría' : ruleForm.apply_to === 'supplier' ? 'Proveedor' : 'Marca'}
-                      </Label>
+                  
+                  {/* Row 3: Conditional Apply To Value */}
+                  {ruleForm.apply_to === 'category' && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Categoría</Label>
+                      {categories.length > 0 ? (
+                        <Select 
+                          value={ruleForm.apply_to_value} 
+                          onValueChange={(v) => setRuleForm({ ...ruleForm, apply_to_value: v })}
+                        >
+                          <SelectTrigger className="input-base h-9" data-testid="rule-category-select">
+                            <SelectValue placeholder="Seleccionar categoría" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {categories.map((cat) => (
+                              <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          value={ruleForm.apply_to_value}
+                          onChange={(e) => setRuleForm({ ...ruleForm, apply_to_value: e.target.value })}
+                          placeholder="Nombre de la categoría"
+                          className="input-base h-9"
+                        />
+                      )}
+                    </div>
+                  )}
+                  
+                  {ruleForm.apply_to === 'supplier' && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Proveedor</Label>
+                      {suppliers.length > 0 ? (
+                        <Select 
+                          value={ruleForm.apply_to_value} 
+                          onValueChange={(v) => setRuleForm({ ...ruleForm, apply_to_value: v })}
+                        >
+                          <SelectTrigger className="input-base h-9" data-testid="rule-supplier-select">
+                            <SelectValue placeholder="Seleccionar proveedor" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {suppliers.map((sup) => (
+                              <SelectItem key={sup.id} value={sup.id}>{sup.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <Input
+                          value={ruleForm.apply_to_value}
+                          onChange={(e) => setRuleForm({ ...ruleForm, apply_to_value: e.target.value })}
+                          placeholder="ID del proveedor"
+                          className="input-base h-9"
+                        />
+                      )}
+                    </div>
+                  )}
+                  
+                  {ruleForm.apply_to === 'brand' && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Marca</Label>
                       <Input
                         value={ruleForm.apply_to_value}
                         onChange={(e) => setRuleForm({ ...ruleForm, apply_to_value: e.target.value })}
-                        placeholder={`Nombre de ${ruleForm.apply_to === 'category' ? 'la categoría' : ruleForm.apply_to === 'supplier' ? 'el proveedor' : 'la marca'}`}
+                        placeholder="Nombre de la marca"
                         className="input-base h-9"
                       />
                     </div>
                   )}
-                  <Button type="submit" size="sm" className="btn-primary w-full">
-                    <Plus className="w-4 h-4 mr-1" />
-                    Añadir Regla
-                  </Button>
+                  
+                  {/* Row 4: Price Range */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Precio mínimo (€)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={ruleForm.min_price}
+                        onChange={(e) => setRuleForm({ ...ruleForm, min_price: e.target.value })}
+                        placeholder="0.00 (sin límite)"
+                        className="input-base h-9 font-mono"
+                        data-testid="rule-min-price"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-medium">Precio máximo (€)</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={ruleForm.max_price}
+                        onChange={(e) => setRuleForm({ ...ruleForm, max_price: e.target.value })}
+                        placeholder="Sin límite"
+                        className="input-base h-9 font-mono"
+                        data-testid="rule-max-price"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500 -mt-2">
+                    Deja vacío para aplicar a cualquier precio. Usa tramos para aplicar diferentes márgenes según el precio base del producto.
+                  </p>
+                  
+                  {/* Buttons */}
+                  <div className="flex gap-2 pt-2">
+                    {editingRule && (
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={resetRuleForm}
+                        className="flex-1"
+                      >
+                        Cancelar Edición
+                      </Button>
+                    )}
+                    <Button 
+                      type="submit" 
+                      size="sm" 
+                      className={`flex-1 ${editingRule ? 'bg-amber-600 hover:bg-amber-700' : 'btn-primary'}`}
+                      disabled={savingRule}
+                      data-testid="rule-submit-btn"
+                    >
+                      {savingRule ? (
+                        <RefreshCw className="w-4 h-4 mr-1 animate-spin" />
+                      ) : editingRule ? (
+                        <Pencil className="w-4 h-4 mr-1" />
+                      ) : (
+                        <Plus className="w-4 h-4 mr-1" />
+                      )}
+                      {editingRule ? 'Guardar Cambios' : 'Añadir Regla'}
+                    </Button>
+                  </div>
                 </form>
               </CardContent>
             </Card>
 
             {/* Rules List */}
             {catalogRules.length === 0 ? (
-              <div className="text-center py-6">
-                <Percent className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <p className="text-slate-500">No hay reglas configuradas para este catálogo</p>
+              <div className="text-center py-8 bg-slate-50 rounded-lg border-2 border-dashed border-slate-200">
+                <Percent className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-600 font-medium mb-1">No hay reglas configuradas</p>
+                <p className="text-slate-500 text-sm">Añade tu primera regla de margen para este catálogo</p>
               </div>
             ) : (
               <div className="space-y-2">
+                <div className="flex items-center justify-between px-1 pb-2">
+                  <p className="text-sm font-medium text-slate-700">
+                    {catalogRules.length} regla{catalogRules.length !== 1 ? 's' : ''} configurada{catalogRules.length !== 1 ? 's' : ''}
+                  </p>
+                  <Badge variant="secondary" className="bg-slate-100">
+                    Ordenadas por prioridad
+                  </Badge>
+                </div>
                 {catalogRules.map((rule) => (
-                  <div key={rule.id} className="flex items-center justify-between p-3 bg-white border rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
-                        <Percent className="w-4 h-4 text-indigo-600" />
+                  <div 
+                    key={rule.id} 
+                    className={`flex items-center justify-between p-3 bg-white border rounded-lg hover:shadow-sm transition-shadow ${editingRule?.id === rule.id ? 'ring-2 ring-amber-400' : ''}`}
+                    data-testid={`rule-item-${rule.id}`}
+                  >
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center flex-shrink-0">
+                        <span className="text-indigo-600 font-bold text-sm">
+                          {rule.rule_type === 'percentage' ? `${rule.value}%` : `${rule.value}€`}
+                        </span>
                       </div>
-                      <div>
-                        <p className="font-medium text-slate-900">{rule.name}</p>
-                        <p className="text-xs text-slate-500">
-                          {rule.rule_type === 'percentage' ? `+${rule.value}%` : `+${rule.value}€`}
-                          {rule.apply_to !== 'all' && ` • ${rule.apply_to}: ${rule.apply_to_value}`}
-                          {` • Prioridad: ${rule.priority}`}
-                        </p>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-slate-900 truncate">{rule.name}</p>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                            {rule.apply_to === 'all' ? 'Todos' : 
+                              rule.apply_to === 'category' ? `Cat: ${rule.apply_to_value}` :
+                              rule.apply_to === 'supplier' ? `Prov: ${suppliers.find(s => s.id === rule.apply_to_value)?.name || rule.apply_to_value}` :
+                              `Marca: ${rule.apply_to_value}`
+                            }
+                          </span>
+                          {(rule.min_price || rule.max_price) && (
+                            <span className="flex items-center gap-1 font-mono">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                              {rule.min_price ? `${rule.min_price}€` : '0€'} - {rule.max_price ? `${rule.max_price}€` : '∞'}
+                            </span>
+                          )}
+                          <span className="flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                            P: {rule.priority}
+                          </span>
+                        </div>
                       </div>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => handleDeleteRule(rule.id)}>
-                      <Trash2 className="w-4 h-4 text-rose-500" />
-                    </Button>
+                    <div className="flex items-center gap-1 ml-2">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8"
+                        onClick={() => handleEditRule(rule)}
+                        data-testid={`edit-rule-${rule.id}`}
+                      >
+                        <Pencil className="w-4 h-4 text-slate-500" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 hover:bg-rose-50"
+                        onClick={() => handleDeleteRule(rule.id)}
+                        data-testid={`delete-rule-${rule.id}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-rose-500" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -590,7 +853,7 @@ const Catalogs = () => {
           </div>
           
           <DialogFooter className="pt-4 border-t">
-            <Button variant="outline" onClick={() => setShowRulesDialog(false)}>
+            <Button variant="outline" onClick={() => { setShowRulesDialog(false); resetRuleForm(); }}>
               Cerrar
             </Button>
           </DialogFooter>
