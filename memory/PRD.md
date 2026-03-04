@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 2.6.0  
+**Versión:** 2.7.0  
 **Última actualización:** 2026-03-04  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -48,16 +48,31 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] Unificación de productos por EAN
 - [x] Paginación y ordenación en listas
 
-### Panel de Administración SuperAdmin (NUEVO - 2026-03-04)
+### Panel de Administración SuperAdmin (ACTUALIZADO - 2026-03-04)
 - [x] **Sección de Administración en Sidebar** (visible solo para SuperAdmin)
-  - Dashboard Admin
+  - **Administración** (link directo a Dashboard Admin)
   - Usuarios
-  - Planes
+  - Suscripciones (renombrado de "Planes")
+  - **Config. Stripe** (NUEVO)
   - Personalización (Branding)
   - Config. Email
   - Plantillas Email
 
-- [x] **Reiniciar Aplicación (Zona de Peligro)** (NUEVO - 2026-03-04)
+- [x] **Configuración de Stripe** (NUEVO - 2026-03-04)
+  - Ubicación: Administración → Config. Stripe (`/admin/stripe`)
+  - Configuración de claves API (Pública, Secreta, Webhook Secret)
+  - Switch para habilitar/deshabilitar pagos
+  - Switch para modo producción (pagos reales)
+  - Prueba de conexión con Stripe API
+  - Panel de información con Webhook URL y eventos requeridos
+  - Endpoints:
+    - GET /api/admin/stripe/config - Obtener configuración
+    - PUT /api/admin/stripe/config - Actualizar configuración
+    - POST /api/admin/stripe/test-connection - Probar conexión
+    - POST /api/stripe/create-checkout - Crear sesión de pago (usuarios)
+    - POST /api/stripe/webhook - Webhook para eventos de Stripe
+
+- [x] **Reiniciar Aplicación (Zona de Peligro)** (2026-03-04)
   - Ubicación: Dashboard Admin (`/admin/dashboard`) - Sección "Zona de Peligro"
   - Permite al SuperAdmin borrar TODA la base de datos excepto los usuarios
   - Botón "Reiniciar App" con confirmación obligatoria
@@ -76,7 +91,7 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Vista previa en tiempo real
   - Texto del footer
 
-- [x] **Gestión de Planes** (`/admin/plans`)
+- [x] **Gestión de Suscripciones** (`/admin/subscriptions`) - Renombrado de "Planes"
   - CRUD completo de planes de suscripción
   - Configuración de límites (proveedores, catálogos, productos, tiendas)
   - Precios mensuales y anuales
