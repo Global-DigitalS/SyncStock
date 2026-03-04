@@ -4,6 +4,7 @@ import { api } from "../App";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Checkbox } from "../components/ui/checkbox";
@@ -26,6 +27,14 @@ import {
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "../components/ui/dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -43,7 +52,9 @@ import {
   DollarSign,
   AlertTriangle,
   Percent,
-  Filter
+  Filter,
+  FolderTree,
+  Tag
 } from "lucide-react";
 
 const CatalogDetail = () => {
@@ -54,15 +65,21 @@ const CatalogDetail = () => {
   const [products, setProducts] = useState([]);
   const [allProducts, setAllProducts] = useState([]);
   const [suppliers, setSuppliers] = useState([]);
+  const [catalogCategories, setCatalogCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const [selectedIds, setSelectedIds] = useState([]);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [productCategories, setProductCategories] = useState([]);
   const [addSearch, setAddSearch] = useState("");
   const [addSupplierFilter, setAddSupplierFilter] = useState("all");
   const [selectedToAdd, setSelectedToAdd] = useState([]);
   const [adding, setAdding] = useState(false);
+  const [savingCategories, setSavingCategories] = useState(false);
 
   const fetchCatalog = useCallback(async () => {
     try {
@@ -76,12 +93,24 @@ const CatalogDetail = () => {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const res = await api.get(`/catalogs/${catalogId}/products?search=${search}`);
+      const url = categoryFilter === "all" 
+        ? `/catalogs/${catalogId}/products?search=${search}`
+        : `/catalogs/${catalogId}/products?search=${search}&category_id=${categoryFilter}`;
+      const res = await api.get(url);
       setProducts(res.data);
     } catch (error) {
       toast.error("Error al cargar productos");
     }
-  }, [catalogId, search]);
+  }, [catalogId, search, categoryFilter]);
+
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await api.get(`/catalogs/${catalogId}/categories?flat=true`);
+      setCatalogCategories(res.data);
+    } catch (error) {
+      console.error("Error fetching categories:", error);
+    }
+  }, [catalogId]);
 
   const fetchAllProducts = useCallback(async () => {
     try {
@@ -99,11 +128,11 @@ const CatalogDetail = () => {
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
-      await Promise.all([fetchCatalog(), fetchProducts(), fetchAllProducts()]);
+      await Promise.all([fetchCatalog(), fetchProducts(), fetchCategories(), fetchAllProducts()]);
       setLoading(false);
     };
     loadData();
-  }, [fetchCatalog, fetchProducts, fetchAllProducts]);
+  }, [fetchCatalog, fetchProducts, fetchCategories, fetchAllProducts]);
 
   // Get products not in catalog
   const productsNotInCatalog = allProducts.filter(
@@ -176,6 +205,41 @@ const CatalogDetail = () => {
     } else {
       setSelectedToAdd([]);
     }
+  };
+
+  const openCategoryDialog = (product) => {
+    setSelectedProduct(product);
+    setProductCategories(product.category_ids || []);
+    setShowCategoryDialog(true);
+  };
+
+  const handleToggleCategory = (categoryId) => {
+    setProductCategories(prev => 
+      prev.includes(categoryId)
+        ? prev.filter(id => id !== categoryId)
+        : [...prev, categoryId]
+    );
+  };
+
+  const handleSaveCategories = async () => {
+    setSavingCategories(true);
+    try {
+      await api.put(`/catalogs/${catalogId}/products/${selectedProduct.id}/categories`, {
+        category_ids: productCategories
+      });
+      toast.success("Categorías actualizadas");
+      setShowCategoryDialog(false);
+      fetchProducts();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al guardar categorías");
+    } finally {
+      setSavingCategories(false);
+    }
+  };
+
+  const getCategoryName = (categoryId) => {
+    const cat = catalogCategories.find(c => c.id === categoryId);
+    return cat ? cat.name : categoryId;
   };
 
   if (loading) {
@@ -297,9 +361,9 @@ const CatalogDetail = () => {
         </Card>
       </div>
 
-      {/* Search */}
-      <div className="mb-4">
-        <div className="relative max-w-md">
+      {/* Search and Filters */}
+      <div className="mb-4 flex flex-wrap gap-4">
+        <div className="relative flex-1 min-w-[200px] max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
           <Input
             placeholder="Buscar por nombre o SKU..."
@@ -309,6 +373,22 @@ const CatalogDetail = () => {
             data-testid="search-catalog-products"
           />
         </div>
+        {catalogCategories.length > 0 && (
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="input-base w-[200px]" data-testid="category-filter">
+              <FolderTree className="w-4 h-4 mr-2 text-slate-400" />
+              <SelectValue placeholder="Filtrar por categoría" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas las categorías</SelectItem>
+              {catalogCategories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  {"—".repeat(cat.level)} {cat.name} ({cat.product_count || 0})
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
       </div>
 
       {/* Products Table */}
@@ -344,10 +424,11 @@ const CatalogDetail = () => {
                   </TableHead>
                   <TableHead>Producto</TableHead>
                   <TableHead>SKU</TableHead>
-                  <TableHead>Proveedor</TableHead>
+                  <TableHead>Categorías</TableHead>
                   <TableHead className="text-right">Precio Base</TableHead>
                   <TableHead className="text-right">Precio Final</TableHead>
                   <TableHead className="text-right">Stock</TableHead>
+                  <TableHead className="w-[50px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -376,12 +457,29 @@ const CatalogDetail = () => {
                           <p className="font-medium text-slate-900 line-clamp-1">
                             {item.custom_name || item.product?.name}
                           </p>
-                          <p className="text-xs text-slate-500">{item.product?.category || "Sin categoría"}</p>
+                          <p className="text-xs text-slate-500">{item.product?.supplier_name}</p>
                         </div>
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-sm">{item.product?.sku}</TableCell>
-                    <TableCell className="text-sm text-slate-600">{item.product?.supplier_name}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1 max-w-[200px]">
+                        {item.category_ids && item.category_ids.length > 0 ? (
+                          item.category_ids.slice(0, 2).map((catId) => (
+                            <Badge key={catId} variant="outline" className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200">
+                              {getCategoryName(catId)}
+                            </Badge>
+                          ))
+                        ) : (
+                          <span className="text-xs text-slate-400">Sin categoría</span>
+                        )}
+                        {item.category_ids && item.category_ids.length > 2 && (
+                          <Badge variant="outline" className="text-xs bg-slate-50">
+                            +{item.category_ids.length - 2}
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">
                       {(item.custom_price || item.product?.price || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                     </TableCell>
@@ -396,6 +494,18 @@ const CatalogDetail = () => {
                       ) : (
                         <span className="text-slate-900">{item.product?.stock}</span>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => openCategoryDialog(item)}
+                        title="Asignar categorías"
+                        data-testid={`assign-category-${item.id}`}
+                      >
+                        <Tag className="w-4 h-4 text-indigo-600" />
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -543,6 +653,70 @@ const CatalogDetail = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Assign Categories Dialog */}
+      <Dialog open={showCategoryDialog} onOpenChange={setShowCategoryDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+              <Tag className="w-5 h-5 text-indigo-600" />
+              Asignar Categorías
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona las categorías para "{selectedProduct?.product?.name}"
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4">
+            {catalogCategories.length === 0 ? (
+              <div className="text-center py-6">
+                <FolderTree className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                <p className="text-slate-600 font-medium mb-1">No hay categorías</p>
+                <p className="text-slate-500 text-sm">
+                  Crea categorías desde la página de Catálogos para poder asignarlas a productos
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[300px] overflow-y-auto">
+                {catalogCategories.map((cat) => (
+                  <div 
+                    key={cat.id}
+                    className={`flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors ${productCategories.includes(cat.id) ? 'bg-indigo-50 ring-1 ring-indigo-200' : ''}`}
+                    onClick={() => handleToggleCategory(cat.id)}
+                    style={{ marginLeft: `${cat.level * 16}px` }}
+                  >
+                    <Checkbox
+                      checked={productCategories.includes(cat.id)}
+                      onCheckedChange={() => handleToggleCategory(cat.id)}
+                    />
+                    <div className="flex items-center gap-2 flex-1">
+                      <FolderTree className="w-4 h-4 text-indigo-500" />
+                      <span className="font-medium text-slate-800">{cat.name}</span>
+                      <Badge variant="outline" className="text-xs text-slate-400">
+                        Nivel {cat.level + 1}
+                      </Badge>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCategoryDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSaveCategories} 
+              disabled={savingCategories || catalogCategories.length === 0}
+              className="btn-primary"
+            >
+              {savingCategories ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+              Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

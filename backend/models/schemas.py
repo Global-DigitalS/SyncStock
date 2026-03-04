@@ -242,17 +242,20 @@ class CatalogResponse(BaseModel):
     is_default: bool = False
     product_count: int = 0
     margin_rules_count: int = 0
+    categories_count: int = 0
     created_at: str
 
 class CatalogProductAdd(BaseModel):
     product_ids: List[str]
     custom_prices: Optional[Dict[str, float]] = None
+    category_ids: Optional[List[str]] = None
 
 class CatalogItemCreate(BaseModel):
     product_id: str
     custom_price: Optional[float] = None
     custom_name: Optional[str] = None
     active: bool = True
+    category_ids: Optional[List[str]] = None
 
 class CatalogItemResponse(BaseModel):
     id: str
@@ -262,7 +265,11 @@ class CatalogItemResponse(BaseModel):
     custom_name: Optional[str] = None
     final_price: float
     active: bool
+    category_ids: List[str] = []
     created_at: str
+
+class CatalogItemCategoryUpdate(BaseModel):
+    category_ids: List[str]
 
 class CatalogMarginRuleCreate(BaseModel):
     catalog_id: str
@@ -287,6 +294,44 @@ class CatalogMarginRuleResponse(BaseModel):
     max_price: Optional[float] = None
     priority: int
     created_at: str
+
+
+# ==================== CATALOG CATEGORY MODELS ====================
+
+class CatalogCategoryCreate(BaseModel):
+    name: str
+    parent_id: Optional[str] = None
+    position: int = 0
+    description: Optional[str] = None
+
+class CatalogCategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    parent_id: Optional[str] = None
+    position: Optional[int] = None
+    description: Optional[str] = None
+
+class CatalogCategoryResponse(BaseModel):
+    id: str
+    catalog_id: str
+    name: str
+    parent_id: Optional[str] = None
+    position: int = 0
+    description: Optional[str] = None
+    level: int = 0
+    product_count: int = 0
+    children: List["CatalogCategoryResponse"] = []
+    created_at: str
+
+class CatalogCategoryReorder(BaseModel):
+    category_id: str
+    new_parent_id: Optional[str] = None
+    new_position: int
+
+class CatalogCategoryBulkReorder(BaseModel):
+    updates: List[CatalogCategoryReorder]
+
+class ProductCategoryAssignment(BaseModel):
+    category_ids: List[str]
 
 
 # ==================== MARGIN RULE MODELS ====================

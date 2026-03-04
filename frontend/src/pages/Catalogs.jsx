@@ -60,9 +60,11 @@ import {
   Eye,
   RefreshCw,
   Settings,
-  ArrowRight
+  ArrowRight,
+  FolderTree
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import CatalogCategories from "../components/CatalogCategories";
 
 const Catalogs = () => {
   const navigate = useNavigate();
@@ -71,6 +73,7 @@ const Catalogs = () => {
   const [showDialog, setShowDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
+  const [showCategoriesDialog, setShowCategoriesDialog] = useState(false);
   const [selectedCatalog, setSelectedCatalog] = useState(null);
   const [formData, setFormData] = useState({ name: "", description: "", is_default: false });
   const [saving, setSaving] = useState(false);
@@ -161,6 +164,11 @@ const Catalogs = () => {
       toast.error("Error al cargar reglas");
     }
     setShowRulesDialog(true);
+  };
+
+  const openCategories = (catalog) => {
+    setSelectedCatalog(catalog);
+    setShowCategoriesDialog(true);
   };
 
   const handleSubmit = async (e) => {
@@ -421,6 +429,10 @@ const Catalogs = () => {
                         <Percent className="w-4 h-4 mr-2" strokeWidth={1.5} />
                         Reglas de Margen
                       </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openCategories(catalog)}>
+                        <FolderTree className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                        Categorías
+                      </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openEdit(catalog)}>
                         <Pencil className="w-4 h-4 mr-2" strokeWidth={1.5} />
                         Editar
@@ -440,33 +452,46 @@ const Catalogs = () => {
                 {catalog.description && (
                   <p className="text-sm text-slate-500 mb-3 line-clamp-2">{catalog.description}</p>
                 )}
-                <div className="grid grid-cols-2 gap-4 mb-4">
+                <div className="grid grid-cols-3 gap-2 mb-4">
                   <div className="text-center p-2 bg-slate-50 rounded-lg">
-                    <p className="text-2xl font-bold text-slate-900">{catalog.product_count}</p>
+                    <p className="text-xl font-bold text-slate-900">{catalog.product_count}</p>
                     <p className="text-xs text-slate-500">Productos</p>
                   </div>
                   <div className="text-center p-2 bg-slate-50 rounded-lg">
-                    <p className="text-2xl font-bold text-slate-900">{catalog.margin_rules_count}</p>
+                    <p className="text-xl font-bold text-slate-900">{catalog.categories_count || 0}</p>
+                    <p className="text-xs text-slate-500">Categorías</p>
+                  </div>
+                  <div className="text-center p-2 bg-slate-50 rounded-lg">
+                    <p className="text-xl font-bold text-slate-900">{catalog.margin_rules_count}</p>
                     <p className="text-xs text-slate-500">Reglas</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    className="flex-1"
+                    className="w-full"
                     onClick={() => navigate(`/catalogs/${catalog.id}`)}
                   >
-                    <Eye className="w-3.5 h-3.5 mr-1.5" />
+                    <Eye className="w-3.5 h-3.5 mr-1" />
                     Ver
                   </Button>
                   <Button 
+                    variant="outline"
                     size="sm" 
-                    className="flex-1 btn-primary"
+                    className="w-full"
+                    onClick={() => openCategories(catalog)}
+                  >
+                    <FolderTree className="w-3.5 h-3.5 mr-1" />
+                    Cats.
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    className="w-full btn-primary"
                     onClick={() => openRules(catalog)}
                   >
-                    <Percent className="w-3.5 h-3.5 mr-1.5" />
-                    Márgenes
+                    <Percent className="w-3.5 h-3.5 mr-1" />
+                    Márg.
                   </Button>
                 </div>
               </CardContent>
@@ -877,6 +902,30 @@ const Catalogs = () => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Categories Dialog */}
+      <Dialog open={showCategoriesDialog} onOpenChange={(open) => { setShowCategoriesDialog(open); if (!open) fetchCatalogs(); }}>
+        <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+              <FolderTree className="w-5 h-5 text-indigo-600" />
+              Categorías - {selectedCatalog?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Organiza los productos del catálogo en categorías y subcategorías (máximo 4 niveles)
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex-1 overflow-y-auto">
+            {selectedCatalog && (
+              <CatalogCategories 
+                catalogId={selectedCatalog.id} 
+                catalogName={selectedCatalog.name}
+                onClose={() => setShowCategoriesDialog(false)}
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
