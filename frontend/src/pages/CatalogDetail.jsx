@@ -73,13 +73,17 @@ const CatalogDetail = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showCategoryDialog, setShowCategoryDialog] = useState(false);
+  const [showBulkCategoryDialog, setShowBulkCategoryDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [productCategories, setProductCategories] = useState([]);
+  const [bulkCategories, setBulkCategories] = useState([]);
+  const [bulkMode, setBulkMode] = useState("add");
   const [addSearch, setAddSearch] = useState("");
   const [addSupplierFilter, setAddSupplierFilter] = useState("all");
   const [selectedToAdd, setSelectedToAdd] = useState([]);
   const [adding, setAdding] = useState(false);
   const [savingCategories, setSavingCategories] = useState(false);
+  const [savingBulkCategories, setSavingBulkCategories] = useState(false);
 
   const fetchCatalog = useCallback(async () => {
     try {
@@ -237,6 +241,46 @@ const CatalogDetail = () => {
     }
   };
 
+  const openBulkCategoryDialog = () => {
+    setBulkCategories([]);
+    setBulkMode("add");
+    setShowBulkCategoryDialog(true);
+  };
+
+  const handleToggleBulkCategory = (categoryId) => {
+    setBulkCategories(prev => 
+      prev.includes(categoryId)
+        ? prev.filter(id => id !== categoryId)
+        : [...prev, categoryId]
+    );
+  };
+
+  const handleSaveBulkCategories = async () => {
+    if (bulkCategories.length === 0) {
+      toast.error("Selecciona al menos una categoría");
+      return;
+    }
+    
+    setSavingBulkCategories(true);
+    try {
+      const response = await api.post(`/catalogs/${catalogId}/products/bulk-categories`, {
+        product_item_ids: selectedIds,
+        category_ids: bulkCategories,
+        mode: bulkMode
+      });
+      
+      const modeText = bulkMode === "add" ? "añadidas a" : bulkMode === "replace" ? "reemplazadas en" : "eliminadas de";
+      toast.success(`Categorías ${modeText} ${response.data.updated_count} producto(s)`);
+      setShowBulkCategoryDialog(false);
+      setSelectedIds([]);
+      fetchProducts();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al asignar categorías");
+    } finally {
+      setSavingBulkCategories(false);
+    }
+  };
+
   const getCategoryName = (categoryId) => {
     const cat = catalogCategories.find(c => c.id === categoryId);
     return cat ? cat.name : categoryId;
@@ -289,16 +333,29 @@ const CatalogDetail = () => {
             )}
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {selectedIds.length > 0 && (
-            <Button 
-              variant="outline"
-              onClick={() => setShowDeleteDialog(true)}
-              className="text-rose-600 border-rose-200 hover:bg-rose-50"
-            >
-              <Trash2 className="w-4 h-4 mr-2" />
-              Eliminar ({selectedIds.length})
-            </Button>
+            <>
+              {catalogCategories.length > 0 && (
+                <Button 
+                  variant="outline"
+                  onClick={openBulkCategoryDialog}
+                  className="text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                  data-testid="bulk-assign-categories-btn"
+                >
+                  <FolderTree className="w-4 h-4 mr-2" />
+                  Asignar a Categorías ({selectedIds.length})
+                </Button>
+              )}
+              <Button 
+                variant="outline"
+                onClick={() => setShowDeleteDialog(true)}
+                className="text-rose-600 border-rose-200 hover:bg-rose-50"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Eliminar ({selectedIds.length})
+              </Button>
+            </>
           )}
           <Button 
             onClick={() => { setSelectedToAdd([]); setShowAddDialog(true); }} 
@@ -713,6 +770,124 @@ const CatalogDetail = () => {
             >
               {savingCategories ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
               Guardar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Assign Categories Dialog */}
+      <Dialog open={showBulkCategoryDialog} onOpenChange={setShowBulkCategoryDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+              <FolderTree className="w-5 h-5 text-indigo-600" />
+              Asignar Categorías a {selectedIds.length} Producto{selectedIds.length !== 1 ? 's' : ''}
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona las categorías y el modo de asignación
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-4 space-y-4">
+            {/* Mode Selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Modo de asignación</Label>
+              <Select value={bulkMode} onValueChange={setBulkMode}>
+                <SelectTrigger className="input-base" data-testid="bulk-mode-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="add">
+                    <div className="flex items-center gap-2">
+                      <Plus className="w-4 h-4 text-emerald-600" />
+                      <span>Añadir a las existentes</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="replace">
+                    <div className="flex items-center gap-2">
+                      <RefreshCw className="w-4 h-4 text-amber-600" />
+                      <span>Reemplazar todas</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="remove">
+                    <div className="flex items-center gap-2">
+                      <Trash2 className="w-4 h-4 text-rose-600" />
+                      <span>Quitar categorías</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">
+                {bulkMode === "add" && "Las categorías seleccionadas se añadirán a las que ya tienen los productos."}
+                {bulkMode === "replace" && "Se reemplazarán todas las categorías existentes por las seleccionadas."}
+                {bulkMode === "remove" && "Las categorías seleccionadas serán eliminadas de los productos."}
+              </p>
+            </div>
+
+            {/* Categories Selection */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Categorías</Label>
+              {catalogCategories.length === 0 ? (
+                <div className="text-center py-6">
+                  <FolderTree className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+                  <p className="text-slate-600 font-medium mb-1">No hay categorías</p>
+                  <p className="text-slate-500 text-sm">
+                    Crea categorías desde la página de Catálogos
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[250px] overflow-y-auto border rounded-lg p-2">
+                  {catalogCategories.map((cat) => (
+                    <div 
+                      key={cat.id}
+                      className={`flex items-center gap-3 p-2 rounded-lg hover:bg-slate-50 cursor-pointer transition-colors ${bulkCategories.includes(cat.id) ? 'bg-indigo-50 ring-1 ring-indigo-200' : ''}`}
+                      onClick={() => handleToggleBulkCategory(cat.id)}
+                      style={{ marginLeft: `${cat.level * 16}px` }}
+                      data-testid={`bulk-category-${cat.id}`}
+                    >
+                      <Checkbox
+                        checked={bulkCategories.includes(cat.id)}
+                        onCheckedChange={() => handleToggleBulkCategory(cat.id)}
+                      />
+                      <div className="flex items-center gap-2 flex-1">
+                        <FolderTree className="w-4 h-4 text-indigo-500" />
+                        <span className="font-medium text-slate-800">{cat.name}</span>
+                        <Badge variant="outline" className="text-xs text-slate-400">
+                          Nivel {cat.level + 1}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {bulkCategories.length > 0 && (
+              <div className="flex flex-wrap gap-1 p-2 bg-slate-50 rounded-lg">
+                <span className="text-xs text-slate-500 w-full mb-1">Seleccionadas:</span>
+                {bulkCategories.map(catId => (
+                  <Badge key={catId} className="bg-indigo-100 text-indigo-700 border-0">
+                    {getCategoryName(catId)}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+          
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowBulkCategoryDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              onClick={handleSaveBulkCategories} 
+              disabled={savingBulkCategories || bulkCategories.length === 0 || catalogCategories.length === 0}
+              className={bulkMode === "remove" ? "bg-rose-600 hover:bg-rose-700 text-white" : "btn-primary"}
+              data-testid="bulk-save-categories-btn"
+            >
+              {savingBulkCategories ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : null}
+              {bulkMode === "add" && "Añadir Categorías"}
+              {bulkMode === "replace" && "Reemplazar Categorías"}
+              {bulkMode === "remove" && "Quitar Categorías"}
             </Button>
           </DialogFooter>
         </DialogContent>

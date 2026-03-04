@@ -11,7 +11,8 @@ from models.schemas import (
     CatalogProductAdd, CatalogItemCreate, CatalogMarginRuleCreate,
     CatalogMarginRuleResponse, MarginRuleCreate, MarginRuleResponse,
     ProductResponse, CatalogCategoryCreate, CatalogCategoryUpdate,
-    CatalogCategoryResponse, CatalogCategoryBulkReorder, CatalogItemCategoryUpdate
+    CatalogCategoryResponse, CatalogCategoryBulkReorder, CatalogItemCategoryUpdate,
+    BulkCategoryAssignment
 )
 
 router = APIRouter()
@@ -659,3 +660,66 @@ async def get_category_products(catalog_id: str, category_id: str, user: dict = 
             })
     
     return result
+
+
+@router.post("/catalogs/{catalog_id}/products/bulk-categories")
+async def bulk_assign_categories(catalog_id: str, data: BulkCategoryAssignment, user: dict = Depends(get_current_user)):
+    """Assign categories to multiple products at once
+    
+    Modes:
+    - add: Add the specified categories to existing ones
+    - replace: Replace all categories with the specified ones
+    - remove: Remove the specified categories from products
+    """
+    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    if not catalog:
+        raise HTTPException(status_code=404, detail="Catálogo no encontrado")
+    
+    if not data.product_item_ids:
+        raise HTTPException(status_code=400, detail="Debe seleccionar al menos un producto")
+    
+    if data.mode not in ["add", "replace", "remove"]:
+        raise HTTPException(status_code=400, detail="Modo no válido. Use 'add', 'replace' o 'remove'")
+    
+    # Verify all category IDs exist in this catalog
+    if data.category_ids:
+        valid_categories = await db.catalog_categories.find(
+            {"catalog_id": catalog_id, "id": {"$in": data.category_ids}}
+        ).to_list(100)
+        valid_ids = [c["id"] for c in valid_categories]
+        invalid_ids = set(data.category_ids) - set(valid_ids)
+        if invalid_ids:
+            raise HTTPException(status_code=400, detail=f"Categorías no válidas: {list(invalid_ids)}")
+    
+    updated_count = 0
+    
+    if data.mode == "replace":
+        # Replace all categories
+        result = await db.catalog_items.update_many(
+            {"catalog_id": catalog_id, "id": {"$in": data.product_item_ids}},
+            {"$set": {"category_ids": data.category_ids}}
+        )
+        updated_count = result.modified_count
+        
+    elif data.mode == "add":
+        # Add categories to existing ones (using $addToSet to avoid duplicates)
+        result = await db.catalog_items.update_many(
+            {"catalog_id": catalog_id, "id": {"$in": data.product_item_ids}},
+            {"$addToSet": {"category_ids": {"$each": data.category_ids}}}
+        )
+        updated_count = result.modified_count
+        
+    elif data.mode == "remove":
+        # Remove specified categories
+        result = await db.catalog_items.update_many(
+            {"catalog_id": catalog_id, "id": {"$in": data.product_item_ids}},
+            {"$pull": {"category_ids": {"$in": data.category_ids}}}
+        )
+        updated_count = result.modified_count
+    
+    return {
+        "message": f"Categorías actualizadas en {updated_count} producto(s)",
+        "updated_count": updated_count,
+        "mode": data.mode,
+        "category_ids": data.category_ids
+    }

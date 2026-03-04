@@ -271,6 +271,12 @@ class CatalogItemResponse(BaseModel):
 class CatalogItemCategoryUpdate(BaseModel):
     category_ids: List[str]
 
+class BulkCategoryAssignment(BaseModel):
+    """Assign categories to multiple products at once"""
+    product_item_ids: List[str]
+    category_ids: List[str]
+    mode: str = "add"  # "add" to append, "replace" to overwrite, "remove" to remove
+
 class CatalogMarginRuleCreate(BaseModel):
     catalog_id: str
     name: str
