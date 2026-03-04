@@ -26,7 +26,8 @@ import {
   FileText,
   Settings,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  DollarSign
 } from "lucide-react";
 
 const navItems = [
@@ -44,9 +45,9 @@ const navItems = [
 ];
 
 const adminItems = [
-  { path: "/admin/dashboard", label: "Dashboard Admin", icon: Crown },
   { path: "/admin/users", label: "Usuarios", icon: Users },
-  { path: "/admin/plans", label: "Planes", icon: CreditCard },
+  { path: "/admin/subscriptions", label: "Suscripciones", icon: CreditCard },
+  { path: "/admin/stripe", label: "Config. Stripe", icon: DollarSign },
   { path: "/admin/branding", label: "Personalización", icon: Palette },
   { path: "/admin/email-config", label: "Config. Email", icon: Mail },
   { path: "/admin/email-templates", label: "Plantillas Email", icon: FileText },
@@ -140,13 +141,19 @@ const Sidebar = ({ open, onToggle }) => {
         {/* Admin Section - Only visible for SuperAdmin */}
         {isSuperAdmin && (
           <div className="pt-4 mt-4 border-t border-slate-200">
-            <button
+            {/* Administración - Link directo al Dashboard */}
+            <Link
+              to="/admin/dashboard"
               onClick={() => setAdminExpanded(!adminExpanded)}
-              className="w-full flex items-center justify-between px-3 py-2.5 rounded-sm text-slate-600 hover:bg-slate-50 transition-all duration-200 font-medium"
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm transition-all duration-200 font-medium ${
+                location.pathname === "/admin/dashboard"
+                  ? "bg-purple-100 text-purple-700"
+                  : "text-slate-600 hover:bg-slate-50"
+              }`}
               data-testid="admin-section-toggle"
             >
               <div className="flex items-center gap-3">
-                <Settings className="w-5 h-5 text-purple-600" strokeWidth={1.5} />
+                <Crown className="w-5 h-5 text-purple-600" strokeWidth={1.5} />
                 <span className="text-purple-700 font-semibold">Administración</span>
               </div>
               {adminExpanded ? (
@@ -154,7 +161,7 @@ const Sidebar = ({ open, onToggle }) => {
               ) : (
                 <ChevronRight className="w-4 h-4 text-purple-500" />
               )}
-            </button>
+            </Link>
 
             {adminExpanded && (
               <div className="mt-1 ml-2 space-y-1">

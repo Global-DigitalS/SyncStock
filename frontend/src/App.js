@@ -30,6 +30,7 @@ import EmailConfig from "./pages/EmailConfig";
 import AdminBranding from "./pages/AdminBranding";
 import AdminPlans from "./pages/AdminPlans";
 import AdminEmailTemplates from "./pages/AdminEmailTemplates";
+import AdminStripe from "./pages/AdminStripe";
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -467,6 +468,26 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <AdminPlans />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/subscriptions"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AdminPlans />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/stripe"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AdminStripe />
                 </MainLayout>
               </ProtectedRoute>
             }
