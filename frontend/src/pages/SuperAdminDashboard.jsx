@@ -4,10 +4,23 @@ import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../components/ui/alert-dialog";
 import {
   Users, Shield, Package, Truck, BookOpen, ShoppingCart, 
   RefreshCw, AlertCircle, TrendingUp, Crown, Eye, Edit3,
-  Activity, Database, Server, CheckCircle, XCircle
+  Activity, Database, Server, CheckCircle, XCircle, Trash2, AlertTriangle
 } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
@@ -32,6 +45,9 @@ const SuperAdminDashboard = () => {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showResetDialog, setShowResetDialog] = useState(false);
+  const [resetConfirmation, setResetConfirmation] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   useEffect(() => {
     if (user?.role !== "superadmin") {
@@ -61,6 +77,29 @@ const SuperAdminDashboard = () => {
     return new Date(dateStr).toLocaleDateString("es-ES", {
       day: "2-digit", month: "short", year: "numeric"
     });
+  };
+
+  const handleResetApplication = async () => {
+    if (resetConfirmation !== "RESET") {
+      toast.error("Escribe 'RESET' para confirmar");
+      return;
+    }
+
+    setResetting(true);
+    try {
+      const res = await api.post("/admin/system/reset", {
+        confirmation_text: "RESET"
+      });
+      toast.success(res.data.message);
+      setShowResetDialog(false);
+      setResetConfirmation("");
+      // Refresh stats after reset
+      fetchStats();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al reiniciar la aplicación");
+    } finally {
+      setResetting(false);
+    }
   };
 
   if (loading) {
@@ -376,6 +415,101 @@ const SuperAdminDashboard = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* System Administration - Danger Zone */}
+      <Card className="border-rose-200 bg-rose-50/30 mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-lg text-rose-700" style={{ fontFamily: 'Manrope, sans-serif' }}>
+            <AlertTriangle className="w-5 h-5" />
+            Zona de Peligro
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between p-4 bg-white rounded-lg border border-rose-200">
+            <div>
+              <h3 className="font-semibold text-slate-900">Reiniciar Aplicación</h3>
+              <p className="text-sm text-slate-500">
+                Elimina todos los datos de la aplicación (proveedores, productos, catálogos, tiendas, etc.) 
+                <strong className="text-slate-700"> excepto los usuarios</strong>.
+              </p>
+            </div>
+            <Button 
+              variant="destructive" 
+              onClick={() => setShowResetDialog(true)}
+              className="bg-rose-600 hover:bg-rose-700"
+              data-testid="reset-app-btn"
+            >
+              <Trash2 className="w-4 h-4 mr-2" />
+              Reiniciar App
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Reset Confirmation Dialog */}
+      <AlertDialog open={showResetDialog} onOpenChange={setShowResetDialog}>
+        <AlertDialogContent className="max-w-md">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-rose-700" style={{ fontFamily: 'Manrope, sans-serif' }}>
+              <AlertTriangle className="w-5 h-5" />
+              ¿Reiniciar la Aplicación?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="space-y-3">
+              <p>
+                Esta acción eliminará <strong>permanentemente</strong> todos los datos de la aplicación:
+              </p>
+              <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
+                <li>Todos los proveedores y sus configuraciones</li>
+                <li>Todos los productos importados</li>
+                <li>Todos los catálogos y categorías</li>
+                <li>Todas las tiendas configuradas</li>
+                <li>Todo el historial de sincronización</li>
+                <li>Todas las configuraciones de la app</li>
+              </ul>
+              <p className="text-emerald-600 font-medium">
+                ✓ Los usuarios se mantendrán intactos
+              </p>
+              <div className="pt-2">
+                <Label htmlFor="reset-confirm" className="text-slate-700">
+                  Escribe <strong>RESET</strong> para confirmar:
+                </Label>
+                <Input
+                  id="reset-confirm"
+                  value={resetConfirmation}
+                  onChange={(e) => setResetConfirmation(e.target.value.toUpperCase())}
+                  placeholder="RESET"
+                  className="mt-2 border-rose-200 focus:border-rose-400"
+                  data-testid="reset-confirmation-input"
+                />
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel 
+              onClick={() => {
+                setResetConfirmation("");
+                setShowResetDialog(false);
+              }}
+              className="btn-secondary"
+            >
+              Cancelar
+            </AlertDialogCancel>
+            <Button
+              onClick={handleResetApplication}
+              disabled={resetConfirmation !== "RESET" || resetting}
+              className="bg-rose-600 hover:bg-rose-700 text-white"
+              data-testid="confirm-reset-btn"
+            >
+              {resetting ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-2" />
+              )}
+              {resetting ? "Reiniciando..." : "Reiniciar Aplicación"}
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
