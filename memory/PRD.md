@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 2.1.0  
+**Versión:** 2.2.0  
 **Última actualización:** 2026-03-04  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -16,12 +16,18 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] Autenticación JWT con sistema de roles (Viewer, User, Admin, SuperAdmin)
 - [x] Gestión de proveedores con soporte FTP/URL
 - [x] Importación de productos desde CSV con mapeo de columnas
-- [x] **Reglas de Margen por Catálogo** (NUEVO - 2026-03-04)
+- [x] **Reglas de Margen por Catálogo** (2026-03-04)
   - Cada catálogo tiene sus propias reglas de margen independientes
   - Soporte para porcentajes y cantidades fijas
   - Filtros por categoría, proveedor o marca
   - Tramos de precios (precio mínimo y máximo)
   - Sistema de prioridades
+- [x] **Categorías de Catálogo** (NUEVO - 2026-03-04)
+  - Sistema jerárquico de categorías y subcategorías (máximo 4 niveles)
+  - Un producto puede pertenecer a múltiples categorías
+  - Ordenación de categorías (mover arriba/abajo)
+  - Filtrado de productos por categoría
+  - Asignación de categorías desde el detalle del catálogo
 - [x] Exportación de catálogos a CSV
 - [x] Unificación de productos por EAN
 - [x] Paginación y ordenación en listas
@@ -121,7 +127,19 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 
 ## Historial de Cambios
 
-### 2026-03-04 (Sesión actual)
+### 2026-03-04 (Sesión actual - Parte 2)
+- ✅ **Sistema de Categorías por Catálogo**
+  - CRUD completo de categorías (crear, leer, actualizar, eliminar)
+  - Jerarquía de hasta 4 niveles (Categoría > Subcategoría > Sub-sub > ...)
+  - Un producto puede pertenecer a múltiples categorías
+  - Reordenación de categorías (subir/bajar)
+  - Filtrado de productos por categoría en detalle del catálogo
+  - Asignación de categorías desde icono de etiqueta en cada producto
+  - Backend: 9 nuevos endpoints para gestión de categorías
+  - Frontend: Nuevo componente `CatalogCategories.jsx`
+  - Tests: 19/19 backend, 100% frontend
+
+### 2026-03-04 (Sesión actual - Parte 1)
 - ✅ **Reglas de Margen movidas a nivel de Catálogo**
   - Eliminada la sección global "Reglas de Margen" del menú lateral
   - Las reglas ahora se configuran dentro de cada catálogo
