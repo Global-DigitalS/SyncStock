@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 2.5.0  
+**Versión:** 2.6.0  
 **Última actualización:** 2026-03-04  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -56,6 +56,16 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Personalización (Branding)
   - Config. Email
   - Plantillas Email
+
+- [x] **Reiniciar Aplicación (Zona de Peligro)** (NUEVO - 2026-03-04)
+  - Ubicación: Dashboard Admin (`/admin/dashboard`) - Sección "Zona de Peligro"
+  - Permite al SuperAdmin borrar TODA la base de datos excepto los usuarios
+  - Botón "Reiniciar App" con confirmación obligatoria
+  - Diálogo de confirmación que requiere escribir "RESET" exactamente
+  - Lista de datos que serán eliminados (proveedores, productos, catálogos, tiendas, etc.)
+  - Los usuarios se preservan para mantener el acceso
+  - Endpoint: POST /api/admin/system/reset (requiere `{"confirmation_text": "RESET"}`)
+  - Registro de auditoría (quién ejecutó y cuándo)
 
 - [x] **Personalización/Branding** (`/admin/branding`)
   - Nombre de la aplicación

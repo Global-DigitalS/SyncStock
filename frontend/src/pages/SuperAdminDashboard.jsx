@@ -454,33 +454,35 @@ const SuperAdminDashboard = () => {
               <AlertTriangle className="w-5 h-5" />
               ¿Reiniciar la Aplicación?
             </AlertDialogTitle>
-            <AlertDialogDescription className="space-y-3">
-              <p>
-                Esta acción eliminará <strong>permanentemente</strong> todos los datos de la aplicación:
-              </p>
-              <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
-                <li>Todos los proveedores y sus configuraciones</li>
-                <li>Todos los productos importados</li>
-                <li>Todos los catálogos y categorías</li>
-                <li>Todas las tiendas configuradas</li>
-                <li>Todo el historial de sincronización</li>
-                <li>Todas las configuraciones de la app</li>
-              </ul>
-              <p className="text-emerald-600 font-medium">
-                ✓ Los usuarios se mantendrán intactos
-              </p>
-              <div className="pt-2">
-                <Label htmlFor="reset-confirm" className="text-slate-700">
-                  Escribe <strong>RESET</strong> para confirmar:
-                </Label>
-                <Input
-                  id="reset-confirm"
-                  value={resetConfirmation}
-                  onChange={(e) => setResetConfirmation(e.target.value.toUpperCase())}
-                  placeholder="RESET"
-                  className="mt-2 border-rose-200 focus:border-rose-400"
-                  data-testid="reset-confirmation-input"
-                />
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  Esta acción eliminará <strong>permanentemente</strong> todos los datos de la aplicación:
+                </p>
+                <ul className="list-disc list-inside text-sm text-slate-600 space-y-1">
+                  <li>Todos los proveedores y sus configuraciones</li>
+                  <li>Todos los productos importados</li>
+                  <li>Todos los catálogos y categorías</li>
+                  <li>Todas las tiendas configuradas</li>
+                  <li>Todo el historial de sincronización</li>
+                  <li>Todas las configuraciones de la app</li>
+                </ul>
+                <p className="text-emerald-600 font-medium">
+                  ✓ Los usuarios se mantendrán intactos
+                </p>
+                <div className="pt-2">
+                  <Label htmlFor="reset-confirm" className="text-slate-700">
+                    Escribe <strong>RESET</strong> para confirmar:
+                  </Label>
+                  <Input
+                    id="reset-confirm"
+                    value={resetConfirmation}
+                    onChange={(e) => setResetConfirmation(e.target.value.toUpperCase())}
+                    placeholder="RESET"
+                    className="mt-2 border-rose-200 focus:border-rose-400"
+                    data-testid="reset-confirmation-input"
+                  />
+                </div>
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
