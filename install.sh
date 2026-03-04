@@ -260,13 +260,57 @@ setup_application() {
     
     # Determinar directorio de instalación para Plesk
     if [ "$IS_PLESK" == "yes" ]; then
-        # En Plesk, el Document Root está configurado como app/
-        APP_DIR="/var/www/vhosts/$DOMAIN/app"
+        # Detectar si es un subdominio (ej: app.sync-stock.com)
+        # Los subdominios en Plesk se guardan dentro del dominio principal
+        SUBDOMAIN_PARTS=$(echo "$DOMAIN" | tr '.' '\n' | wc -l)
+        
+        if [ "$SUBDOMAIN_PARTS" -ge 3 ]; then
+            # Es un subdominio (tiene 3 o más partes: app.sync-stock.com)
+            # Extraer el dominio principal (últimas 2 partes)
+            MAIN_DOMAIN=$(echo "$DOMAIN" | rev | cut -d'.' -f1-2 | rev)
+            IS_SUBDOMAIN="yes"
+            
+            # En Plesk, subdominios están en: /var/www/vhosts/DOMINIO_PRINCIPAL/SUBDOMINIO/
+            if [ -d "/var/www/vhosts/$MAIN_DOMAIN/$DOMAIN" ]; then
+                # Estructura de subdominio de Plesk
+                APP_DIR="/var/www/vhosts/$MAIN_DOMAIN/$DOMAIN/app"
+                PLESK_VHOST_DIR="/var/www/vhosts/$MAIN_DOMAIN"
+                print_info "Detectado como subdominio de $MAIN_DOMAIN"
+            elif [ -d "/var/www/vhosts/$DOMAIN" ]; then
+                # El subdominio tiene su propio vhost (dominio adicional)
+                APP_DIR="/var/www/vhosts/$DOMAIN/app"
+                PLESK_VHOST_DIR="/var/www/vhosts/$DOMAIN"
+                IS_SUBDOMAIN="no"
+            else
+                print_error "No se encontró el directorio del dominio $DOMAIN"
+                echo ""
+                echo -e "  ${YELLOW}Rutas buscadas:${NC}"
+                echo -e "    - /var/www/vhosts/$MAIN_DOMAIN/$DOMAIN"
+                echo -e "    - /var/www/vhosts/$DOMAIN"
+                echo ""
+                read -p "  Introduce la ruta correcta al vhost: " CUSTOM_VHOST
+                if [ -d "$CUSTOM_VHOST" ]; then
+                    APP_DIR="$CUSTOM_VHOST/app"
+                    PLESK_VHOST_DIR="$CUSTOM_VHOST"
+                else
+                    print_error "La ruta $CUSTOM_VHOST no existe"
+                    exit 1
+                fi
+            fi
+        else
+            # Es un dominio principal (solo 2 partes: sync-stock.com)
+            IS_SUBDOMAIN="no"
+            APP_DIR="/var/www/vhosts/$DOMAIN/app"
+            PLESK_VHOST_DIR="/var/www/vhosts/$DOMAIN"
+        fi
         
         # Detectar el usuario de Plesk
-        if [ -d "/var/www/vhosts/$DOMAIN" ]; then
-            PLESK_USER=$(stat -c '%U' "/var/www/vhosts/$DOMAIN")
+        if [ -d "$PLESK_VHOST_DIR" ]; then
+            PLESK_USER=$(stat -c '%U' "$PLESK_VHOST_DIR")
         fi
+        
+        print_info "Directorio vhost: $PLESK_VHOST_DIR"
+        print_info "Usuario Plesk: $PLESK_USER"
     else
         APP_DIR="/var/www/$APP_NAME"
     fi
@@ -335,8 +379,37 @@ setup_backend() {
     pip install --upgrade pip -q
     pip install -r requirements.txt -q
     
+    # Generar nombre de servicio único basado en el dominio
+    # Reemplazar puntos por guiones para el nombre del servicio
+    SERVICE_NAME=$(echo "$DOMAIN" | tr '.' '-' | tr '[:upper:]' '[:lower:]')
+    SERVICE_NAME="${SERVICE_NAME}-backend"
+    
+    # Determinar puerto disponible
+    # Buscar puertos en uso por otros servicios de la aplicación
+    BACKEND_PORT=8001
+    while netstat -tuln 2>/dev/null | grep -q ":$BACKEND_PORT " || \
+          ss -tuln 2>/dev/null | grep -q ":$BACKEND_PORT " || \
+          grep -r "port $BACKEND_PORT\|port=$BACKEND_PORT\|:$BACKEND_PORT" /etc/systemd/system/*-backend.service 2>/dev/null | grep -v "$SERVICE_NAME" | grep -q .; do
+        BACKEND_PORT=$((BACKEND_PORT + 1))
+        if [ "$BACKEND_PORT" -gt 8099 ]; then
+            print_error "No se encontró un puerto disponible entre 8001-8099"
+            exit 1
+        fi
+    done
+    
+    print_info "Puerto del backend: $BACKEND_PORT"
+    print_info "Nombre del servicio: $SERVICE_NAME"
+    
+    # Guardar el puerto para usarlo en la configuración de nginx
+    echo "$BACKEND_PORT" > "$APP_DIR/.backend_port"
+    
     # Verificar si existe configuración persistente
-    PERSISTENT_CONFIG="/etc/suppliersync/config.json"
+    # Usar directorio específico por dominio
+    PERSISTENT_CONFIG_DIR="/etc/suppliersync/$DOMAIN"
+    PERSISTENT_CONFIG="$PERSISTENT_CONFIG_DIR/config.json"
+    
+    mkdir -p "$PERSISTENT_CONFIG_DIR"
+    
     if [ -f "$PERSISTENT_CONFIG" ]; then
         print_success "Configuración existente detectada en $PERSISTENT_CONFIG"
         print_info "La configuración se preservará durante la actualización"
@@ -361,6 +434,7 @@ setup_backend() {
 MONGO_URL=${MONGODB_URL:-mongodb://localhost:27017}
 DB_NAME=${EXISTING_DB:-supplier_sync_db}
 CORS_ORIGINS=https://$DOMAIN,https://www.$DOMAIN
+CONFIG_PATH=$PERSISTENT_CONFIG
 EOF
     
     print_success "Backend configurado"
@@ -377,9 +451,9 @@ EOF
         SERVICE_GROUP="www-data"
     fi
     
-    cat > /etc/systemd/system/${APP_NAME}-backend.service << EOF
+    cat > /etc/systemd/system/${SERVICE_NAME}.service << EOF
 [Unit]
-Description=SupplierSync Pro Backend
+Description=Backend for $DOMAIN
 After=network.target
 
 [Service]
@@ -387,7 +461,8 @@ User=$SERVICE_USER
 Group=$SERVICE_GROUP
 WorkingDirectory=$APP_DIR/backend
 Environment="PATH=$APP_DIR/backend/venv/bin"
-ExecStart=$APP_DIR/backend/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8001
+Environment="CONFIG_PATH=$PERSISTENT_CONFIG"
+ExecStart=$APP_DIR/backend/venv/bin/uvicorn server:app --host 127.0.0.1 --port $BACKEND_PORT
 Restart=always
 RestartSec=10
 
@@ -396,25 +471,25 @@ WantedBy=multi-user.target
 EOF
 
     # Crear directorio de configuración persistente y establecer permisos
-    mkdir -p /etc/suppliersync
-    chown -R $SERVICE_USER:$SERVICE_GROUP /etc/suppliersync 2>/dev/null || true
-    chmod 755 /etc/suppliersync
+    mkdir -p "$PERSISTENT_CONFIG_DIR"
+    chown -R $SERVICE_USER:$SERVICE_GROUP "$PERSISTENT_CONFIG_DIR" 2>/dev/null || true
+    chmod 755 "$PERSISTENT_CONFIG_DIR"
     
     # Ajustar permisos del backend
     chown -R $SERVICE_USER:$SERVICE_GROUP "$APP_DIR/backend"
     
     # Habilitar e iniciar servicio
     systemctl daemon-reload
-    systemctl enable ${APP_NAME}-backend
-    systemctl start ${APP_NAME}-backend
+    systemctl enable ${SERVICE_NAME}
+    systemctl start ${SERVICE_NAME}
     
     sleep 3
     
-    if systemctl is-active --quiet ${APP_NAME}-backend; then
-        print_success "Backend ejecutándose correctamente"
+    if systemctl is-active --quiet ${SERVICE_NAME}; then
+        print_success "Backend ejecutándose correctamente en puerto $BACKEND_PORT"
     else
         print_error "Error al iniciar el backend"
-        journalctl -u ${APP_NAME}-backend --no-pager -n 30
+        journalctl -u ${SERVICE_NAME} --no-pager -n 30
         exit 1
     fi
 }
@@ -462,6 +537,15 @@ setup_nginx_plesk() {
         exit 1
     fi
     
+    # Leer el puerto del backend
+    if [ -f "$APP_DIR/.backend_port" ]; then
+        BACKEND_PORT=$(cat "$APP_DIR/.backend_port")
+    else
+        BACKEND_PORT=8001
+    fi
+    
+    print_info "Puerto del backend: $BACKEND_PORT"
+    
     # Establecer permisos correctos para Plesk
     if [ -n "$PLESK_USER" ]; then
         chown -R "$PLESK_USER:psacln" "$APP_DIR"
@@ -480,22 +564,23 @@ setup_nginx_plesk() {
     
     print_info "Creando configuración de Nginx..."
     
-    cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
-# SupplierSync Pro - Configuración Nginx para Plesk
+    # Generar configuración con el puerto correcto
+    cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << EOF
+# Configuración Nginx para $DOMAIN
 # Document Root: app/frontend/build
-# Nota: Usamos HashRouter, no se requiere configuración especial para SPA
+# Puerto Backend: $BACKEND_PORT
 
-# API Backend - Proxy a FastAPI (puerto 8001)
+# API Backend - Proxy a FastAPI (puerto $BACKEND_PORT)
 location /api/ {
-    proxy_pass http://127.0.0.1:8001/api/;
+    proxy_pass http://127.0.0.1:$BACKEND_PORT/api/;
     proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Upgrade \$http_upgrade;
     proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_cache_bypass $http_upgrade;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_cache_bypass \$http_upgrade;
     proxy_read_timeout 300s;
     proxy_connect_timeout 75s;
     proxy_send_timeout 300s;
@@ -503,24 +588,24 @@ location /api/ {
 
 # Health Check
 location /health {
-    proxy_pass http://127.0.0.1:8001/health;
+    proxy_pass http://127.0.0.1:$BACKEND_PORT/health;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host \$host;
     proxy_read_timeout 10s;
 }
 
 # WebSocket para notificaciones en tiempo real
 location /ws/ {
-    proxy_pass http://127.0.0.1:8001/ws/;
+    proxy_pass http://127.0.0.1:$BACKEND_PORT/ws/;
     proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Upgrade \$http_upgrade;
     proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
     proxy_read_timeout 86400;
     proxy_send_timeout 86400;
 }
-NGINX_EOF
+EOF
     
     print_success "Archivo de referencia Nginx creado"
     
@@ -540,18 +625,18 @@ NGINX_EOF
     echo -e "  ${CYAN}4. Copia y pega el siguiente contenido:${NC}"
     echo ""
     echo -e "${GREEN}─────────────── INICIO COPIAR ───────────────${NC}"
-    cat << 'NGINX_DISPLAY'
-# API Backend - Proxy a FastAPI (puerto 8001)
+    cat << EOF
+# API Backend - Proxy a FastAPI (puerto $BACKEND_PORT)
 location /api/ {
-    proxy_pass http://127.0.0.1:8001/api/;
+    proxy_pass http://127.0.0.1:$BACKEND_PORT/api/;
     proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Upgrade \$http_upgrade;
     proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_cache_bypass $http_upgrade;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_cache_bypass \$http_upgrade;
     proxy_read_timeout 300s;
     proxy_connect_timeout 75s;
     proxy_send_timeout 300s;
@@ -559,12 +644,12 @@ location /api/ {
 
 # Health Check
 location /health {
-    proxy_pass http://127.0.0.1:8001/health;
+    proxy_pass http://127.0.0.1:$BACKEND_PORT/health;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host \$host;
     proxy_read_timeout 10s;
 }
-NGINX_DISPLAY
+EOF
     echo -e "${GREEN}─────────────── FIN COPIAR ───────────────${NC}"
     echo ""
     echo -e "  ${CYAN}5. Haz clic en 'OK' o 'Apply'${NC}"
@@ -748,18 +833,22 @@ print_summary() {
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo -e "  ${GREEN}✓ CONFIGURACIÓN PERSISTENTE${NC}"
-    echo -e "    La configuración se guardará en: ${CYAN}/etc/suppliersync/${NC}"
+    echo -e "    La configuración se guardará en: ${CYAN}$PERSISTENT_CONFIG_DIR/${NC}"
     echo -e "    Esta ubicación NO se sobrescribe al actualizar la aplicación."
+    echo ""
+    echo -e "  ${GREEN}✓ SERVICIO BACKEND${NC}"
+    echo -e "    Nombre del servicio: ${CYAN}$SERVICE_NAME${NC}"
+    echo -e "    Puerto: ${CYAN}$BACKEND_PORT${NC}"
     echo ""
     echo -e "${PURPLE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     echo ""
     echo -e "  ${YELLOW}Comandos útiles:${NC}"
     echo ""
     echo -e "    Ver logs del backend:"
-    echo -e "    ${CYAN}journalctl -u ${APP_NAME}-backend -f${NC}"
+    echo -e "    ${CYAN}journalctl -u ${SERVICE_NAME} -f${NC}"
     echo ""
     echo -e "    Reiniciar backend:"
-    echo -e "    ${CYAN}systemctl restart ${APP_NAME}-backend${NC}"
+    echo -e "    ${CYAN}systemctl restart ${SERVICE_NAME}${NC}"
     echo ""
     echo -e "    ${GREEN}Actualizar la aplicación (preserva configuración):${NC}"
     echo -e "    ${CYAN}sudo bash $APP_DIR/update.sh${NC}"
@@ -781,6 +870,9 @@ print_summary() {
         echo -e "  ${YELLOW}Configuración de Plesk:${NC}"
         echo -e "    • Document Root: ${CYAN}app/frontend/build${NC}"
         echo -e "    • SSL: Configurar desde Plesk → SSL/TLS Certificates"
+        if [ "$IS_SUBDOMAIN" == "yes" ]; then
+            echo -e "    • Tipo: ${CYAN}Subdominio de $MAIN_DOMAIN${NC}"
+        fi
         echo ""
     fi
 }

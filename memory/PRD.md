@@ -116,6 +116,15 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 
 ## Historial de Cambios
 
+### 2026-03-04
+- ✅ Solucionado problema de instalación en subdominios de Plesk
+- ✅ Actualizado `install.sh` para detectar automáticamente subdominios (ej: app.sync-stock.com)
+- ✅ Añadido soporte para múltiples instalaciones con puertos dinámicos (8001, 8002, etc.)
+- ✅ Cada instalación ahora tiene su propio servicio systemd con nombre único
+- ✅ Configuración persistente ahora separada por dominio (`/etc/suppliersync/DOMINIO/`)
+- ✅ Mejorado el sistema de recarga de conexión MongoDB (`reload_database_config()`)
+- ✅ Nuevo endpoint `POST /api/setup/reload-database` para recargar config sin reiniciar
+
 ### 2026-03-03
 - ✅ Solucionado problema de configuración de nginx en Plesk
 - ✅ Actualizados scripts install.sh y update.sh con instrucciones claras
