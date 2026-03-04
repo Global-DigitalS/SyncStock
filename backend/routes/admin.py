@@ -17,8 +17,16 @@ from services.database import db
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = "/app/uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# Use relative path from backend directory for uploads
+BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UPLOAD_DIR = os.path.join(BACKEND_DIR, "uploads")
+try:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+except PermissionError:
+    # Fallback to /tmp if we can't create the uploads directory
+    UPLOAD_DIR = "/tmp/suppliersync_uploads"
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    logger.warning(f"Using fallback upload directory: {UPLOAD_DIR}")
 
 
 # ==================== BRANDING MODELS ====================
