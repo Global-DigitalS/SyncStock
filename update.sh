@@ -82,18 +82,59 @@ check_root() {
 detect_installation() {
     print_step "Detectando instalación existente"
     
+    # Si se proporciona un dominio como argumento, usarlo
+    if [ -n "$1" ]; then
+        DOMAIN="$1"
+    fi
+    
+    # Si no hay dominio, preguntar
+    if [ -z "$DOMAIN" ]; then
+        echo ""
+        read -p "  Introduce el dominio a actualizar (ej: app.sync-stock.com): " DOMAIN
+        echo ""
+    fi
+    
+    if [ -z "$DOMAIN" ]; then
+        print_error "El dominio es obligatorio"
+        exit 1
+    fi
+    
     # Buscar directorio de la aplicación
     if [ -d "/var/www/vhosts" ]; then
-        # Buscar en Plesk
-        for vhost_dir in /var/www/vhosts/*/app; do
-            if [ -f "$vhost_dir/backend/server.py" ]; then
-                APP_DIR="$vhost_dir"
-                DOMAIN=$(basename $(dirname "$vhost_dir"))
-                IS_PLESK="yes"
-                PLESK_USER=$(stat -c '%U' "$(dirname $vhost_dir)" 2>/dev/null)
-                break
+        IS_PLESK="yes"
+        
+        # Detectar si es un subdominio
+        SUBDOMAIN_PARTS=$(echo "$DOMAIN" | tr '.' '\n' | wc -l)
+        
+        if [ "$SUBDOMAIN_PARTS" -ge 3 ]; then
+            # Es un subdominio - extraer dominio principal
+            MAIN_DOMAIN=$(echo "$DOMAIN" | rev | cut -d'.' -f1-2 | rev)
+            IS_SUBDOMAIN="yes"
+            
+            # Buscar en estructura de subdominio de Plesk
+            if [ -d "/var/www/vhosts/$MAIN_DOMAIN/$DOMAIN/app" ]; then
+                APP_DIR="/var/www/vhosts/$MAIN_DOMAIN/$DOMAIN/app"
+                PLESK_VHOST_DIR="/var/www/vhosts/$MAIN_DOMAIN"
+                print_info "Detectado como subdominio de $MAIN_DOMAIN"
+            elif [ -d "/var/www/vhosts/$DOMAIN/app" ]; then
+                # El subdominio tiene su propio vhost
+                APP_DIR="/var/www/vhosts/$DOMAIN/app"
+                PLESK_VHOST_DIR="/var/www/vhosts/$DOMAIN"
+                IS_SUBDOMAIN="no"
             fi
-        done
+        else
+            # Dominio principal
+            IS_SUBDOMAIN="no"
+            if [ -d "/var/www/vhosts/$DOMAIN/app" ]; then
+                APP_DIR="/var/www/vhosts/$DOMAIN/app"
+                PLESK_VHOST_DIR="/var/www/vhosts/$DOMAIN"
+            fi
+        fi
+        
+        # Detectar usuario de Plesk
+        if [ -n "$PLESK_VHOST_DIR" ] && [ -d "$PLESK_VHOST_DIR" ]; then
+            PLESK_USER=$(stat -c '%U' "$PLESK_VHOST_DIR" 2>/dev/null)
+        fi
     fi
     
     # Si no se encontró en Plesk, buscar en ubicación estándar
@@ -102,8 +143,15 @@ detect_installation() {
         IS_PLESK="no"
     fi
     
-    if [ -z "$APP_DIR" ]; then
-        print_error "No se encontró una instalación de SupplierSync Pro"
+    # Verificar que existe el código
+    if [ -z "$APP_DIR" ] || [ ! -f "$APP_DIR/backend/server.py" ]; then
+        print_error "No se encontró una instalación en $DOMAIN"
+        echo ""
+        echo -e "  ${YELLOW}Rutas buscadas:${NC}"
+        if [ "$IS_SUBDOMAIN" == "yes" ]; then
+            echo -e "    - /var/www/vhosts/$MAIN_DOMAIN/$DOMAIN/app"
+        fi
+        echo -e "    - /var/www/vhosts/$DOMAIN/app"
         echo ""
         echo -e "  ${YELLOW}Si es una instalación nueva, usa:${NC}"
         echo -e "    ${CYAN}sudo bash install.sh${NC}"
@@ -111,14 +159,43 @@ detect_installation() {
         exit 1
     fi
     
+    # Detectar nombre del servicio y puerto
+    SERVICE_NAME=$(echo "$DOMAIN" | tr '.' '-' | tr '[:upper:]' '[:lower:]')
+    SERVICE_NAME="${SERVICE_NAME}-backend"
+    
+    # Leer el puerto si existe el archivo
+    if [ -f "$APP_DIR/.backend_port" ]; then
+        BACKEND_PORT=$(cat "$APP_DIR/.backend_port")
+    else
+        # Intentar detectar el puerto del servicio systemd
+        BACKEND_PORT=$(grep -oP 'port \K[0-9]+' /etc/systemd/system/${SERVICE_NAME}.service 2>/dev/null || echo "8001")
+    fi
+    
+    # Configuración persistente por dominio
+    PERSISTENT_CONFIG_DIR="/etc/suppliersync/$DOMAIN"
+    PERSISTENT_CONFIG="$PERSISTENT_CONFIG_DIR/config.json"
+    BACKUP_DIR="$PERSISTENT_CONFIG_DIR/backups"
+    
+    # Fallback a configuración antigua si no existe la nueva
+    if [ ! -f "$PERSISTENT_CONFIG" ] && [ -f "/etc/suppliersync/config.json" ]; then
+        PERSISTENT_CONFIG="/etc/suppliersync/config.json"
+        BACKUP_DIR="/etc/suppliersync/backups"
+    fi
+    
     print_success "Instalación encontrada en: $APP_DIR"
     
     if [ "$IS_PLESK" == "yes" ]; then
         print_info "Tipo: Plesk ($DOMAIN)"
         print_info "Usuario: $PLESK_USER"
+        if [ "$IS_SUBDOMAIN" == "yes" ]; then
+            print_info "Subdominio de: $MAIN_DOMAIN"
+        fi
     else
         print_info "Tipo: Instalación estándar"
     fi
+    
+    print_info "Servicio: $SERVICE_NAME"
+    print_info "Puerto: $BACKEND_PORT"
 }
 
 #-------------------------------------------------------------------------------
@@ -139,7 +216,7 @@ backup_config() {
         # Buscar config.json en el directorio de la app
         if [ -f "$APP_DIR/backend/config.json" ]; then
             # Migrar a ubicación persistente
-            mkdir -p /etc/suppliersync
+            mkdir -p "$PERSISTENT_CONFIG_DIR"
             cp "$APP_DIR/backend/config.json" "$PERSISTENT_CONFIG"
             cp "$APP_DIR/backend/config.json" "$BACKUP_DIR/config_backup_$TIMESTAMP.json"
             print_success "Configuración migrada a ubicación persistente"
@@ -232,7 +309,7 @@ update_backend() {
     
     # Restaurar configuración persistente si existe
     if [ -f "$PERSISTENT_CONFIG" ]; then
-        print_success "Configuración persistente detectada"
+        print_success "Configuración persistente detectada: $PERSISTENT_CONFIG"
         
         # Extraer valores para actualizar .env
         if command -v python3 &> /dev/null; then
@@ -246,24 +323,43 @@ update_backend() {
 MONGO_URL=$MONGO_URL
 DB_NAME=$DB_NAME
 CORS_ORIGINS=$CORS
+CONFIG_PATH=$PERSISTENT_CONFIG
 EOF
                 print_success "Archivo .env actualizado desde configuración persistente"
             fi
         fi
     fi
     
-    # Reiniciar servicio
-    print_info "Reiniciando servicio backend..."
-    systemctl restart ${APP_NAME}-backend 2>/dev/null || true
+    # Reiniciar servicio usando el nombre correcto
+    print_info "Reiniciando servicio: $SERVICE_NAME"
     
-    sleep 3
-    
-    if systemctl is-active --quiet ${APP_NAME}-backend 2>/dev/null; then
-        print_success "Backend reiniciado correctamente"
+    if systemctl is-enabled --quiet ${SERVICE_NAME} 2>/dev/null; then
+        systemctl restart ${SERVICE_NAME}
+        sleep 3
+        
+        if systemctl is-active --quiet ${SERVICE_NAME}; then
+            print_success "Backend reiniciado correctamente"
+        else
+            print_error "Error al reiniciar el backend"
+            journalctl -u ${SERVICE_NAME} --no-pager -n 20
+        fi
     else
-        print_warning "Verificando estado del backend..."
-        # Intentar con supervisorctl si systemctl falla
-        supervisorctl restart backend 2>/dev/null || true
+        # Intentar con nombre antiguo (suppliersync-backend)
+        if systemctl is-enabled --quiet ${APP_NAME}-backend 2>/dev/null; then
+            print_warning "Usando nombre de servicio antiguo: ${APP_NAME}-backend"
+            systemctl restart ${APP_NAME}-backend
+            sleep 3
+            
+            if systemctl is-active --quiet ${APP_NAME}-backend; then
+                print_success "Backend reiniciado correctamente"
+            else
+                print_warning "Error al reiniciar. Intentando supervisorctl..."
+                supervisorctl restart backend 2>/dev/null || true
+            fi
+        else
+            print_warning "No se encontró servicio systemd. Intentando supervisorctl..."
+            supervisorctl restart backend 2>/dev/null || true
+        fi
     fi
 }
 
@@ -326,25 +422,26 @@ verify_nginx_plesk() {
     
     PLESK_NGINX_DIR="/var/www/vhosts/system/$DOMAIN/conf"
     
-    # Actualizar archivo de referencia
+    # Actualizar archivo de referencia con el puerto correcto
     mkdir -p "$PLESK_NGINX_DIR"
     
-    cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
-# SupplierSync Pro - Configuración Nginx para Plesk
+    cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << EOF
+# Configuración Nginx para $DOMAIN
 # IMPORTANTE: Este archivo es solo de REFERENCIA.
 # Debes copiar su contenido en Plesk → Apache & nginx Settings → Additional nginx directives
+# Puerto Backend: $BACKEND_PORT
 
-# API Backend - Proxy a FastAPI (puerto 8001)
+# API Backend - Proxy a FastAPI (puerto $BACKEND_PORT)
 location /api/ {
-    proxy_pass http://127.0.0.1:8001/api/;
+    proxy_pass http://127.0.0.1:$BACKEND_PORT/api/;
     proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Upgrade \$http_upgrade;
     proxy_set_header Connection 'upgrade';
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_cache_bypass $http_upgrade;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
+    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto \$scheme;
+    proxy_cache_bypass \$http_upgrade;
     proxy_read_timeout 300s;
     proxy_connect_timeout 75s;
     proxy_send_timeout 300s;
@@ -352,34 +449,34 @@ location /api/ {
 
 # Health Check
 location /health {
-    proxy_pass http://127.0.0.1:8001/health;
+    proxy_pass http://127.0.0.1:$BACKEND_PORT/health;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host \$host;
     proxy_read_timeout 10s;
 }
 
 # WebSocket para notificaciones en tiempo real
 location /ws/ {
-    proxy_pass http://127.0.0.1:8001/ws/;
+    proxy_pass http://127.0.0.1:$BACKEND_PORT/ws/;
     proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Upgrade \$http_upgrade;
     proxy_set_header Connection "upgrade";
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header Host \$host;
+    proxy_set_header X-Real-IP \$remote_addr;
     proxy_read_timeout 86400;
     proxy_send_timeout 86400;
 }
-NGINX_EOF
+EOF
 
-    print_success "Archivo de referencia nginx actualizado"
+    print_success "Archivo de referencia nginx actualizado (puerto $BACKEND_PORT)"
     
     # Verificar si la API responde
     print_info "Verificando si el proxy de la API está configurado..."
     
-    API_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:8001/health" 2>/dev/null || echo "000")
+    API_RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" "http://127.0.0.1:$BACKEND_PORT/health" 2>/dev/null || echo "000")
     
     if [ "$API_RESPONSE" == "200" ]; then
-        print_success "Backend responde correctamente en puerto 8001"
+        print_success "Backend responde correctamente en puerto $BACKEND_PORT"
         
         # Intentar verificar desde el dominio
         if [ -n "$DOMAIN" ]; then
@@ -393,12 +490,12 @@ NGINX_EOF
                 echo -e "${YELLOW}  ⚠ ATENCIÓN: El proxy de API puede no estar configurado${NC}"
                 echo -e "${YELLOW}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
                 echo ""
-                echo -e "  ${CYAN}El backend funciona, pero las peticiones a /api/ no llegan.${NC}"
+                echo -e "  ${CYAN}El backend funciona en puerto $BACKEND_PORT, pero las peticiones a /api/ no llegan.${NC}"
                 echo -e "  ${CYAN}Verifica en Plesk → $DOMAIN → Apache & nginx Settings:${NC}"
                 echo ""
                 echo -e "  ${CYAN}1. Busca 'Additional nginx directives'${NC}"
-                echo -e "  ${CYAN}2. Debe contener la configuración de proxy para /api/${NC}"
-                echo -e "  ${CYAN}3. Si está vacío, copia el contenido de:${NC}"
+                echo -e "  ${CYAN}2. Verifica que el puerto sea ${GREEN}$BACKEND_PORT${NC}"
+                echo -e "  ${CYAN}3. Si está incorrecto, actualiza con el contenido de:${NC}"
                 echo -e "     ${GREEN}$PLESK_NGINX_DIR/nginx_custom.conf${NC}"
                 echo ""
             fi
@@ -459,6 +556,10 @@ print_summary() {
     fi
     
     echo ""
+    echo -e "  ${PURPLE}Información del servicio:${NC}"
+    echo -e "    Nombre: ${CYAN}$SERVICE_NAME${NC}"
+    echo -e "    Puerto: ${CYAN}$BACKEND_PORT${NC}"
+    echo ""
     echo -e "  ${PURPLE}Backups disponibles en:${NC}"
     echo -e "    ${CYAN}$BACKUP_DIR${NC}"
     echo ""
@@ -474,10 +575,10 @@ print_summary() {
     echo -e "  ${YELLOW}Comandos útiles:${NC}"
     echo ""
     echo -e "    Ver logs del backend:"
-    echo -e "    ${CYAN}journalctl -u ${APP_NAME}-backend -f${NC}"
+    echo -e "    ${CYAN}journalctl -u ${SERVICE_NAME} -f${NC}"
     echo ""
     echo -e "    Reiniciar backend:"
-    echo -e "    ${CYAN}systemctl restart ${APP_NAME}-backend${NC}"
+    echo -e "    ${CYAN}systemctl restart ${SERVICE_NAME}${NC}"
     echo ""
     echo -e "    Ver backups:"
     echo -e "    ${CYAN}ls -la $BACKUP_DIR${NC}"
@@ -490,7 +591,7 @@ print_summary() {
 main() {
     print_header
     check_root
-    detect_installation
+    detect_installation "$1"
     backup_config
     update_code
     update_backend
@@ -506,20 +607,26 @@ main() {
 case "${1:-}" in
     --help|-h)
         echo ""
-        echo "SupplierSync Pro - Script de Actualización"
+        echo "SyncStock Pro - Script de Actualización"
         echo ""
         echo "Uso:"
-        echo "  sudo bash update.sh     Actualizar la aplicación preservando configuración"
-        echo "  sudo bash update.sh -h  Mostrar esta ayuda"
+        echo "  sudo bash update.sh [dominio]     Actualizar la aplicación preservando configuración"
+        echo "  sudo bash update.sh -h            Mostrar esta ayuda"
+        echo ""
+        echo "Ejemplos:"
+        echo "  sudo bash update.sh app.sync-stock.com   Actualizar un subdominio específico"
+        echo "  sudo bash update.sh menuboard.es         Actualizar un dominio principal"
+        echo "  sudo bash update.sh                      Preguntará el dominio"
         echo ""
         echo "Este script:"
-        echo "  - Detecta automáticamente la instalación existente"
+        echo "  - Detecta automáticamente subdominios en Plesk"
         echo "  - Crea backups de la configuración antes de actualizar"
         echo "  - Preserva la conexión a MongoDB y el usuario SuperAdmin"
+        echo "  - Usa el puerto correcto para cada instalación"
         echo "  - Actualiza dependencias y recompila el frontend"
         echo ""
         ;;
     *)
-        main
+        main "$1"
         ;;
 esac
