@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 2.3.0  
+**Versión:** 2.4.0  
 **Última actualización:** 2026-03-04  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -28,11 +28,11 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Ordenación de categorías (mover arriba/abajo)
   - Filtrado de productos por categoría
   - Asignación de categorías desde el detalle del catálogo
-- [x] **Drag & Drop para Categorías** (NUEVO - 2026-03-04)
+- [x] **Drag & Drop para Categorías** (2026-03-04)
   - Reordenación de categorías mediante arrastrar y soltar
   - Usa librería @dnd-kit/core y @dnd-kit/sortable
   - Indicadores visuales durante el arrastre
-- [x] **Exportación de Categorías a Tiendas** (NUEVO - 2026-03-04)
+- [x] **Exportación de Categorías a Tiendas** (2026-03-04)
   - Endpoint: POST /api/stores/configs/{config_id}/export-categories
   - Soporte para WooCommerce (completo)
   - Soporte para PrestaShop (categorías jerárquicas)
@@ -41,6 +41,39 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] Exportación de catálogos a CSV
 - [x] Unificación de productos por EAN
 - [x] Paginación y ordenación en listas
+
+### Panel de Administración SuperAdmin (NUEVO - 2026-03-04)
+- [x] **Sección de Administración en Sidebar** (visible solo para SuperAdmin)
+  - Dashboard Admin
+  - Usuarios
+  - Planes
+  - Personalización (Branding)
+  - Config. Email
+  - Plantillas Email
+
+- [x] **Personalización/Branding** (`/admin/branding`)
+  - Nombre de la aplicación
+  - Slogan/descripción
+  - Logo y Favicon (upload de imágenes)
+  - Colores personalizados (primario, secundario, acento)
+  - 7 Temas predefinidos: Índigo, Océano, Bosque, Atardecer, Real, Pizarra, Rosa
+  - Vista previa en tiempo real
+  - Texto del footer
+
+- [x] **Gestión de Planes** (`/admin/plans`)
+  - CRUD completo de planes de suscripción
+  - Configuración de límites (proveedores, catálogos, productos, tiendas)
+  - Precios mensuales y anuales
+  - Lista de características por plan
+  - Marcar plan como predeterminado
+
+- [x] **Plantillas de Email** (`/admin/email-templates`)
+  - 3 plantillas predeterminadas (Bienvenida, Reset Password, Cambio Suscripción)
+  - Editor HTML con syntax
+  - Variables disponibles: {name}, {email}, {app_name}, {app_url}, {primary_color}, etc.
+  - Vista previa renderizada
+  - Opción de restablecer a valores predeterminados
+  - Posibilidad de crear nuevas plantillas
 
 ### Integraciones eCommerce
 - [x] WooCommerce (API REST completa + exportación de categorías)
@@ -92,6 +125,11 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 ### Completadas en esta sesión
 - [x] ✅ P0: Exportación de categorías a tiendas online (WooCommerce, PrestaShop, Shopify)
 - [x] ✅ P1: Ordenación de categorías con drag & drop
+- [x] ✅ Panel de Administración SuperAdmin completo:
+  - Sección de administración en sidebar
+  - Personalización/Branding (nombre, logo, favicon, colores, temas)
+  - Gestión de planes de suscripción
+  - Editor de plantillas de email con vista previa
 
 ### P1 - Alta Prioridad
 - [ ] Ampliar fuentes de datos: SFTP y APIs directas
