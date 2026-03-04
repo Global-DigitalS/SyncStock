@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 2.4.0  
+**Versión:** 2.5.0  
 **Última actualización:** 2026-03-04  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -28,6 +28,12 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Ordenación de categorías (mover arriba/abajo)
   - Filtrado de productos por categoría
   - Asignación de categorías desde el detalle del catálogo
+- [x] **Asignación Masiva de Categorías** (NUEVO - 2026-03-04)
+  - Selección múltiple de productos en vista de catálogo
+  - Botón "Asignar a Categorías" que aparece al seleccionar productos
+  - 3 modos de asignación: Añadir, Reemplazar, Quitar
+  - Diálogo con selector de modo y categorías jerárquicas
+  - Endpoint: POST /api/catalogs/{catalog_id}/products/bulk-categories
 - [x] **Drag & Drop para Categorías** (2026-03-04)
   - Reordenación de categorías mediante arrastrar y soltar
   - Usa librería @dnd-kit/core y @dnd-kit/sortable
@@ -122,7 +128,15 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 
 ## Tareas Pendientes
 
-### Completadas en esta sesión
+### Completadas en esta sesión (Fork actual - 2026-03-04)
+- [x] ✅ **Asignación masiva de categorías a productos**:
+  - Selección múltiple de productos con checkboxes
+  - Botón "Asignar a Categorías" visible al seleccionar productos
+  - 3 modos: Añadir (append), Reemplazar (overwrite), Quitar (remove)
+  - Diálogo con categorías jerárquicas y preview de selección
+  - Backend y Frontend testeados: 100% tests passed
+
+### Completadas en sesión anterior
 - [x] ✅ P0: Exportación de categorías a tiendas online (WooCommerce, PrestaShop, Shopify)
 - [x] ✅ P1: Ordenación de categorías con drag & drop
 - [x] ✅ Panel de Administración SuperAdmin completo:
@@ -178,6 +192,18 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 ---
 
 ## Historial de Cambios
+
+### 2026-03-04 (Fork actual - Asignación Masiva de Categorías)
+- ✅ **Asignación Masiva de Categorías a Productos**
+  - Nuevo modelo Pydantic: `BulkCategoryAssignment`
+  - Nuevo endpoint: `POST /api/catalogs/{catalog_id}/products/bulk-categories`
+  - 3 modos de asignación:
+    - `add`: Añade categorías a las existentes (usa $addToSet para evitar duplicados)
+    - `replace`: Reemplaza todas las categorías por las seleccionadas
+    - `remove`: Elimina las categorías seleccionadas de los productos
+  - Frontend: Botón "Asignar a Categorías" aparece al seleccionar productos
+  - Frontend: Diálogo con selector de modo y categorías jerárquicas
+  - Tests: 15/15 backend, 100% frontend (testing_agent_v3_fork)
 
 ### 2026-03-04 (Sesión actual - Parte 2)
 - ✅ **Sistema de Categorías por Catálogo**
