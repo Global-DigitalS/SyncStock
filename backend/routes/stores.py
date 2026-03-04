@@ -517,3 +517,141 @@ async def export_to_store(request: dict, user: dict = Depends(get_current_user))
             "errors": [],
             "message": f"Exportación simulada para {SUPPORTED_PLATFORMS.get(platform, {}).get('name', platform)}. La integración completa está en desarrollo."
         }
+
+
+@router.post("/stores/configs/{config_id}/export-categories")
+async def export_categories_to_store(config_id: str, request: dict, user: dict = Depends(get_current_user)):
+    """Export catalog categories to a store"""
+    config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    if not config:
+        raise HTTPException(status_code=404, detail="Configuración de tienda no encontrada")
+    
+    catalog_id = request.get("catalog_id") or config.get("catalog_id")
+    if not catalog_id:
+        raise HTTPException(status_code=400, detail="No hay catálogo especificado")
+    
+    # Verify catalog exists
+    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    if not catalog:
+        raise HTTPException(status_code=404, detail="Catálogo no encontrado")
+    
+    platform = config.get("platform", "woocommerce")
+    
+    if platform == "woocommerce":
+        from services.sync import export_catalog_categories_to_woocommerce
+        result = await export_catalog_categories_to_woocommerce(config, catalog_id, user["id"])
+        
+        # Store the category mapping for future product exports
+        if result.get("category_mapping"):
+            await db.woocommerce_configs.update_one(
+                {"id": config_id},
+                {"$set": {f"category_mapping_{catalog_id}": result["category_mapping"]}}
+            )
+        
+        now = datetime.now(timezone.utc).isoformat()
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": "categories_export",
+            "message": f"Exportación de categorías a WooCommerce: {result.get('created', 0)} creadas, {result.get('total', 0)} total",
+            "product_id": None,
+            "product_name": None,
+            "user_id": user["id"],
+            "read": False,
+            "created_at": now
+        })
+        
+        return result
+    
+    elif platform == "prestashop":
+        # PrestaShop category export
+        client = PrestaShopClient(
+            store_url=config.get("store_url", ""),
+            api_key=config.get("api_key", "")
+        )
+        
+        categories = await db.catalog_categories.find(
+            {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
+        ).sort([("level", 1), ("position", 1)]).to_list(500)
+        
+        if not categories:
+            return {"status": "warning", "created": 0, "message": "No hay categorías para exportar"}
+        
+        category_mapping = {}
+        created = 0
+        errors = []
+        
+        for cat in categories:
+            try:
+                parent_id = 2  # Default PrestaShop home category
+                if cat.get("parent_id") and cat["parent_id"] in category_mapping:
+                    parent_id = category_mapping[cat["parent_id"]]
+                
+                ps_id = await asyncio.to_thread(client.find_or_create_category, cat["name"], parent_id)
+                if ps_id:
+                    category_mapping[cat["id"]] = ps_id
+                    created += 1
+                else:
+                    errors.append(f"Error creando: {cat['name']}")
+            except Exception as e:
+                errors.append(f"Error: {str(e)[:50]}")
+        
+        return {
+            "status": "success" if not errors else "partial",
+            "created": created,
+            "total": len(categories),
+            "category_mapping": category_mapping,
+            "errors": errors[:10]
+        }
+    
+    elif platform == "shopify":
+        # Shopify uses collections instead of categories
+        client = ShopifyClient(
+            store_url=config.get("store_url", ""),
+            access_token=config.get("access_token", ""),
+            api_version=config.get("api_version", "2024-10")
+        )
+        
+        categories = await db.catalog_categories.find(
+            {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
+        ).sort([("level", 1), ("position", 1)]).to_list(500)
+        
+        if not categories:
+            return {"status": "warning", "created": 0, "message": "No hay categorías para exportar"}
+        
+        # Shopify doesn't support hierarchical categories, so we flatten them
+        collection_mapping = {}
+        created = 0
+        errors = []
+        
+        for cat in categories:
+            try:
+                # Build full path name for hierarchy indication
+                full_name = cat["name"]
+                if cat.get("parent_id"):
+                    parent = next((c for c in categories if c["id"] == cat["parent_id"]), None)
+                    if parent:
+                        full_name = f"{parent['name']} > {cat['name']}"
+                
+                coll_id = await asyncio.to_thread(client.find_or_create_collection, full_name)
+                if coll_id:
+                    collection_mapping[cat["id"]] = coll_id
+                    created += 1
+                else:
+                    errors.append(f"Error creando: {full_name}")
+            except Exception as e:
+                errors.append(f"Error: {str(e)[:50]}")
+        
+        return {
+            "status": "success" if not errors else "partial",
+            "created": created,
+            "total": len(categories),
+            "collection_mapping": collection_mapping,
+            "errors": errors[:10],
+            "note": "Shopify usa 'Colecciones' en lugar de categorías jerárquicas"
+        }
+    
+    else:
+        return {
+            "status": "info",
+            "message": f"Exportación de categorías para {SUPPORTED_PLATFORMS.get(platform, {}).get('name', platform)} no está implementada todavía"
+        }

@@ -77,6 +77,7 @@ const Catalogs = () => {
   const [selectedCatalog, setSelectedCatalog] = useState(null);
   const [formData, setFormData] = useState({ name: "", description: "", is_default: false });
   const [saving, setSaving] = useState(false);
+  const [stores, setStores] = useState([]);
   
   // Rules state
   const [catalogRules, setCatalogRules] = useState([]);
@@ -108,14 +109,16 @@ const Catalogs = () => {
 
   const fetchSuppliersAndCategories = useCallback(async () => {
     try {
-      const [suppliersRes, categoriesRes] = await Promise.all([
+      const [suppliersRes, categoriesRes, storesRes] = await Promise.all([
         api.get("/suppliers"),
-        api.get("/products/categories")
+        api.get("/products/categories"),
+        api.get("/stores/configs")
       ]);
       setSuppliers(suppliersRes.data);
       setCategories(categoriesRes.data);
+      setStores(storesRes.data || []);
     } catch (error) {
-      console.error("Error fetching suppliers/categories:", error);
+      console.error("Error fetching suppliers/categories/stores:", error);
     }
   }, []);
 
@@ -921,6 +924,7 @@ const Catalogs = () => {
                 catalogId={selectedCatalog.id} 
                 catalogName={selectedCatalog.name}
                 onClose={() => setShowCategoriesDialog(false)}
+                stores={stores}
               />
             )}
           </div>

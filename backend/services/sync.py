@@ -1084,3 +1084,135 @@ async def sync_all_woocommerce_stores():
         except Exception as e:
             logger.error(f"Error syncing WooCommerce store {config.get('name', config['id'])}: {e}")
     logger.info("Scheduled WooCommerce sync completed")
+
+
+# ==================== WOOCOMMERCE CATEGORY FUNCTIONS ====================
+
+def get_woocommerce_categories_sync(config: dict) -> list:
+    """Get all categories from WooCommerce"""
+    wcapi = get_woocommerce_client(config)
+    categories = []
+    page = 1
+    try:
+        while True:
+            response = wcapi.get("products/categories", params={"per_page": 100, "page": page})
+            if response.status_code == 200:
+                batch = response.json()
+                if not batch:
+                    break
+                categories.extend(batch)
+                page += 1
+                if len(batch) < 100:
+                    break
+            else:
+                logger.error(f"Error fetching WooCommerce categories: {response.text[:200]}")
+                break
+    except Exception as e:
+        logger.error(f"WooCommerce get_categories error: {e}")
+    return categories
+
+
+async def get_woocommerce_categories(config: dict) -> list:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, get_woocommerce_categories_sync, config)
+
+
+def create_woocommerce_category_sync(config: dict, category_data: dict) -> dict:
+    """Create a category in WooCommerce"""
+    wcapi = get_woocommerce_client(config)
+    try:
+        payload = {
+            "name": category_data.get("name", ""),
+            "parent": category_data.get("parent_id", 0),
+            "description": category_data.get("description", "")
+        }
+        response = wcapi.post("products/categories", payload)
+        if response.status_code in [200, 201]:
+            cat = response.json()
+            return {"status": "success", "category_id": cat.get("id"), "message": "Categoría creada"}
+        else:
+            return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+    except Exception as e:
+        return {"status": "error", "message": f"Error: {str(e)}"}
+
+
+async def create_woocommerce_category(config: dict, category_data: dict) -> dict:
+    loop = asyncio.get_event_loop()
+    return await loop.run_in_executor(None, create_woocommerce_category_sync, config, category_data)
+
+
+async def find_or_create_woocommerce_category(config: dict, name: str, parent_id: int = 0, existing_categories: list = None) -> int:
+    """Find existing category by name or create it"""
+    if existing_categories is None:
+        existing_categories = await get_woocommerce_categories(config)
+    
+    # Search for existing category
+    for cat in existing_categories:
+        if cat.get("name", "").lower() == name.lower() and cat.get("parent", 0) == parent_id:
+            return cat.get("id")
+    
+    # Create new category
+    result = await create_woocommerce_category(config, {"name": name, "parent_id": parent_id})
+    if result.get("status") == "success":
+        return result.get("category_id")
+    return None
+
+
+async def export_catalog_categories_to_woocommerce(config: dict, catalog_id: str, user_id: str) -> dict:
+    """Export catalog categories to WooCommerce store"""
+    from services.database import db
+    
+    # Get catalog categories
+    categories = await db.catalog_categories.find(
+        {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
+    ).sort("position", 1).to_list(500)
+    
+    if not categories:
+        return {"status": "warning", "created": 0, "message": "No hay categorías para exportar"}
+    
+    # Get existing WooCommerce categories
+    wc_categories = await get_woocommerce_categories(config)
+    
+    # Build mapping of our category IDs to WooCommerce category IDs
+    category_mapping = {}  # local_id -> wc_id
+    created = 0
+    errors = []
+    
+    # Process categories level by level
+    max_level = max(cat.get("level", 0) for cat in categories)
+    for level in range(max_level + 1):
+        level_cats = [c for c in categories if c.get("level", 0) == level]
+        for cat in level_cats:
+            try:
+                wc_parent_id = 0
+                if cat.get("parent_id") and cat["parent_id"] in category_mapping:
+                    wc_parent_id = category_mapping[cat["parent_id"]]
+                
+                wc_id = await find_or_create_woocommerce_category(
+                    config, cat["name"], wc_parent_id, wc_categories
+                )
+                
+                if wc_id:
+                    category_mapping[cat["id"]] = wc_id
+                    # Check if it was created (not found in existing)
+                    was_existing = any(
+                        wc.get("name", "").lower() == cat["name"].lower() and wc.get("parent", 0) == wc_parent_id
+                        for wc in wc_categories
+                    )
+                    if not was_existing:
+                        created += 1
+                        # Add to existing list to avoid duplicates
+                        wc_categories.append({"id": wc_id, "name": cat["name"], "parent": wc_parent_id})
+                else:
+                    errors.append(f"Error creando categoría: {cat['name']}")
+            except Exception as e:
+                errors.append(f"Error procesando {cat['name']}: {str(e)[:50]}")
+    
+    return {
+        "status": "success" if not errors else "partial",
+        "created": created,
+        "total": len(categories),
+        "mapped": len(category_mapping),
+        "category_mapping": category_mapping,
+        "errors": errors[:10]
+    }

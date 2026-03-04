@@ -32,6 +32,7 @@ class PrestaShopClient:
             'Io-Format': 'JSON',
             'Output-Format': 'JSON'
         }
+        self._category_map = {}  # Cache for category id mapping
     
     def test_connection(self) -> Dict:
         """Test API connection"""
@@ -178,6 +179,88 @@ class PrestaShopClient:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
+    
+    # ==================== CATEGORY METHODS ====================
+    
+    def get_categories(self) -> List[Dict]:
+        """Get all categories from PrestaShop"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/categories",
+                auth=self.auth,
+                headers=self.headers,
+                params={
+                    'output_format': 'JSON',
+                    'display': '[id,name,id_parent,level_depth,active]'
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('categories', [])
+            return []
+        except Exception as e:
+            logger.error(f"PrestaShop get_categories error: {e}")
+            return []
+    
+    def create_category(self, category_data: Dict) -> Dict:
+        """Create a new category in PrestaShop"""
+        try:
+            parent_id = category_data.get("parent_id", 2)  # 2 is usually "Home" in PrestaShop
+            name = category_data.get("name", "")
+            
+            xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
+            <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+                <category>
+                    <id_parent>{parent_id}</id_parent>
+                    <active>1</active>
+                    <name><language id="1"><![CDATA[{name}]]></language></name>
+                    <link_rewrite><language id="1"><![CDATA[{name.lower().replace(" ", "-")}]]></language></link_rewrite>
+                </category>
+            </prestashop>'''
+            
+            response = requests.post(
+                f"{self.base_url}/categories",
+                auth=self.auth,
+                headers={'Content-Type': 'application/xml'},
+                data=xml_data.encode('utf-8'),
+                timeout=30
+            )
+            if response.status_code in [200, 201]:
+                # Extract category ID from response
+                import re
+                match = re.search(r'<id><!\[CDATA\[(\d+)\]\]></id>', response.text)
+                category_id = match.group(1) if match else None
+                return {"status": "success", "message": "Categoría creada", "category_id": category_id}
+            else:
+                return {"status": "error", "message": f"Error: {response.status_code}", "response": response.text[:200]}
+        except Exception as e:
+            return {"status": "error", "message": f"Error: {str(e)}"}
+    
+    def find_or_create_category(self, name: str, parent_id: int = 2) -> Optional[int]:
+        """Find existing category by name or create it"""
+        try:
+            # First, try to find existing category
+            categories = self.get_categories()
+            for cat in categories:
+                cat_name = cat.get('name', '')
+                if isinstance(cat_name, dict):
+                    cat_name = cat_name.get('language', {})
+                    if isinstance(cat_name, list):
+                        cat_name = cat_name[0].get('value', '') if cat_name else ''
+                    elif isinstance(cat_name, dict):
+                        cat_name = cat_name.get('value', '')
+                if cat_name.lower() == name.lower():
+                    return int(cat.get('id'))
+            
+            # Create new category
+            result = self.create_category({"name": name, "parent_id": parent_id})
+            if result.get("status") == "success" and result.get("category_id"):
+                return int(result["category_id"])
+            return None
+        except Exception as e:
+            logger.error(f"PrestaShop find_or_create_category error: {e}")
+            return None
 
 
 # ==================== SHOPIFY INTEGRATION ====================
@@ -337,6 +420,91 @@ class ShopifyClient:
             )
             if response.status_code == 200:
                 return {"status": "success", "message": "Producto actualizado"}
+            else:
+                return {"status": "error", "message": f"Error: {response.status_code}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Error: {str(e)}"}
+    
+    # ==================== CATEGORY (COLLECTION) METHODS ====================
+    
+    def get_collections(self) -> List[Dict]:
+        """Get all custom collections (categories) from Shopify"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/custom_collections.json",
+                headers=self.headers,
+                timeout=30
+            )
+            if response.status_code == 200:
+                return response.json().get('custom_collections', [])
+            return []
+        except Exception as e:
+            logger.error(f"Shopify get_collections error: {e}")
+            return []
+    
+    def create_collection(self, collection_data: Dict) -> Dict:
+        """Create a new custom collection (category) in Shopify"""
+        try:
+            payload = {
+                'custom_collection': {
+                    'title': collection_data.get('name', ''),
+                    'body_html': collection_data.get('description', ''),
+                    'published': True
+                }
+            }
+            
+            response = requests.post(
+                f"{self.base_url}/custom_collections.json",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            if response.status_code in [200, 201]:
+                collection = response.json().get('custom_collection', {})
+                return {"status": "success", "collection_id": collection.get('id'), "message": "Colección creada"}
+            else:
+                return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Error: {str(e)}"}
+    
+    def find_or_create_collection(self, name: str) -> Optional[int]:
+        """Find existing collection by name or create it"""
+        try:
+            # First, try to find existing collection
+            collections = self.get_collections()
+            for coll in collections:
+                if coll.get('title', '').lower() == name.lower():
+                    return int(coll.get('id'))
+            
+            # Create new collection
+            result = self.create_collection({"name": name})
+            if result.get("status") == "success" and result.get("collection_id"):
+                return int(result["collection_id"])
+            return None
+        except Exception as e:
+            logger.error(f"Shopify find_or_create_collection error: {e}")
+            return None
+    
+    def add_product_to_collection(self, collection_id: int, product_id: int) -> Dict:
+        """Add a product to a collection"""
+        try:
+            payload = {
+                'collect': {
+                    'collection_id': collection_id,
+                    'product_id': product_id
+                }
+            }
+            response = requests.post(
+                f"{self.base_url}/collects.json",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            if response.status_code in [200, 201]:
+                return {"status": "success", "message": "Producto añadido a colección"}
+            elif response.status_code == 422:
+                # Already in collection
+                return {"status": "success", "message": "Producto ya en colección"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
         except Exception as e:

@@ -1,10 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { api } from "../App";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
 import {
   Dialog,
@@ -47,20 +47,170 @@ import {
   MoreVertical,
   GripVertical,
   FolderPlus,
-  RefreshCw
+  RefreshCw,
+  Upload,
+  Store
 } from "lucide-react";
 
-const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
+// DnD Kit imports
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+
+// Sortable Category Item Component
+const SortableCategoryItem = ({ category, level, isExpanded, onToggle, onEdit, onDelete, onAddChild, children }) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: category.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    marginLeft: `${level * 24}px`,
+  };
+
+  const hasChildren = category.children && category.children.length > 0;
+  const canAddChild = level < 3;
+
+  return (
+    <div ref={setNodeRef} style={style} className="category-item">
+      <div className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 transition-colors group">
+        <button
+          onClick={() => onToggle(category.id)}
+          className={`w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 ${!hasChildren ? 'invisible' : ''}`}
+        >
+          {isExpanded ? (
+            <ChevronDown className="w-4 h-4 text-slate-500" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-slate-500" />
+          )}
+        </button>
+
+        <div
+          {...attributes}
+          {...listeners}
+          className="cursor-grab active:cursor-grabbing p-1 hover:bg-slate-200 rounded"
+          data-testid={`drag-handle-${category.id}`}
+        >
+          <GripVertical className="w-4 h-4 text-slate-400" />
+        </div>
+
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <FolderTree className="w-4 h-4 text-indigo-500 flex-shrink-0" />
+          <span className="font-medium text-slate-800 truncate">{category.name}</span>
+          {category.product_count > 0 && (
+            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-xs">
+              {category.product_count} prod.
+            </Badge>
+          )}
+          <Badge variant="outline" className="text-xs text-slate-400 border-slate-200">
+            Nivel {level + 1}
+          </Badge>
+        </div>
+
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          {canAddChild && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7"
+              onClick={() => onAddChild(category)}
+              title="Añadir subcategoría"
+            >
+              <FolderPlus className="w-4 h-4 text-indigo-500" />
+            </Button>
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="icon" className="h-7 w-7">
+                <MoreVertical className="w-4 h-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onEdit(category)}>
+                <Pencil className="w-4 h-4 mr-2" />
+                Editar
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={() => onDelete(category)}
+                className="text-rose-600 focus:text-rose-600"
+              >
+                <Trash2 className="w-4 h-4 mr-2" />
+                Eliminar
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {hasChildren && isExpanded && (
+        <div className="children">
+          {children}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Drag Overlay Component
+const DragOverlayItem = ({ category, level }) => (
+  <div
+    className="flex items-center gap-2 p-2 rounded-lg bg-white shadow-lg border-2 border-indigo-400"
+    style={{ marginLeft: 0 }}
+  >
+    <GripVertical className="w-4 h-4 text-indigo-500" />
+    <FolderTree className="w-4 h-4 text-indigo-500" />
+    <span className="font-medium text-slate-800">{category?.name}</span>
+    <Badge variant="outline" className="text-xs">Nivel {(level || 0) + 1}</Badge>
+  </div>
+);
+
+const CatalogCategories = ({ catalogId, catalogName, onClose, stores = [] }) => {
   const [categories, setCategories] = useState([]);
   const [flatCategories, setFlatCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showExportDialog, setShowExportDialog] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [parentCategory, setParentCategory] = useState(null);
   const [expandedIds, setExpandedIds] = useState([]);
   const [formData, setFormData] = useState({ name: "", description: "", parent_id: "" });
   const [saving, setSaving] = useState(false);
+  const [activeId, setActiveId] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [selectedStoreId, setSelectedStoreId] = useState("");
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -83,7 +233,7 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
   }, [fetchCategories]);
 
   const toggleExpand = (id) => {
-    setExpandedIds(prev => 
+    setExpandedIds(prev =>
       prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
     );
   };
@@ -161,47 +311,32 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
     }
   };
 
-  const handleMoveUp = async (category) => {
-    const siblings = flatCategories.filter(c => c.parent_id === category.parent_id);
-    const currentIndex = siblings.findIndex(c => c.id === category.id);
-    if (currentIndex <= 0) return;
-    
-    const newPosition = siblings[currentIndex - 1].position;
-    try {
-      await api.post(`/catalogs/${catalogId}/categories/reorder`, {
-        updates: [
-          { category_id: category.id, new_parent_id: category.parent_id, new_position: newPosition },
-          { category_id: siblings[currentIndex - 1].id, new_parent_id: category.parent_id, new_position: category.position }
-        ]
-      });
-      fetchCategories();
-    } catch (error) {
-      toast.error("Error al reordenar");
+  const handleExportCategories = async () => {
+    if (!selectedStoreId) {
+      toast.error("Selecciona una tienda");
+      return;
     }
-  };
-
-  const handleMoveDown = async (category) => {
-    const siblings = flatCategories.filter(c => c.parent_id === category.parent_id);
-    const currentIndex = siblings.findIndex(c => c.id === category.id);
-    if (currentIndex >= siblings.length - 1) return;
-    
-    const newPosition = siblings[currentIndex + 1].position;
+    setExporting(true);
     try {
-      await api.post(`/catalogs/${catalogId}/categories/reorder`, {
-        updates: [
-          { category_id: category.id, new_parent_id: category.parent_id, new_position: newPosition },
-          { category_id: siblings[currentIndex + 1].id, new_parent_id: category.parent_id, new_position: category.position }
-        ]
+      const response = await api.post(`/stores/configs/${selectedStoreId}/export-categories`, {
+        catalog_id: catalogId
       });
-      fetchCategories();
+      if (response.data.status === "success" || response.data.status === "partial") {
+        toast.success(`Categorías exportadas: ${response.data.created || 0} creadas`);
+      } else {
+        toast.info(response.data.message || "Exportación completada");
+      }
+      setShowExportDialog(false);
     } catch (error) {
-      toast.error("Error al reordenar");
+      toast.error(error.response?.data?.detail || "Error al exportar");
+    } finally {
+      setExporting(false);
     }
   };
 
   const getAvailableParents = () => {
     if (!selectedCategory) return flatCategories.filter(c => c.level < 3);
-    
+
     const getDescendants = (catId) => {
       const descendants = [];
       flatCategories.forEach(c => {
@@ -212,102 +347,96 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
       });
       return descendants;
     };
-    
+
     const descendants = getDescendants(selectedCategory.id);
-    return flatCategories.filter(c => 
-      c.id !== selectedCategory.id && 
+    return flatCategories.filter(c =>
+      c.id !== selectedCategory.id &&
       !descendants.includes(c.id) &&
       c.level < 3
     );
   };
 
-  // Render a single category item
-  const renderCategoryItem = (category, level = 0) => {
-    const hasChildren = category.children && category.children.length > 0;
-    const isExpanded = expandedIds.includes(category.id);
-    const canAddChild = level < 3;
+  // Get flat list of category IDs for the sortable context at each level
+  const getSiblingsAtLevel = (parentId) => {
+    return flatCategories
+      .filter(c => c.parent_id === parentId)
+      .sort((a, b) => a.position - b.position)
+      .map(c => c.id);
+  };
+
+  const handleDragStart = (event) => {
+    setActiveId(event.active.id);
+  };
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over || active.id === over.id) return;
+
+    const activeCategory = flatCategories.find(c => c.id === active.id);
+    const overCategory = flatCategories.find(c => c.id === over.id);
+
+    if (!activeCategory || !overCategory) return;
+
+    // Only allow reordering within same parent level
+    if (activeCategory.parent_id !== overCategory.parent_id) {
+      toast.error("Solo puedes reordenar dentro del mismo nivel");
+      return;
+    }
+
+    const siblings = flatCategories.filter(c => c.parent_id === activeCategory.parent_id);
+    const oldIndex = siblings.findIndex(c => c.id === active.id);
+    const newIndex = siblings.findIndex(c => c.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const newOrder = arrayMove(siblings, oldIndex, newIndex);
+
+    // Prepare updates for backend
+    const updates = newOrder.map((cat, idx) => ({
+      category_id: cat.id,
+      new_parent_id: cat.parent_id,
+      new_position: idx
+    }));
+
+    try {
+      await api.post(`/catalogs/${catalogId}/categories/reorder`, { updates });
+      toast.success("Orden actualizado");
+      fetchCategories();
+    } catch (error) {
+      toast.error("Error al reordenar");
+    }
+  };
+
+  const activeCategory = useMemo(() => {
+    if (!activeId) return null;
+    return flatCategories.find(c => c.id === activeId);
+  }, [activeId, flatCategories]);
+
+  // Recursive render function for tree
+  const renderCategoryTree = (cats, level = 0) => {
+    const siblingIds = cats.map(c => c.id);
     
     return (
-      <div key={category.id} className="category-item">
-        <div 
-          className="flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 transition-colors group"
-          style={{ marginLeft: `${level * 24}px` }}
-        >
-          <button 
-            onClick={() => toggleExpand(category.id)}
-            className={`w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 ${!hasChildren ? 'invisible' : ''}`}
+      <SortableContext items={siblingIds} strategy={verticalListSortingStrategy}>
+        {cats.map((category) => (
+          <SortableCategoryItem
+            key={category.id}
+            category={category}
+            level={level}
+            isExpanded={expandedIds.includes(category.id)}
+            onToggle={toggleExpand}
+            onEdit={openEdit}
+            onDelete={openDelete}
+            onAddChild={openCreate}
           >
-            {isExpanded ? (
-              <ChevronDown className="w-4 h-4 text-slate-500" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-slate-500" />
+            {category.children && category.children.length > 0 && (
+              renderCategoryTree(category.children, level + 1)
             )}
-          </button>
-          
-          <GripVertical className="w-4 h-4 text-slate-300 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity" />
-          
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <FolderTree className="w-4 h-4 text-indigo-500 flex-shrink-0" />
-            <span className="font-medium text-slate-800 truncate">{category.name}</span>
-            {category.product_count > 0 && (
-              <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-xs">
-                {category.product_count} prod.
-              </Badge>
-            )}
-            <Badge variant="outline" className="text-xs text-slate-400 border-slate-200">
-              Nivel {level + 1}
-            </Badge>
-          </div>
-          
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {canAddChild && (
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-7 w-7"
-                onClick={() => openCreate(category)}
-                title="Añadir subcategoría"
-              >
-                <FolderPlus className="w-4 h-4 text-indigo-500" />
-              </Button>
-            )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-7 w-7">
-                  <MoreVertical className="w-4 h-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => openEdit(category)}>
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Editar
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleMoveUp(category)}>
-                  <ChevronRight className="w-4 h-4 mr-2 rotate-[-90deg]" />
-                  Subir
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => handleMoveDown(category)}>
-                  <ChevronRight className="w-4 h-4 mr-2 rotate-90" />
-                  Bajar
-                </DropdownMenuItem>
-                <DropdownMenuItem 
-                  onClick={() => openDelete(category)}
-                  className="text-rose-600 focus:text-rose-600"
-                >
-                  <Trash2 className="w-4 h-4 mr-2" />
-                  Eliminar
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-        
-        {hasChildren && isExpanded && (
-          <div className="children">
-            {category.children.map((child) => renderCategoryItem(child, level + 1))}
-          </div>
-        )}
-      </div>
+          </SortableCategoryItem>
+        ))}
+      </SortableContext>
     );
   };
 
@@ -327,13 +456,26 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
             Categorías del Catálogo
           </h3>
           <p className="text-sm text-slate-500">
-            {flatCategories.length} categoría{flatCategories.length !== 1 ? 's' : ''} • Máximo 4 niveles
+            {flatCategories.length} categoría{flatCategories.length !== 1 ? 's' : ''} • Máximo 4 niveles • Arrastra para reordenar
           </p>
         </div>
-        <Button onClick={() => openCreate()} className="btn-primary" data-testid="add-category-btn">
-          <Plus className="w-4 h-4 mr-2" />
-          Nueva Categoría
-        </Button>
+        <div className="flex gap-2">
+          {stores.length > 0 && flatCategories.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={() => setShowExportDialog(true)}
+              className="btn-secondary"
+              data-testid="export-categories-btn"
+            >
+              <Upload className="w-4 h-4 mr-2" />
+              Exportar a Tienda
+            </Button>
+          )}
+          <Button onClick={() => openCreate()} className="btn-primary" data-testid="add-category-btn">
+            <Plus className="w-4 h-4 mr-2" />
+            Nueva Categoría
+          </Button>
+        </div>
       </div>
 
       {categories.length === 0 ? (
@@ -349,11 +491,24 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
       ) : (
         <Card className="border-slate-200">
           <CardContent className="p-4">
-            {categories.map((category) => renderCategoryItem(category, 0))}
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+            >
+              {renderCategoryTree(categories, 0)}
+              <DragOverlay>
+                {activeCategory ? (
+                  <DragOverlayItem category={activeCategory} level={activeCategory.level} />
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           </CardContent>
         </Card>
       )}
 
+      {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -365,7 +520,7 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
               {parentCategory ? `Se creará como subcategoría de "${parentCategory.name}"` : "Las categorías organizan los productos del catálogo"}
             </DialogDescription>
           </DialogHeader>
-          
+
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="cat-name">Nombre *</Label>
@@ -378,7 +533,7 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
                 data-testid="category-name-input"
               />
             </div>
-            
+
             <div className="space-y-2">
               <Label htmlFor="cat-desc">Descripción (opcional)</Label>
               <Input
@@ -389,12 +544,12 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
                 className="input-base"
               />
             </div>
-            
+
             {!parentCategory && (
               <div className="space-y-2">
                 <Label>Categoría padre (opcional)</Label>
-                <Select 
-                  value={formData.parent_id || "none"} 
+                <Select
+                  value={formData.parent_id || "none"}
                   onValueChange={(v) => setFormData({ ...formData, parent_id: v === "none" ? "" : v })}
                 >
                   <SelectTrigger className="input-base">
@@ -411,7 +566,7 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
                 </Select>
               </div>
             )}
-            
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setShowDialog(false)} className="btn-secondary">
                 Cancelar
@@ -424,6 +579,7 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -440,6 +596,55 @@ const CatalogCategories = ({ catalogId, catalogName, onClose }) => {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Export Categories Dialog */}
+      <Dialog open={showExportDialog} onOpenChange={setShowExportDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+              <Store className="w-5 h-5 text-indigo-600" />
+              Exportar Categorías a Tienda
+            </DialogTitle>
+            <DialogDescription>
+              Las categorías se crearán en la tienda seleccionada manteniendo la jerarquía
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Seleccionar Tienda</Label>
+              <Select value={selectedStoreId} onValueChange={setSelectedStoreId}>
+                <SelectTrigger className="input-base">
+                  <SelectValue placeholder="Selecciona una tienda" />
+                </SelectTrigger>
+                <SelectContent>
+                  {stores.map((store) => (
+                    <SelectItem key={store.id} value={store.id}>
+                      {store.name} ({store.platform || 'woocommerce'})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-lg">
+              <p className="text-sm text-slate-600">
+                <strong>{flatCategories.length}</strong> categoría{flatCategories.length !== 1 ? 's' : ''} serán exportadas
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShowExportDialog(false)} className="btn-secondary">
+              Cancelar
+            </Button>
+            <Button onClick={handleExportCategories} disabled={exporting || !selectedStoreId} className="btn-primary">
+              {exporting ? <RefreshCw className="w-4 h-4 animate-spin mr-2" /> : <Upload className="w-4 h-4 mr-2" />}
+              Exportar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
