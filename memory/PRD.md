@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 2.2.0  
+**Versión:** 2.3.0  
 **Última actualización:** 2026-03-04  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -22,20 +22,30 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Filtros por categoría, proveedor o marca
   - Tramos de precios (precio mínimo y máximo)
   - Sistema de prioridades
-- [x] **Categorías de Catálogo** (NUEVO - 2026-03-04)
+- [x] **Categorías de Catálogo** (2026-03-04)
   - Sistema jerárquico de categorías y subcategorías (máximo 4 niveles)
   - Un producto puede pertenecer a múltiples categorías
   - Ordenación de categorías (mover arriba/abajo)
   - Filtrado de productos por categoría
   - Asignación de categorías desde el detalle del catálogo
+- [x] **Drag & Drop para Categorías** (NUEVO - 2026-03-04)
+  - Reordenación de categorías mediante arrastrar y soltar
+  - Usa librería @dnd-kit/core y @dnd-kit/sortable
+  - Indicadores visuales durante el arrastre
+- [x] **Exportación de Categorías a Tiendas** (NUEVO - 2026-03-04)
+  - Endpoint: POST /api/stores/configs/{config_id}/export-categories
+  - Soporte para WooCommerce (completo)
+  - Soporte para PrestaShop (categorías jerárquicas)
+  - Soporte para Shopify (como colecciones)
+  - UI integrada en diálogo de categorías
 - [x] Exportación de catálogos a CSV
 - [x] Unificación de productos por EAN
 - [x] Paginación y ordenación en listas
 
 ### Integraciones eCommerce
-- [x] WooCommerce (API REST completa)
-- [x] PrestaShop (via prestapyt)
-- [x] Shopify (via ShopifyAPI)
+- [x] WooCommerce (API REST completa + exportación de categorías)
+- [x] PrestaShop (via prestapyt + exportación de categorías)
+- [x] Shopify (via ShopifyAPI + colecciones)
 - [ ] Wix eCommerce (solo UI/modelo)
 - [ ] Magento (solo UI/modelo)
 
@@ -78,6 +88,10 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 ---
 
 ## Tareas Pendientes
+
+### Completadas en esta sesión
+- [x] ✅ P0: Exportación de categorías a tiendas online (WooCommerce, PrestaShop, Shopify)
+- [x] ✅ P1: Ordenación de categorías con drag & drop
 
 ### P1 - Alta Prioridad
 - [ ] Ampliar fuentes de datos: SFTP y APIs directas
