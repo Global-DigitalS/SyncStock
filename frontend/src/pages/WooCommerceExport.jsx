@@ -193,20 +193,29 @@ const StoresPage = () => {
     setSelectedPlatform(PLATFORMS[config.platform] || PLATFORMS.woocommerce);
     setExportResult(null);
     
-    if (!exportOptions.catalog_id && catalogs.length > 0) {
+    // Determine which catalog to use
+    let catalogIdToLoad = exportOptions.catalog_id;
+    
+    if (!catalogIdToLoad && catalogs.length > 0) {
       const defaultCatalog = catalogs.find(c => c.is_default) || catalogs[0];
+      catalogIdToLoad = defaultCatalog.id;
       setExportOptions(prev => ({ ...prev, catalog_id: defaultCatalog.id }));
-      
+    }
+    
+    // Always load products for the selected catalog
+    if (catalogIdToLoad) {
       setLoadingCatalogProducts(true);
       try {
-        const res = await api.get(`/catalogs/${defaultCatalog.id}/products?active_only=true`);
+        const res = await api.get(`/catalogs/${catalogIdToLoad}/products?active_only=true`);
         setSelectedCatalogProducts(res.data);
       } catch (error) {
         console.error("Error loading catalog products:", error);
+        setSelectedCatalogProducts([]);
       } finally {
         setLoadingCatalogProducts(false);
       }
     }
+    
     setShowExportDialog(true);
   };
 
