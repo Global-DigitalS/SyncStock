@@ -1,24 +1,17 @@
 """
 Rutas para configuración y procesamiento de pagos con Stripe.
 Incluye configuración de API keys, webhooks y procesamiento de suscripciones.
+Usa el SDK oficial de Stripe.
 """
 from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel
+from typing import Optional
 from datetime import datetime, timezone
-import os
 import logging
+import stripe
 
 from services.auth import get_superadmin_user, get_current_user
 from services.database import db
-
-# Import emergentintegrations for Stripe checkout
-from emergentintegrations.payments.stripe.checkout import (
-    StripeCheckout, 
-    CheckoutSessionResponse, 
-    CheckoutStatusResponse, 
-    CheckoutSessionRequest
-)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -53,6 +46,27 @@ class CheckoutResponse(BaseModel):
     session_id: str
 
 
+# ==================== HELPER FUNCTIONS ====================
+
+async def fetch_stripe_config():
+    """Get Stripe configuration from database"""
+    config = await db.app_config.find_one({"type": "stripe"})
+    return config
+
+
+async def get_configured_stripe():
+    """Configure stripe SDK with API key from database"""
+    config = await fetch_stripe_config()
+    if not config or not config.get("enabled"):
+        raise HTTPException(status_code=503, detail="Pagos con Stripe no están habilitados")
+    
+    if not config.get("stripe_secret_key"):
+        raise HTTPException(status_code=503, detail="Stripe no está configurado correctamente")
+    
+    stripe.api_key = config.get("stripe_secret_key")
+    return config
+
+
 # ==================== ADMIN CONFIG ENDPOINTS ====================
 
 @router.get("/admin/stripe/config")
@@ -62,7 +76,6 @@ async def get_stripe_config(user: dict = Depends(get_superadmin_user)):
     if not config:
         return StripeConfig().model_dump()
     
-    # Mask the secret key for security
     config_data = {
         "stripe_public_key": config.get("stripe_public_key", ""),
         "stripe_secret_key": config.get("stripe_secret_key", ""),
@@ -98,10 +111,7 @@ async def test_stripe_connection(user: dict = Depends(get_superadmin_user)):
         raise HTTPException(status_code=400, detail="No hay clave secreta configurada")
     
     try:
-        import stripe
         stripe.api_key = config.get("stripe_secret_key")
-        
-        # Test connection by retrieving account info
         account = stripe.Account.retrieve()
         
         return {
@@ -110,38 +120,18 @@ async def test_stripe_connection(user: dict = Depends(get_superadmin_user)):
             "account_name": account.get("business_profile", {}).get("name") or account.get("email"),
             "account_id": account.get("id")
         }
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe connection test failed: {e}")
+        return {
+            "success": False,
+            "message": str(e.user_message) if hasattr(e, 'user_message') else str(e)
+        }
     except Exception as e:
         logger.error(f"Stripe connection test failed: {e}")
         return {
             "success": False,
             "message": str(e)
         }
-
-
-# ==================== HELPER FUNCTIONS ====================
-
-async def fetch_stripe_config():
-    """Get Stripe configuration from database"""
-    config = await db.app_config.find_one({"type": "stripe"})
-    if not config:
-        return None
-    return config
-
-
-async def get_stripe_checkout(request: Request = None, webhook_url: str = None):
-    """Get configured StripeCheckout instance using emergentintegrations"""
-    config = await fetch_stripe_config()
-    if not config or not config.get("enabled"):
-        raise HTTPException(status_code=503, detail="Pagos con Stripe no están habilitados")
-    
-    if not config.get("stripe_secret_key"):
-        raise HTTPException(status_code=503, detail="Stripe no está configurado correctamente")
-    
-    api_key = config.get("stripe_secret_key")
-    
-    # Create StripeCheckout instance
-    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
-    return stripe_checkout, config
 
 
 # ==================== PUBLIC ENDPOINTS ====================
@@ -168,13 +158,9 @@ async def create_checkout_session(
     request: Request,
     user: dict = Depends(get_current_user)
 ):
-    """Create a Stripe checkout session for subscription using emergentintegrations"""
+    """Create a Stripe checkout session for subscription"""
     
-    # Build webhook URL
-    host_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{host_url}/api/stripe/webhook"
-    
-    stripe_checkout, config = await get_stripe_checkout(request, webhook_url)
+    config = await get_configured_stripe()
     
     # Get the plan from database (server-side - never trust frontend amounts)
     plan = await db.subscription_plans.find_one({"id": checkout_request.plan_id})
@@ -190,19 +176,33 @@ async def create_checkout_session(
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Este plan no tiene precio configurado")
     
-    # Build success and cancel URLs from frontend origin (dynamic)
+    # Convert to cents (Stripe expects amounts in smallest currency unit)
+    amount_cents = int(amount * 100)
+    
+    # Build success and cancel URLs from frontend origin
     origin = checkout_request.origin_url.rstrip("/")
-    # Use hash router format for proper navigation
     success_url = f"{origin}/#/subscriptions?session_id={{CHECKOUT_SESSION_ID}}&success=true"
     cancel_url = f"{origin}/#/subscriptions?canceled=true"
     
     try:
-        # Create checkout session using emergentintegrations
-        checkout_req = CheckoutSessionRequest(
-            amount=amount,  # Keep as float
-            currency="eur",
+        # Create checkout session using official Stripe SDK
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "unit_amount": amount_cents,
+                    "product_data": {
+                        "name": plan.get("name", "Suscripción"),
+                        "description": f"Plan {plan.get('name')} - {checkout_request.billing_cycle}",
+                    },
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
             success_url=success_url,
             cancel_url=cancel_url,
+            customer_email=user.get("email"),
             metadata={
                 "user_id": user.get("id"),
                 "user_email": user.get("email"),
@@ -212,11 +212,9 @@ async def create_checkout_session(
             }
         )
         
-        session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_req)
-        
-        # MANDATORY: Record the transaction BEFORE redirect
+        # Record the transaction BEFORE redirect
         await db.payment_transactions.insert_one({
-            "session_id": session.session_id,
+            "session_id": session.id,
             "user_id": user.get("id"),
             "user_email": user.get("email"),
             "plan_id": checkout_request.plan_id,
@@ -229,15 +227,16 @@ async def create_checkout_session(
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         
-        logger.info(f"Checkout session created for user {user.get('email')}, plan {plan.get('name')}, session {session.session_id}")
+        logger.info(f"Checkout session created for user {user.get('email')}, plan {plan.get('name')}, session {session.id}")
         
         return CheckoutResponse(
             checkout_url=session.url,
-            session_id=session.session_id
+            session_id=session.id
         )
         
-    except HTTPException:
-        raise
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating checkout session: {e}")
+        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
     except Exception as e:
         logger.error(f"Error creating checkout session: {e}")
         raise HTTPException(status_code=500, detail=f"Error al crear sesión de pago: {str(e)}")
@@ -247,28 +246,28 @@ async def create_checkout_session(
 async def get_checkout_status(session_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Get the status of a checkout session and update user subscription if paid"""
     
-    # Build webhook URL (needed for StripeCheckout init)
-    host_url = str(request.base_url).rstrip("/")
-    webhook_url = f"{host_url}/api/stripe/webhook"
-    
-    stripe_checkout, _ = await get_stripe_checkout(request, webhook_url)
+    config = await get_configured_stripe()
     
     try:
-        # Get checkout status using emergentintegrations
-        status: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
+        # Retrieve session from Stripe
+        session = stripe.checkout.Session.retrieve(session_id)
+        
+        # Map Stripe status to our status
+        status = session.status  # complete, expired, open
+        payment_status = session.payment_status  # paid, unpaid, no_payment_required
         
         # Get transaction from database
         transaction = await db.payment_transactions.find_one({"session_id": session_id})
         
         # Update transaction status
         update_data = {
-            "status": status.status,
-            "payment_status": status.payment_status,
+            "status": status,
+            "payment_status": payment_status,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
         # If payment is complete and hasn't been processed yet, update user subscription
-        if status.payment_status == "paid":
+        if payment_status == "paid":
             if transaction and not transaction.get("subscription_applied"):
                 # Verify transaction belongs to requesting user
                 if transaction.get("user_id") == user.get("id"):
@@ -305,15 +304,16 @@ async def get_checkout_status(session_id: str, request: Request, user: dict = De
             )
         
         return {
-            "status": status.status,
-            "payment_status": status.payment_status,
-            "amount_total": status.amount_total,
-            "currency": status.currency,
+            "status": status,
+            "payment_status": payment_status,
+            "amount_total": session.amount_total / 100 if session.amount_total else 0,  # Convert from cents
+            "currency": session.currency,
             "subscription_applied": update_data.get("subscription_applied", False)
         }
         
-    except HTTPException:
-        raise
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error retrieving checkout status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
     except Exception as e:
         logger.error(f"Error retrieving checkout status: {e}")
         raise HTTPException(status_code=500, detail=f"Error al verificar estado: {str(e)}")
@@ -323,7 +323,7 @@ async def get_checkout_status(session_id: str, request: Request, user: dict = De
 
 @router.post("/stripe/webhook")
 async def stripe_webhook(request: Request):
-    """Handle Stripe webhooks using emergentintegrations"""
+    """Handle Stripe webhooks"""
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
     
@@ -331,36 +331,42 @@ async def stripe_webhook(request: Request):
     if not config:
         raise HTTPException(status_code=503, detail="Stripe no configurado")
     
+    stripe.api_key = config.get("stripe_secret_key")
+    webhook_secret = config.get("stripe_webhook_secret")
+    
     try:
-        # Build webhook URL for StripeCheckout init
-        host_url = str(request.base_url).rstrip("/")
-        webhook_url = f"{host_url}/api/stripe/webhook"
+        # Verify webhook signature if secret is configured
+        if webhook_secret:
+            event = stripe.Webhook.construct_event(
+                payload, sig_header, webhook_secret
+            )
+        else:
+            # If no webhook secret, parse event without verification (not recommended for production)
+            import json
+            event = stripe.Event.construct_from(
+                json.loads(payload), stripe.api_key
+            )
         
-        stripe_checkout = StripeCheckout(
-            api_key=config.get("stripe_secret_key"),
-            webhook_url=webhook_url
-        )
+        event_type = event.type
+        logger.info(f"Stripe webhook received: {event_type}")
         
-        # Handle webhook using emergentintegrations
-        webhook_response = await stripe_checkout.handle_webhook(payload, sig_header)
-        
-        event_type = webhook_response.event_type
-        session_id = webhook_response.session_id
-        payment_status = webhook_response.payment_status
-        
-        logger.info(f"Stripe webhook received: {event_type}, session: {session_id}, status: {payment_status}")
-        
-        # Update transaction based on event
-        if session_id:
+        # Handle checkout.session.completed event
+        if event_type == "checkout.session.completed":
+            session = event.data.object
+            session_id = session.id
+            payment_status = session.payment_status
+            
+            logger.info(f"Checkout completed: session {session_id}, payment_status: {payment_status}")
+            
             update_data = {
                 "webhook_event": event_type,
                 "payment_status": payment_status,
+                "status": "complete" if payment_status == "paid" else session.status,
                 "updated_at": datetime.now(timezone.utc).isoformat()
             }
             
-            # If payment completed, mark as complete
+            # If payment completed, apply subscription
             if payment_status == "paid":
-                update_data["status"] = "complete"
                 update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
                 
                 # Get transaction and apply subscription if not already done
@@ -385,16 +391,32 @@ async def stripe_webhook(request: Request):
                         update_data["subscription_applied"] = True
                         logger.info(f"Subscription applied via webhook for user {transaction.get('user_email')}")
             
-            elif payment_status == "expired":
-                update_data["status"] = "expired"
-            
             await db.payment_transactions.update_one(
                 {"session_id": session_id},
                 {"$set": update_data}
             )
         
+        # Handle checkout.session.expired event
+        elif event_type == "checkout.session.expired":
+            session = event.data.object
+            session_id = session.id
+            
+            await db.payment_transactions.update_one(
+                {"session_id": session_id},
+                {"$set": {
+                    "webhook_event": event_type,
+                    "status": "expired",
+                    "payment_status": "expired",
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            logger.info(f"Checkout session expired: {session_id}")
+        
         return {"status": "success", "event_type": event_type}
         
+    except stripe.error.SignatureVerificationError as e:
+        logger.error(f"Webhook signature verification failed: {e}")
+        raise HTTPException(status_code=400, detail="Firma de webhook inválida")
     except Exception as e:
         logger.error(f"Webhook error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
