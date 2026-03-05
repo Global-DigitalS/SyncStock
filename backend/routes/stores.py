@@ -488,35 +488,440 @@ async def export_to_store(request: dict, user: dict = Depends(get_current_user))
             "failed": result.failed,
             "errors": result.errors
         }
+    elif platform == "prestashop":
+        # Real PrestaShop export
+        return await export_to_prestashop(config, catalog_items, user)
+    
+    elif platform == "shopify":
+        # Real Shopify export
+        return await export_to_shopify(config, catalog_items, user)
+    
+    elif platform == "magento":
+        # Real Magento export
+        return await export_to_magento(config, catalog_items, user)
+    
+    elif platform == "wix":
+        # Real Wix export
+        return await export_to_wix(config, catalog_items, user)
+    
     else:
-        # Simulated export for other platforms
-        now = datetime.now(timezone.utc).isoformat()
-        product_count = len(catalog_items)
-        
-        await db.woocommerce_configs.update_one(
-            {"id": config_id}, 
-            {"$set": {"last_sync": now, "products_synced": product_count}}
-        )
-        
-        await db.notifications.insert_one({
-            "id": str(uuid.uuid4()),
-            "type": "store_export",
-            "message": f"Exportación a {SUPPORTED_PLATFORMS.get(platform, {}).get('name', platform)}: {product_count} productos procesados (modo demo)",
-            "product_id": None,
-            "product_name": None,
-            "user_id": user["id"],
-            "read": False,
-            "created_at": now
-        })
-        
+        # Unsupported platform
         return {
-            "status": "success",
-            "created": product_count,
+            "status": "error",
+            "created": 0,
             "updated": 0,
             "failed": 0,
-            "errors": [],
-            "message": f"Exportación simulada para {SUPPORTED_PLATFORMS.get(platform, {}).get('name', platform)}. La integración completa está en desarrollo."
+            "errors": [f"Plataforma {platform} no soportada para exportación"]
         }
+
+
+async def export_to_prestashop(config: dict, catalog_items: list, user: dict) -> dict:
+    """Export products to PrestaShop with full product data"""
+    
+    client = PrestaShopClient(
+        store_url=config.get("store_url", ""),
+        api_key=config.get("api_key", "")
+    )
+    
+    created = 0
+    updated = 0
+    failed = 0
+    errors = []
+    
+    # Get products data
+    product_ids = [item["product_id"] for item in catalog_items]
+    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+    products_map = {p["id"]: p for p in products}
+    
+    # Get existing products from PrestaShop by reference (SKU)
+    existing_products = client.get_products(limit=5000)
+    existing_refs = {}
+    for p in existing_products:
+        ref = p.get("reference", "")
+        if ref:
+            existing_refs[ref] = p.get("id")
+    
+    # Get margin rules for this catalog
+    margin_rules = await db.margin_rules.find({"catalog_id": config.get("catalog_id")}, {"_id": 0}).to_list(100)
+    margin_rules.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    
+    for item in catalog_items:
+        product = products_map.get(item["product_id"])
+        if not product:
+            failed += 1
+            errors.append(f"Producto no encontrado: {item['product_id']}")
+            continue
+        
+        try:
+            base_price = item.get("custom_price") or product.get("price", 0)
+            final_price = calculate_final_price(base_price, product, margin_rules)
+            
+            product_data = {
+                "sku": product.get("sku", ""),
+                "ean": product.get("ean", ""),
+                "name": item.get("custom_name") or product.get("name", ""),
+                "price": round(final_price, 2),
+                "stock": product.get("stock", 0),
+                "short_description": product.get("short_description", ""),
+                "long_description": product.get("long_description") or product.get("description", ""),
+                "brand": product.get("brand", ""),
+                "weight": product.get("weight", 0),
+                "image_url": product.get("image_url", ""),
+                "gallery_images": product.get("gallery_images", []),
+                "category": product.get("category", "")
+            }
+            
+            # Check if product exists
+            existing_id = existing_refs.get(product.get("sku", ""))
+            
+            if existing_id:
+                result = client.update_product(int(existing_id), product_data)
+                if result.get("status") == "success":
+                    updated += 1
+                else:
+                    failed += 1
+                    errors.append(f"{product.get('sku')}: {result.get('message')}")
+            else:
+                result = client.create_product(product_data)
+                if result.get("status") == "success":
+                    created += 1
+                else:
+                    failed += 1
+                    errors.append(f"{product.get('sku')}: {result.get('message')}")
+        except Exception as e:
+            failed += 1
+            errors.append(f"{product.get('sku', 'unknown')}: {str(e)}")
+    
+    # Update config
+    now = datetime.now(timezone.utc).isoformat()
+    await db.woocommerce_configs.update_one(
+        {"id": config["id"]},
+        {"$set": {"last_sync": now, "products_synced": created + updated}}
+    )
+    
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "type": "store_export",
+        "message": f"Exportación a PrestaShop: {created} creados, {updated} actualizados, {failed} fallidos",
+        "product_id": None,
+        "product_name": None,
+        "user_id": user["id"],
+        "read": False,
+        "created_at": now
+    })
+    
+    return {
+        "status": "success" if failed == 0 else "partial",
+        "created": created,
+        "updated": updated,
+        "failed": failed,
+        "errors": errors[:10]
+    }
+
+
+async def export_to_shopify(config: dict, catalog_items: list, user: dict) -> dict:
+    """Export products to Shopify with full product data"""
+    
+    client = ShopifyClient(
+        store_url=config.get("store_url", ""),
+        access_token=config.get("access_token", "")
+    )
+    
+    created = 0
+    updated = 0
+    failed = 0
+    errors = []
+    
+    # Get products data
+    product_ids = [item["product_id"] for item in catalog_items]
+    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+    products_map = {p["id"]: p for p in products}
+    
+    # Get existing products from Shopify by SKU
+    existing_products = client.get_products(limit=250)
+    existing_skus = {}
+    for p in existing_products:
+        for variant in p.get("variants", []):
+            sku = variant.get("sku", "")
+            if sku:
+                existing_skus[sku] = p.get("id")
+    
+    # Get margin rules
+    margin_rules = await db.margin_rules.find({"catalog_id": config.get("catalog_id")}, {"_id": 0}).to_list(100)
+    margin_rules.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    
+    for item in catalog_items:
+        product = products_map.get(item["product_id"])
+        if not product:
+            failed += 1
+            errors.append(f"Producto no encontrado: {item['product_id']}")
+            continue
+        
+        try:
+            base_price = item.get("custom_price") or product.get("price", 0)
+            final_price = calculate_final_price(base_price, product, margin_rules)
+            
+            product_data = {
+                "sku": product.get("sku", ""),
+                "ean": product.get("ean", ""),
+                "name": item.get("custom_name") or product.get("name", ""),
+                "price": round(final_price, 2),
+                "stock": product.get("stock", 0),
+                "short_description": product.get("short_description", ""),
+                "long_description": product.get("long_description") or product.get("description", ""),
+                "brand": product.get("brand", ""),
+                "weight": product.get("weight", 0),
+                "image_url": product.get("image_url", ""),
+                "gallery_images": product.get("gallery_images", []),
+                "category": product.get("category", "")
+            }
+            
+            # Check if product exists
+            existing_id = existing_skus.get(product.get("sku", ""))
+            
+            if existing_id:
+                result = client.update_product(int(existing_id), product_data)
+                if result.get("status") == "success":
+                    updated += 1
+                else:
+                    failed += 1
+                    errors.append(f"{product.get('sku')}: {result.get('message')}")
+            else:
+                result = client.create_product(product_data)
+                if result.get("status") == "success":
+                    created += 1
+                else:
+                    failed += 1
+                    errors.append(f"{product.get('sku')}: {result.get('message')}")
+        except Exception as e:
+            failed += 1
+            errors.append(f"{product.get('sku', 'unknown')}: {str(e)}")
+    
+    # Update config
+    now = datetime.now(timezone.utc).isoformat()
+    await db.woocommerce_configs.update_one(
+        {"id": config["id"]},
+        {"$set": {"last_sync": now, "products_synced": created + updated}}
+    )
+    
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "type": "store_export",
+        "message": f"Exportación a Shopify: {created} creados, {updated} actualizados, {failed} fallidos",
+        "product_id": None,
+        "product_name": None,
+        "user_id": user["id"],
+        "read": False,
+        "created_at": now
+    })
+    
+    return {
+        "status": "success" if failed == 0 else "partial",
+        "created": created,
+        "updated": updated,
+        "failed": failed,
+        "errors": errors[:10]
+    }
+
+
+async def export_to_magento(config: dict, catalog_items: list, user: dict) -> dict:
+    """Export products to Magento with full product data"""
+    
+    client = MagentoClient(
+        store_url=config.get("store_url", ""),
+        access_token=config.get("access_token", "")
+    )
+    
+    created = 0
+    updated = 0
+    failed = 0
+    errors = []
+    
+    # Get products data
+    product_ids = [item["product_id"] for item in catalog_items]
+    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+    products_map = {p["id"]: p for p in products}
+    
+    # Get existing products from Magento by SKU
+    existing_products = client.get_products(limit=500)
+    existing_skus = {p.get("sku", ""): True for p in existing_products}
+    
+    # Get margin rules
+    margin_rules = await db.margin_rules.find({"catalog_id": config.get("catalog_id")}, {"_id": 0}).to_list(100)
+    margin_rules.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    
+    for item in catalog_items:
+        product = products_map.get(item["product_id"])
+        if not product:
+            failed += 1
+            errors.append(f"Producto no encontrado: {item['product_id']}")
+            continue
+        
+        try:
+            base_price = item.get("custom_price") or product.get("price", 0)
+            final_price = calculate_final_price(base_price, product, margin_rules)
+            
+            product_data = {
+                "sku": product.get("sku", ""),
+                "ean": product.get("ean", ""),
+                "name": item.get("custom_name") or product.get("name", ""),
+                "price": round(final_price, 2),
+                "stock": product.get("stock", 0),
+                "short_description": product.get("short_description", ""),
+                "long_description": product.get("long_description") or product.get("description", ""),
+                "brand": product.get("brand", ""),
+                "weight": product.get("weight", 0),
+                "image_url": product.get("image_url", ""),
+                "gallery_images": product.get("gallery_images", []),
+                "category": product.get("category", "")
+            }
+            
+            sku = product.get("sku", "")
+            
+            if sku in existing_skus:
+                result = client.update_product(sku, product_data)
+                if result.get("status") == "success":
+                    updated += 1
+                else:
+                    failed += 1
+                    errors.append(f"{sku}: {result.get('message')}")
+            else:
+                result = client.create_product(product_data)
+                if result.get("status") == "success":
+                    created += 1
+                else:
+                    failed += 1
+                    errors.append(f"{sku}: {result.get('message')}")
+        except Exception as e:
+            failed += 1
+            errors.append(f"{product.get('sku', 'unknown')}: {str(e)}")
+    
+    # Update config
+    now = datetime.now(timezone.utc).isoformat()
+    await db.woocommerce_configs.update_one(
+        {"id": config["id"]},
+        {"$set": {"last_sync": now, "products_synced": created + updated}}
+    )
+    
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "type": "store_export",
+        "message": f"Exportación a Magento: {created} creados, {updated} actualizados, {failed} fallidos",
+        "product_id": None,
+        "product_name": None,
+        "user_id": user["id"],
+        "read": False,
+        "created_at": now
+    })
+    
+    return {
+        "status": "success" if failed == 0 else "partial",
+        "created": created,
+        "updated": updated,
+        "failed": failed,
+        "errors": errors[:10]
+    }
+
+
+async def export_to_wix(config: dict, catalog_items: list, user: dict) -> dict:
+    """Export products to Wix with full product data"""
+    
+    client = WixClient(
+        store_url=config.get("store_url", ""),
+        api_key=config.get("api_key", ""),
+        site_id=config.get("site_id", "")
+    )
+    
+    created = 0
+    updated = 0
+    failed = 0
+    errors = []
+    
+    # Get products data
+    product_ids = [item["product_id"] for item in catalog_items]
+    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+    products_map = {p["id"]: p for p in products}
+    
+    # Get existing products from Wix by SKU
+    existing_products = client.get_products(limit=500)
+    existing_skus = {p.get("sku", ""): p.get("id") for p in existing_products if p.get("sku")}
+    
+    # Get margin rules
+    margin_rules = await db.margin_rules.find({"catalog_id": config.get("catalog_id")}, {"_id": 0}).to_list(100)
+    margin_rules.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    
+    for item in catalog_items:
+        product = products_map.get(item["product_id"])
+        if not product:
+            failed += 1
+            errors.append(f"Producto no encontrado: {item['product_id']}")
+            continue
+        
+        try:
+            base_price = item.get("custom_price") or product.get("price", 0)
+            final_price = calculate_final_price(base_price, product, margin_rules)
+            
+            product_data = {
+                "sku": product.get("sku", ""),
+                "ean": product.get("ean", ""),
+                "name": item.get("custom_name") or product.get("name", ""),
+                "price": round(final_price, 2),
+                "stock": product.get("stock", 0),
+                "short_description": product.get("short_description", ""),
+                "long_description": product.get("long_description") or product.get("description", ""),
+                "brand": product.get("brand", ""),
+                "weight": product.get("weight", 0),
+                "image_url": product.get("image_url", ""),
+                "gallery_images": product.get("gallery_images", []),
+                "category": product.get("category", "")
+            }
+            
+            sku = product.get("sku", "")
+            existing_id = existing_skus.get(sku)
+            
+            if existing_id:
+                result = client.update_product(existing_id, product_data)
+                if result.get("status") == "success":
+                    updated += 1
+                else:
+                    failed += 1
+                    errors.append(f"{sku}: {result.get('message')}")
+            else:
+                result = client.create_product(product_data)
+                if result.get("status") == "success":
+                    created += 1
+                else:
+                    failed += 1
+                    errors.append(f"{sku}: {result.get('message')}")
+        except Exception as e:
+            failed += 1
+            errors.append(f"{product.get('sku', 'unknown')}: {str(e)}")
+    
+    # Update config
+    now = datetime.now(timezone.utc).isoformat()
+    await db.woocommerce_configs.update_one(
+        {"id": config["id"]},
+        {"$set": {"last_sync": now, "products_synced": created + updated}}
+    )
+    
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "type": "store_export",
+        "message": f"Exportación a Wix: {created} creados, {updated} actualizados, {failed} fallidos",
+        "product_id": None,
+        "product_name": None,
+        "user_id": user["id"],
+        "read": False,
+        "created_at": now
+    })
+    
+    return {
+        "status": "success" if failed == 0 else "partial",
+        "created": created,
+        "updated": updated,
+        "failed": failed,
+        "errors": errors[:10]
+    }
 
 
 @router.post("/stores/configs/{config_id}/export-categories")

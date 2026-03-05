@@ -54,9 +54,12 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] **Integración en Páginas**
   - SupplierDetail.jsx: Diálogo completo al ver producto de proveedor
   - Products.jsx: Botón "Editar" para modificar producto del mejor proveedor
-- [x] **Sincronización con Tiendas Online**
-  - WooCommerce: Exporta nombre, short_description, long_description, brand, images (principal + galería)
-  - Las imágenes secundarias se incluyen en el array de images de WooCommerce
+- [x] **Sincronización con Tiendas Online** (ACTUALIZADO - 2026-03-05)
+  - **WooCommerce**: Exporta nombre, short_description, long_description, brand, images (principal + galería)
+  - **PrestaShop**: Exporta nombre, description, description_short, EAN, peso, imágenes (principal + galería)
+  - **Shopify**: Exporta título, body_html, vendor (brand), categoría, SKU, EAN, peso, imágenes (principal + galería), metafields para short_description
+  - **Magento**: Exporta nombre, short_description, description, marca (manufacturer), EAN, peso, imágenes (codificadas en base64)
+  - **Wix**: Exporta nombre, descripción, marca, precio, SKU, peso, imágenes (principal + galería), additionalInfoSections para descripción corta
 
 - [x] **Reglas de Margen por Catálogo** (2026-03-04)
   - Cada catálogo tiene sus propias reglas de margen independientes

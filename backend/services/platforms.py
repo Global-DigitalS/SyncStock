@@ -125,18 +125,29 @@ class PrestaShopClient:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
     def create_product(self, product_data: Dict) -> Dict:
-        """Create a new product in PrestaShop"""
+        """Create a new product in PrestaShop with full product data"""
         try:
+            # Build description combining short and long
+            short_desc = product_data.get("short_description", "")
+            long_desc = product_data.get("long_description", "") or product_data.get("description", "")
+            
+            # Category
+            category_id = product_data.get("category_id", 2)  # Default to Home
+            
             # PrestaShop requires XML format
             xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
             <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
                 <product>
                     <reference><![CDATA[{product_data.get("sku", "")}]]></reference>
+                    <ean13><![CDATA[{product_data.get("ean", "")}]]></ean13>
                     <name><language id="1"><![CDATA[{product_data.get("name", "")}]]></language></name>
+                    <description><language id="1"><![CDATA[{long_desc}]]></language></description>
+                    <description_short><language id="1"><![CDATA[{short_desc}]]></language></description_short>
                     <price>{product_data.get("price", 0)}</price>
+                    <weight>{product_data.get("weight", 0)}</weight>
                     <active>1</active>
                     <state>1</state>
-                    <id_category_default>2</id_category_default>
+                    <id_category_default>{category_id}</id_category_default>
                     <id_tax_rules_group>1</id_tax_rules_group>
                 </product>
             </prestashop>'''
@@ -149,20 +160,78 @@ class PrestaShopClient:
                 timeout=30
             )
             if response.status_code in [200, 201]:
-                return {"status": "success", "message": "Producto creado", "response": response.text[:500]}
+                # Extract product ID from response
+                import re
+                match = re.search(r'<id><!\[CDATA\[(\d+)\]\]></id>', response.text)
+                product_id = match.group(1) if match else None
+                
+                # Upload images if product was created
+                if product_id:
+                    self._upload_product_images(product_id, product_data)
+                
+                return {"status": "success", "message": "Producto creado", "product_id": product_id}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}", "response": response.text[:500]}
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
-    def update_product(self, product_id: int, product_data: Dict) -> Dict:
-        """Update an existing product"""
+    def _upload_product_images(self, product_id: str, product_data: Dict) -> None:
+        """Upload images to a PrestaShop product"""
         try:
+            images = []
+            # Main image first
+            if product_data.get("image_url"):
+                images.append(product_data["image_url"])
+            # Gallery images
+            gallery = product_data.get("gallery_images") or []
+            images.extend(gallery)
+            
+            for img_url in images:
+                if not img_url:
+                    continue
+                try:
+                    # Download image
+                    img_response = requests.get(img_url, timeout=30)
+                    if img_response.status_code == 200:
+                        # Upload to PrestaShop
+                        files = {'image': ('image.jpg', img_response.content, 'image/jpeg')}
+                        upload_response = requests.post(
+                            f"{self.base_url}/images/products/{product_id}",
+                            auth=self.auth,
+                            files=files,
+                            timeout=60
+                        )
+                        if upload_response.status_code not in [200, 201]:
+                            logger.warning(f"PrestaShop image upload failed: {upload_response.status_code}")
+                except Exception as e:
+                    logger.warning(f"PrestaShop image upload error: {e}")
+        except Exception as e:
+            logger.error(f"PrestaShop _upload_product_images error: {e}")
+    
+    def update_product(self, product_id: int, product_data: Dict) -> Dict:
+        """Update an existing product with full data"""
+        try:
+            # Build update fields
+            update_parts = [f"<id>{product_id}</id>"]
+            
+            if "name" in product_data:
+                update_parts.append(f'<name><language id="1"><![CDATA[{product_data["name"]}]]></language></name>')
+            if "price" in product_data:
+                update_parts.append(f'<price>{product_data["price"]}</price>')
+            if "short_description" in product_data:
+                update_parts.append(f'<description_short><language id="1"><![CDATA[{product_data["short_description"]}]]></language></description_short>')
+            if "long_description" in product_data or "description" in product_data:
+                desc = product_data.get("long_description") or product_data.get("description", "")
+                update_parts.append(f'<description><language id="1"><![CDATA[{desc}]]></language></description>')
+            if "weight" in product_data:
+                update_parts.append(f'<weight>{product_data["weight"]}</weight>')
+            if "ean" in product_data:
+                update_parts.append(f'<ean13><![CDATA[{product_data["ean"]}]]></ean13>')
+            
             xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
             <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
                 <product>
-                    <id>{product_id}</id>
-                    <price>{product_data.get("price", 0)}</price>
+                    {"".join(update_parts)}
                 </product>
             </prestashop>'''
             
@@ -170,10 +239,13 @@ class PrestaShopClient:
                 f"{self.base_url}/products/{product_id}",
                 auth=self.auth,
                 headers={'Content-Type': 'application/xml'},
-                data=xml_data,
+                data=xml_data.encode('utf-8'),
                 timeout=30
             )
             if response.status_code in [200, 201]:
+                # Upload new images if provided
+                if product_data.get("image_url") or product_data.get("gallery_images"):
+                    self._upload_product_images(str(product_id), product_data)
                 return {"status": "success", "message": "Producto actualizado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
@@ -371,29 +443,58 @@ class ShopifyClient:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
     def create_product(self, product_data: Dict) -> Dict:
-        """Create a new product in Shopify"""
+        """Create a new product in Shopify with full product data"""
         try:
+            # Build description - prefer long_description, fallback to description
+            description = product_data.get('long_description') or product_data.get('description', '')
+            
+            # Build images array - main image first, then gallery
+            images = []
+            if product_data.get('image_url'):
+                images.append({'src': product_data['image_url']})
+            gallery = product_data.get('gallery_images') or []
+            for img_url in gallery:
+                if img_url:
+                    images.append({'src': img_url})
+            
+            # Build metafields for short_description and brand
+            metafields = []
+            if product_data.get('short_description'):
+                metafields.append({
+                    'namespace': 'custom',
+                    'key': 'short_description',
+                    'value': product_data['short_description'],
+                    'type': 'multi_line_text_field'
+                })
+            
             payload = {
                 'product': {
                     'title': product_data.get('name', ''),
-                    'body_html': product_data.get('description', ''),
+                    'body_html': description,
                     'vendor': product_data.get('brand', ''),
                     'product_type': product_data.get('category', ''),
+                    'tags': product_data.get('brand', ''),  # Add brand as tag too
                     'variants': [{
                         'sku': product_data.get('sku', ''),
                         'price': str(product_data.get('price', 0)),
                         'inventory_management': 'shopify',
-                        'barcode': product_data.get('ean', '')
+                        'barcode': product_data.get('ean', ''),
+                        'weight': product_data.get('weight', 0),
+                        'weight_unit': 'kg'
                     }],
-                    'images': [{'src': product_data.get('image_url')}] if product_data.get('image_url') else []
+                    'images': images,
+                    'metafields': metafields if metafields else None
                 }
             }
+            
+            # Remove None values
+            payload['product'] = {k: v for k, v in payload['product'].items() if v is not None}
             
             response = requests.post(
                 f"{self.base_url}/products.json",
                 headers=self.headers,
                 json=payload,
-                timeout=30
+                timeout=60
             )
             if response.status_code in [200, 201]:
                 product = response.json().get('product', {})
@@ -404,19 +505,55 @@ class ShopifyClient:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
     def update_product(self, product_id: int, product_data: Dict) -> Dict:
-        """Update an existing product"""
+        """Update an existing product with full data"""
         try:
             payload = {'product': {'id': product_id}}
+            
             if 'name' in product_data:
                 payload['product']['title'] = product_data['name']
-            if 'price' in product_data:
-                payload['product']['variants'] = [{'price': str(product_data['price'])}]
+            
+            if 'long_description' in product_data or 'description' in product_data:
+                desc = product_data.get('long_description') or product_data.get('description', '')
+                payload['product']['body_html'] = desc
+            
+            if 'brand' in product_data:
+                payload['product']['vendor'] = product_data['brand']
+                payload['product']['tags'] = product_data['brand']
+            
+            if 'category' in product_data:
+                payload['product']['product_type'] = product_data['category']
+            
+            # Handle variants update
+            if 'price' in product_data or 'sku' in product_data or 'ean' in product_data or 'weight' in product_data:
+                variant = {}
+                if 'price' in product_data:
+                    variant['price'] = str(product_data['price'])
+                if 'sku' in product_data:
+                    variant['sku'] = product_data['sku']
+                if 'ean' in product_data:
+                    variant['barcode'] = product_data['ean']
+                if 'weight' in product_data:
+                    variant['weight'] = product_data['weight']
+                    variant['weight_unit'] = 'kg'
+                payload['product']['variants'] = [variant]
+            
+            # Handle images update
+            if product_data.get('image_url') or product_data.get('gallery_images'):
+                images = []
+                if product_data.get('image_url'):
+                    images.append({'src': product_data['image_url']})
+                gallery = product_data.get('gallery_images') or []
+                for img_url in gallery:
+                    if img_url:
+                        images.append({'src': img_url})
+                if images:
+                    payload['product']['images'] = images
             
             response = requests.put(
                 f"{self.base_url}/products/{product_id}.json",
                 headers=self.headers,
                 json=payload,
-                timeout=30
+                timeout=60
             )
             if response.status_code == 200:
                 return {"status": "success", "message": "Producto actualizado"}
@@ -602,8 +739,39 @@ class MagentoClient:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
     def create_product(self, product_data: Dict) -> Dict:
-        """Create a new product in Magento"""
+        """Create a new product in Magento with full product data"""
         try:
+            # Build custom attributes
+            custom_attributes = []
+            
+            # Short description
+            if product_data.get('short_description'):
+                custom_attributes.append({
+                    'attribute_code': 'short_description',
+                    'value': product_data['short_description']
+                })
+            
+            # Long description
+            if product_data.get('long_description') or product_data.get('description'):
+                custom_attributes.append({
+                    'attribute_code': 'description',
+                    'value': product_data.get('long_description') or product_data.get('description', '')
+                })
+            
+            # EAN/Barcode
+            if product_data.get('ean'):
+                custom_attributes.append({
+                    'attribute_code': 'barcode',
+                    'value': product_data['ean']
+                })
+            
+            # Brand/Manufacturer
+            if product_data.get('brand'):
+                custom_attributes.append({
+                    'attribute_code': 'manufacturer',
+                    'value': product_data['brand']
+                })
+            
             payload = {
                 'product': {
                     'sku': product_data.get('sku', ''),
@@ -613,21 +781,16 @@ class MagentoClient:
                     'visibility': 4,  # Catalog, Search
                     'type_id': 'simple',
                     'attribute_set_id': 4,  # Default
+                    'weight': product_data.get('weight', 0),
                     'extension_attributes': {
                         'stock_item': {
                             'qty': product_data.get('stock', 0),
                             'is_in_stock': product_data.get('stock', 0) > 0
                         }
                     },
-                    'custom_attributes': []
+                    'custom_attributes': custom_attributes
                 }
             }
-            
-            if product_data.get('ean'):
-                payload['product']['custom_attributes'].append({
-                    'attribute_code': 'barcode',
-                    'value': product_data['ean']
-                })
             
             response = requests.post(
                 f"{self.base_url}/products",
@@ -636,20 +799,116 @@ class MagentoClient:
                 timeout=30
             )
             if response.status_code in [200, 201]:
-                return {"status": "success", "message": "Producto creado", "sku": product_data.get('sku')}
+                result = response.json()
+                sku = result.get('sku', product_data.get('sku'))
+                
+                # Upload images after product creation
+                if product_data.get('image_url') or product_data.get('gallery_images'):
+                    self._upload_product_images(sku, product_data)
+                
+                return {"status": "success", "message": "Producto creado", "sku": sku}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
+    def _upload_product_images(self, sku: str, product_data: Dict) -> None:
+        """Upload images to a Magento product"""
+        try:
+            import base64
+            
+            images = []
+            # Main image first
+            if product_data.get("image_url"):
+                images.append(("image", product_data["image_url"]))
+            # Gallery images
+            gallery = product_data.get("gallery_images") or []
+            for idx, img_url in enumerate(gallery):
+                if img_url:
+                    images.append((f"gallery_{idx}", img_url))
+            
+            for position, (label, img_url) in enumerate(images):
+                try:
+                    # Download image
+                    img_response = requests.get(img_url, timeout=30)
+                    if img_response.status_code == 200:
+                        # Encode to base64
+                        img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+                        
+                        # Determine content type
+                        content_type = img_response.headers.get('content-type', 'image/jpeg')
+                        if 'png' in content_type:
+                            media_type = 'image/png'
+                        elif 'gif' in content_type:
+                            media_type = 'image/gif'
+                        else:
+                            media_type = 'image/jpeg'
+                        
+                        # Upload to Magento
+                        media_payload = {
+                            'entry': {
+                                'media_type': 'image',
+                                'label': label,
+                                'position': position,
+                                'disabled': False,
+                                'types': ['image', 'small_image', 'thumbnail'] if position == 0 else [],
+                                'content': {
+                                    'base64_encoded_data': img_base64,
+                                    'type': media_type,
+                                    'name': f'{sku}_{label}.jpg'
+                                }
+                            }
+                        }
+                        
+                        upload_response = requests.post(
+                            f"{self.base_url}/products/{sku}/media",
+                            headers=self.headers,
+                            json=media_payload,
+                            timeout=60
+                        )
+                        if upload_response.status_code not in [200, 201]:
+                            logger.warning(f"Magento image upload failed: {upload_response.status_code}")
+                except Exception as e:
+                    logger.warning(f"Magento image upload error: {e}")
+        except Exception as e:
+            logger.error(f"Magento _upload_product_images error: {e}")
+    
     def update_product(self, sku: str, product_data: Dict) -> Dict:
-        """Update an existing product"""
+        """Update an existing product with full data"""
         try:
             payload = {'product': {'sku': sku}}
+            custom_attributes = []
+            
             if 'name' in product_data:
                 payload['product']['name'] = product_data['name']
             if 'price' in product_data:
                 payload['product']['price'] = product_data['price']
+            if 'weight' in product_data:
+                payload['product']['weight'] = product_data['weight']
+            
+            # Short description
+            if 'short_description' in product_data:
+                custom_attributes.append({
+                    'attribute_code': 'short_description',
+                    'value': product_data['short_description']
+                })
+            
+            # Long description
+            if 'long_description' in product_data or 'description' in product_data:
+                custom_attributes.append({
+                    'attribute_code': 'description',
+                    'value': product_data.get('long_description') or product_data.get('description', '')
+                })
+            
+            # Brand
+            if 'brand' in product_data:
+                custom_attributes.append({
+                    'attribute_code': 'manufacturer',
+                    'value': product_data['brand']
+                })
+            
+            if custom_attributes:
+                payload['product']['custom_attributes'] = custom_attributes
             
             response = requests.put(
                 f"{self.base_url}/products/{sku}",
@@ -658,6 +917,9 @@ class MagentoClient:
                 timeout=30
             )
             if response.status_code == 200:
+                # Upload new images if provided
+                if product_data.get('image_url') or product_data.get('gallery_images'):
+                    self._upload_product_images(sku, product_data)
                 return {"status": "success", "message": "Producto actualizado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
@@ -740,32 +1002,110 @@ class WixClient:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
     def create_product(self, product_data: Dict) -> Dict:
-        """Create a new product in Wix"""
+        """Create a new product in Wix with full product data"""
         try:
+            # Build description - prefer long_description
+            description = product_data.get('long_description') or product_data.get('description', '')
+            
+            # Build media array for images
+            media = []
+            if product_data.get('image_url'):
+                media.append({
+                    'url': product_data['image_url'],
+                    'mediaType': 'IMAGE'
+                })
+            gallery = product_data.get('gallery_images') or []
+            for img_url in gallery:
+                if img_url:
+                    media.append({
+                        'url': img_url,
+                        'mediaType': 'IMAGE'
+                    })
+            
             payload = {
                 'product': {
                     'name': product_data.get('name', ''),
+                    'description': description,
                     'productType': 'physical',
                     'priceData': {
                         'price': product_data.get('price', 0)
                     },
                     'sku': product_data.get('sku', ''),
                     'visible': True,
-                    'manageVariants': False
+                    'manageVariants': False,
+                    'weight': product_data.get('weight', 0),
+                    'brand': product_data.get('brand', ''),
+                    'media': {'items': media} if media else None,
+                    'additionalInfoSections': []
                 }
             }
+            
+            # Add short description as additional info section
+            if product_data.get('short_description'):
+                payload['product']['additionalInfoSections'].append({
+                    'title': 'Resumen',
+                    'description': product_data['short_description']
+                })
+            
+            # Clean None values
+            payload['product'] = {k: v for k, v in payload['product'].items() if v is not None}
             
             response = requests.post(
                 f"{self.base_url}/products",
                 headers=self.headers,
                 json=payload,
-                timeout=30
+                timeout=60
             )
             if response.status_code in [200, 201]:
                 product = response.json().get('product', {})
                 return {"status": "success", "product_id": product.get('id'), "message": "Producto creado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+        except Exception as e:
+            return {"status": "error", "message": f"Error: {str(e)}"}
+    
+    def update_product(self, product_id: str, product_data: Dict) -> Dict:
+        """Update an existing product with full data"""
+        try:
+            payload = {'product': {'id': product_id}}
+            
+            if 'name' in product_data:
+                payload['product']['name'] = product_data['name']
+            
+            if 'long_description' in product_data or 'description' in product_data:
+                payload['product']['description'] = product_data.get('long_description') or product_data.get('description', '')
+            
+            if 'price' in product_data:
+                payload['product']['priceData'] = {'price': product_data['price']}
+            
+            if 'brand' in product_data:
+                payload['product']['brand'] = product_data['brand']
+            
+            if 'weight' in product_data:
+                payload['product']['weight'] = product_data['weight']
+            
+            # Handle images
+            if product_data.get('image_url') or product_data.get('gallery_images'):
+                media = []
+                if product_data.get('image_url'):
+                    media.append({'url': product_data['image_url'], 'mediaType': 'IMAGE'})
+                gallery = product_data.get('gallery_images') or []
+                for img_url in gallery:
+                    if img_url:
+                        media.append({'url': img_url, 'mediaType': 'IMAGE'})
+                if media:
+                    payload['product']['media'] = {'items': media}
+            
+            response = requests.patch(
+                f"{self.base_url}/products/{product_id}",
+                headers=self.headers,
+                json=payload,
+                timeout=60
+            )
+            if response.status_code in [200, 201]:
+                return {"status": "success", "message": "Producto actualizado"}
+            else:
+                return {"status": "error", "message": f"Error: {response.status_code}"}
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
