@@ -92,12 +92,13 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Switch para habilitar/deshabilitar pagos
   - Switch para modo producción (pagos reales)
   - Prueba de conexión con Stripe API
-  - **Flujo de Pago Real con Stripe Checkout** (NUEVO)
-    - Usa emergentintegrations para crear sesiones de checkout
+  - **Flujo de Pago Real con Stripe Checkout** (ACTUALIZADO)
+    - Usa SDK oficial de Stripe (stripe==14.3.0)
     - Redirección a Stripe para pago seguro
     - Polling de estado de pago al regresar
     - Actualización automática de suscripción tras pago exitoso
     - Soporte para ciclos mensual y anual
+    - Webhooks para procesar pagos completados
   - Endpoints:
     - GET /api/stripe/config/status - Estado público de Stripe (enabled/configured)
     - GET /api/admin/stripe/config - Obtener configuración (SuperAdmin)
@@ -119,14 +120,19 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Endpoint: POST /api/admin/system/reset (requiere `{"confirmation_text": "RESET"}`)
   - Registro de auditoría (quién ejecutó y cuándo)
 
-- [x] **Personalización/Branding** (`/admin/branding`)
+- [x] **Personalización/Branding** (`/admin/branding`) - ACTUALIZADO 2026-03-05
   - Nombre de la aplicación
   - Slogan/descripción
+  - **Título de Página** (pestaña del navegador) - NUEVO
   - Logo y Favicon (upload de imágenes)
+  - **Imagen Hero para Login/Registro** (upload de imagen) - NUEVO
+  - **Texto Hero (título y subtítulo)** - NUEVO
   - Colores personalizados (primario, secundario, acento)
   - 7 Temas predefinidos: Índigo, Océano, Bosque, Atardecer, Real, Pizarra, Rosa
   - Vista previa en tiempo real
   - Texto del footer
+  - Endpoints adicionales:
+    - POST /api/admin/branding/upload-hero - Subir imagen Hero
 
 - [x] **Gestión de Suscripciones** (`/admin/subscriptions`) - Renombrado de "Planes"
   - CRUD completo de planes de suscripción

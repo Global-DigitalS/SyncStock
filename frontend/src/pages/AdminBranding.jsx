@@ -6,10 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../co
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   Palette, Upload, Eye, Save, RefreshCw, Image, Type, 
-  Paintbrush, CheckCircle, Sparkles
+  Paintbrush, CheckCircle, Sparkles, LayoutTemplate, FileText
 } from "lucide-react";
 
 const COLOR_SWATCHES = [
@@ -24,6 +25,7 @@ const AdminBranding = () => {
   const navigate = useNavigate();
   const logoInputRef = useRef(null);
   const faviconInputRef = useRef(null);
+  const heroInputRef = useRef(null);
 
   const [branding, setBranding] = useState({
     app_name: "StockHub",
@@ -34,7 +36,13 @@ const AdminBranding = () => {
     secondary_color: "#0f172a",
     accent_color: "#10b981",
     footer_text: "",
-    theme_preset: "default"
+    theme_preset: "default",
+    // Hero section
+    hero_image_url: null,
+    hero_title: "Gestiona tu inventario de forma inteligente",
+    hero_subtitle: "Sincroniza proveedores, configura márgenes y exporta a tu tienda online en minutos.",
+    // Page title
+    page_title: "StockHub - Gestión de Catálogos"
   });
   const [themePresets, setThemePresets] = useState({});
   const [loading, setLoading] = useState(true);
@@ -135,6 +143,32 @@ const AdminBranding = () => {
     }
   };
 
+  const handleHeroUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("El archivo debe ser una imagen");
+      return;
+    }
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append("file", file);
+
+    try {
+      const res = await api.post("/admin/branding/upload-hero", formData, {
+        headers: { "Content-Type": "multipart/form-data" }
+      });
+      setBranding(prev => ({ ...prev, hero_image_url: res.data.hero_image_url }));
+      toast.success("Imagen Hero subida");
+    } catch (error) {
+      toast.error("Error al subir imagen Hero");
+    } finally {
+      setUploading(false);
+    }
+  };
+
   const applyPreset = async (presetKey) => {
     try {
       const res = await api.post(`/admin/branding/apply-preset/${presetKey}`);
@@ -182,6 +216,10 @@ const AdminBranding = () => {
             <Image className="w-4 h-4 mr-2" />
             Imágenes
           </TabsTrigger>
+          <TabsTrigger value="hero" className="data-[state=active]:bg-white">
+            <LayoutTemplate className="w-4 h-4 mr-2" />
+            Hero
+          </TabsTrigger>
           <TabsTrigger value="colors" className="data-[state=active]:bg-white">
             <Palette className="w-4 h-4 mr-2" />
             Colores
@@ -225,6 +263,18 @@ const AdminBranding = () => {
                     className="input-base"
                   />
                 </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="page_title">Título de Página (Pestaña del navegador)</Label>
+                <Input
+                  id="page_title"
+                  value={branding.page_title}
+                  onChange={(e) => setBranding({ ...branding, page_title: e.target.value })}
+                  placeholder="Mi App - Descripción"
+                  className="input-base"
+                  data-testid="page-title-input"
+                />
+                <p className="text-xs text-slate-500">Este texto aparece en la pestaña del navegador</p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="footer_text">Texto del Footer</Label>
@@ -379,6 +429,122 @@ const AdminBranding = () => {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Hero Tab */}
+        <TabsContent value="hero" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LayoutTemplate className="w-5 h-5 text-purple-600" />
+                Página de Inicio de Sesión / Registro
+              </CardTitle>
+              <CardDescription>
+                Personaliza la imagen de fondo y el texto que aparece en las páginas de login y registro
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Hero Image Upload */}
+              <div className="space-y-3">
+                <Label>Imagen de Fondo (Hero)</Label>
+                <div className="border-2 border-dashed border-slate-200 rounded-lg p-6">
+                  {branding.hero_image_url ? (
+                    <div className="space-y-4">
+                      <div className="relative rounded-lg overflow-hidden" style={{ height: "200px" }}>
+                        <img 
+                          src={branding.hero_image_url.startsWith('/') ? `${process.env.REACT_APP_BACKEND_URL}${branding.hero_image_url}` : branding.hero_image_url}
+                          alt="Hero" 
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <div className="text-center text-white p-4">
+                            <h3 className="text-xl font-bold mb-2">{branding.hero_title}</h3>
+                            <p className="text-sm opacity-80">{branding.hero_subtitle}</p>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex justify-center gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => heroInputRef.current?.click()}
+                          disabled={uploading}
+                        >
+                          <Upload className="w-4 h-4 mr-2" />
+                          Cambiar Imagen
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => setBranding({ ...branding, hero_image_url: null })}
+                        >
+                          Usar Predeterminada
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center space-y-4">
+                      <div className="w-20 h-20 bg-slate-100 rounded-lg flex items-center justify-center mx-auto">
+                        <LayoutTemplate className="w-10 h-10 text-slate-400" />
+                      </div>
+                      <div>
+                        <p className="text-sm text-slate-500 mb-3">
+                          Se está usando la imagen predeterminada de Unsplash
+                        </p>
+                        <Button 
+                          variant="outline" 
+                          onClick={() => heroInputRef.current?.click()}
+                          disabled={uploading}
+                        >
+                          {uploading ? (
+                            <RefreshCw className="w-4 h-4 animate-spin mr-2" />
+                          ) : (
+                            <Upload className="w-4 h-4 mr-2" />
+                          )}
+                          Subir Imagen Personalizada
+                        </Button>
+                      </div>
+                      <p className="text-xs text-slate-400">Recomendado: 1920x1080px o mayor, formato JPG/PNG</p>
+                    </div>
+                  )}
+                  <input 
+                    ref={heroInputRef}
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    onChange={handleHeroUpload}
+                  />
+                </div>
+              </div>
+
+              {/* Hero Text */}
+              <div className="grid gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="hero_title">Título del Hero</Label>
+                  <Input
+                    id="hero_title"
+                    value={branding.hero_title}
+                    onChange={(e) => setBranding({ ...branding, hero_title: e.target.value })}
+                    placeholder="Gestiona tu inventario de forma inteligente"
+                    className="input-base"
+                    data-testid="hero-title-input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="hero_subtitle">Subtítulo del Hero</Label>
+                  <Textarea
+                    id="hero_subtitle"
+                    value={branding.hero_subtitle}
+                    onChange={(e) => setBranding({ ...branding, hero_subtitle: e.target.value })}
+                    placeholder="Sincroniza proveedores, configura márgenes y exporta a tu tienda online en minutos."
+                    className="input-base resize-none"
+                    rows={3}
+                    data-testid="hero-subtitle-input"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
 
         {/* Colors Tab */}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../App";
 import { toast } from "sonner";
@@ -6,6 +6,9 @@ import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Package, Mail, Lock, User, Building2, ArrowRight, Eye, EyeOff } from "lucide-react";
+import axios from "axios";
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -17,8 +20,37 @@ const Register = () => {
   });
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [branding, setBranding] = useState({
+    app_name: "StockHub",
+    app_slogan: "Gestión de Catálogos",
+    logo_url: null,
+    primary_color: "#4f46e5",
+    hero_image_url: null,
+    hero_title: "Comienza a optimizar tu negocio",
+    hero_subtitle: "Únete a cientos de tiendas que ya gestionan sus catálogos de forma eficiente.",
+    page_title: "StockHub - Gestión de Catálogos"
+  });
   const { register, user } = useAuth();
   const navigate = useNavigate();
+
+  // Load branding on mount
+  useEffect(() => {
+    const loadBranding = async () => {
+      try {
+        const res = await axios.get(`${BACKEND_URL}/api/branding/public`);
+        if (res.data) {
+          setBranding(prev => ({ ...prev, ...res.data }));
+          // Update page title
+          if (res.data.page_title) {
+            document.title = res.data.page_title;
+          }
+        }
+      } catch (error) {
+        console.log("Using default branding");
+      }
+    };
+    loadBranding();
+  }, []);
 
   // Redirect if already logged in
   if (user) {
@@ -65,6 +97,11 @@ const Register = () => {
     }
   };
 
+  // Determine hero image URL
+  const heroImageUrl = branding.hero_image_url 
+    ? (branding.hero_image_url.startsWith('/') ? `${BACKEND_URL}${branding.hero_image_url}` : branding.hero_image_url)
+    : 'https://images.unsplash.com/photo-1557447733-6db6888dd2d2?crop=entropy&cs=srgb&fm=jpg&q=85';
+
   return (
     <div className="auth-container">
       {/* Left Side - Form */}
@@ -72,14 +109,25 @@ const Register = () => {
         <div className="w-full max-w-md animate-fade-in">
           {/* Logo */}
           <div className="flex items-center gap-3 mb-10">
-            <div className="w-12 h-12 bg-indigo-600 rounded-sm flex items-center justify-center">
-              <Package className="w-7 h-7 text-white" strokeWidth={1.5} />
-            </div>
+            {branding.logo_url ? (
+              <img 
+                src={branding.logo_url.startsWith('/') ? `${BACKEND_URL}${branding.logo_url}` : branding.logo_url}
+                alt={branding.app_name}
+                className="h-12 object-contain"
+              />
+            ) : (
+              <div 
+                className="w-12 h-12 rounded-sm flex items-center justify-center"
+                style={{ backgroundColor: branding.primary_color }}
+              >
+                <Package className="w-7 h-7 text-white" strokeWidth={1.5} />
+              </div>
+            )}
             <div>
               <h1 className="font-bold text-2xl text-slate-900 tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                StockHub
+                {branding.app_name}
               </h1>
-              <p className="text-sm text-slate-500">Gestión de Catálogos</p>
+              <p className="text-sm text-slate-500">{branding.app_slogan}</p>
             </div>
           </div>
 
@@ -232,15 +280,15 @@ const Register = () => {
       {/* Right Side - Image */}
       <div 
         className="auth-right"
-        style={{ backgroundImage: `url('https://images.unsplash.com/photo-1557447733-6db6888dd2d2?crop=entropy&cs=srgb&fm=jpg&q=85')` }}
+        style={{ backgroundImage: `url('${heroImageUrl}')` }}
       >
         <div className="absolute inset-0 flex items-center justify-center p-12">
           <div className="text-center text-white max-w-lg animate-slide-up">
             <h2 className="text-4xl font-bold mb-4" style={{ fontFamily: 'Manrope, sans-serif' }}>
-              Comienza a optimizar tu negocio
+              {branding.hero_title || "Comienza a optimizar tu negocio"}
             </h2>
             <p className="text-lg text-white/80">
-              Únete a cientos de tiendas que ya gestionan sus catálogos de forma eficiente.
+              {branding.hero_subtitle || "Únete a cientos de tiendas que ya gestionan sus catálogos de forma eficiente."}
             </p>
           </div>
         </div>

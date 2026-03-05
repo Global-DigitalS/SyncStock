@@ -41,6 +41,12 @@ class BrandingConfig(BaseModel):
     accent_color: str = "#10b981"  # emerald-500
     footer_text: str = ""
     theme_preset: str = "default"
+    # Hero section for login/register
+    hero_image_url: Optional[str] = None
+    hero_title: str = "Gestiona tu inventario de forma inteligente"
+    hero_subtitle: str = "Sincroniza proveedores, configura márgenes y exporta a tu tienda online en minutos."
+    # Page title (browser tab)
+    page_title: str = "StockHub - Gestión de Catálogos"
 
 class BrandingConfigUpdate(BaseModel):
     app_name: Optional[str] = None
@@ -52,6 +58,12 @@ class BrandingConfigUpdate(BaseModel):
     accent_color: Optional[str] = None
     footer_text: Optional[str] = None
     theme_preset: Optional[str] = None
+    # Hero section for login/register
+    hero_image_url: Optional[str] = None
+    hero_title: Optional[str] = None
+    hero_subtitle: Optional[str] = None
+    # Page title (browser tab)
+    page_title: Optional[str] = None
 
 
 # ==================== SUBSCRIPTION PLAN MODELS ====================
@@ -185,6 +197,31 @@ async def upload_favicon(file: UploadFile = File(...), user: dict = Depends(get_
     return {"success": True, "favicon_url": favicon_url}
 
 
+@router.post("/admin/branding/upload-hero")
+async def upload_hero_image(file: UploadFile = File(...), user: dict = Depends(get_superadmin_user)):
+    """Upload hero background image for login/register pages"""
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+    
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"hero_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+    
+    hero_image_url = f"/uploads/{filename}"
+    
+    await db.app_config.update_one(
+        {"type": "branding"},
+        {"$set": {"hero_image_url": hero_image_url, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+    
+    return {"success": True, "hero_image_url": hero_image_url}
+
+
 # ==================== PUBLIC BRANDING ENDPOINT (NO AUTH) ====================
 
 @router.get("/branding/public")
@@ -204,7 +241,13 @@ async def get_public_branding():
         "secondary_color": config.get("secondary_color", "#0f172a"),
         "accent_color": config.get("accent_color", "#10b981"),
         "footer_text": config.get("footer_text", ""),
-        "theme_preset": config.get("theme_preset", "default")
+        "theme_preset": config.get("theme_preset", "default"),
+        # Hero section
+        "hero_image_url": config.get("hero_image_url"),
+        "hero_title": config.get("hero_title", "Gestiona tu inventario de forma inteligente"),
+        "hero_subtitle": config.get("hero_subtitle", "Sincroniza proveedores, configura márgenes y exporta a tu tienda online en minutos."),
+        # Page title
+        "page_title": config.get("page_title", "StockHub - Gestión de Catálogos")
     }
 
 
