@@ -1,6 +1,7 @@
 import { useLocation, Link, useNavigate } from "react-router-dom";
 import { useAuth, api } from "../App";
 import { useState, useEffect } from "react";
+import axios from "axios";
 import {
   LayoutDashboard,
   Truck,
@@ -29,6 +30,8 @@ import {
   ChevronRight,
   DollarSign
 } from "lucide-react";
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
 const navItems = [
   { path: "/", label: "Panel de Control", icon: LayoutDashboard },
@@ -60,6 +63,31 @@ const Sidebar = ({ open, onToggle }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [adminExpanded, setAdminExpanded] = useState(false);
+  const [branding, setBranding] = useState({
+    app_name: "StockHub",
+    app_slogan: "Gestión de Catálogos",
+    logo_url: null,
+    primary_color: "#4f46e5"
+  });
+
+  // Load branding
+  useEffect(() => {
+    const loadBranding = async () => {
+      try {
+        const res = await axios.get(`${BACKEND_URL}/api/branding/public`);
+        if (res.data) {
+          setBranding(prev => ({ ...prev, ...res.data }));
+          // Update page title
+          if (res.data.page_title) {
+            document.title = res.data.page_title;
+          }
+        }
+      } catch (error) {
+        console.log("Using default branding");
+      }
+    };
+    loadBranding();
+  }, []);
 
   useEffect(() => {
     const fetchUnread = async () => {
@@ -100,14 +128,25 @@ const Sidebar = ({ open, onToggle }) => {
       {/* Logo */}
       <div className="p-6 border-b border-slate-200">
         <Link to="/" className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-sm flex items-center justify-center">
-            <Package className="w-6 h-6 text-white" strokeWidth={1.5} />
-          </div>
+          {branding.logo_url ? (
+            <img 
+              src={branding.logo_url.startsWith('/') ? `${BACKEND_URL}${branding.logo_url}` : branding.logo_url}
+              alt={branding.app_name}
+              className="h-10 object-contain"
+            />
+          ) : (
+            <div 
+              className="w-10 h-10 rounded-sm flex items-center justify-center"
+              style={{ backgroundColor: branding.primary_color }}
+            >
+              <Package className="w-6 h-6 text-white" strokeWidth={1.5} />
+            </div>
+          )}
           <div>
             <h1 className="font-bold text-lg text-slate-900 tracking-tight" style={{ fontFamily: 'Manrope, sans-serif' }}>
-              StockHub
+              {branding.app_name}
             </h1>
-            <p className="text-xs text-slate-500">Gestión de Catálogos</p>
+            <p className="text-xs text-slate-500">{branding.app_slogan}</p>
           </div>
         </Link>
       </div>
