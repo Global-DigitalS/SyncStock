@@ -60,6 +60,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import { CategoryCascadeFilter, CategorySelectionCascade } from "../components/suppliers";
+import ProductDetailDialog from "../components/dialogs/ProductDetailDialog";
 
 const SupplierDetail = () => {
   const { supplierId } = useParams();
@@ -1061,83 +1062,12 @@ const SupplierDetail = () => {
       </Dialog>
 
       {/* Product Detail Dialog */}
-      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>Detalle del Producto</DialogTitle>
-            <DialogDescription>
-              Información completa del producto
-            </DialogDescription>
-          </DialogHeader>
-          {selectedProduct && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                {selectedProduct.image_url ? (
-                  <img
-                    src={selectedProduct.image_url}
-                    alt={selectedProduct.name}
-                    className="w-full h-48 object-cover rounded-sm border border-slate-200"
-                  />
-                ) : (
-                  <div className="w-full h-48 bg-slate-100 rounded-sm flex items-center justify-center">
-                    <Package className="w-16 h-16 text-slate-300" strokeWidth={1.5} />
-                  </div>
-                )}
-              </div>
-              <div className="space-y-4">
-                <div>
-                  <h3 className="text-xl font-semibold text-slate-900 mb-1">{selectedProduct.name}</h3>
-                  {selectedProduct.brand && (
-                    <p className="text-sm text-slate-500">{selectedProduct.brand}</p>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div>
-                    <p className="text-slate-500">SKU</p>
-                    <p className="font-mono font-medium">{selectedProduct.sku}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">EAN</p>
-                    <p className="font-mono font-medium">{selectedProduct.ean || "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Precio</p>
-                    <p className="font-mono font-semibold text-lg text-slate-900">
-                      {selectedProduct.price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Stock</p>
-                    <p className="font-mono">{getStockBadge(selectedProduct.stock)}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Categoría</p>
-                    <p className="font-medium">{selectedProduct.category || "-"}</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-500">Peso</p>
-                    <p className="font-medium">{selectedProduct.weight ? `${selectedProduct.weight} kg` : "-"}</p>
-                  </div>
-                </div>
-                {selectedProduct.description && (
-                  <div>
-                    <p className="text-slate-500 text-sm mb-1">Descripción</p>
-                    <p className="text-sm text-slate-600">{selectedProduct.description}</p>
-                  </div>
-                )}
-                <Button
-                  onClick={() => { handleAddSingleToCatalog(selectedProduct.id); setShowDetailDialog(false); }}
-                  className="w-full btn-primary"
-                  data-testid="add-to-catalog-detail"
-                >
-                  <BookOpen className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                  Añadir a Catálogos
-                </Button>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <ProductDetailDialog
+        open={showDetailDialog}
+        onOpenChange={setShowDetailDialog}
+        product={selectedProduct}
+        onProductUpdate={() => fetchData(currentPage)}
+      />
 
       {/* Catalog Selection Dialog */}
       <Dialog open={showCatalogDialog} onOpenChange={setShowCatalogDialog}>

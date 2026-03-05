@@ -47,7 +47,9 @@ import {
   FileUp,
   ChevronLeft,
   ChevronRight,
+  Pencil,
 } from "lucide-react";
+import ProductDetailDialog from "../components/dialogs/ProductDetailDialog";
 
 const Products = () => {
   const navigate = useNavigate();
@@ -73,7 +75,9 @@ const Products = () => {
   const [showCatalogDialog, setShowCatalogDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
+  const [showEditDialog, setShowEditDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
+  const [editProduct, setEditProduct] = useState(null);
   const [productsToAdd, setProductsToAdd] = useState([]);
   const [addingToCatalog, setAddingToCatalog] = useState(false);
   
@@ -672,6 +676,29 @@ const Products = () => {
           
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDetailDialog(false)}>Cerrar</Button>
+            <Button 
+              variant="outline"
+              onClick={async () => { 
+                if (selectedProduct && selectedProduct.best_supplier_id) { 
+                  // Find the best supplier's product_id from suppliers array
+                  const bestSupplier = selectedProduct.suppliers?.find(s => s.is_best_offer);
+                  if (bestSupplier?.product_id) {
+                    try {
+                      const res = await api.get(`/products/${bestSupplier.product_id}`);
+                      setEditProduct(res.data);
+                      setShowEditDialog(true);
+                      setShowDetailDialog(false);
+                    } catch (err) {
+                      toast.error("Error al cargar el producto para editar");
+                    }
+                  }
+                } 
+              }}
+              data-testid="edit-product-btn"
+            >
+              <Pencil className="w-4 h-4 mr-2" />
+              Editar
+            </Button>
             <Button onClick={() => { if (selectedProduct) { openCatalogSelector([selectedProduct.ean]); setShowDetailDialog(false); } }}>
               <BookOpen className="w-4 h-4 mr-2" />
               Añadir a Catálogo
@@ -679,6 +706,14 @@ const Products = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Product Edit Dialog */}
+      <ProductDetailDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        product={editProduct}
+        onProductUpdate={() => fetchProducts()}
+      />
 
       {/* Catalog Selection Dialog */}
       <Dialog open={showCatalogDialog} onOpenChange={setShowCatalogDialog}>

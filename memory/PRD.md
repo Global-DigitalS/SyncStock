@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 3.1.0  
+**Versión:** 3.2.0  
 **Última actualización:** 2026-03-05  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -32,6 +32,32 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Descarga de archivos desde SFTP
   - Prueba de conexión SFTP
 - [x] Importación de productos desde CSV con mapeo de columnas
+
+### Edición Completa de Productos (NUEVO - 2026-03-05)
+- [x] **Campos de Edición Extendidos**
+  - Nombre del producto
+  - Descripción corta (short_description) - máximo 500 caracteres
+  - Descripción larga (long_description) - sin límite
+  - Marca (brand)
+  - Imagen principal (image_url) - URL o upload
+  - Imágenes secundarias/Galería (gallery_images) - array de URLs
+- [x] **Endpoints de API**
+  - PUT /api/products/{id} - Actualizar producto con todos los campos
+  - POST /api/products/{id}/upload-image?image_type=main - Subir imagen principal
+  - POST /api/products/{id}/upload-image?image_type=gallery - Añadir imagen a galería
+  - DELETE /api/products/{id}/gallery-image?image_url=... - Eliminar de galería
+- [x] **Componente ProductDetailDialog Mejorado**
+  - 3 pestañas: Info/Proveedores, Editar, Imágenes
+  - Pestaña Info: Muestra datos del producto y proveedores
+  - Pestaña Editar: Nombre, marca, categoría, descripción corta/larga, precio, stock, etc.
+  - Pestaña Imágenes: Vista previa de imagen principal, upload, galería con add/remove
+- [x] **Integración en Páginas**
+  - SupplierDetail.jsx: Diálogo completo al ver producto de proveedor
+  - Products.jsx: Botón "Editar" para modificar producto del mejor proveedor
+- [x] **Sincronización con Tiendas Online**
+  - WooCommerce: Exporta nombre, short_description, long_description, brand, images (principal + galería)
+  - Las imágenes secundarias se incluyen en el array de images de WooCommerce
+
 - [x] **Reglas de Margen por Catálogo** (2026-03-04)
   - Cada catálogo tiene sus propias reglas de margen independientes
   - Soporte para porcentajes y cantidades fijas
