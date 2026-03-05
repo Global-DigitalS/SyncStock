@@ -262,11 +262,16 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         try:
             ean = product.get("ean", "") or ""
             sku = product.get("sku", "")
+            
+            # Use long_description if available, fallback to description
+            description = product.get("long_description") or product.get("description", "")
+            short_desc = product.get("short_description", "")
+            
             wc_product = {
                 "name": catalog_item.get("custom_name") or product.get("name", "Producto sin nombre"),
                 "type": "simple", "regular_price": str(round(final_price, 2)),
-                "description": product.get("description", ""),
-                "short_description": product.get("short_description", ""),
+                "description": description,
+                "short_description": short_desc,
                 "sku": sku, "manage_stock": True,
                 "stock_quantity": product.get("stock", 0),
                 "categories": [], "images": [], "meta_data": []
@@ -282,9 +287,22 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                 wc_product["meta_data"].append({"key": "_brand", "value": product["brand"]})
             if product.get("category"):
                 wc_product["categories"] = [{"name": product["category"]}]
-            for img_field in ["image_url", "image_url2", "image_url3"]:
+            
+            # Add main image first
+            if product.get("image_url"):
+                wc_product["images"].append({"src": product["image_url"]})
+            
+            # Add gallery images
+            gallery_images = product.get("gallery_images") or []
+            for gallery_img in gallery_images:
+                if gallery_img:
+                    wc_product["images"].append({"src": gallery_img})
+            
+            # Legacy support for old image fields
+            for img_field in ["image_url2", "image_url3"]:
                 if product.get(img_field):
                     wc_product["images"].append({"src": product[img_field]})
+            
             if product.get("weight"):
                 wc_product["weight"] = str(product["weight"])
             existing_wc_id = existing_eans.get(ean) if ean else None

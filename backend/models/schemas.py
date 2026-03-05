@@ -138,6 +138,8 @@ class ProductBase(BaseModel):
     sku: str
     name: str
     description: Optional[str] = None
+    short_description: Optional[str] = None
+    long_description: Optional[str] = None
     price: float
     stock: int
     category: Optional[str] = None
@@ -145,6 +147,7 @@ class ProductBase(BaseModel):
     ean: Optional[str] = None
     weight: Optional[float] = None
     image_url: Optional[str] = None
+    gallery_images: Optional[List[str]] = None  # Secondary images
     attributes: Optional[Dict[str, Any]] = None
 
 class ProductResponse(ProductBase):
@@ -195,6 +198,8 @@ class ProductResponse(ProductBase):
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    short_description: Optional[str] = None
+    long_description: Optional[str] = None
     price: Optional[float] = None
     stock: Optional[int] = None
     category: Optional[str] = None
@@ -202,6 +207,7 @@ class ProductUpdate(BaseModel):
     ean: Optional[str] = None
     weight: Optional[float] = None
     image_url: Optional[str] = None
+    gallery_images: Optional[List[str]] = None
     is_selected: Optional[bool] = None
     referencia: Optional[str] = None
     part_number: Optional[str] = None

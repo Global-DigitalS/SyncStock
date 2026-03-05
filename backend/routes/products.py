@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
+import os
+import aiofiles
 
 from services.database import db
 from services.auth import get_current_user
@@ -10,6 +12,10 @@ from models.schemas import (
 )
 
 router = APIRouter()
+
+# Directory for product images
+UPLOAD_DIR = "/app/backend/uploads/products"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 @router.get("/products", response_model=List[ProductResponse])
@@ -618,3 +624,77 @@ async def get_supplier_categories(
         for r in results
     ]
 
+
+
+# ==================== PRODUCT IMAGE UPLOAD ====================
+
+@router.post("/products/{product_id}/upload-image")
+async def upload_product_image(
+    product_id: str,
+    image_type: str = "main",  # main, gallery
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user)
+):
+    """Upload main image or gallery image for a product"""
+    product = await db.products.find_one({"id": product_id, "user_id": user["id"]})
+    if not product:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    # Validate file type
+    if not file.content_type or not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+    
+    # Generate unique filename
+    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    filename = f"{product_id}_{image_type}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(UPLOAD_DIR, filename)
+    
+    # Save file
+    async with aiofiles.open(filepath, "wb") as f:
+        content = await file.read()
+        await f.write(content)
+    
+    # Build URL - use the /api/uploads/ route
+    image_url = f"/api/uploads/products/{filename}"
+    
+    now = datetime.now(timezone.utc).isoformat()
+    
+    if image_type == "main":
+        # Update main image
+        await db.products.update_one(
+            {"id": product_id},
+            {"$set": {"image_url": image_url, "updated_at": now}}
+        )
+    else:
+        # Add to gallery
+        gallery = product.get("gallery_images") or []
+        gallery.append(image_url)
+        await db.products.update_one(
+            {"id": product_id},
+            {"$set": {"gallery_images": gallery, "updated_at": now}}
+        )
+    
+    return {"url": image_url, "message": "Imagen subida correctamente"}
+
+
+@router.delete("/products/{product_id}/gallery-image")
+async def remove_gallery_image(
+    product_id: str,
+    image_url: str,
+    user: dict = Depends(get_current_user)
+):
+    """Remove an image from product gallery"""
+    product = await db.products.find_one({"id": product_id, "user_id": user["id"]})
+    if not product:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    gallery = product.get("gallery_images") or []
+    if image_url in gallery:
+        gallery.remove(image_url)
+        await db.products.update_one(
+            {"id": product_id},
+            {"$set": {"gallery_images": gallery, "updated_at": datetime.now(timezone.utc).isoformat()}}
+        )
+        return {"message": "Imagen eliminada de la galería"}
+    
+    raise HTTPException(status_code=404, detail="Imagen no encontrada en la galería")
