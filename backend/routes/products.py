@@ -13,9 +13,15 @@ from models.schemas import (
 
 router = APIRouter()
 
-# Directory for product images
-UPLOAD_DIR = "/app/backend/uploads/products"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
+# Directory for product images - use path relative to this file's location
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "products")
+try:
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+except PermissionError:
+    # Fallback to a writable location if primary fails
+    UPLOAD_DIR = os.path.join("/tmp", "product_uploads")
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 @router.get("/products", response_model=List[ProductResponse])
