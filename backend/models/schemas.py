@@ -38,6 +38,23 @@ class UserLimits(BaseModel):
     max_suppliers: int = 10
     max_catalogs: int = 5
     max_woocommerce_stores: int = 2
+    max_products: Optional[int] = 1000
+
+
+class UserFullUpdate(BaseModel):
+    """Model for full user update by SuperAdmin"""
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    company: Optional[str] = None
+    role: Optional[str] = None
+    max_suppliers: Optional[int] = None
+    max_catalogs: Optional[int] = None
+    max_woocommerce_stores: Optional[int] = None
+    max_products: Optional[int] = None
+    subscription_plan_id: Optional[str] = None
+    subscription_plan_name: Optional[str] = None
+    subscription_status: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 # ==================== SUPPLIER MODELS ====================

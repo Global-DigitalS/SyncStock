@@ -11,7 +11,7 @@ from services.auth import (
     get_admin_user, get_superadmin_user, ROLE_PERMISSIONS, DEFAULT_LIMITS,
     get_user_resource_usage
 )
-from models.schemas import UserCreate, UserLogin, UserResponse, UserUpdate, UserLimits
+from models.schemas import UserCreate, UserLogin, UserResponse, UserUpdate, UserLimits, UserFullUpdate
 from services.email_service import get_email_service, get_password_reset_email_template
 from services.config_manager import get_config
 import logging
@@ -139,6 +139,110 @@ async def get_user(user_id: str, admin: dict = Depends(get_admin_user)):
     
     usage = await get_user_resource_usage(user)
     return {**user, "usage": usage}
+
+
+@router.get("/users/{user_id}/stats")
+async def get_user_stats(user_id: str, superadmin: dict = Depends(get_superadmin_user)):
+    """Get detailed statistics for a user (SuperAdmin only)"""
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Get resource counts
+    suppliers_count = await db.suppliers.count_documents({"user_id": user_id})
+    catalogs_count = await db.catalogs.count_documents({"user_id": user_id})
+    products_count = await db.products.count_documents({"user_id": user_id})
+    stores_count = await db.woocommerce_stores.count_documents({"user_id": user_id})
+    
+    # Get recent activity
+    recent_syncs = await db.sync_history.find(
+        {"user_id": user_id}
+    ).sort("started_at", -1).limit(5).to_list(5)
+    
+    # Clean sync history for response
+    for sync in recent_syncs:
+        if "_id" in sync:
+            del sync["_id"]
+    
+    # Get payment history
+    payments = await db.payment_transactions.find(
+        {"user_id": user_id}
+    ).sort("created_at", -1).limit(10).to_list(10)
+    
+    for payment in payments:
+        if "_id" in payment:
+            del payment["_id"]
+    
+    # Get subscription plan details if exists
+    subscription_plan = None
+    if user.get("subscription_plan_id"):
+        subscription_plan = await db.subscription_plans.find_one(
+            {"id": user.get("subscription_plan_id")},
+            {"_id": 0}
+        )
+    
+    return {
+        "user": user,
+        "usage": {
+            "suppliers": suppliers_count,
+            "catalogs": catalogs_count,
+            "products": products_count,
+            "stores": stores_count
+        },
+        "limits": {
+            "max_suppliers": user.get("max_suppliers", 10),
+            "max_catalogs": user.get("max_catalogs", 5),
+            "max_products": user.get("max_products", 1000),
+            "max_stores": user.get("max_stores") or user.get("max_woocommerce_stores", 2)
+        },
+        "subscription": {
+            "plan_id": user.get("subscription_plan_id"),
+            "plan_name": user.get("subscription_plan_name"),
+            "status": user.get("subscription_status", "none"),
+            "billing_cycle": user.get("subscription_billing_cycle"),
+            "updated_at": user.get("subscription_updated_at"),
+            "plan_details": subscription_plan
+        },
+        "recent_syncs": recent_syncs,
+        "payment_history": payments
+    }
+
+
+@router.put("/users/{user_id}/full")
+async def update_user_full(user_id: str, update: UserFullUpdate, superadmin: dict = Depends(get_superadmin_user)):
+    """Update all user fields (SuperAdmin only)"""
+    # Check if user exists
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Build update dict, only include non-None values
+    update_data = {}
+    for field, value in update.model_dump().items():
+        if value is not None:
+            update_data[field] = value
+    
+    # Check if email is being changed and if it's unique
+    if "email" in update_data and update_data["email"] != user.get("email"):
+        existing = await db.users.find_one({"email": update_data["email"], "id": {"$ne": user_id}})
+        if existing:
+            raise HTTPException(status_code=400, detail="Este email ya está en uso por otro usuario")
+    
+    # Validate role if being changed
+    if "role" in update_data:
+        valid_roles = ["superadmin", "admin", "user", "viewer"]
+        if update_data["role"] not in valid_roles:
+            raise HTTPException(status_code=400, detail=f"Rol inválido. Roles válidos: {valid_roles}")
+    
+    if not update_data:
+        return {"message": "No hay cambios para guardar"}
+    
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_by"] = superadmin.get("email")
+    
+    await db.users.update_one({"id": user_id}, {"$set": update_data})
+    
+    return {"success": True, "message": "Usuario actualizado correctamente"}
 
 
 @router.put("/users/{user_id}/role")

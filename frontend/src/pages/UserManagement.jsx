@@ -20,8 +20,9 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "../components/ui/alert-dialog";
 import {
-  Users, Shield, UserCog, Trash2, Crown, Eye, Edit3, Settings, Truck, BookOpen, ShoppingCart
+  Users, Shield, UserCog, Trash2, Crown, Eye, Edit3, Settings, Truck, BookOpen, ShoppingCart, FileUser
 } from "lucide-react";
+import UserDetailDialog from "../components/UserDetailDialog";
 
 const ROLE_CONFIG = {
   superadmin: { label: "SuperAdmin", color: "bg-purple-100 text-purple-700", icon: Crown },
@@ -43,6 +44,7 @@ const UserManagement = () => {
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [editLimitsUser, setEditLimitsUser] = useState(null);
+  const [selectedUserId, setSelectedUserId] = useState(null);
   const [limitsForm, setLimitsForm] = useState({
     max_suppliers: 10,
     max_catalogs: 5,
@@ -294,6 +296,18 @@ const UserManagement = () => {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
+                        {isSuperAdmin && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-8 p-0 text-purple-500 hover:text-purple-700 hover:bg-purple-50"
+                            onClick={() => setSelectedUserId(user.id)}
+                            data-testid={`view-user-${user.id}`}
+                            title="Ver ficha de usuario"
+                          >
+                            <FileUser className="w-4 h-4" />
+                          </Button>
+                        )}
                         {canEditLimits && (
                           <Button
                             variant="ghost"
@@ -324,6 +338,16 @@ const UserManagement = () => {
           </Table>
         </CardContent>
       </Card>
+
+      {/* User Detail Dialog (SuperAdmin only) */}
+      {isSuperAdmin && (
+        <UserDetailDialog
+          userId={selectedUserId}
+          open={!!selectedUserId}
+          onClose={() => setSelectedUserId(null)}
+          onUpdate={fetchUsers}
+        />
+      )}
 
       {/* Edit Limits Dialog (SuperAdmin only) */}
       <Dialog open={!!editLimitsUser} onOpenChange={() => setEditLimitsUser(null)}>
