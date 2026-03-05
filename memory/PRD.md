@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 3.0.0  
+**Versión:** 3.1.0  
 **Última actualización:** 2026-03-05  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -14,18 +14,23 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 
 ### Core
 - [x] Autenticación JWT con sistema de roles (Viewer, User, Admin, SuperAdmin)
-- [x] **Recuperación de Contraseña** (NUEVO - 2026-03-05)
+- [x] **Recuperación de Contraseña** (2026-03-05)
   - Solicitud de reset: POST /api/auth/forgot-password
   - Reset con token: POST /api/auth/reset-password
   - Tokens con expiración de 1 hora
   - Email con plantilla HTML profesional
   - Protección contra enumeración de emails
   - Páginas: /forgot-password y /forgot-password?token=xxx
-- [x] **Mensajes de Error Inteligentes en Login** (NUEVO - 2026-03-05)
+- [x] **Mensajes de Error Inteligentes en Login** (2026-03-05)
   - Usuario no encontrado: Sugerencia para registrarse o verificar email
   - Contraseña incorrecta: Sugerencia para recuperar contraseña
   - Backend diferencia errores: USER_NOT_FOUND, INVALID_PASSWORD
-- [x] Gestión de proveedores con soporte FTP/URL
+- [x] Gestión de proveedores con soporte FTP/SFTP/FTPS/URL
+- [x] **Soporte Completo SFTP** (NUEVO - 2026-03-05)
+  - Protocolo SFTP vía paramiko
+  - Navegación de directorios SFTP
+  - Descarga de archivos desde SFTP
+  - Prueba de conexión SFTP
 - [x] Importación de productos desde CSV con mapeo de columnas
 - [x] **Reglas de Margen por Catálogo** (2026-03-04)
   - Cada catálogo tiene sus propias reglas de margen independientes
@@ -39,7 +44,7 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Ordenación de categorías (mover arriba/abajo)
   - Filtrado de productos por categoría
   - Asignación de categorías desde el detalle del catálogo
-- [x] **Asignación Masiva de Categorías** (NUEVO - 2026-03-04)
+- [x] **Asignación Masiva de Categorías** (2026-03-04)
   - Selección múltiple de productos en vista de catálogo
   - Botón "Asignar a Categorías" que aparece al seleccionar productos
   - 3 modos de asignación: Añadir, Reemplazar, Quitar
@@ -59,29 +64,50 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] Unificación de productos por EAN
 - [x] Paginación y ordenación en listas
 
-### Panel de Administración SuperAdmin (ACTUALIZADO - 2026-03-04)
+### Navegador FTP/SFTP (ACTUALIZADO - 2026-03-05)
+- [x] **Selección Múltiple de Archivos** (NUEVO - 2026-03-05)
+  - Botón "Múltiple" para activar modo de selección múltiple
+  - Checkboxes en cada archivo soportado
+  - "Seleccionar todos" para marcar todos los archivos soportados
+  - Botón "Añadir (N)" para agregar todos los archivos seleccionados
+  - Barra de acciones con contador de selección
+- [x] Navegación de directorios
+- [x] Soporte para FTP, FTPS y SFTP
+- [x] Buscar en subcarpetas (máximo 3 niveles)
+- [x] Indicadores de archivos soportados (CSV, XLSX, XLS, XML)
+
+### Panel de Administración SuperAdmin (ACTUALIZADO - 2026-03-05)
 - [x] **Sección de Administración en Sidebar** (visible solo para SuperAdmin)
   - **Administración** (link directo a Dashboard Admin)
   - Usuarios
   - Suscripciones (renombrado de "Planes")
-  - **Config. Stripe** (NUEVO)
+  - **Config. Stripe**
   - Personalización (Branding)
   - Config. Email
   - Plantillas Email
 
-- [x] **Configuración de Stripe** (NUEVO - 2026-03-04)
+- [x] **Integración Stripe Completa** (ACTUALIZADO - 2026-03-05)
   - Ubicación: Administración → Config. Stripe (`/admin/stripe`)
   - Configuración de claves API (Pública, Secreta, Webhook Secret)
   - Switch para habilitar/deshabilitar pagos
   - Switch para modo producción (pagos reales)
   - Prueba de conexión con Stripe API
-  - Panel de información con Webhook URL y eventos requeridos
+  - **Flujo de Pago Real con Stripe Checkout** (NUEVO)
+    - Usa emergentintegrations para crear sesiones de checkout
+    - Redirección a Stripe para pago seguro
+    - Polling de estado de pago al regresar
+    - Actualización automática de suscripción tras pago exitoso
+    - Soporte para ciclos mensual y anual
   - Endpoints:
-    - GET /api/admin/stripe/config - Obtener configuración
-    - PUT /api/admin/stripe/config - Actualizar configuración
+    - GET /api/stripe/config/status - Estado público de Stripe (enabled/configured)
+    - GET /api/admin/stripe/config - Obtener configuración (SuperAdmin)
+    - PUT /api/admin/stripe/config - Actualizar configuración (SuperAdmin)
     - POST /api/admin/stripe/test-connection - Probar conexión
-    - POST /api/stripe/create-checkout - Crear sesión de pago (usuarios)
+    - POST /api/stripe/create-checkout - Crear sesión de checkout (auth requerido)
+    - GET /api/stripe/checkout-status/{session_id} - Verificar estado de pago
     - POST /api/stripe/webhook - Webhook para eventos de Stripe
+    - GET /api/stripe/plans - Listar planes disponibles
+    - GET /api/stripe/my-subscription - Obtener suscripción del usuario
 
 - [x] **Reiniciar Aplicación (Zona de Peligro)** (2026-03-04)
   - Ubicación: Dashboard Admin (`/admin/dashboard`) - Sección "Zona de Peligro"
@@ -180,30 +206,39 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 
 ## Tareas Pendientes
 
-### Completadas en esta sesión (Fork actual - 2026-03-04)
-- [x] ✅ **Asignación masiva de categorías a productos**:
-  - Selección múltiple de productos con checkboxes
-  - Botón "Asignar a Categorías" visible al seleccionar productos
-  - 3 modos: Añadir (append), Reemplazar (overwrite), Quitar (remove)
-  - Diálogo con categorías jerárquicas y preview de selección
-  - Backend y Frontend testeados: 100% tests passed
+### Completadas en esta sesión (Fork actual - 2026-03-05)
+- [x] ✅ **Integración Stripe Completa en Suscripciones (P0)**
+  - Checkout sessions con emergentintegrations
+  - Redirección a Stripe para pago seguro
+  - Polling de estado de pago
+  - Actualización automática de suscripción
+  - Soporte para billing mensual y anual
+  - 100% tests passed (12/12 backend, frontend OK)
 
-### Completadas en sesión anterior
-- [x] ✅ P0: Exportación de categorías a tiendas online (WooCommerce, PrestaShop, Shopify)
-- [x] ✅ P1: Ordenación de categorías con drag & drop
-- [x] ✅ Panel de Administración SuperAdmin completo:
-  - Sección de administración en sidebar
-  - Personalización/Branding (nombre, logo, favicon, colores, temas)
-  - Gestión de planes de suscripción
-  - Editor de plantillas de email con vista previa
+- [x] ✅ **Soporte SFTP (P1)**
+  - Protocolo SFTP via paramiko
+  - Navegación y descarga de archivos
+  - Integrado en prueba de conexión
+  - Soporta FTP, FTPS y SFTP
 
-### P1 - Alta Prioridad
-- [ ] Ampliar fuentes de datos: SFTP y APIs directas
-- [ ] Selección múltiple de archivos en navegador FTP
+- [x] ✅ **Selección Múltiple en Navegador FTP (P2)**
+  - Botón "Múltiple" para activar modo
+  - Checkboxes por archivo
+  - "Seleccionar todos" y "Añadir" masivo
+  - Barra de acciones con contador
+
+### Completadas en sesión anterior (2026-03-04/05)
+- [x] ✅ Asignación masiva de categorías a productos
+- [x] ✅ Exportación de categorías a tiendas online
+- [x] ✅ Panel de Administración SuperAdmin completo
+- [x] ✅ Recuperación de contraseña
+- [x] ✅ Mensajes de error inteligentes en login
+- [x] ✅ Sistema multi-email para SuperAdmin
 
 ### P2 - Media Prioridad
 - [ ] Completar integración Wix eCommerce
 - [ ] Completar integración Magento
+- [ ] APIs directas como fuentes de datos
 
 ### P3 - Baja Prioridad
 - [ ] Autenticación de dos factores (2FA)
