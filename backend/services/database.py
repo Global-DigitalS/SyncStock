@@ -68,12 +68,8 @@ class DatabaseManager:
         """Inicializa o reinicializa la conexión a MongoDB."""
         self._mongo_url, self._db_name = self._get_mongo_config()
         
-        # Cerrar conexión anterior si existe
-        if self._client:
-            try:
-                self._client.close()
-            except Exception:
-                pass
+        # Crear nuevo cliente (no cerrar el anterior inmediatamente para evitar race conditions)
+        old_client = self._client
         
         # Crear nuevo cliente
         self._client = AsyncIOMotorClient(
@@ -84,6 +80,13 @@ class DatabaseManager:
             minPoolSize=MONGO_MIN_POOL_SIZE,
         )
         self._db = self._client[self._db_name]
+        
+        # Cerrar cliente anterior después de crear el nuevo
+        if old_client:
+            try:
+                old_client.close()
+            except Exception:
+                pass
         
         # Ocultar credenciales en el log
         safe_url = self._mongo_url[:40] + "..." if len(self._mongo_url) > 40 else self._mongo_url
@@ -140,9 +143,30 @@ class DatabaseManager:
 # Instancia global del gestor de base de datos
 _db_manager = DatabaseManager()
 
-# Exportar para compatibilidad con código existente
-client = _db_manager.client
-db = _db_manager.db
+
+class DatabaseProxy:
+    """
+    Proxy para acceder siempre a la instancia actual de la base de datos.
+    Esto evita problemas cuando la conexión se recarga.
+    """
+    def __getattr__(self, name):
+        return getattr(_db_manager.db, name)
+    
+    def __getitem__(self, name):
+        return _db_manager.db[name]
+
+
+class ClientProxy:
+    """
+    Proxy para acceder siempre al cliente actual de MongoDB.
+    """
+    def __getattr__(self, name):
+        return getattr(_db_manager.client, name)
+
+
+# Usar proxies en lugar de referencias directas
+db = DatabaseProxy()
+client = ClientProxy()
 MONGO_URL = _db_manager.mongo_url
 DB_NAME = _db_manager.db_name
 
@@ -162,10 +186,8 @@ def reload_database_config():
     Recarga la configuración de MongoDB.
     Llamar después de completar el setup para aplicar la nueva configuración.
     """
-    global client, db, MONGO_URL, DB_NAME
+    global MONGO_URL, DB_NAME
     _db_manager.reload_config()
-    client = _db_manager.client
-    db = _db_manager.db
     MONGO_URL = _db_manager.mongo_url
     DB_NAME = _db_manager.db_name
     return True
