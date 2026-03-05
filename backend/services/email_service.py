@@ -402,24 +402,136 @@ def get_subscription_change_email_template(
 
 # ==================== EMAIL SERVICE INSTANCE ====================
 
-def get_email_service() -> EmailService:
-    """Obtiene una instancia del servicio de email con la configuración actual"""
+def get_email_service(account_type: str = "transactional") -> EmailService:
+    """
+    Obtiene una instancia del servicio de email con la configuración de la cuenta especificada.
+    
+    Args:
+        account_type: Tipo de cuenta (transactional, support, billing)
+                     Por defecto usa 'transactional' para emails del sistema.
+    
+    Returns:
+        EmailService configurado o vacío si no hay configuración
+    """
     try:
-        from services.config_manager import get_config
-        config = get_config()
+        import asyncio
+        from services.database import db
         
-        email_config = {
-            'smtp_host': getattr(config, 'smtp_host', ''),
-            'smtp_port': getattr(config, 'smtp_port', 587),
-            'smtp_user': getattr(config, 'smtp_user', ''),
-            'smtp_password': getattr(config, 'smtp_password', ''),
-            'smtp_from_email': getattr(config, 'smtp_from_email', ''),
-            'smtp_from_name': getattr(config, 'smtp_from_name', 'SupplierSync Pro'),
-            'smtp_use_tls': getattr(config, 'smtp_use_tls', True),
-            'smtp_use_ssl': getattr(config, 'smtp_use_ssl', False),
-        }
+        async def get_email_config():
+            # Try to get the specific account type
+            config = await db.email_accounts.find_one({"type": account_type, "enabled": True})
+            
+            # If not found or not enabled, fallback to transactional
+            if not config and account_type != "transactional":
+                config = await db.email_accounts.find_one({"type": "transactional", "enabled": True})
+            
+            # If still no config, try the legacy config_manager
+            if not config:
+                from services.config_manager import get_config
+                legacy_config = get_config()
+                return {
+                    'smtp_host': getattr(legacy_config, 'smtp_host', ''),
+                    'smtp_port': getattr(legacy_config, 'smtp_port', 587),
+                    'smtp_user': getattr(legacy_config, 'smtp_user', ''),
+                    'smtp_password': getattr(legacy_config, 'smtp_password', ''),
+                    'smtp_from_email': getattr(legacy_config, 'smtp_from_email', ''),
+                    'smtp_from_name': getattr(legacy_config, 'smtp_from_name', 'SupplierSync Pro'),
+                    'smtp_use_tls': getattr(legacy_config, 'smtp_use_tls', True),
+                    'smtp_use_ssl': getattr(legacy_config, 'smtp_use_ssl', False),
+                }
+            
+            return {
+                'smtp_host': config.get('smtp_host', ''),
+                'smtp_port': config.get('smtp_port', 587),
+                'smtp_user': config.get('smtp_user', ''),
+                'smtp_password': config.get('smtp_password', ''),
+                'smtp_from_email': config.get('smtp_from_email', '') or config.get('smtp_user', ''),
+                'smtp_from_name': config.get('smtp_from_name', 'SupplierSync Pro'),
+                'smtp_use_tls': config.get('smtp_use_tls', True),
+                'smtp_use_ssl': config.get('smtp_use_ssl', False),
+            }
+        
+        # Run async function
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # We're in an async context, create a new task
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, get_email_config())
+                    email_config = future.result()
+            else:
+                email_config = loop.run_until_complete(get_email_config())
+        except RuntimeError:
+            email_config = asyncio.run(get_email_config())
         
         return EmailService(email_config)
+        
     except Exception as e:
-        logger.error(f"Error creating email service: {e}")
+        logger.error(f"Error creating email service for {account_type}: {e}")
+        # Fallback to legacy config
+        try:
+            from services.config_manager import get_config
+            config = get_config()
+            email_config = {
+                'smtp_host': getattr(config, 'smtp_host', ''),
+                'smtp_port': getattr(config, 'smtp_port', 587),
+                'smtp_user': getattr(config, 'smtp_user', ''),
+                'smtp_password': getattr(config, 'smtp_password', ''),
+                'smtp_from_email': getattr(config, 'smtp_from_email', ''),
+                'smtp_from_name': getattr(config, 'smtp_from_name', 'SupplierSync Pro'),
+                'smtp_use_tls': getattr(config, 'smtp_use_tls', True),
+                'smtp_use_ssl': getattr(config, 'smtp_use_ssl', False),
+            }
+            return EmailService(email_config)
+        except Exception as e2:
+            logger.error(f"Fallback email config also failed: {e2}")
+            return EmailService({})
+
+
+# Helper function to get email service asynchronously
+async def get_email_service_async(account_type: str = "transactional") -> EmailService:
+    """
+    Versión asíncrona de get_email_service para usar en contextos async.
+    """
+    from services.database import db
+    
+    try:
+        # Try to get the specific account type
+        config = await db.email_accounts.find_one({"type": account_type, "enabled": True})
+        
+        # If not found or not enabled, fallback to transactional
+        if not config and account_type != "transactional":
+            config = await db.email_accounts.find_one({"type": "transactional", "enabled": True})
+        
+        # If still no config, try the legacy config_manager
+        if not config:
+            from services.config_manager import get_config
+            legacy_config = get_config()
+            email_config = {
+                'smtp_host': getattr(legacy_config, 'smtp_host', ''),
+                'smtp_port': getattr(legacy_config, 'smtp_port', 587),
+                'smtp_user': getattr(legacy_config, 'smtp_user', ''),
+                'smtp_password': getattr(legacy_config, 'smtp_password', ''),
+                'smtp_from_email': getattr(legacy_config, 'smtp_from_email', ''),
+                'smtp_from_name': getattr(legacy_config, 'smtp_from_name', 'SupplierSync Pro'),
+                'smtp_use_tls': getattr(legacy_config, 'smtp_use_tls', True),
+                'smtp_use_ssl': getattr(legacy_config, 'smtp_use_ssl', False),
+            }
+            return EmailService(email_config)
+        
+        email_config = {
+            'smtp_host': config.get('smtp_host', ''),
+            'smtp_port': config.get('smtp_port', 587),
+            'smtp_user': config.get('smtp_user', ''),
+            'smtp_password': config.get('smtp_password', ''),
+            'smtp_from_email': config.get('smtp_from_email', '') or config.get('smtp_user', ''),
+            'smtp_from_name': config.get('smtp_from_name', 'SupplierSync Pro'),
+            'smtp_use_tls': config.get('smtp_use_tls', True),
+            'smtp_use_ssl': config.get('smtp_use_ssl', False),
+        }
+        return EmailService(email_config)
+        
+    except Exception as e:
+        logger.error(f"Error in get_email_service_async for {account_type}: {e}")
         return EmailService({})

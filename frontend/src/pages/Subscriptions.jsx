@@ -1,6 +1,7 @@
-import { useState, useEffect, useContext } from "react";
+import { useState, useEffect, useContext, useCallback } from "react";
 import { api, AuthContext } from "../App";
 import { toast } from "sonner";
+import { useSearchParams } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -10,7 +11,8 @@ import { Input } from "../components/ui/input";
 import { Textarea } from "../components/ui/textarea";
 import {
   Check, Zap, Crown, Building2, Rocket, CreditCard, 
-  Truck, BookOpen, ShoppingCart, Sparkles, Settings, Plus, Trash2, X
+  Truck, BookOpen, ShoppingCart, Sparkles, Settings, Plus, Trash2, X,
+  Loader2, ExternalLink, AlertCircle
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
@@ -18,6 +20,9 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "../components/ui/table";
+import {
+  Alert, AlertDescription, AlertTitle
+} from "../components/ui/alert";
 
 const PLAN_ICONS = {
   "Free": Zap,
@@ -35,12 +40,19 @@ const PLAN_COLORS = {
 
 const Subscriptions = () => {
   const { user } = useContext(AuthContext);
+  const [searchParams, setSearchParams] = useSearchParams();
   const [plans, setPlans] = useState([]);
   const [currentSubscription, setCurrentSubscription] = useState(null);
   const [loading, setLoading] = useState(true);
   const [yearlyBilling, setYearlyBilling] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState(null);
+  
+  // Stripe status
+  const [stripeEnabled, setStripeEnabled] = useState(false);
+  const [stripeConfigured, setStripeConfigured] = useState(false);
+  const [checkingPayment, setCheckingPayment] = useState(false);
+  const [paymentSuccess, setPaymentSuccess] = useState(false);
   
   // SuperAdmin edit state
   const [editMode, setEditMode] = useState(false);
@@ -51,8 +63,70 @@ const Subscriptions = () => {
 
   const isSuperAdmin = user?.role === "superadmin";
 
+  // Poll payment status
+  const pollPaymentStatus = useCallback(async (sessionId, attempts = 0) => {
+    const maxAttempts = 10;
+    const pollInterval = 2000;
+
+    if (attempts >= maxAttempts) {
+      setCheckingPayment(false);
+      toast.error("Tiempo agotado verificando el pago. Por favor, recarga la página.");
+      return;
+    }
+
+    try {
+      const res = await api.get(`/stripe/checkout-status/${sessionId}`);
+      const { payment_status, subscription_applied } = res.data;
+
+      if (payment_status === "paid") {
+        setCheckingPayment(false);
+        setPaymentSuccess(true);
+        toast.success("¡Pago completado! Tu suscripción está activa.");
+        // Clear URL params
+        setSearchParams({});
+        // Refresh data
+        fetchData();
+        // Reload after a moment to update user context
+        setTimeout(() => window.location.reload(), 2000);
+        return;
+      } else if (payment_status === "expired") {
+        setCheckingPayment(false);
+        toast.error("La sesión de pago ha expirado. Por favor, intenta de nuevo.");
+        setSearchParams({});
+        return;
+      }
+
+      // Continue polling
+      setTimeout(() => pollPaymentStatus(sessionId, attempts + 1), pollInterval);
+    } catch (error) {
+      console.error("Error checking payment status:", error);
+      if (attempts < maxAttempts - 1) {
+        setTimeout(() => pollPaymentStatus(sessionId, attempts + 1), pollInterval);
+      } else {
+        setCheckingPayment(false);
+        toast.error("Error verificando el pago.");
+      }
+    }
+  }, [setSearchParams]);
+
+  // Check for return from Stripe
+  useEffect(() => {
+    const sessionId = searchParams.get("session_id");
+    const success = searchParams.get("success");
+    const canceled = searchParams.get("canceled");
+
+    if (canceled) {
+      toast.info("Pago cancelado");
+      setSearchParams({});
+    } else if (sessionId && success) {
+      setCheckingPayment(true);
+      pollPaymentStatus(sessionId);
+    }
+  }, [searchParams, pollPaymentStatus, setSearchParams]);
+
   useEffect(() => {
     fetchData();
+    checkStripeStatus();
   }, []);
 
   const fetchData = async () => {
@@ -70,6 +144,18 @@ const Subscriptions = () => {
     }
   };
 
+  const checkStripeStatus = async () => {
+    try {
+      const res = await api.get("/stripe/config/status");
+      setStripeEnabled(res.data.enabled);
+      setStripeConfigured(res.data.configured);
+    } catch (error) {
+      // Stripe not configured - that's fine, we'll use demo mode
+      setStripeEnabled(false);
+      setStripeConfigured(false);
+    }
+  };
+
   const handleSubscribe = async (plan) => {
     if (currentSubscription?.plan?.name === plan.name && !currentSubscription?.is_free) {
       toast.info("Ya estás suscrito a este plan");
@@ -81,15 +167,36 @@ const Subscriptions = () => {
   const confirmSubscription = async () => {
     if (!confirmDialog) return;
     setSubscribing(true);
+    
     try {
-      const billingCycle = yearlyBilling ? "yearly" : "monthly";
-      await api.post(`/subscriptions/subscribe/${confirmDialog.id}?billing_cycle=${billingCycle}`);
-      toast.success(`¡Suscrito al plan ${confirmDialog.name} exitosamente!`);
-      setConfirmDialog(null);
-      fetchData();
-      window.location.reload();
+      // If Stripe is enabled and plan has a price, use Stripe checkout
+      const planPrice = yearlyBilling ? confirmDialog.price_yearly : confirmDialog.price_monthly;
+      
+      if (stripeEnabled && planPrice > 0) {
+        // Create Stripe checkout session
+        const billingCycle = yearlyBilling ? "yearly" : "monthly";
+        const res = await api.post("/stripe/create-checkout", {
+          plan_id: confirmDialog.id,
+          origin_url: window.location.origin,
+          billing_cycle: billingCycle
+        });
+        
+        // Redirect to Stripe checkout
+        if (res.data.checkout_url) {
+          window.location.href = res.data.checkout_url;
+          return;
+        }
+      } else {
+        // Demo mode - use the existing subscription flow
+        const billingCycle = yearlyBilling ? "yearly" : "monthly";
+        await api.post(`/subscriptions/subscribe/${confirmDialog.id}?billing_cycle=${billingCycle}`);
+        toast.success(`¡Suscrito al plan ${confirmDialog.name} exitosamente!`);
+        setConfirmDialog(null);
+        fetchData();
+        window.location.reload();
+      }
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error al suscribirse");
+      toast.error(error.response?.data?.detail || "Error al procesar la suscripción");
     } finally {
       setSubscribing(false);
     }
@@ -165,8 +272,28 @@ const Subscriptions = () => {
     return Math.round((yearlySavings / (plan.price_monthly * 12)) * 100);
   };
 
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center"><div className="spinner"></div></div>;
+  if (loading || checkingPayment) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4">
+        <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+        {checkingPayment && (
+          <p className="text-slate-600">Verificando estado del pago...</p>
+        )}
+      </div>
+    );
+  }
+
+  if (paymentSuccess) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 p-6">
+        <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+          <Check className="w-8 h-8 text-emerald-600" />
+        </div>
+        <h2 className="text-2xl font-bold text-slate-900">¡Pago completado!</h2>
+        <p className="text-slate-600">Tu suscripción ha sido activada correctamente.</p>
+        <p className="text-sm text-slate-500">Redirigiendo...</p>
+      </div>
+    );
   }
 
   const currentPlanName = currentSubscription?.plan?.name || "Free";
@@ -612,9 +739,29 @@ const Subscriptions = () => {
                   </span>
                 </div>
               </div>
-              <p className="text-sm text-slate-500 mt-3">
-                Nota: Esta es una demostración. En producción, se integraría con Stripe para procesar pagos reales.
-              </p>
+              
+              {/* Stripe payment info */}
+              {stripeEnabled && (yearlyBilling ? confirmDialog.price_yearly : confirmDialog.price_monthly) > 0 ? (
+                <div className="mt-4 p-3 bg-indigo-50 border border-indigo-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-indigo-700 font-medium text-sm">
+                    <CreditCard className="w-4 h-4" />
+                    Pago seguro con Stripe
+                  </div>
+                  <p className="text-xs text-indigo-600 mt-1">
+                    Serás redirigido a Stripe para completar el pago de forma segura.
+                  </p>
+                </div>
+              ) : (
+                <Alert className="mt-4">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Modo Demo</AlertTitle>
+                  <AlertDescription>
+                    {!stripeEnabled 
+                      ? "Los pagos con Stripe no están habilitados. La suscripción se activará sin pago real."
+                      : "Este plan es gratuito."}
+                  </AlertDescription>
+                </Alert>
+              )}
             </div>
           )}
 
@@ -626,8 +773,21 @@ const Subscriptions = () => {
               className="btn-primary" 
               onClick={confirmSubscription}
               disabled={subscribing}
+              data-testid="confirm-subscribe-btn"
             >
-              {subscribing ? "Procesando..." : "Confirmar Suscripción"}
+              {subscribing ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Procesando...
+                </>
+              ) : stripeEnabled && (yearlyBilling ? confirmDialog?.price_yearly : confirmDialog?.price_monthly) > 0 ? (
+                <>
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Ir a Pagar
+                </>
+              ) : (
+                "Confirmar Suscripción"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

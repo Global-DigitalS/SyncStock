@@ -12,6 +12,14 @@ import logging
 from services.auth import get_superadmin_user, get_current_user
 from services.database import db
 
+# Import emergentintegrations for Stripe checkout
+from emergentintegrations.payments.stripe.checkout import (
+    StripeCheckout, 
+    CheckoutSessionResponse, 
+    CheckoutStatusResponse, 
+    CheckoutSessionRequest
+)
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -37,6 +45,7 @@ class StripeConfigUpdate(BaseModel):
 class CheckoutRequest(BaseModel):
     plan_id: str
     origin_url: str
+    billing_cycle: str = "monthly"  # monthly or yearly
 
 
 class CheckoutResponse(BaseModel):
@@ -109,96 +118,110 @@ async def test_stripe_connection(user: dict = Depends(get_superadmin_user)):
         }
 
 
-# ==================== SUBSCRIPTION CHECKOUT ENDPOINTS ====================
+# ==================== HELPER FUNCTIONS ====================
 
-async def get_stripe_client():
-    """Get configured Stripe client"""
+async def fetch_stripe_config():
+    """Get Stripe configuration from database"""
     config = await db.app_config.find_one({"type": "stripe"})
+    if not config:
+        return None
+    return config
+
+
+async def get_stripe_checkout(request: Request = None, webhook_url: str = None):
+    """Get configured StripeCheckout instance using emergentintegrations"""
+    config = await fetch_stripe_config()
     if not config or not config.get("enabled"):
         raise HTTPException(status_code=503, detail="Pagos con Stripe no están habilitados")
     
     if not config.get("stripe_secret_key"):
-        raise HTTPException(status_code=503, detail="Stripe no está configurado")
+        raise HTTPException(status_code=503, detail="Stripe no está configurado correctamente")
     
-    import stripe
-    stripe.api_key = config.get("stripe_secret_key")
-    return stripe, config
+    api_key = config.get("stripe_secret_key")
+    
+    # Create StripeCheckout instance
+    stripe_checkout = StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    return stripe_checkout, config
 
+
+# ==================== PUBLIC ENDPOINTS ====================
+
+@router.get("/stripe/config/status")
+async def get_stripe_status():
+    """Check if Stripe payments are enabled (public endpoint)"""
+    config = await fetch_stripe_config()
+    if not config:
+        return {"enabled": False, "configured": False}
+    
+    return {
+        "enabled": config.get("enabled", False),
+        "configured": bool(config.get("stripe_secret_key")),
+        "is_live_mode": config.get("is_live_mode", False)
+    }
+
+
+# ==================== SUBSCRIPTION CHECKOUT ENDPOINTS ====================
 
 @router.post("/stripe/create-checkout")
 async def create_checkout_session(
-    request: CheckoutRequest,
+    checkout_request: CheckoutRequest,
+    request: Request,
     user: dict = Depends(get_current_user)
 ):
-    """Create a Stripe checkout session for subscription"""
-    stripe, config = await get_stripe_client()
+    """Create a Stripe checkout session for subscription using emergentintegrations"""
     
-    # Get the plan
-    plan = await db.subscription_plans.find_one({"id": request.plan_id})
+    # Build webhook URL
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/stripe/webhook"
+    
+    stripe_checkout, config = await get_stripe_checkout(request, webhook_url)
+    
+    # Get the plan from database (server-side - never trust frontend amounts)
+    plan = await db.subscription_plans.find_one({"id": checkout_request.plan_id})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
     
-    # Check if user already has a Stripe customer ID
-    stripe_customer_id = user.get("stripe_customer_id")
+    # Determine price based on billing cycle (server-side calculation)
+    if checkout_request.billing_cycle == "yearly":
+        amount = float(plan.get("price_yearly", 0))
+    else:
+        amount = float(plan.get("price_monthly", 0))
     
-    if not stripe_customer_id:
-        # Create a new Stripe customer
-        customer = stripe.Customer.create(
-            email=user.get("email"),
-            name=user.get("name"),
-            metadata={"user_id": user.get("id")}
-        )
-        stripe_customer_id = customer.id
-        
-        # Save customer ID to user
-        await db.users.update_one(
-            {"id": user.get("id")},
-            {"$set": {"stripe_customer_id": stripe_customer_id}}
-        )
-    
-    # Determine price (monthly by default, could be yearly)
-    amount = float(plan.get("price_monthly", 0))
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Este plan no tiene precio configurado")
     
-    # Build success and cancel URLs
-    success_url = f"{request.origin_url}/subscriptions?session_id={{CHECKOUT_SESSION_ID}}&success=true"
-    cancel_url = f"{request.origin_url}/subscriptions?canceled=true"
+    # Build success and cancel URLs from frontend origin (dynamic)
+    origin = checkout_request.origin_url.rstrip("/")
+    # Use hash router format for proper navigation
+    success_url = f"{origin}/#/subscriptions?session_id={{CHECKOUT_SESSION_ID}}&success=true"
+    cancel_url = f"{origin}/#/subscriptions?canceled=true"
     
     try:
-        # Create checkout session with subscription mode
-        checkout_session = stripe.checkout.Session.create(
-            customer=stripe_customer_id,
-            payment_method_types=["card"],
-            mode="subscription",
-            line_items=[{
-                "price_data": {
-                    "currency": "eur",
-                    "product_data": {
-                        "name": plan.get("name"),
-                        "description": plan.get("description") or f"Suscripción a {plan.get('name')}",
-                    },
-                    "unit_amount": int(amount * 100),  # Stripe uses cents
-                    "recurring": {"interval": "month"}
-                },
-                "quantity": 1
-            }],
+        # Create checkout session using emergentintegrations
+        checkout_req = CheckoutSessionRequest(
+            amount=amount,  # Keep as float
+            currency="eur",
             success_url=success_url,
             cancel_url=cancel_url,
             metadata={
                 "user_id": user.get("id"),
-                "plan_id": request.plan_id,
-                "plan_name": plan.get("name")
+                "user_email": user.get("email"),
+                "plan_id": checkout_request.plan_id,
+                "plan_name": plan.get("name"),
+                "billing_cycle": checkout_request.billing_cycle
             }
         )
         
-        # Record the transaction
+        session: CheckoutSessionResponse = await stripe_checkout.create_checkout_session(checkout_req)
+        
+        # MANDATORY: Record the transaction BEFORE redirect
         await db.payment_transactions.insert_one({
-            "session_id": checkout_session.id,
+            "session_id": session.session_id,
             "user_id": user.get("id"),
             "user_email": user.get("email"),
-            "plan_id": request.plan_id,
+            "plan_id": checkout_request.plan_id,
             "plan_name": plan.get("name"),
+            "billing_cycle": checkout_request.billing_cycle,
             "amount": amount,
             "currency": "eur",
             "status": "pending",
@@ -206,67 +229,91 @@ async def create_checkout_session(
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         
+        logger.info(f"Checkout session created for user {user.get('email')}, plan {plan.get('name')}, session {session.session_id}")
+        
         return CheckoutResponse(
-            checkout_url=checkout_session.url,
-            session_id=checkout_session.id
+            checkout_url=session.url,
+            session_id=session.session_id
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error creating checkout session: {e}")
         raise HTTPException(status_code=500, detail=f"Error al crear sesión de pago: {str(e)}")
 
 
 @router.get("/stripe/checkout-status/{session_id}")
-async def get_checkout_status(session_id: str, user: dict = Depends(get_current_user)):
-    """Get the status of a checkout session"""
-    stripe, _ = await get_stripe_client()
+async def get_checkout_status(session_id: str, request: Request, user: dict = Depends(get_current_user)):
+    """Get the status of a checkout session and update user subscription if paid"""
+    
+    # Build webhook URL (needed for StripeCheckout init)
+    host_url = str(request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/stripe/webhook"
+    
+    stripe_checkout, _ = await get_stripe_checkout(request, webhook_url)
     
     try:
-        session = stripe.checkout.Session.retrieve(session_id)
+        # Get checkout status using emergentintegrations
+        status: CheckoutStatusResponse = await stripe_checkout.get_checkout_status(session_id)
         
-        # Update transaction in database
+        # Get transaction from database
+        transaction = await db.payment_transactions.find_one({"session_id": session_id})
+        
+        # Update transaction status
         update_data = {
-            "status": session.status,
-            "payment_status": session.payment_status,
+            "status": status.status,
+            "payment_status": status.payment_status,
             "updated_at": datetime.now(timezone.utc).isoformat()
         }
         
-        # If payment is complete, update user subscription
-        if session.payment_status == "paid":
-            # Get transaction to find plan details
-            transaction = await db.payment_transactions.find_one({"session_id": session_id})
-            if transaction and transaction.get("user_id") == user.get("id"):
-                # Get plan details
-                plan = await db.subscription_plans.find_one({"id": transaction.get("plan_id")})
-                if plan:
-                    # Update user subscription
-                    await db.users.update_one(
-                        {"id": user.get("id")},
-                        {"$set": {
-                            "subscription_plan_id": plan.get("id"),
-                            "subscription_plan_name": plan.get("name"),
-                            "max_suppliers": plan.get("max_suppliers", 5),
-                            "max_catalogs": plan.get("max_catalogs", 3),
-                            "max_products": plan.get("max_products", 1000),
-                            "max_stores": plan.get("max_stores", 1),
-                            "subscription_status": "active",
-                            "subscription_updated_at": datetime.now(timezone.utc).isoformat()
-                        }}
-                    )
-                    update_data["subscription_applied"] = True
+        # If payment is complete and hasn't been processed yet, update user subscription
+        if status.payment_status == "paid":
+            if transaction and not transaction.get("subscription_applied"):
+                # Verify transaction belongs to requesting user
+                if transaction.get("user_id") == user.get("id"):
+                    # Get plan details
+                    plan = await db.subscription_plans.find_one({"id": transaction.get("plan_id")})
+                    if plan:
+                        # Update user subscription limits
+                        await db.users.update_one(
+                            {"id": user.get("id")},
+                            {"$set": {
+                                "subscription_plan_id": plan.get("id"),
+                                "subscription_plan_name": plan.get("name"),
+                                "max_suppliers": plan.get("max_suppliers", 5),
+                                "max_catalogs": plan.get("max_catalogs", 3),
+                                "max_products": plan.get("max_products", 1000),
+                                "max_stores": plan.get("max_stores") or plan.get("max_woocommerce_stores", 1),
+                                "subscription_status": "active",
+                                "subscription_billing_cycle": transaction.get("billing_cycle", "monthly"),
+                                "subscription_updated_at": datetime.now(timezone.utc).isoformat()
+                            }}
+                        )
+                        
+                        # Mark as applied to prevent duplicate processing
+                        update_data["subscription_applied"] = True
+                        update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+                        
+                        logger.info(f"Subscription activated for user {user.get('email')}, plan {plan.get('name')}")
         
-        await db.payment_transactions.update_one(
-            {"session_id": session_id},
-            {"$set": update_data}
-        )
+        # Update transaction record
+        if transaction:
+            await db.payment_transactions.update_one(
+                {"session_id": session_id},
+                {"$set": update_data}
+            )
         
         return {
-            "status": session.status,
-            "payment_status": session.payment_status,
-            "amount_total": session.amount_total,
-            "currency": session.currency
+            "status": status.status,
+            "payment_status": status.payment_status,
+            "amount_total": status.amount_total,
+            "currency": status.currency,
+            "subscription_applied": update_data.get("subscription_applied", False)
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error retrieving checkout status: {e}")
         raise HTTPException(status_code=500, detail=f"Error al verificar estado: {str(e)}")
@@ -276,86 +323,77 @@ async def get_checkout_status(session_id: str, user: dict = Depends(get_current_
 
 @router.post("/stripe/webhook")
 async def stripe_webhook(request: Request):
-    """Handle Stripe webhooks"""
+    """Handle Stripe webhooks using emergentintegrations"""
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
     
-    config = await db.app_config.find_one({"type": "stripe"})
+    config = await fetch_stripe_config()
     if not config:
         raise HTTPException(status_code=503, detail="Stripe no configurado")
     
-    webhook_secret = config.get("stripe_webhook_secret")
-    
     try:
-        import stripe
-        stripe.api_key = config.get("stripe_secret_key")
+        # Build webhook URL for StripeCheckout init
+        host_url = str(request.base_url).rstrip("/")
+        webhook_url = f"{host_url}/api/stripe/webhook"
         
-        if webhook_secret:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, webhook_secret
-            )
-        else:
-            # If no webhook secret, parse the payload directly (not recommended for production)
-            import json
-            event = json.loads(payload)
+        stripe_checkout = StripeCheckout(
+            api_key=config.get("stripe_secret_key"),
+            webhook_url=webhook_url
+        )
         
-        event_type = event.get("type") if isinstance(event, dict) else event.type
-        event_data = event.get("data", {}).get("object", {}) if isinstance(event, dict) else event.data.object
+        # Handle webhook using emergentintegrations
+        webhook_response = await stripe_checkout.handle_webhook(payload, sig_header)
         
-        logger.info(f"Stripe webhook received: {event_type}")
+        event_type = webhook_response.event_type
+        session_id = webhook_response.session_id
+        payment_status = webhook_response.payment_status
         
-        # Handle different event types
-        if event_type == "checkout.session.completed":
-            session_id = event_data.get("id")
+        logger.info(f"Stripe webhook received: {event_type}, session: {session_id}, status: {payment_status}")
+        
+        # Update transaction based on event
+        if session_id:
+            update_data = {
+                "webhook_event": event_type,
+                "payment_status": payment_status,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            
+            # If payment completed, mark as complete
+            if payment_status == "paid":
+                update_data["status"] = "complete"
+                update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
+                
+                # Get transaction and apply subscription if not already done
+                transaction = await db.payment_transactions.find_one({"session_id": session_id})
+                if transaction and not transaction.get("subscription_applied"):
+                    plan = await db.subscription_plans.find_one({"id": transaction.get("plan_id")})
+                    if plan:
+                        await db.users.update_one(
+                            {"id": transaction.get("user_id")},
+                            {"$set": {
+                                "subscription_plan_id": plan.get("id"),
+                                "subscription_plan_name": plan.get("name"),
+                                "max_suppliers": plan.get("max_suppliers", 5),
+                                "max_catalogs": plan.get("max_catalogs", 3),
+                                "max_products": plan.get("max_products", 1000),
+                                "max_stores": plan.get("max_stores") or plan.get("max_woocommerce_stores", 1),
+                                "subscription_status": "active",
+                                "subscription_billing_cycle": transaction.get("billing_cycle", "monthly"),
+                                "subscription_updated_at": datetime.now(timezone.utc).isoformat()
+                            }}
+                        )
+                        update_data["subscription_applied"] = True
+                        logger.info(f"Subscription applied via webhook for user {transaction.get('user_email')}")
+            
+            elif payment_status == "expired":
+                update_data["status"] = "expired"
+            
             await db.payment_transactions.update_one(
                 {"session_id": session_id},
-                {"$set": {
-                    "status": "complete",
-                    "payment_status": "paid",
-                    "completed_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            
-        elif event_type == "customer.subscription.updated":
-            subscription_id = event_data.get("id")
-            customer_id = event_data.get("customer")
-            status = event_data.get("status")
-            
-            # Find user by customer ID and update subscription status
-            await db.users.update_one(
-                {"stripe_customer_id": customer_id},
-                {"$set": {
-                    "subscription_status": status,
-                    "stripe_subscription_id": subscription_id,
-                    "subscription_updated_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            
-        elif event_type == "customer.subscription.deleted":
-            customer_id = event_data.get("customer")
-            
-            # Mark subscription as canceled
-            await db.users.update_one(
-                {"stripe_customer_id": customer_id},
-                {"$set": {
-                    "subscription_status": "canceled",
-                    "subscription_updated_at": datetime.now(timezone.utc).isoformat()
-                }}
-            )
-            
-        elif event_type == "invoice.payment_failed":
-            customer_id = event_data.get("customer")
-            
-            # Mark subscription as past_due
-            await db.users.update_one(
-                {"stripe_customer_id": customer_id},
-                {"$set": {
-                    "subscription_status": "past_due",
-                    "subscription_updated_at": datetime.now(timezone.utc).isoformat()
-                }}
+                {"$set": update_data}
             )
         
-        return {"status": "success"}
+        return {"status": "success", "event_type": event_type}
         
     except Exception as e:
         logger.error(f"Webhook error: {e}")

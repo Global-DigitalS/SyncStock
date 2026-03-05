@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 2.9.0  
+**Versión:** 3.0.0  
 **Última actualización:** 2026-03-05  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -108,6 +108,22 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
   - Precios mensuales y anuales
   - Lista de características por plan
   - Marcar plan como predeterminado
+
+- [x] **Cuentas de Email Múltiples** (NUEVO - 2026-03-05)
+  - Ubicación: Administración → Config. Email (`/admin/email-config`)
+  - 3 tipos de cuentas independientes:
+    - **Transaccional**: Registro, reset de contraseña, notificaciones del sistema
+    - **Soporte**: Comunicación con usuarios, tickets de soporte
+    - **Facturación**: Facturas, confirmaciones de pago, cambio de plan
+  - Cada cuenta con su propia configuración SMTP
+  - Switch para habilitar/deshabilitar cada cuenta
+  - Fallback automático a cuenta Transaccional si otra no está habilitada
+  - Prueba de conexión y envío de email de prueba por cuenta
+  - Endpoints:
+    - GET /api/email/accounts - Obtener todas las configuraciones
+    - PUT /api/email/accounts/{type} - Actualizar configuración
+    - POST /api/email/accounts/{type}/test-connection - Probar conexión
+    - POST /api/email/accounts/{type}/send-test - Enviar email de prueba
 
 - [x] **Plantillas de Email** (`/admin/email-templates`)
   - 3 plantillas predeterminadas (Bienvenida, Reset Password, Cambio Suscripción)

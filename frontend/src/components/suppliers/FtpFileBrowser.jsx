@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   FolderOpen,
   FileArchive,
@@ -6,7 +7,10 @@ import {
   RefreshCw,
   CheckCircle,
   ChevronRight,
-  FolderTree
+  FolderTree,
+  CheckSquare,
+  Square,
+  PlusCircle
 } from "lucide-react";
 import { Button } from "../ui/button";
 import SelectedFilesList from "./SelectedFilesList";
@@ -22,14 +26,49 @@ const FtpFileBrowser = ({
   onBrowse,
   onListAll,
   onAddFile,
+  onAddMultipleFiles,
   onRemoveFile,
   onUpdateFileRole,
   formatFileSize
 }) => {
+  const [multiSelectMode, setMultiSelectMode] = useState(false);
+  const [checkedFiles, setCheckedFiles] = useState([]);
+  
   const navigateUp = () => {
     const parent = currentPath.split("/").slice(0, -1).join("/") || "/";
     onBrowse(parent);
   };
+  
+  const toggleFileCheck = (file) => {
+    if (checkedFiles.some(f => f.path === file.path)) {
+      setCheckedFiles(checkedFiles.filter(f => f.path !== file.path));
+    } else {
+      setCheckedFiles([...checkedFiles, file]);
+    }
+  };
+  
+  const selectAllSupported = () => {
+    const supportedFiles = files.filter(f => !f.is_dir && f.is_supported && !selectedFiles.some(s => s.path === f.path));
+    setCheckedFiles(supportedFiles);
+  };
+  
+  const clearChecked = () => {
+    setCheckedFiles([]);
+  };
+  
+  const addCheckedFiles = () => {
+    if (checkedFiles.length > 0) {
+      if (onAddMultipleFiles) {
+        onAddMultipleFiles(checkedFiles);
+      } else {
+        checkedFiles.forEach(file => onAddFile(file));
+      }
+      setCheckedFiles([]);
+      setMultiSelectMode(false);
+    }
+  };
+  
+  const supportedCount = files.filter(f => !f.is_dir && f.is_supported && !selectedFiles.some(s => s.path === f.path)).length;
 
   return (
     <div className="border border-slate-200 rounded-lg overflow-hidden" data-testid="ftp-browser">
@@ -45,6 +84,23 @@ const FtpFileBrowser = ({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {/* Multi-select toggle */}
+          {files.length > 0 && supportedCount > 0 && (
+            <Button
+              type="button"
+              size="sm"
+              variant={multiSelectMode ? "default" : "outline"}
+              onClick={() => {
+                setMultiSelectMode(!multiSelectMode);
+                if (multiSelectMode) setCheckedFiles([]);
+              }}
+              className={`text-xs h-7 ${multiSelectMode ? "bg-indigo-600 hover:bg-indigo-700" : ""}`}
+              data-testid="ftp-multi-select-btn"
+            >
+              <CheckSquare className="w-3 h-3 mr-1" />
+              Múltiple
+            </Button>
+          )}
           {canListAll && (
             <Button
               type="button" 
@@ -82,6 +138,44 @@ const FtpFileBrowser = ({
           </Button>
         </div>
       </div>
+
+      {/* Multi-select actions bar */}
+      {multiSelectMode && files.length > 0 && (
+        <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-indigo-700 font-medium">
+              {checkedFiles.length} de {supportedCount} archivos seleccionados
+            </span>
+            <button 
+              type="button"
+              onClick={selectAllSupported}
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+            >
+              Seleccionar todos
+            </button>
+            {checkedFiles.length > 0 && (
+              <button 
+                type="button"
+                onClick={clearChecked}
+                className="text-xs text-slate-500 hover:text-slate-700"
+              >
+                Limpiar
+              </button>
+            )}
+          </div>
+          <Button
+            type="button"
+            size="sm"
+            onClick={addCheckedFiles}
+            disabled={checkedFiles.length === 0}
+            className="h-7 text-xs bg-indigo-600 hover:bg-indigo-700 text-white"
+            data-testid="ftp-add-selected-btn"
+          >
+            <PlusCircle className="w-3 h-3 mr-1" />
+            Añadir {checkedFiles.length > 0 ? `(${checkedFiles.length})` : ""}
+          </Button>
+        </div>
+      )}
 
       {/* Stats */}
       {stats && (
@@ -128,17 +222,44 @@ const FtpFileBrowser = ({
           
           {files.map((file) => {
             const isSelected = selectedFiles.some(f => f.path === file.path);
+            const isChecked = checkedFiles.some(f => f.path === file.path);
             const isSupported = file.is_supported;
+            const canCheck = multiSelectMode && !file.is_dir && isSupported && !isSelected;
             
             return (
               <div 
                 key={file.path}
                 className={`flex items-center gap-3 px-3 py-2 border-b border-slate-100 hover:bg-slate-50 transition-colors ${
                   file.is_dir ? "cursor-pointer" : ""
-                } ${isSelected ? "bg-indigo-50" : ""} ${!file.is_dir && !isSupported ? "opacity-50" : ""}`}
-                onClick={() => file.is_dir ? onBrowse(file.path) : null}
+                } ${isSelected ? "bg-indigo-50" : ""} ${isChecked ? "bg-indigo-100" : ""} ${!file.is_dir && !isSupported ? "opacity-50" : ""}`}
+                onClick={() => {
+                  if (file.is_dir) {
+                    onBrowse(file.path);
+                  } else if (canCheck) {
+                    toggleFileCheck(file);
+                  }
+                }}
                 data-testid={`ftp-file-${file.name}`}
               >
+                {/* Checkbox for multi-select mode */}
+                {multiSelectMode && !file.is_dir && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (isSupported && !isSelected) toggleFileCheck(file);
+                    }}
+                    className={`flex-shrink-0 ${!isSupported || isSelected ? "opacity-30 cursor-not-allowed" : "cursor-pointer"}`}
+                    disabled={!isSupported || isSelected}
+                  >
+                    {isChecked ? (
+                      <CheckSquare className="w-4 h-4 text-indigo-600" />
+                    ) : (
+                      <Square className="w-4 h-4 text-slate-400" />
+                    )}
+                  </button>
+                )}
+                
                 {/* Icon */}
                 {file.is_dir ? (
                   <FolderOpen className="w-4 h-4 text-amber-500 flex-shrink-0" />
@@ -170,21 +291,28 @@ const FtpFileBrowser = ({
                     <span className="text-xs text-slate-400 min-w-[60px] text-right">
                       {file.size_formatted || formatFileSize?.(file.size) || ""}
                     </span>
-                    {isSelected ? (
+                    {!multiSelectMode && (
+                      isSelected ? (
+                        <span className="text-xs text-emerald-600 font-medium flex items-center gap-1 min-w-[70px]">
+                          <CheckCircle className="w-3 h-3" /> Añadido
+                        </span>
+                      ) : isSupported ? (
+                        <button 
+                          type="button" 
+                          onClick={(e) => { e.stopPropagation(); onAddFile(file); }}
+                          className="text-xs bg-indigo-600 text-white px-2.5 py-1 rounded-md hover:bg-indigo-700 transition-colors font-medium min-w-[70px]"
+                          data-testid={`add-file-${file.name}`}
+                        >
+                          Añadir
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-400 min-w-[70px]">No soportado</span>
+                      )
+                    )}
+                    {multiSelectMode && isSelected && (
                       <span className="text-xs text-emerald-600 font-medium flex items-center gap-1 min-w-[70px]">
                         <CheckCircle className="w-3 h-3" /> Añadido
                       </span>
-                    ) : isSupported ? (
-                      <button 
-                        type="button" 
-                        onClick={(e) => { e.stopPropagation(); onAddFile(file); }}
-                        className="text-xs bg-indigo-600 text-white px-2.5 py-1 rounded-md hover:bg-indigo-700 transition-colors font-medium min-w-[70px]"
-                        data-testid={`add-file-${file.name}`}
-                      >
-                        Añadir
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-400 min-w-[70px]">No soportado</span>
                     )}
                   </>
                 )}

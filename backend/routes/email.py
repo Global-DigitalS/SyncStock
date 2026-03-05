@@ -1,9 +1,10 @@
 """
 Rutas para configuración y envío de correos electrónicos.
+Soporta múltiples cuentas de email para diferentes propósitos.
 """
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
-from typing import Optional
+from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 import uuid
 import logging
@@ -36,6 +37,18 @@ class SmtpConfigRequest(BaseModel):
     smtp_use_ssl: bool = False
 
 
+class EmailAccountConfig(BaseModel):
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from_email: str = ""
+    smtp_from_name: str = ""
+    smtp_use_tls: bool = True
+    smtp_use_ssl: bool = False
+    enabled: bool = False
+
+
 class SmtpTestRequest(BaseModel):
     smtp_host: str
     smtp_port: int = 587
@@ -60,7 +73,208 @@ class SendTestEmailRequest(BaseModel):
     template: str = "welcome"  # welcome, password_reset, subscription_change
 
 
-# ==================== SMTP CONFIGURATION ====================
+class SendTestEmailSimple(BaseModel):
+    to_email: EmailStr
+
+
+# Valid email account types
+EMAIL_ACCOUNT_TYPES = ["transactional", "support", "billing"]
+
+
+# ==================== MULTI-ACCOUNT EMAIL CONFIGURATION ====================
+
+@router.get("/email/accounts")
+async def get_all_email_accounts(user: dict = Depends(get_superadmin_user)):
+    """Get all email account configurations"""
+    result = {}
+    for account_type in EMAIL_ACCOUNT_TYPES:
+        config = await db.email_accounts.find_one({"type": account_type})
+        if config:
+            result[account_type] = {
+                "smtp_host": config.get("smtp_host", ""),
+                "smtp_port": config.get("smtp_port", 587),
+                "smtp_user": config.get("smtp_user", ""),
+                "smtp_password": "",  # Never return password
+                "smtp_from_email": config.get("smtp_from_email", ""),
+                "smtp_from_name": config.get("smtp_from_name", ""),
+                "smtp_use_tls": config.get("smtp_use_tls", True),
+                "smtp_use_ssl": config.get("smtp_use_ssl", False),
+                "enabled": config.get("enabled", False),
+                "has_password": bool(config.get("smtp_password"))
+            }
+        else:
+            # Return default config
+            default_names = {
+                "transactional": "SupplierSync",
+                "support": "Soporte SupplierSync",
+                "billing": "Facturación SupplierSync"
+            }
+            result[account_type] = {
+                "smtp_host": "",
+                "smtp_port": 587,
+                "smtp_user": "",
+                "smtp_password": "",
+                "smtp_from_email": "",
+                "smtp_from_name": default_names.get(account_type, "SupplierSync"),
+                "smtp_use_tls": True,
+                "smtp_use_ssl": False,
+                "enabled": False,
+                "has_password": False
+            }
+    return result
+
+
+@router.put("/email/accounts/{account_type}")
+async def update_email_account(
+    account_type: str,
+    config: EmailAccountConfig,
+    user: dict = Depends(get_superadmin_user)
+):
+    """Update a specific email account configuration"""
+    if account_type not in EMAIL_ACCOUNT_TYPES:
+        raise HTTPException(status_code=400, detail=f"Tipo de cuenta inválido. Usa: {EMAIL_ACCOUNT_TYPES}")
+    
+    update_data = {
+        "type": account_type,
+        "smtp_host": config.smtp_host,
+        "smtp_port": config.smtp_port,
+        "smtp_user": config.smtp_user,
+        "smtp_from_email": config.smtp_from_email,
+        "smtp_from_name": config.smtp_from_name,
+        "smtp_use_tls": config.smtp_use_tls,
+        "smtp_use_ssl": config.smtp_use_ssl,
+        "enabled": config.enabled,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_by": user.get("email")
+    }
+    
+    # Only update password if provided (not empty)
+    if config.smtp_password:
+        update_data["smtp_password"] = config.smtp_password
+    
+    await db.email_accounts.update_one(
+        {"type": account_type},
+        {"$set": update_data},
+        upsert=True
+    )
+    
+    logger.info(f"Email account '{account_type}' updated by {user.get('email')}")
+    return {"success": True, "message": f"Configuración de {account_type} actualizada"}
+
+
+@router.post("/email/accounts/{account_type}/test-connection")
+async def test_email_account_connection(
+    account_type: str,
+    user: dict = Depends(get_superadmin_user)
+):
+    """Test SMTP connection for a specific email account"""
+    if account_type not in EMAIL_ACCOUNT_TYPES:
+        raise HTTPException(status_code=400, detail="Tipo de cuenta inválido")
+    
+    config = await db.email_accounts.find_one({"type": account_type})
+    if not config or not config.get("smtp_host"):
+        raise HTTPException(status_code=400, detail="Cuenta no configurada")
+    
+    try:
+        import smtplib
+        
+        smtp_host = config.get("smtp_host")
+        smtp_port = config.get("smtp_port", 587)
+        smtp_user = config.get("smtp_user")
+        smtp_password = config.get("smtp_password")
+        use_tls = config.get("smtp_use_tls", True)
+        use_ssl = config.get("smtp_use_ssl", False)
+        
+        if use_ssl:
+            server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10)
+        else:
+            server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
+            if use_tls:
+                server.starttls()
+        
+        server.login(smtp_user, smtp_password)
+        server.quit()
+        
+        return {"success": True, "message": "Conexión exitosa"}
+    except Exception as e:
+        logger.error(f"SMTP connection test failed for {account_type}: {e}")
+        return {"success": False, "message": str(e)}
+
+
+@router.post("/email/accounts/{account_type}/send-test")
+async def send_test_email_from_account(
+    account_type: str,
+    request: SendTestEmailSimple,
+    user: dict = Depends(get_superadmin_user)
+):
+    """Send a test email from a specific account"""
+    if account_type not in EMAIL_ACCOUNT_TYPES:
+        raise HTTPException(status_code=400, detail="Tipo de cuenta inválido")
+    
+    config = await db.email_accounts.find_one({"type": account_type})
+    if not config or not config.get("smtp_host"):
+        raise HTTPException(status_code=400, detail="Cuenta no configurada")
+    
+    try:
+        # Create email service with this specific config
+        email_config = {
+            "smtp_host": config.get("smtp_host"),
+            "smtp_port": config.get("smtp_port", 587),
+            "smtp_user": config.get("smtp_user"),
+            "smtp_password": config.get("smtp_password"),
+            "smtp_from_email": config.get("smtp_from_email") or config.get("smtp_user"),
+            "smtp_from_name": config.get("smtp_from_name", "SupplierSync"),
+            "smtp_use_tls": config.get("smtp_use_tls", True),
+            "smtp_use_ssl": config.get("smtp_use_ssl", False)
+        }
+        
+        email_service = EmailService(email_config)
+        
+        # Get appropriate test template
+        account_labels = {
+            "transactional": "Transaccional (Registro/Contraseñas)",
+            "support": "Soporte",
+            "billing": "Facturación"
+        }
+        
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; padding: 20px;">
+            <h2 style="color: #4F46E5;">Email de prueba - {account_labels.get(account_type, account_type)}</h2>
+            <p>Este es un email de prueba desde la cuenta <strong>{account_type}</strong>.</p>
+            <p>Si recibes este mensaje, la configuración SMTP es correcta.</p>
+            <hr style="border: 1px solid #E5E7EB; margin: 20px 0;">
+            <p style="color: #6B7280; font-size: 12px;">
+                Configuración utilizada:<br>
+                - Servidor: {config.get('smtp_host')}:{config.get('smtp_port')}<br>
+                - Remitente: {config.get('smtp_from_name')} &lt;{config.get('smtp_from_email') or config.get('smtp_user')}&gt;<br>
+                - TLS: {'Sí' if config.get('smtp_use_tls') else 'No'}<br>
+                - SSL: {'Sí' if config.get('smtp_use_ssl') else 'No'}
+            </p>
+        </body>
+        </html>
+        """
+        
+        result = email_service.send_email(
+            to_email=request.to_email,
+            subject=f"[TEST] Email de prueba - {account_labels.get(account_type, account_type)}",
+            html_content=html_content,
+            text_content=f"Email de prueba desde la cuenta {account_type}"
+        )
+        
+        if result["success"]:
+            return {"success": True, "message": "Email enviado correctamente"}
+        else:
+            raise HTTPException(status_code=500, detail=result["message"])
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending test email from {account_type}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ==================== LEGACY SMTP CONFIGURATION (kept for compatibility) ====================
 
 @router.get("/email/config")
 async def get_email_config(user: dict = Depends(get_superadmin_user)):
