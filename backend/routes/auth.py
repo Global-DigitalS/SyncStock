@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import uuid
+import secrets
 from typing import List
+from pydantic import BaseModel, EmailStr
 
 from services.database import db
 from services.auth import (
@@ -10,8 +12,22 @@ from services.auth import (
     get_user_resource_usage
 )
 from models.schemas import UserCreate, UserLogin, UserResponse, UserUpdate, UserLimits
+from services.email_service import get_email_service, get_password_reset_email_template
+from services.config_manager import get_config
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+# ==================== PASSWORD RESET MODELS ====================
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
 
 
 @router.post("/auth/register", response_model=dict)
@@ -190,3 +206,131 @@ async def delete_user(user_id: str, admin: dict = Depends(get_admin_user)):
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
     return {"message": "Usuario eliminado"}
+
+
+
+# ==================== PASSWORD RESET ENDPOINTS ====================
+
+@router.post("/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    """
+    Request password reset email.
+    Always returns success to prevent email enumeration attacks.
+    """
+    user = await db.users.find_one({"email": request.email})
+    
+    if user:
+        # Generate reset token
+        reset_token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
+        
+        # Store reset token in database
+        await db.password_resets.delete_many({"user_id": user["id"]})  # Remove old tokens
+        await db.password_resets.insert_one({
+            "id": str(uuid.uuid4()),
+            "user_id": user["id"],
+            "email": user["email"],
+            "token": reset_token,
+            "expires_at": expires_at.isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "used": False
+        })
+        
+        # Send email
+        try:
+            config = get_config()
+            app_url = getattr(config, 'app_url', '') or 'https://app.sync-stock.com'
+            reset_link = f"{app_url}/#/forgot-password?token={reset_token}"
+            
+            email_template = get_password_reset_email_template(
+                user_name=user.get("name", "Usuario"),
+                reset_link=reset_link,
+                app_url=app_url
+            )
+            
+            email_service = get_email_service()
+            if email_service.is_configured():
+                result = email_service.send_email(
+                    to_email=user["email"],
+                    subject=email_template["subject"],
+                    html_content=email_template["html"],
+                    text_content=email_template["text"]
+                )
+                if result["success"]:
+                    logger.info(f"Password reset email sent to {user['email']}")
+                else:
+                    logger.warning(f"Failed to send password reset email: {result['message']}")
+            else:
+                logger.warning("Email service not configured, reset token generated but email not sent")
+                
+        except Exception as e:
+            logger.error(f"Error sending password reset email: {e}")
+    
+    # Always return success to prevent email enumeration
+    return {"message": "Si el email está registrado, recibirás un enlace de recuperación"}
+
+
+@router.post("/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    """
+    Reset password using token from email.
+    """
+    if len(request.new_password) < 6:
+        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+    
+    # Find valid reset token
+    reset_record = await db.password_resets.find_one({
+        "token": request.token,
+        "used": False
+    })
+    
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="Token inválido o ya utilizado")
+    
+    # Check expiration
+    expires_at = datetime.fromisoformat(reset_record["expires_at"].replace('Z', '+00:00'))
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="El token ha expirado. Solicita un nuevo enlace.")
+    
+    # Update password
+    hashed_password = hash_password(request.new_password)
+    result = await db.users.update_one(
+        {"id": reset_record["user_id"]},
+        {"$set": {
+            "password": hashed_password,
+            "updated_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Mark token as used
+    await db.password_resets.update_one(
+        {"token": request.token},
+        {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}}
+    )
+    
+    logger.info(f"Password reset successful for user {reset_record['email']}")
+    
+    return {"message": "Contraseña actualizada correctamente"}
+
+
+@router.get("/auth/verify-reset-token/{token}")
+async def verify_reset_token(token: str):
+    """
+    Verify if a reset token is valid (optional endpoint for frontend validation).
+    """
+    reset_record = await db.password_resets.find_one({
+        "token": token,
+        "used": False
+    })
+    
+    if not reset_record:
+        raise HTTPException(status_code=400, detail="Token inválido")
+    
+    expires_at = datetime.fromisoformat(reset_record["expires_at"].replace('Z', '+00:00'))
+    if datetime.now(timezone.utc) > expires_at:
+        raise HTTPException(status_code=400, detail="Token expirado")
+    
+    return {"valid": True, "email": reset_record["email"]}
