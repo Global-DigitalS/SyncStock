@@ -16,6 +16,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorType, setErrorType] = useState(null);
+  const [brandingLoaded, setBrandingLoaded] = useState(false);
   const [branding, setBranding] = useState({
     app_name: "StockHub",
     app_slogan: "Gestión de Catálogos",
@@ -43,6 +44,8 @@ const Login = () => {
         }
       } catch (error) {
         console.log("Using default branding");
+      } finally {
+        setBrandingLoaded(true);
       }
     };
     loadBranding();
@@ -86,6 +89,15 @@ const Login = () => {
   const heroImageUrl = branding.hero_image_url 
     ? (branding.hero_image_url.startsWith('/') ? `${BACKEND_URL}${branding.hero_image_url}` : branding.hero_image_url)
     : 'https://images.unsplash.com/photo-1557447733-6db6888dd2d2?crop=entropy&cs=srgb&fm=jpg&q=85';
+
+  // Show loading state until branding is loaded
+  if (!brandingLoaded) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="spinner w-8 h-8 border-3 border-indigo-200 border-t-indigo-600" />
+      </div>
+    );
+  }
 
   return (
     <div className="auth-container">
