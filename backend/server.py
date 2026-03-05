@@ -7,6 +7,7 @@ from typing import Dict, Set
 
 from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 
@@ -14,6 +15,10 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Ensure uploads directory exists
+UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Import route modules
 from routes.auth import router as auth_router
@@ -147,6 +152,10 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
 
 
 app.include_router(api_router)
+
+# Mount static files for uploads (logos, favicons, hero images)
+# Using /api/uploads to ensure proper routing through ingress
+app.mount("/api/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,

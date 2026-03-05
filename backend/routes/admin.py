@@ -161,7 +161,7 @@ async def upload_logo(file: UploadFile = File(...), user: dict = Depends(get_sup
     with open(filepath, "wb") as f:
         f.write(content)
     
-    logo_url = f"/uploads/{filename}"
+    logo_url = f"/api/uploads/{filename}"
     
     await db.app_config.update_one(
         {"type": "branding"},
@@ -186,7 +186,7 @@ async def upload_favicon(file: UploadFile = File(...), user: dict = Depends(get_
     with open(filepath, "wb") as f:
         f.write(content)
     
-    favicon_url = f"/uploads/{filename}"
+    favicon_url = f"/api/uploads/{filename}"
     
     await db.app_config.update_one(
         {"type": "branding"},
@@ -211,7 +211,7 @@ async def upload_hero_image(file: UploadFile = File(...), user: dict = Depends(g
     with open(filepath, "wb") as f:
         f.write(content)
     
-    hero_image_url = f"/uploads/{filename}"
+    hero_image_url = f"/api/uploads/{filename}"
     
     await db.app_config.update_one(
         {"type": "branding"},
