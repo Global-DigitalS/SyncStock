@@ -7,6 +7,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Package, Mail, Lock, User, Building2, ArrowRight, Eye, EyeOff } from "lucide-react";
 import axios from "axios";
+import { sanitizeEmail, sanitizeString } from "../utils/sanitizer";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -85,11 +86,12 @@ const Register = () => {
 
     setLoading(true);
     try {
+      // Sanitize inputs before sending
       await register({
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        company: formData.company || null
+        name: sanitizeString(formData.name),
+        email: sanitizeEmail(formData.email),
+        password: formData.password, // Don't sanitize password
+        company: formData.company ? sanitizeString(formData.company) : null
       });
       toast.success("Cuenta creada exitosamente");
       navigate("/");

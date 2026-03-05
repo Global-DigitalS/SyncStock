@@ -11,6 +11,7 @@ from services.auth import (
     get_admin_user, get_superadmin_user, ROLE_PERMISSIONS, DEFAULT_LIMITS,
     get_user_resource_usage
 )
+from services.sanitizer import sanitize_string, sanitize_email, sanitize_password, sanitize_dict
 from models.schemas import UserCreate, UserLogin, UserResponse, UserUpdate, UserLimits, UserFullUpdate
 from services.email_service import get_email_service, get_password_reset_email_template
 from services.config_manager import get_config
@@ -32,7 +33,13 @@ class ResetPasswordRequest(BaseModel):
 
 @router.post("/auth/register", response_model=dict)
 async def register(user: UserCreate):
-    existing = await db.users.find_one({"email": user.email})
+    # Sanitize inputs
+    email = sanitize_email(user.email)
+    name = sanitize_string(user.name, max_length=100)
+    company = sanitize_string(user.company, max_length=200) if user.company else None
+    password = sanitize_password(user.password)
+    
+    existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="El email ya está registrado")
     
@@ -45,9 +52,9 @@ async def register(user: UserCreate):
     
     user_id = str(uuid.uuid4())
     user_doc = {
-        "id": user_id, "email": user.email,
-        "password": hash_password(user.password),
-        "name": user.name, "company": user.company,
+        "id": user_id, "email": email,
+        "password": hash_password(password),
+        "name": name, "company": company,
         "role": role,
         "max_suppliers": limits["max_suppliers"],
         "max_catalogs": limits["max_catalogs"],
@@ -60,7 +67,7 @@ async def register(user: UserCreate):
     # Send welcome email (async, don't block registration)
     try:
         from routes.email import send_welcome_email
-        await send_welcome_email(user.email, user.name)
+        await send_welcome_email(email, name)
     except Exception as e:
         # Don't fail registration if email fails
         import logging
@@ -69,8 +76,8 @@ async def register(user: UserCreate):
     return {
         "token": token,
         "user": {
-            "id": user_id, "email": user.email, "name": user.name, 
-            "company": user.company, "role": role,
+            "id": user_id, "email": email, "name": name, 
+            "company": company, "role": role,
             "max_suppliers": limits["max_suppliers"],
             "max_catalogs": limits["max_catalogs"],
             "max_woocommerce_stores": limits["max_woocommerce_stores"]
@@ -80,11 +87,20 @@ async def register(user: UserCreate):
 
 @router.post("/auth/login", response_model=dict)
 async def login(credentials: UserLogin):
-    user = await db.users.find_one({"email": credentials.email})
+    # Sanitize inputs
+    email = sanitize_email(credentials.email)
+    password = sanitize_password(credentials.password)
+    
+    user = await db.users.find_one({"email": email})
     if not user:
         raise HTTPException(status_code=401, detail="USER_NOT_FOUND")
-    if not verify_password(credentials.password, user["password"]):
+    if not verify_password(password, user["password"]):
         raise HTTPException(status_code=401, detail="INVALID_PASSWORD")
+    
+    # Check if user is active
+    if user.get("is_active") == False:
+        raise HTTPException(status_code=403, detail="ACCOUNT_DISABLED")
+    
     role = user.get("role", "user")
     token = create_token(user["id"], role)
     return {
@@ -211,16 +227,25 @@ async def get_user_stats(user_id: str, superadmin: dict = Depends(get_superadmin
 @router.put("/users/{user_id}/full")
 async def update_user_full(user_id: str, update: UserFullUpdate, superadmin: dict = Depends(get_superadmin_user)):
     """Update all user fields (SuperAdmin only)"""
+    # Sanitize user_id
+    user_id = sanitize_string(user_id, max_length=50)
+    
     # Check if user exists
     user = await db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    # Build update dict, only include non-None values
+    # Build update dict, only include non-None values and sanitize
     update_data = {}
     for field, value in update.model_dump().items():
         if value is not None:
-            update_data[field] = value
+            if isinstance(value, str):
+                if field == "email":
+                    update_data[field] = sanitize_email(value)
+                else:
+                    update_data[field] = sanitize_string(value, max_length=500)
+            else:
+                update_data[field] = value
     
     # Check if email is being changed and if it's unique
     if "email" in update_data and update_data["email"] != user.get("email"):

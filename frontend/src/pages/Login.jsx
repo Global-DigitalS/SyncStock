@@ -7,6 +7,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Package, Mail, Lock, ArrowRight, Eye, EyeOff, AlertCircle, UserPlus, KeyRound } from "lucide-react";
 import axios from "axios";
+import { sanitizeEmail } from "../utils/sanitizer";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -66,9 +67,12 @@ const Login = () => {
       return;
     }
 
+    // Sanitize email before sending
+    const sanitizedEmail = sanitizeEmail(email);
+
     setLoading(true);
     try {
-      await login(email, password);
+      await login(sanitizedEmail, password);
       toast.success("Bienvenido de vuelta");
       navigate("/");
     } catch (error) {
@@ -77,6 +81,8 @@ const Login = () => {
         setErrorType("USER_NOT_FOUND");
       } else if (detail === "INVALID_PASSWORD") {
         setErrorType("INVALID_PASSWORD");
+      } else if (detail === "ACCOUNT_DISABLED") {
+        toast.error("Tu cuenta ha sido desactivada. Contacta al administrador.");
       } else {
         toast.error("Error al iniciar sesión");
       }

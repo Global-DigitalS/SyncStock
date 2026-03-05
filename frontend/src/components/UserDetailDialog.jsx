@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { api } from "../App";
 import { toast } from "sonner";
+import { sanitizeString, sanitizeEmail, sanitizeFormData } from "../utils/sanitizer";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from "../components/ui/dialog";
@@ -99,7 +100,14 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await api.put(`/users/${userId}/full`, formData);
+      // Sanitize form data before sending
+      const sanitizedData = {
+        ...formData,
+        name: sanitizeString(formData.name),
+        email: sanitizeEmail(formData.email),
+        company: formData.company ? sanitizeString(formData.company) : ""
+      };
+      await api.put(`/users/${userId}/full`, sanitizedData);
       toast.success("Usuario actualizado correctamente");
       onUpdate?.();
       loadUserData(); // Reload to get fresh data

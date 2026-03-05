@@ -13,6 +13,7 @@ from services.sync import (
     parse_xls_content, parse_xml_content, normalize_product_data,
     browse_ftp_directory
 )
+from services.sanitizer import sanitize_string, sanitize_dict, sanitize_path
 from models.schemas import SupplierCreate, SupplierUpdate, SupplierResponse, ProductResponse
 
 router = APIRouter()
