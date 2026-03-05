@@ -65,8 +65,10 @@ async def register(user: UserCreate):
 @router.post("/auth/login", response_model=dict)
 async def login(credentials: UserLogin):
     user = await db.users.find_one({"email": credentials.email})
-    if not user or not verify_password(credentials.password, user["password"]):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+    if not user:
+        raise HTTPException(status_code=401, detail="USER_NOT_FOUND")
+    if not verify_password(credentials.password, user["password"]):
+        raise HTTPException(status_code=401, detail="INVALID_PASSWORD")
     role = user.get("role", "user")
     token = create_token(user["id"], role)
     return {

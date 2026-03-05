@@ -5,13 +5,14 @@ import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
-import { Package, Mail, Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
+import { Package, Mail, Lock, ArrowRight, Eye, EyeOff, AlertCircle, UserPlus, KeyRound } from "lucide-react";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorType, setErrorType] = useState(null); // 'USER_NOT_FOUND' | 'INVALID_PASSWORD' | null
   const { login, user } = useAuth();
   const navigate = useNavigate();
 
@@ -23,6 +24,8 @@ const Login = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorType(null);
+    
     if (!email || !password) {
       toast.error("Por favor complete todos los campos");
       return;
@@ -34,7 +37,14 @@ const Login = () => {
       toast.success("Bienvenido de vuelta");
       navigate("/");
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Credenciales inválidas");
+      const detail = error.response?.data?.detail;
+      if (detail === "USER_NOT_FOUND") {
+        setErrorType("USER_NOT_FOUND");
+      } else if (detail === "INVALID_PASSWORD") {
+        setErrorType("INVALID_PASSWORD");
+      } else {
+        toast.error("Error al iniciar sesión");
+      }
     } finally {
       setLoading(false);
     }
@@ -137,6 +147,63 @@ const Login = () => {
                 </>
               )}
             </Button>
+
+            {/* Error Messages with Suggestions */}
+            {errorType === "USER_NOT_FOUND" && (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg animate-fade-in" data-testid="user-not-found-error">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-medium text-amber-800">No encontramos una cuenta con este correo</p>
+                    <p className="text-sm text-amber-700 mt-1">¿Qué deseas hacer?</p>
+                    <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                      <Link 
+                        to="/register" 
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        Crear una cuenta
+                      </Link>
+                      <button 
+                        type="button"
+                        onClick={() => setErrorType(null)}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 transition-colors"
+                      >
+                        Verificar el correo
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {errorType === "INVALID_PASSWORD" && (
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg animate-fade-in" data-testid="invalid-password-error">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <p className="font-medium text-rose-800">Contraseña incorrecta</p>
+                    <p className="text-sm text-rose-700 mt-1">La contraseña que ingresaste no es correcta.</p>
+                    <div className="flex flex-col sm:flex-row gap-2 mt-3">
+                      <Link 
+                        to="/forgot-password" 
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-indigo-600 text-white text-sm font-medium rounded-md hover:bg-indigo-700 transition-colors"
+                      >
+                        <KeyRound className="w-4 h-4" />
+                        Recuperar contraseña
+                      </Link>
+                      <button 
+                        type="button"
+                        onClick={() => setErrorType(null)}
+                        className="inline-flex items-center justify-center gap-2 px-4 py-2 bg-white border border-slate-300 text-slate-700 text-sm font-medium rounded-md hover:bg-slate-50 transition-colors"
+                      >
+                        Intentar de nuevo
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </form>
 
           <p className="mt-8 text-center text-slate-500">

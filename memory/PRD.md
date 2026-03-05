@@ -4,8 +4,8 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 2.7.0  
-**Última actualización:** 2026-03-04  
+**Versión:** 2.8.0  
+**Última actualización:** 2026-03-05  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
 ---
