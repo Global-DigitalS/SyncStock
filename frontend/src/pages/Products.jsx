@@ -48,6 +48,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Pencil,
+  Trash2,
+  FolderTree,
 } from "lucide-react";
 import ProductDetailDialog from "../components/dialogs/ProductDetailDialog";
 
@@ -76,10 +78,17 @@ const Products = () => {
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [editProduct, setEditProduct] = useState(null);
   const [productsToAdd, setProductsToAdd] = useState([]);
   const [addingToCatalog, setAddingToCatalog] = useState(false);
+  const [deletingProducts, setDeletingProducts] = useState(false);
+  
+  // Category selection for catalog
+  const [catalogCategories, setCatalogCategories] = useState([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [loadingCategories, setLoadingCategories] = useState(false);
   
   // Upload states
   const [uploadSupplierId, setUploadSupplierId] = useState("");
@@ -241,14 +250,72 @@ const Products = () => {
     openCatalogSelector(Array.from(selectedProducts));
   };
 
-  const toggleCatalogSelection = (catalogId) => {
+  const toggleCatalogSelection = async (catalogId) => {
     const newSet = new Set(selectedCatalogs);
     if (newSet.has(catalogId)) {
       newSet.delete(catalogId);
     } else {
       newSet.add(catalogId);
+      // Load categories for this catalog
+      await loadCatalogCategories(catalogId);
     }
     setSelectedCatalogs(newSet);
+  };
+
+  // Load categories for selected catalog
+  const loadCatalogCategories = async (catalogId) => {
+    setLoadingCategories(true);
+    try {
+      const res = await api.get(`/catalogs/${catalogId}/categories`);
+      setCatalogCategories(res.data || []);
+    } catch (err) {
+      console.error("Error loading categories:", err);
+      setCatalogCategories([]);
+    }
+    setLoadingCategories(false);
+  };
+
+  // Flatten category tree for select dropdown
+  const flattenCategories = (categories, level = 0) => {
+    let result = [];
+    for (const cat of categories) {
+      result.push({
+        id: cat.id,
+        name: cat.name,
+        level: level,
+        displayName: "─".repeat(level) + (level > 0 ? " " : "") + cat.name
+      });
+      if (cat.children && cat.children.length > 0) {
+        result = result.concat(flattenCategories(cat.children, level + 1));
+      }
+    }
+    return result;
+  };
+
+  // Delete products handler
+  const handleDeleteProducts = async () => {
+    if (selectedProducts.size === 0) {
+      toast.error("Selecciona al menos un producto");
+      return;
+    }
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteProducts = async () => {
+    setDeletingProducts(true);
+    try {
+      const res = await api.post("/products/delete-bulk", {
+        eans: Array.from(selectedProducts)
+      });
+      toast.success(`${res.data.deleted} productos eliminados`);
+      setSelectedProducts(new Set());
+      setShowDeleteDialog(false);
+      fetchProducts();
+    } catch (err) {
+      console.error("Error deleting products:", err);
+      toast.error("Error al eliminar productos");
+    }
+    setDeletingProducts(false);
   };
 
   const handleConfirmAddToCatalogs = async () => {
@@ -262,9 +329,14 @@ const Products = () => {
 
     for (const catalogId of selectedCatalogs) {
       try {
-        const res = await api.post(`/catalogs/${catalogId}/products`, {
+        const payload = {
           product_ids: productsToAdd
-        });
+        };
+        // Add category_ids if a category is selected
+        if (selectedCategoryId) {
+          payload.category_ids = [selectedCategoryId];
+        }
+        const res = await api.post(`/catalogs/${catalogId}/products`, payload);
         totalAdded += res.data.added || 0;
       } catch (err) {
         console.error("Error adding to catalog:", err);
@@ -275,6 +347,8 @@ const Products = () => {
     setShowCatalogDialog(false);
     setSelectedProducts(new Set());
     setProductsToAdd([]);
+    setSelectedCategoryId("");
+    setCatalogCategories([]);
 
     if (totalAdded > 0) {
       toast.success(`${totalAdded} productos añadidos a los catálogos`);
@@ -446,6 +520,16 @@ const Products = () => {
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={() => setSelectedProducts(new Set())}>
                   Limpiar
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleDeleteProducts}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                  data-testid="delete-products-btn"
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Eliminar
                 </Button>
                 <Button size="sm" onClick={handleAddSelectedToCatalogs} disabled={addingToCatalog} data-testid="add-to-catalogs-btn">
                   {addingToCatalog ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <BookOpen className="w-4 h-4 mr-2" />}
@@ -716,7 +800,13 @@ const Products = () => {
       />
 
       {/* Catalog Selection Dialog */}
-      <Dialog open={showCatalogDialog} onOpenChange={setShowCatalogDialog}>
+      <Dialog open={showCatalogDialog} onOpenChange={(open) => {
+        setShowCatalogDialog(open);
+        if (!open) {
+          setSelectedCategoryId("");
+          setCatalogCategories([]);
+        }
+      }}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -726,35 +816,71 @@ const Products = () => {
             <DialogDescription>Selecciona los catálogos donde añadir los productos</DialogDescription>
           </DialogHeader>
           
-          <div className="py-4 space-y-2 max-h-[300px] overflow-y-auto">
-            {catalogs.length === 0 ? (
-              <div className="text-center py-6">
-                <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-                <p className="text-slate-500">No hay catálogos</p>
-                <Button variant="link" onClick={() => { setShowCatalogDialog(false); navigate("/catalogs"); }}>
-                  Crear catálogo
-                </Button>
-              </div>
-            ) : (
-              catalogs.map((catalog) => (
-                <div
-                  key={catalog.id}
-                  onClick={() => toggleCatalogSelection(catalog.id)}
-                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                    selectedCatalogs.has(catalog.id) ? "bg-indigo-50 border-indigo-300" : "bg-white border-slate-200 hover:border-slate-300"
-                  }`}
-                  data-testid={`catalog-option-${catalog.id}`}
-                >
-                  <Checkbox checked={selectedCatalogs.has(catalog.id)} onCheckedChange={() => toggleCatalogSelection(catalog.id)} />
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{catalog.name}</span>
-                      {catalog.is_default && <Badge className="bg-indigo-100 text-indigo-700 border-0 text-xs"><Star className="w-3 h-3 mr-1" />Defecto</Badge>}
-                    </div>
-                    <p className="text-xs text-slate-500">{catalog.product_count} productos</p>
-                  </div>
+          <div className="py-4 space-y-4">
+            {/* Catalog list */}
+            <div className="space-y-2 max-h-[200px] overflow-y-auto">
+              {catalogs.length === 0 ? (
+                <div className="text-center py-6">
+                  <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                  <p className="text-slate-500">No hay catálogos</p>
+                  <Button variant="link" onClick={() => { setShowCatalogDialog(false); navigate("/catalogs"); }}>
+                    Crear catálogo
+                  </Button>
                 </div>
-              ))
+              ) : (
+                catalogs.map((catalog) => (
+                  <div
+                    key={catalog.id}
+                    onClick={() => toggleCatalogSelection(catalog.id)}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                      selectedCatalogs.has(catalog.id) ? "bg-indigo-50 border-indigo-300" : "bg-white border-slate-200 hover:border-slate-300"
+                    }`}
+                    data-testid={`catalog-option-${catalog.id}`}
+                  >
+                    <Checkbox checked={selectedCatalogs.has(catalog.id)} onCheckedChange={() => toggleCatalogSelection(catalog.id)} />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium">{catalog.name}</span>
+                        {catalog.is_default && <Badge className="bg-indigo-100 text-indigo-700 border-0 text-xs"><Star className="w-3 h-3 mr-1" />Defecto</Badge>}
+                      </div>
+                      <p className="text-xs text-slate-500">{catalog.product_count} productos</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+            
+            {/* Category selector - shown when a catalog is selected */}
+            {selectedCatalogs.size > 0 && (
+              <div className="space-y-2 pt-2 border-t border-slate-200">
+                <label className="text-sm font-medium flex items-center gap-2">
+                  <FolderTree className="w-4 h-4 text-slate-500" />
+                  Categoría del catálogo (opcional)
+                </label>
+                <Select 
+                  value={selectedCategoryId || "none"} 
+                  onValueChange={(v) => setSelectedCategoryId(v === "none" ? "" : v)}
+                >
+                  <SelectTrigger data-testid="category-select">
+                    <SelectValue placeholder="Sin categoría específica" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Sin categoría específica</SelectItem>
+                    {loadingCategories ? (
+                      <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                    ) : (
+                      flattenCategories(catalogCategories).map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.displayName}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-slate-500">
+                  Los productos se añadirán a esta categoría dentro del catálogo
+                </p>
+              </div>
             )}
           </div>
           
@@ -763,6 +889,37 @@ const Products = () => {
             <Button onClick={handleConfirmAddToCatalogs} disabled={addingToCatalog || selectedCatalogs.size === 0}>
               {addingToCatalog ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
               Añadir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="w-5 h-5" />
+              Eliminar Productos
+            </DialogTitle>
+            <DialogDescription>
+              ¿Estás seguro de que deseas eliminar {selectedProducts.size} producto{selectedProducts.size !== 1 ? "s" : ""}?
+              Esta acción no se puede deshacer y también los eliminará de todos los catálogos.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+              Cancelar
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={confirmDeleteProducts}
+              disabled={deletingProducts}
+              data-testid="confirm-delete-btn"
+            >
+              {deletingProducts ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+              Eliminar
             </Button>
           </DialogFooter>
         </DialogContent>

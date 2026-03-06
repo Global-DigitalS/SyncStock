@@ -704,3 +704,49 @@ async def remove_gallery_image(
         return {"message": "Imagen eliminada de la galería"}
     
     raise HTTPException(status_code=404, detail="Imagen no encontrada en la galería")
+
+
+@router.delete("/products/{product_id}")
+async def delete_product(product_id: str, user: dict = Depends(get_current_user)):
+    """Delete a single product"""
+    product = await db.products.find_one({"id": product_id, "user_id": user["id"]})
+    if not product:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    # Remove from all catalogs first
+    await db.catalog_items.delete_many({"product_id": product_id, "user_id": user["id"]})
+    
+    # Delete the product
+    result = await db.products.delete_one({"id": product_id, "user_id": user["id"]})
+    
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    return {"message": "Producto eliminado correctamente"}
+
+
+@router.post("/products/delete-bulk")
+async def delete_products_bulk(data: dict, user: dict = Depends(get_current_user)):
+    """Delete multiple products by their EANs"""
+    eans = data.get("eans", [])
+    if not eans:
+        raise HTTPException(status_code=400, detail="No se proporcionaron EANs para eliminar")
+    
+    # Find products by EANs
+    products = await db.products.find(
+        {"ean": {"$in": eans}, "user_id": user["id"]},
+        {"_id": 0, "id": 1}
+    ).to_list(10000)
+    
+    if not products:
+        raise HTTPException(status_code=404, detail="No se encontraron productos con los EANs proporcionados")
+    
+    product_ids = [p["id"] for p in products]
+    
+    # Remove from all catalogs first
+    await db.catalog_items.delete_many({"product_id": {"$in": product_ids}, "user_id": user["id"]})
+    
+    # Delete the products
+    result = await db.products.delete_many({"id": {"$in": product_ids}, "user_id": user["id"]})
+    
+    return {"deleted": result.deleted_count, "message": f"{result.deleted_count} productos eliminados"}
