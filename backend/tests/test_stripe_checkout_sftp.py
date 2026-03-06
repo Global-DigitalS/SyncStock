@@ -101,7 +101,7 @@ class TestStripeCheckoutEndpoints:
         
         response = self.session.post(f"{BASE_URL}/api/stripe/create-checkout", json={
             "plan_id": paid_plan["id"],
-            "origin_url": "https://admin-panel-188.preview.emergentagent.com",
+            "origin_url": "https://store-bridge-2.preview.emergentagent.com",
             "billing_cycle": "monthly"
         })
         
@@ -125,7 +125,7 @@ class TestStripeCheckoutEndpoints:
         
         response = self.session.post(f"{BASE_URL}/api/stripe/create-checkout", json={
             "plan_id": paid_plan["id"],
-            "origin_url": "https://admin-panel-188.preview.emergentagent.com",
+            "origin_url": "https://store-bridge-2.preview.emergentagent.com",
             "billing_cycle": "yearly"
         })
         
