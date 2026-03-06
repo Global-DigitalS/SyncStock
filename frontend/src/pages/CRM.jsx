@@ -676,12 +676,12 @@ const CRMPage = () => {
             {/* Catalog Selector */}
             <div className="space-y-2">
               <Label className="text-sm font-medium">Catálogo a sincronizar</Label>
-              <Select value={selectedCatalogId} onValueChange={setSelectedCatalogId}>
+              <Select value={selectedCatalogId || "all"} onValueChange={(val) => setSelectedCatalogId(val === "all" ? "" : val)}>
                 <SelectTrigger data-testid="sync-catalog-selector">
                   <SelectValue placeholder="Todos los productos seleccionados" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Todos los productos seleccionados</SelectItem>
+                  <SelectItem value="all">Todos los productos seleccionados</SelectItem>
                   {catalogs.map((catalog) => (
                     <SelectItem key={catalog.id} value={catalog.id}>
                       {catalog.name} ({catalog.products?.length || 0} productos)
