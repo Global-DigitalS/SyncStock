@@ -245,6 +245,27 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
     - POST /api/crm/test-connection - Probar conexión sin guardar
     - POST /api/crm/connections/{id}/sync - Sincronizar (all/products/suppliers/orders)
     - GET /api/crm/connections/{id}/orders - Listar pedidos sincronizados
+    - GET /api/crm/auto-sync-permissions - Permisos de auto-sync del usuario
+
+### Sincronización CRM Automática (NUEVO - 2026-03-06)
+- [x] **Sincronización Programada con CRM**
+  - Intervalos configurables: 1 hora, 6 horas, 12 horas, 24 horas
+  - Configurable por SuperAdmin a nivel de plan de suscripción
+  - **Campos en SubscriptionPlan**:
+    - `crm_sync_enabled`: boolean - habilita/deshabilita auto-sync para el plan
+    - `crm_sync_intervals`: array [1, 6, 12, 24] - intervalos permitidos en horas
+  - **Campos en CRM Connection**:
+    - `auto_sync_enabled`: boolean - activa/desactiva para esta conexión
+    - `auto_sync_interval`: int - intervalo seleccionado (1, 6, 12, 24)
+  - **Servicio crm_scheduler.py**:
+    - `get_user_crm_sync_permission()`: Verifica permisos según plan
+    - `sync_crm_connection()`: Ejecuta sincronización de una conexión
+    - `run_scheduled_crm_syncs()`: Job que verifica y ejecuta syncs pendientes
+  - **APScheduler**: Job `sync_crm` ejecuta cada hora para verificar syncs debidos
+  - **UI Frontend**:
+    - CRM.jsx: Switch de auto-sync con selector de intervalos (solo si plan lo permite)
+    - AdminPlans.jsx: Sección para configurar CRM sync en planes (switch + checkboxes de intervalos)
+    - Card muestra badge "Sync automático cada Xh" cuando está habilitado
 
 ### Sistema de Configuración (Actualizado 2026-03-03)
 - [x] **Configuración persistente** en `/etc/suppliersync/config.json`
@@ -294,6 +315,13 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
   - Importación de pedidos desde WooCommerce a Dolibarr
   - UI completa con opciones de sincronización
   - 100% tests passed (16/16 backend, frontend OK)
+
+- [x] ✅ **Sincronización CRM Automática Programada (P1)**
+  - Intervalos: 1h, 6h, 12h, 24h configurables
+  - Configurable por SuperAdmin a nivel de plan de suscripción
+  - Scheduler ejecuta cada hora para verificar syncs pendientes
+  - UI en CRM.jsx y AdminPlans.jsx
+  - 100% tests passed (13/13 backend, frontend OK)
 
 ### Completadas en sesión anterior (2026-03-05)
 - [x] ✅ **Integración Stripe Completa en Suscripciones (P0)**
