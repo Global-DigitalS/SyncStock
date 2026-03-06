@@ -247,25 +247,38 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
     - GET /api/crm/connections/{id}/orders - Listar pedidos sincronizados
     - GET /api/crm/auto-sync-permissions - Permisos de auto-sync del usuario
 
-### Sincronización CRM Automática (NUEVO - 2026-03-06)
-- [x] **Sincronización Programada con CRM**
-  - Intervalos configurables: 1 hora, 6 horas, 12 horas, 24 horas
+### Sincronización Unificada (ACTUALIZADO - 2026-03-06)
+- [x] **Sistema de Sincronización Automática Unificada**
+  - Un único intervalo configurable para TODOS los servicios: Proveedores, Tiendas y CRM
+  - Intervalos disponibles: 1 hora, 6 horas, 12 horas, 24 horas
   - Configurable por SuperAdmin a nivel de plan de suscripción
   - **Campos en SubscriptionPlan**:
-    - `crm_sync_enabled`: boolean - habilita/deshabilita auto-sync para el plan
-    - `crm_sync_intervals`: array [1, 6, 12, 24] - intervalos permitidos en horas
-  - **Campos en CRM Connection**:
-    - `auto_sync_enabled`: boolean - activa/desactiva para esta conexión
-    - `auto_sync_interval`: int - intervalo seleccionado (1, 6, 12, 24)
-  - **Servicio crm_scheduler.py**:
-    - `get_user_crm_sync_permission()`: Verifica permisos según plan
-    - `sync_crm_connection()`: Ejecuta sincronización de una conexión
-    - `run_scheduled_crm_syncs()`: Job que verifica y ejecuta syncs pendientes
-  - **APScheduler**: Job `sync_crm` ejecuta cada hora para verificar syncs debidos
+    - `auto_sync_enabled`: boolean - habilita/deshabilita auto-sync para el plan
+    - `sync_intervals`: array [1, 6, 12, 24] - intervalos permitidos en horas
+  - **Campos en User (sync_config)**:
+    - `interval`: int - intervalo seleccionado (1, 6, 12, 24)
+    - `sync_suppliers`: boolean - sincronizar proveedores
+    - `sync_stores`: boolean - sincronizar tiendas
+    - `sync_crm`: boolean - sincronizar CRM
+    - `last_sync`: timestamp - última sincronización
+    - `next_sync`: timestamp - próxima sincronización programada
+  - **Servicio unified_sync.py**:
+    - `get_user_sync_settings()`: Obtiene configuración y permisos del plan
+    - `update_user_sync_settings()`: Actualiza configuración del usuario
+    - `sync_user_suppliers()`: Sincroniza proveedores del usuario
+    - `sync_user_stores()`: Sincroniza tiendas del usuario
+    - `sync_user_crm()`: Sincroniza conexiones CRM del usuario
+    - `run_user_sync()`: Ejecuta sincronización completa
+    - `run_scheduled_syncs()`: Job que verifica y ejecuta syncs pendientes
+  - **Endpoints**:
+    - GET /api/sync/settings - Configuración actual del usuario
+    - PUT /api/sync/settings - Actualizar configuración
+    - POST /api/sync/run-now - Sincronización manual inmediata
+  - **APScheduler**: Job `unified_sync` ejecuta cada hora
   - **UI Frontend**:
-    - CRM.jsx: Switch de auto-sync con selector de intervalos (solo si plan lo permite)
-    - AdminPlans.jsx: Sección para configurar CRM sync en planes (switch + checkboxes de intervalos)
-    - Card muestra badge "Sync automático cada Xh" cuando está habilitado
+    - SyncSettings.jsx: Página de configuración con selector de intervalo y toggles por servicio
+    - AdminPlans.jsx: Sección "Sincronización Automática" con switch e intervalos
+    - Sidebar: Nuevo enlace "Sincronización"
 
 ### Sistema de Configuración (Actualizado 2026-03-03)
 - [x] **Configuración persistente** en `/etc/suppliersync/config.json`
@@ -316,12 +329,13 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
   - UI completa con opciones de sincronización
   - 100% tests passed (16/16 backend, frontend OK)
 
-- [x] ✅ **Sincronización CRM Automática Programada (P1)**
-  - Intervalos: 1h, 6h, 12h, 24h configurables
-  - Configurable por SuperAdmin a nivel de plan de suscripción
-  - Scheduler ejecuta cada hora para verificar syncs pendientes
-  - UI en CRM.jsx y AdminPlans.jsx
-  - 100% tests passed (13/13 backend, frontend OK)
+- [x] ✅ **Sincronización Unificada (P1)**
+  - Un único intervalo para sincronizar TODO: Proveedores, Tiendas y CRM
+  - Intervalos: 1h, 6h, 12h, 24h configurables por plan
+  - Nueva página SyncSettings.jsx con configuración centralizada
+  - SuperAdmin configura intervalos permitidos por plan
+  - Scheduler ejecuta verificación cada hora
+  - 100% tests passed (17/17 backend, frontend OK)
 
 ### Completadas en sesión anterior (2026-03-05)
 - [x] ✅ **Integración Stripe Completa en Suscripciones (P0)**
