@@ -116,7 +116,7 @@ class DolibarrClient:
                 "type": 0,  # Product (not service)
                 "barcode": product_data.get("ean", ""),
                 "weight": product_data.get("weight", 0),
-                "stock_reel": product_data.get("stock", 0),
+                # Note: stock_reel cannot be set directly, must use stock movements
             }
             
             # Add brand and supplier info as note
@@ -140,6 +140,12 @@ class DolibarrClient:
                 # Upload image if available
                 if product_data.get("image_url"):
                     self.upload_product_image(product_id, product_data["image_url"])
+                
+                # Set initial stock using stock movement
+                stock = product_data.get("stock", 0)
+                if stock > 0:
+                    stock_result = self.update_stock(product_id, stock)
+                    logger.info(f"Initial stock set for product {product_id}: {stock_result}")
                 
                 return {"status": "success", "product_id": product_id, "message": "Producto creado"}
             else:
@@ -169,8 +175,9 @@ class DolibarrClient:
             if "cost_price" in product_data:
                 payload["cost_price"] = product_data["cost_price"]
             
-            if "stock" in product_data:
-                payload["stock_reel"] = product_data["stock"]
+            # Note: stock cannot be set directly via PUT, must use stock movements
+            # Stock is updated separately via update_stock() method
+            
             if "ean" in product_data:
                 payload["barcode"] = product_data["ean"]
             if "weight" in product_data:
