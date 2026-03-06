@@ -13,6 +13,7 @@ import base64
 
 from services.database import db
 from services.auth import get_current_user
+from services.sync import calculate_final_price
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -984,6 +985,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     # Build query filter
     query = {"user_id": user_id, "is_selected": True}
     catalog_items_map = {}  # product_id -> catalog_item data
+    margin_rules = []  # Margin rules for price calculation
     
     # If catalog_id is provided, get only products from that catalog
     if catalog_id:
@@ -1006,6 +1008,14 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
         
         # Create map of product_id -> catalog_item for custom prices
         catalog_items_map = {item.get("product_id"): item for item in catalog_items}
+        
+        # Get margin rules for this catalog (sorted by priority descending)
+        margin_rules = await db.catalog_margin_rules.find(
+            {"catalog_id": catalog_id},
+            {"_id": 0}
+        ).sort("priority", -1).to_list(100)
+        
+        logger.info(f"Found {len(margin_rules)} margin rules for catalog {catalog_id}")
         
         # Change query to filter by product IDs instead of is_selected
         query = {"user_id": user_id, "id": {"$in": product_ids}}
@@ -1073,25 +1083,37 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
             # Add prices - differentiate between purchase price and sale price
             if sync_settings.get("prices", True):
                 # Purchase/cost price = price from supplier
-                purchase_price = product.get("price", 0)
+                purchase_price = float(product.get("price", 0) or 0)
                 product_data["cost_price"] = purchase_price
                 
                 # Get catalog item if syncing from a catalog (may have custom price)
                 catalog_item = catalog_items_map.get(product.get("id"))
                 
-                # Sale price priority:
-                # 1. Catalog item custom_price (if syncing from catalog)
-                # 2. Product final_price
-                # 3. Product pvp
-                # 4. Fallback to purchase price
+                # Sale price calculation:
+                # 1. If custom_price exists in catalog_item, use it
+                # 2. Otherwise, calculate using margin rules from catalog
+                # 3. Fallback to product's pvp/final_price
+                # 4. Last resort: use purchase price
                 sale_price = None
-                if catalog_item:
-                    sale_price = catalog_item.get("custom_price") or catalog_item.get("final_price")
+                
+                if catalog_item and catalog_item.get("custom_price"):
+                    # Custom price set manually in catalog
+                    sale_price = float(catalog_item.get("custom_price"))
+                    logger.debug(f"Using custom_price for {sku}: {sale_price}")
+                elif margin_rules and purchase_price > 0:
+                    # Calculate price using catalog margin rules
+                    sale_price = calculate_final_price(purchase_price, product, margin_rules)
+                    logger.debug(f"Calculated sale_price for {sku}: {purchase_price} -> {sale_price} (margin rules applied)")
+                
+                # Fallback to product's own final_price or pvp
                 if not sale_price:
                     sale_price = product.get("final_price") or product.get("pvp") or product.get("custom_price")
+                
+                # Last fallback: use purchase price
                 if not sale_price and purchase_price:
                     sale_price = purchase_price
-                product_data["price"] = sale_price or 0
+                
+                product_data["price"] = round(float(sale_price or 0), 2)
             
             # Sync stock
             if sync_settings.get("stock", True):
