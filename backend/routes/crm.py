@@ -101,16 +101,17 @@ class DolibarrClient:
             if product_data.get("short_description"):
                 description = f"{product_data['short_description']}\n\n{description}"
             
-            # The price from supplier is the cost/purchase price
-            cost_price = product_data.get("cost_price") or product_data.get("price", 0)
+            # Separate sale price from cost price
+            sale_price = product_data.get("price", 0)  # This is the sale price
+            cost_price = product_data.get("cost_price", 0)  # This is the purchase price
             
             payload = {
                 "ref": product_data.get("sku", ""),
                 "label": product_data.get("name", ""),
                 "description": description,
-                "price": cost_price,  # Sale price (can be adjusted later)
+                "price": sale_price,  # Sale price to customers
                 "price_base_type": "HT",  # Price without tax
-                "cost_price": cost_price,  # Purchase/cost price
+                "cost_price": cost_price,  # Purchase/cost price from supplier
                 "status": 1,  # On sale
                 "status_buy": 1,  # On purchase
                 "type": 0,  # Product (not service)
@@ -959,12 +960,19 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 "name": product.get("name", ""),
             }
             
-            # Add purchase/cost price (the supplier price is the purchase price)
+            # Add prices - differentiate between purchase price and sale price
             if sync_settings.get("prices", True):
-                # The product price from supplier is the purchase/cost price
+                # Purchase/cost price = price from supplier
                 purchase_price = product.get("price", 0)
-                product_data["price"] = purchase_price
-                product_data["cost_price"] = purchase_price  # This is the purchase price
+                product_data["cost_price"] = purchase_price
+                
+                # Sale price = final_price (with markup) or pvp or custom_price
+                # Priority: final_price > pvp > custom_price > calculated markup
+                sale_price = product.get("final_price") or product.get("pvp") or product.get("custom_price")
+                if not sale_price and purchase_price:
+                    # If no sale price defined, use purchase price (no markup)
+                    sale_price = purchase_price
+                product_data["price"] = sale_price or 0
             
             # Sync stock
             if sync_settings.get("stock", True):
