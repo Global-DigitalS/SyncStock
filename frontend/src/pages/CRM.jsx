@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../co
 import { Badge } from "../components/ui/badge";
 import { Switch } from "../components/ui/switch";
 import { Checkbox } from "../components/ui/checkbox";
+import { Progress } from "../components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -95,6 +96,8 @@ const CRMPage = () => {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState({});
   const [expandedCard, setExpandedCard] = useState(null);
+  const [syncProgress, setSyncProgress] = useState(null);
+  const [showProgressDialog, setShowProgressDialog] = useState(false);
 
   useEffect(() => {
     fetchConnections();
@@ -241,6 +244,19 @@ const CRMPage = () => {
     if (!selectedConnection) return;
     
     setSyncing(prev => ({ ...prev, [selectedConnection.id]: true }));
+    setShowSyncDialog(false);
+    setShowProgressDialog(true);
+    setSyncProgress({
+      status: "running",
+      progress: 0,
+      current_step: "Iniciando sincronización...",
+      total_items: 0,
+      processed_items: 0,
+      created: 0,
+      updated: 0,
+      errors: 0
+    });
+    
     try {
       const payload = { 
         sync_type: syncType,
@@ -254,6 +270,19 @@ const CRMPage = () => {
       
       const res = await api.post(`/crm/connections/${selectedConnection.id}/sync`, payload);
       
+      // Start polling for progress if we got a sync_job_id
+      if (res.data.sync_job_id) {
+        pollSyncProgress(res.data.sync_job_id);
+      } else {
+        // No job tracking, just show completion
+        setSyncProgress(prev => ({
+          ...prev,
+          status: "completed",
+          progress: 100,
+          current_step: res.data.message || "Sincronización completada"
+        }));
+      }
+      
       if (res.data.status === "success") {
         toast.success(res.data.message || "Sincronización completada");
       } else {
@@ -261,12 +290,41 @@ const CRMPage = () => {
       }
       
       fetchConnections();
-      setShowSyncDialog(false);
     } catch (error) {
+      setSyncProgress(prev => ({
+        ...prev,
+        status: "error",
+        current_step: error.response?.data?.detail || "Error en la sincronización"
+      }));
       toast.error(error.response?.data?.detail || "Error en la sincronización");
     } finally {
       setSyncing(prev => ({ ...prev, [selectedConnection.id]: false }));
     }
+  };
+
+  const pollSyncProgress = async (jobId) => {
+    let attempts = 0;
+    const maxAttempts = 300; // 5 minutes max
+    
+    const poll = async () => {
+      try {
+        const res = await api.get(`/crm/sync-jobs/${jobId}`);
+        setSyncProgress(res.data);
+        
+        if (res.data.status === "completed" || res.data.status === "error") {
+          return; // Stop polling
+        }
+        
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 1000); // Poll every second
+        }
+      } catch (error) {
+        console.error("Error polling sync progress:", error);
+      }
+    };
+    
+    poll();
   };
 
   const handleQuickSync = async (connectionId, syncType) => {
@@ -745,6 +803,94 @@ const CRMPage = () => {
                   Iniciar Sincronización
                 </>
               )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Progress Dialog */}
+      <Dialog open={showProgressDialog} onOpenChange={(open) => {
+        if (!open && syncProgress?.status !== "running") {
+          setShowProgressDialog(false);
+          setSyncProgress(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>
+              {syncProgress?.status === "completed" ? "Sincronización Completada" : 
+               syncProgress?.status === "error" ? "Error en Sincronización" :
+               "Sincronizando..."}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4 py-4">
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-600">Progreso</span>
+                <span className="font-medium">{syncProgress?.progress || 0}%</span>
+              </div>
+              <Progress value={syncProgress?.progress || 0} className="h-3" />
+            </div>
+
+            {/* Current Step */}
+            <div className="bg-slate-50 rounded-lg p-3">
+              <p className="text-sm text-slate-600 flex items-center gap-2">
+                {syncProgress?.status === "running" && (
+                  <RefreshCw className="w-4 h-4 animate-spin text-blue-500" />
+                )}
+                {syncProgress?.status === "completed" && (
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                )}
+                {syncProgress?.status === "error" && (
+                  <XCircle className="w-4 h-4 text-red-500" />
+                )}
+                {syncProgress?.current_step || "Preparando..."}
+              </p>
+            </div>
+
+            {/* Stats */}
+            {(syncProgress?.total_items > 0 || syncProgress?.created > 0 || syncProgress?.updated > 0) && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-blue-600">
+                    {syncProgress?.processed_items || 0}/{syncProgress?.total_items || 0}
+                  </p>
+                  <p className="text-xs text-blue-600">Procesados</p>
+                </div>
+                <div className="bg-green-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-green-600">
+                    {syncProgress?.created || 0}
+                  </p>
+                  <p className="text-xs text-green-600">Creados</p>
+                </div>
+                <div className="bg-amber-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-amber-600">
+                    {syncProgress?.updated || 0}
+                  </p>
+                  <p className="text-xs text-amber-600">Actualizados</p>
+                </div>
+                <div className="bg-red-50 rounded-lg p-3 text-center">
+                  <p className="text-2xl font-bold text-red-600">
+                    {syncProgress?.errors || 0}
+                  </p>
+                  <p className="text-xs text-red-600">Errores</p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button 
+              onClick={() => {
+                setShowProgressDialog(false);
+                setSyncProgress(null);
+              }}
+              disabled={syncProgress?.status === "running"}
+              className={syncProgress?.status === "completed" ? "btn-primary" : ""}
+            >
+              {syncProgress?.status === "running" ? "Sincronizando..." : "Cerrar"}
             </Button>
           </DialogFooter>
         </DialogContent>

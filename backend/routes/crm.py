@@ -848,7 +848,9 @@ async def test_crm_connection(request: dict, user: dict = Depends(get_current_us
 
 @router.post("/crm/connections/{connection_id}/sync")
 async def sync_crm_connection(connection_id: str, request: dict, user: dict = Depends(get_current_user)):
-    """Sync data with a CRM - supports multiple sync types"""
+    """Sync data with a CRM - supports multiple sync types with progress tracking"""
+    import asyncio
+    
     connection = await db.crm_connections.find_one({
         "id": connection_id,
         "user_id": user["id"]
@@ -863,52 +865,118 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
     config = connection["config"]
     sync_settings = connection.get("sync_settings", {})
     
+    # Create sync job for progress tracking
+    sync_job_id = str(uuid.uuid4())
+    sync_job = {
+        "id": sync_job_id,
+        "user_id": user["id"],
+        "connection_id": connection_id,
+        "status": "running",
+        "progress": 0,
+        "current_step": "Iniciando sincronización...",
+        "total_items": 0,
+        "processed_items": 0,
+        "created": 0,
+        "updated": 0,
+        "errors": 0,
+        "started_at": datetime.now(timezone.utc).isoformat(),
+        "completed_at": None
+    }
+    await db.sync_jobs.insert_one(sync_job)
+    
     results = {
         "products": None,
         "suppliers": None,
         "orders": None
     }
     
-    if platform == "dolibarr":
-        client = DolibarrClient(
-            api_url=config.get("api_url", ""),
-            api_key=config.get("api_key", "")
-        )
+    try:
+        if platform == "dolibarr":
+            client = DolibarrClient(
+                api_url=config.get("api_url", ""),
+                api_key=config.get("api_key", "")
+            )
+            
+            # Sync products (stock, price, description, images)
+            if sync_type in ["all", "products"]:
+                results["products"] = await sync_products_to_dolibarr(client, user["id"], sync_settings, catalog_id, sync_job_id)
+            
+            # Sync suppliers
+            if sync_type in ["all", "suppliers"]:
+                await db.sync_jobs.update_one(
+                    {"id": sync_job_id},
+                    {"$set": {"current_step": "Sincronizando proveedores..."}}
+                )
+                results["suppliers"] = await sync_suppliers_to_dolibarr(client, user["id"])
+            
+            # Import orders from stores to CRM
+            if sync_type in ["all", "orders"]:
+                await db.sync_jobs.update_one(
+                    {"id": sync_job_id},
+                    {"$set": {"current_step": "Importando pedidos..."}}
+                )
+                results["orders"] = await sync_orders_to_dolibarr(client, user["id"])
+            
+            # Update last sync time
+            await db.crm_connections.update_one(
+                {"id": connection_id},
+                {"$set": {"last_sync": datetime.now(timezone.utc).isoformat()}}
+            )
+            
+            # Mark job as completed
+            await db.sync_jobs.update_one(
+                {"id": sync_job_id},
+                {"$set": {
+                    "status": "completed",
+                    "progress": 100,
+                    "current_step": "Sincronización completada",
+                    "completed_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
+            
+            # Build summary message
+            messages = []
+            for key, result in results.items():
+                if result:
+                    messages.append(f"{key}: {result.get('message', 'OK')}")
+            
+            return {
+                "status": "success",
+                "sync_job_id": sync_job_id,
+                "message": " | ".join(messages) if messages else "Sincronización completada",
+                "details": results
+            }
         
-        # Sync products (stock, price, description, images)
-        if sync_type in ["all", "products"]:
-            results["products"] = await sync_products_to_dolibarr(client, user["id"], sync_settings, catalog_id)
-        
-        # Sync suppliers
-        if sync_type in ["all", "suppliers"]:
-            results["suppliers"] = await sync_suppliers_to_dolibarr(client, user["id"])
-        
-        # Import orders from stores to CRM
-        if sync_type in ["all", "orders"]:
-            results["orders"] = await sync_orders_to_dolibarr(client, user["id"])
-        
-        # Update last sync time
-        await db.crm_connections.update_one(
-            {"id": connection_id},
-            {"$set": {"last_sync": datetime.now(timezone.utc).isoformat()}}
-        )
-        
-        # Build summary message
-        messages = []
-        for key, result in results.items():
-            if result:
-                messages.append(f"{key}: {result.get('message', 'OK')}")
-        
-        return {
-            "status": "success",
-            "message": " | ".join(messages) if messages else "Sincronización completada",
-            "details": results
-        }
+        return {"status": "error", "message": f"Plataforma no soportada: {platform}"}
     
-    return {"status": "error", "message": f"Plataforma no soportada: {platform}"}
+    except Exception as e:
+        # Mark job as failed
+        await db.sync_jobs.update_one(
+            {"id": sync_job_id},
+            {"$set": {
+                "status": "error",
+                "current_step": f"Error: {str(e)[:100]}",
+                "completed_at": datetime.now(timezone.utc).isoformat()
+            }}
+        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None, catalog_id: str = None) -> Dict:
+@router.get("/crm/sync-jobs/{job_id}")
+async def get_sync_job_status(job_id: str, user: dict = Depends(get_current_user)):
+    """Get the status of a sync job for progress tracking"""
+    job = await db.sync_jobs.find_one(
+        {"id": job_id, "user_id": user["id"]},
+        {"_id": 0}
+    )
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Job no encontrado")
+    
+    return job
+
+
+async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> Dict:
     """Sync products from our catalog to Dolibarr with full data including purchase price, stock and images"""
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
@@ -948,6 +1016,17 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     if not products:
         return {"status": "warning", "message": "No hay productos para sincronizar", "created": 0, "updated": 0}
     
+    # Update sync job with total items
+    total_products = len(products)
+    if sync_job_id:
+        await db.sync_jobs.update_one(
+            {"id": sync_job_id},
+            {"$set": {
+                "total_items": total_products,
+                "current_step": f"Sincronizando {total_products} productos..."
+            }}
+        )
+    
     # Get all suppliers for this user to map supplier names
     suppliers = await db.suppliers.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
     suppliers_map = {s["id"]: s for s in suppliers}
@@ -957,10 +1036,28 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     errors = 0
     images_synced = 0
     stock_synced = 0
+    processed = 0
     
     for product in products:
         try:
+            processed += 1
             sku = product.get("sku", "")
+            
+            # Update progress every 5 products or on first/last
+            if sync_job_id and (processed % 5 == 0 or processed == 1 or processed == total_products):
+                progress = int((processed / total_products) * 90)  # Reserve 10% for final steps
+                await db.sync_jobs.update_one(
+                    {"id": sync_job_id},
+                    {"$set": {
+                        "progress": progress,
+                        "processed_items": processed,
+                        "created": created,
+                        "updated": updated,
+                        "errors": errors,
+                        "current_step": f"Procesando {processed}/{total_products}: {product.get('name', sku)[:30]}..."
+                    }}
+                )
+            
             if not sku:
                 errors += 1
                 continue
@@ -1051,6 +1148,20 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
         except Exception as e:
             logger.error(f"Error syncing product {product.get('sku', 'unknown')} to Dolibarr: {e}")
             errors += 1
+    
+    # Final progress update
+    if sync_job_id:
+        await db.sync_jobs.update_one(
+            {"id": sync_job_id},
+            {"$set": {
+                "progress": 95,
+                "processed_items": processed,
+                "created": created,
+                "updated": updated,
+                "errors": errors,
+                "current_step": "Finalizando sincronización de productos..."
+            }}
+        )
     
     return {
         "status": "success" if errors == 0 else "partial",
