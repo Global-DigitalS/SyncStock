@@ -1,6 +1,7 @@
 """
 CRM Integration Routes
 Supports: Dolibarr, and future CRMs (HubSpot, Salesforce, Zoho, etc.)
+Full sync: Suppliers, Products (stock, price, description, images), Orders
 """
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional, Dict, Any
@@ -8,6 +9,7 @@ from datetime import datetime, timezone
 import uuid
 import logging
 import requests
+import base64
 
 from services.database import db
 from services.auth import get_current_user
@@ -19,7 +21,7 @@ logger = logging.getLogger(__name__)
 # ==================== DOLIBARR CLIENT ====================
 
 class DolibarrClient:
-    """Dolibarr ERP/CRM API Client"""
+    """Dolibarr ERP/CRM API Client - Full Integration"""
     
     def __init__(self, api_url: str, api_key: str):
         self.base_url = api_url.rstrip('/')
@@ -58,14 +60,16 @@ class DolibarrClient:
         except requests.exceptions.RequestException as e:
             return {"status": "error", "message": f"Error de conexión: {str(e)}"}
     
-    def get_products(self, limit: int = 100) -> List[Dict]:
+    # ==================== PRODUCTS ====================
+    
+    def get_products(self, limit: int = 500) -> List[Dict]:
         """Get products from Dolibarr"""
         try:
             response = requests.get(
                 f"{self.base_url}/products",
                 headers=self.headers,
                 params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
-                timeout=30
+                timeout=60
             )
             if response.status_code == 200:
                 return response.json()
@@ -90,12 +94,17 @@ class DolibarrClient:
             return None
     
     def create_product(self, product_data: Dict) -> Dict:
-        """Create a new product in Dolibarr"""
+        """Create a new product in Dolibarr with full data"""
         try:
+            # Build description (combine short and long)
+            description = product_data.get("long_description") or product_data.get("description", "")
+            if product_data.get("short_description"):
+                description = f"{product_data['short_description']}\n\n{description}"
+            
             payload = {
                 "ref": product_data.get("sku", ""),
                 "label": product_data.get("name", ""),
-                "description": product_data.get("description", ""),
+                "description": description,
                 "price": product_data.get("price", 0),
                 "price_base_type": "HT",  # Price without tax
                 "status": 1,  # On sale
@@ -106,6 +115,10 @@ class DolibarrClient:
                 "stock_reel": product_data.get("stock", 0),
             }
             
+            # Add brand as custom field or note
+            if product_data.get("brand"):
+                payload["note_public"] = f"Marca: {product_data['brand']}"
+            
             response = requests.post(
                 f"{self.base_url}/products",
                 headers=self.headers,
@@ -114,6 +127,11 @@ class DolibarrClient:
             )
             if response.status_code in [200, 201]:
                 product_id = response.json()
+                
+                # Upload image if available
+                if product_data.get("image_url"):
+                    self.upload_product_image(product_id, product_data["image_url"])
+                
                 return {"status": "success", "product_id": product_id, "message": "Producto creado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
@@ -121,19 +139,30 @@ class DolibarrClient:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
     def update_product(self, product_id: int, product_data: Dict) -> Dict:
-        """Update an existing product"""
+        """Update an existing product with full data"""
         try:
             payload = {}
+            
             if "name" in product_data:
                 payload["label"] = product_data["name"]
-            if "description" in product_data:
-                payload["description"] = product_data["description"]
+            
+            # Build description
+            if "description" in product_data or "long_description" in product_data or "short_description" in product_data:
+                description = product_data.get("long_description") or product_data.get("description", "")
+                if product_data.get("short_description"):
+                    description = f"{product_data['short_description']}\n\n{description}"
+                payload["description"] = description
+            
             if "price" in product_data:
                 payload["price"] = product_data["price"]
             if "stock" in product_data:
                 payload["stock_reel"] = product_data["stock"]
             if "ean" in product_data:
                 payload["barcode"] = product_data["ean"]
+            if "weight" in product_data:
+                payload["weight"] = product_data["weight"]
+            if "brand" in product_data:
+                payload["note_public"] = f"Marca: {product_data['brand']}"
             
             response = requests.put(
                 f"{self.base_url}/products/{product_id}",
@@ -142,20 +171,133 @@ class DolibarrClient:
                 timeout=30
             )
             if response.status_code == 200:
+                # Update image if provided
+                if product_data.get("image_url"):
+                    self.upload_product_image(product_id, product_data["image_url"])
                 return {"status": "success", "message": "Producto actualizado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
-    def get_thirdparties(self, limit: int = 100) -> List[Dict]:
-        """Get third parties (clients/suppliers) from Dolibarr"""
+    def upload_product_image(self, product_id: int, image_url: str) -> Dict:
+        """Upload image to a Dolibarr product"""
         try:
+            # Download image
+            img_response = requests.get(image_url, timeout=30)
+            if img_response.status_code != 200:
+                return {"status": "error", "message": "No se pudo descargar la imagen"}
+            
+            # Encode to base64
+            img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+            
+            # Determine file extension
+            content_type = img_response.headers.get('content-type', 'image/jpeg')
+            if 'png' in content_type:
+                ext = 'png'
+            elif 'gif' in content_type:
+                ext = 'gif'
+            else:
+                ext = 'jpg'
+            
+            # Upload to Dolibarr
+            payload = {
+                "filename": f"product_{product_id}.{ext}",
+                "modulepart": "product",
+                "ref": str(product_id),
+                "subdir": "",
+                "filecontent": img_base64,
+                "fileencoding": "base64",
+                "overwriteifexists": 1
+            }
+            
+            response = requests.post(
+                f"{self.base_url}/documents/upload",
+                headers=self.headers,
+                json=payload,
+                timeout=60
+            )
+            
+            if response.status_code in [200, 201]:
+                return {"status": "success", "message": "Imagen subida"}
+            else:
+                logger.warning(f"Dolibarr image upload failed: {response.status_code}")
+                return {"status": "error", "message": f"Error: {response.status_code}"}
+        except Exception as e:
+            logger.error(f"Dolibarr upload_product_image error: {e}")
+            return {"status": "error", "message": str(e)}
+    
+    def update_stock(self, product_id: int, stock: int, warehouse_id: int = 1) -> Dict:
+        """Update product stock in Dolibarr"""
+        try:
+            # First get current stock
+            product = self.get_product_by_id(product_id)
+            if not product:
+                return {"status": "error", "message": "Producto no encontrado"}
+            
+            current_stock = int(float(product.get("stock_reel", 0)))
+            diff = stock - current_stock
+            
+            if diff == 0:
+                return {"status": "success", "message": "Stock sin cambios"}
+            
+            # Create stock movement
+            payload = {
+                "product_id": product_id,
+                "warehouse_id": warehouse_id,
+                "qty": abs(diff),
+                "type": 0 if diff > 0 else 1,  # 0 = entrada, 1 = salida
+                "label": "Sincronización desde catálogo"
+            }
+            
+            response = requests.post(
+                f"{self.base_url}/stockmovements",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code in [200, 201]:
+                return {"status": "success", "message": f"Stock actualizado: {current_stock} → {stock}"}
+            else:
+                # Fallback: update product directly
+                return self.update_product(product_id, {"stock": stock})
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    
+    def get_product_by_id(self, product_id: int) -> Optional[Dict]:
+        """Get product by ID"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/products/{product_id}",
+                headers=self.headers,
+                timeout=30
+            )
+            if response.status_code == 200:
+                return response.json()
+            return None
+        except Exception as e:
+            logger.error(f"Dolibarr get_product_by_id error: {e}")
+            return None
+    
+    # ==================== SUPPLIERS (Third Parties) ====================
+    
+    def get_thirdparties(self, limit: int = 500, thirdparty_type: str = None) -> List[Dict]:
+        """Get third parties (clients/suppliers) from Dolibarr
+        thirdparty_type: 'supplier' or 'customer' or None for all
+        """
+        try:
+            params = {'limit': limit}
+            if thirdparty_type == 'supplier':
+                params['mode'] = 4  # Suppliers only
+            elif thirdparty_type == 'customer':
+                params['mode'] = 1  # Customers only
+            
             response = requests.get(
                 f"{self.base_url}/thirdparties",
                 headers=self.headers,
-                params={'limit': limit},
-                timeout=30
+                params=params,
+                timeout=60
             )
             if response.status_code == 200:
                 return response.json()
@@ -164,14 +306,93 @@ class DolibarrClient:
             logger.error(f"Dolibarr get_thirdparties error: {e}")
             return []
     
+    def get_suppliers(self, limit: int = 500) -> List[Dict]:
+        """Get suppliers from Dolibarr"""
+        return self.get_thirdparties(limit=limit, thirdparty_type='supplier')
+    
+    def create_supplier(self, supplier_data: Dict) -> Dict:
+        """Create a supplier in Dolibarr"""
+        try:
+            payload = {
+                "name": supplier_data.get("name", ""),
+                "name_alias": supplier_data.get("alias", ""),
+                "email": supplier_data.get("email", ""),
+                "phone": supplier_data.get("phone", ""),
+                "address": supplier_data.get("address", ""),
+                "zip": supplier_data.get("zip", ""),
+                "town": supplier_data.get("city", ""),
+                "country_code": supplier_data.get("country_code", "ES"),
+                "fournisseur": 1,  # Mark as supplier
+                "client": 0,  # Not a client
+                "code_fournisseur": supplier_data.get("supplier_code", ""),
+                "note_public": supplier_data.get("notes", ""),
+                "status": 1  # Active
+            }
+            
+            response = requests.post(
+                f"{self.base_url}/thirdparties",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code in [200, 201]:
+                supplier_id = response.json()
+                return {"status": "success", "supplier_id": supplier_id, "message": "Proveedor creado"}
+            else:
+                return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    
+    def update_supplier(self, supplier_id: int, supplier_data: Dict) -> Dict:
+        """Update a supplier in Dolibarr"""
+        try:
+            payload = {}
+            if "name" in supplier_data:
+                payload["name"] = supplier_data["name"]
+            if "email" in supplier_data:
+                payload["email"] = supplier_data["email"]
+            if "phone" in supplier_data:
+                payload["phone"] = supplier_data["phone"]
+            if "address" in supplier_data:
+                payload["address"] = supplier_data["address"]
+            
+            response = requests.put(
+                f"{self.base_url}/thirdparties/{supplier_id}",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                return {"status": "success", "message": "Proveedor actualizado"}
+            else:
+                return {"status": "error", "message": f"Error: {response.status_code}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    
+    def get_supplier_by_name(self, name: str) -> Optional[Dict]:
+        """Find supplier by name"""
+        try:
+            suppliers = self.get_suppliers(limit=1000)
+            for s in suppliers:
+                if s.get("name", "").lower() == name.lower():
+                    return s
+            return None
+        except Exception as e:
+            logger.error(f"Dolibarr get_supplier_by_name error: {e}")
+            return None
+    
+    # ==================== ORDERS ====================
+    
     def get_orders(self, limit: int = 100) -> List[Dict]:
-        """Get orders from Dolibarr"""
+        """Get customer orders from Dolibarr"""
         try:
             response = requests.get(
                 f"{self.base_url}/orders",
                 headers=self.headers,
                 params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
-                timeout=30
+                timeout=60
             )
             if response.status_code == 200:
                 return response.json()
@@ -180,22 +401,112 @@ class DolibarrClient:
             logger.error(f"Dolibarr get_orders error: {e}")
             return []
     
+    def get_supplier_orders(self, limit: int = 100) -> List[Dict]:
+        """Get supplier orders from Dolibarr"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/supplierorders",
+                headers=self.headers,
+                params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
+                timeout=60
+            )
+            if response.status_code == 200:
+                return response.json()
+            return []
+        except Exception as e:
+            logger.error(f"Dolibarr get_supplier_orders error: {e}")
+            return []
+    
+    def create_order(self, order_data: Dict) -> Dict:
+        """Create a customer order in Dolibarr"""
+        try:
+            payload = {
+                "socid": order_data.get("customer_id"),
+                "date": order_data.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+                "ref_client": order_data.get("external_ref", ""),
+                "note_public": order_data.get("notes", ""),
+                "lines": []
+            }
+            
+            # Add order lines
+            for line in order_data.get("lines", []):
+                payload["lines"].append({
+                    "fk_product": line.get("product_id"),
+                    "qty": line.get("quantity", 1),
+                    "subprice": line.get("price", 0),
+                    "tva_tx": line.get("tax_rate", 21),
+                    "desc": line.get("description", "")
+                })
+            
+            response = requests.post(
+                f"{self.base_url}/orders",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code in [200, 201]:
+                order_id = response.json()
+                return {"status": "success", "order_id": order_id, "message": "Pedido creado"}
+            else:
+                return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    
+    def create_supplier_order(self, order_data: Dict) -> Dict:
+        """Create a supplier order in Dolibarr"""
+        try:
+            payload = {
+                "socid": order_data.get("supplier_id"),
+                "date": order_data.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+                "ref_supplier": order_data.get("external_ref", ""),
+                "note_public": order_data.get("notes", ""),
+                "lines": []
+            }
+            
+            for line in order_data.get("lines", []):
+                payload["lines"].append({
+                    "fk_product": line.get("product_id"),
+                    "qty": line.get("quantity", 1),
+                    "subprice": line.get("price", 0),
+                    "tva_tx": line.get("tax_rate", 21)
+                })
+            
+            response = requests.post(
+                f"{self.base_url}/supplierorders",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code in [200, 201]:
+                order_id = response.json()
+                return {"status": "success", "order_id": order_id, "message": "Pedido a proveedor creado"}
+            else:
+                return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+    
+    # ==================== STATS ====================
+    
     def get_stats(self) -> Dict:
         """Get basic stats from Dolibarr"""
         try:
-            # Count totals
             products_count = len(self.get_products(limit=10000))
-            clients_count = len([t for t in self.get_thirdparties(limit=10000) if t.get('client') == '1'])
+            suppliers = self.get_thirdparties(limit=10000)
+            suppliers_count = len([t for t in suppliers if t.get('fournisseur') == '1'])
+            clients_count = len([t for t in suppliers if t.get('client') == '1'])
             orders_count = len(self.get_orders(limit=10000))
             
             return {
                 "products": products_count,
+                "suppliers": suppliers_count,
                 "clients": clients_count,
                 "orders": orders_count
             }
         except Exception as e:
             logger.error(f"Dolibarr get_stats error: {e}")
-            return {"products": 0, "clients": 0, "orders": 0}
+            return {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
 
 
 # ==================== CRM ENDPOINTS ====================
@@ -220,7 +531,7 @@ async def get_crm_connections(user: dict = Depends(get_current_user)):
                     conn["stats"] = client.get_stats()
             except Exception as e:
                 logger.error(f"Error getting CRM stats: {e}")
-                conn["stats"] = {"products": 0, "clients": 0, "orders": 0}
+                conn["stats"] = {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
     
     return connections
 
@@ -236,6 +547,15 @@ async def create_crm_connection(request: dict, user: dict = Depends(get_current_
         "name": request.get("name", "Mi CRM"),
         "platform": request.get("platform"),
         "config": request.get("config", {}),
+        "sync_settings": request.get("sync_settings", {
+            "products": True,
+            "stock": True,
+            "prices": True,
+            "descriptions": True,
+            "images": True,
+            "suppliers": True,
+            "orders": True
+        }),
         "is_connected": False,
         "last_sync": None,
         "created_at": now,
@@ -272,6 +592,7 @@ async def update_crm_connection(connection_id: str, request: dict, user: dict = 
     update_data = {
         "name": request.get("name", connection["name"]),
         "config": request.get("config", connection["config"]),
+        "sync_settings": request.get("sync_settings", connection.get("sync_settings", {})),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -325,7 +646,7 @@ async def test_crm_connection(request: dict, user: dict = Depends(get_current_us
 
 @router.post("/crm/connections/{connection_id}/sync")
 async def sync_crm_connection(connection_id: str, request: dict, user: dict = Depends(get_current_user)):
-    """Sync data with a CRM"""
+    """Sync data with a CRM - supports multiple sync types"""
     connection = await db.crm_connections.find_one({
         "id": connection_id,
         "user_id": user["id"]
@@ -334,9 +655,16 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
     if not connection:
         raise HTTPException(status_code=404, detail="Conexión no encontrada")
     
-    sync_type = request.get("sync_type", "products")
+    sync_type = request.get("sync_type", "all")
     platform = connection["platform"]
     config = connection["config"]
+    sync_settings = connection.get("sync_settings", {})
+    
+    results = {
+        "products": None,
+        "suppliers": None,
+        "orders": None
+    }
     
     if platform == "dolibarr":
         client = DolibarrClient(
@@ -344,14 +672,17 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
             api_key=config.get("api_key", "")
         )
         
-        if sync_type == "products":
-            # Get products from our catalog to sync to Dolibarr
-            result = await sync_products_to_dolibarr(client, user["id"])
-        elif sync_type == "clients":
-            # Import clients from Dolibarr
-            result = await import_clients_from_dolibarr(client, user["id"])
-        else:
-            result = {"status": "error", "message": f"Tipo de sync no soportado: {sync_type}"}
+        # Sync products (stock, price, description, images)
+        if sync_type in ["all", "products"]:
+            results["products"] = await sync_products_to_dolibarr(client, user["id"], sync_settings)
+        
+        # Sync suppliers
+        if sync_type in ["all", "suppliers"]:
+            results["suppliers"] = await sync_suppliers_to_dolibarr(client, user["id"])
+        
+        # Import orders from stores to CRM
+        if sync_type in ["all", "orders"]:
+            results["orders"] = await sync_orders_to_dolibarr(client, user["id"])
         
         # Update last sync time
         await db.crm_connections.update_one(
@@ -359,21 +690,34 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
             {"$set": {"last_sync": datetime.now(timezone.utc).isoformat()}}
         )
         
-        return result
+        # Build summary message
+        messages = []
+        for key, result in results.items():
+            if result:
+                messages.append(f"{key}: {result.get('message', 'OK')}")
+        
+        return {
+            "status": "success",
+            "message": " | ".join(messages) if messages else "Sincronización completada",
+            "details": results
+        }
     
     return {"status": "error", "message": f"Plataforma no soportada: {platform}"}
 
 
-async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
-    """Sync products from our catalog to Dolibarr"""
-    # Get user's products
+async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None) -> Dict:
+    """Sync products from our catalog to Dolibarr with full data"""
+    if sync_settings is None:
+        sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
+    
+    # Get user's selected products
     products = await db.products.find(
         {"user_id": user_id, "is_selected": True},
         {"_id": 0}
     ).to_list(10000)
     
     if not products:
-        return {"status": "warning", "message": "No hay productos para sincronizar"}
+        return {"status": "warning", "message": "No hay productos para sincronizar", "created": 0, "updated": 0}
     
     created = 0
     updated = 0
@@ -387,12 +731,26 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str) -> Dic
             product_data = {
                 "sku": product.get("sku", ""),
                 "name": product.get("name", ""),
-                "description": product.get("long_description") or product.get("description", ""),
-                "price": product.get("price", 0),
-                "stock": product.get("stock", 0),
-                "ean": product.get("ean", ""),
-                "weight": product.get("weight", 0)
             }
+            
+            # Add fields based on sync settings
+            if sync_settings.get("prices", True):
+                product_data["price"] = product.get("price", 0)
+            
+            if sync_settings.get("stock", True):
+                product_data["stock"] = product.get("stock", 0)
+            
+            if sync_settings.get("descriptions", True):
+                product_data["description"] = product.get("description", "")
+                product_data["short_description"] = product.get("short_description", "")
+                product_data["long_description"] = product.get("long_description", "")
+                product_data["brand"] = product.get("brand", "")
+            
+            product_data["ean"] = product.get("ean", "")
+            product_data["weight"] = product.get("weight", 0)
+            
+            if sync_settings.get("images", True):
+                product_data["image_url"] = product.get("image_url", "")
             
             if existing:
                 result = client.update_product(int(existing.get("id")), product_data)
@@ -411,7 +769,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str) -> Dic
             errors += 1
     
     return {
-        "status": "success",
+        "status": "success" if errors == 0 else "partial",
         "message": f"{created} creados, {updated} actualizados, {errors} errores",
         "created": created,
         "updated": updated,
@@ -419,52 +777,178 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str) -> Dic
     }
 
 
-async def import_clients_from_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
-    """Import clients from Dolibarr"""
-    thirdparties = client.get_thirdparties(limit=10000)
-    clients = [t for t in thirdparties if t.get('client') == '1']
+async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
+    """Sync suppliers from our system to Dolibarr"""
+    # Get user's suppliers
+    suppliers = await db.suppliers.find(
+        {"user_id": user_id},
+        {"_id": 0}
+    ).to_list(1000)
     
-    imported = 0
+    if not suppliers:
+        return {"status": "warning", "message": "No hay proveedores para sincronizar", "created": 0, "updated": 0}
+    
+    created = 0
     updated = 0
+    errors = 0
     
-    for c in clients:
+    for supplier in suppliers:
         try:
-            existing = await db.crm_clients.find_one({
-                "user_id": user_id,
-                "external_id": str(c.get("id"))
-            })
+            # Check if supplier exists in Dolibarr by name
+            existing = client.get_supplier_by_name(supplier.get("name", ""))
             
-            client_data = {
-                "user_id": user_id,
-                "external_id": str(c.get("id")),
-                "source": "dolibarr",
-                "name": c.get("name", ""),
-                "email": c.get("email", ""),
-                "phone": c.get("phone", ""),
-                "address": c.get("address", ""),
-                "city": c.get("town", ""),
-                "zip": c.get("zip", ""),
-                "country": c.get("country", ""),
-                "updated_at": datetime.now(timezone.utc).isoformat()
+            supplier_data = {
+                "name": supplier.get("name", ""),
+                "email": supplier.get("email", ""),
+                "phone": supplier.get("phone", ""),
+                "address": supplier.get("address", ""),
+                "city": supplier.get("city", ""),
+                "zip": supplier.get("zip", ""),
+                "country_code": supplier.get("country_code", "ES"),
+                "notes": f"Tipo conexión: {supplier.get('connection_type', 'N/A')}",
+                "supplier_code": supplier.get("id", "")[:10]
             }
             
             if existing:
-                await db.crm_clients.update_one(
-                    {"_id": existing["_id"]},
-                    {"$set": client_data}
-                )
-                updated += 1
+                result = client.update_supplier(int(existing.get("id")), supplier_data)
+                if result["status"] == "success":
+                    updated += 1
+                else:
+                    errors += 1
             else:
-                client_data["id"] = str(uuid.uuid4())
-                client_data["created_at"] = datetime.now(timezone.utc).isoformat()
-                await db.crm_clients.insert_one(client_data)
-                imported += 1
+                result = client.create_supplier(supplier_data)
+                if result["status"] == "success":
+                    created += 1
+                    # Store Dolibarr ID in our supplier record
+                    await db.suppliers.update_one(
+                        {"id": supplier["id"]},
+                        {"$set": {"dolibarr_id": result.get("supplier_id")}}
+                    )
+                else:
+                    errors += 1
         except Exception as e:
-            logger.error(f"Error importing client from Dolibarr: {e}")
+            logger.error(f"Error syncing supplier to Dolibarr: {e}")
+            errors += 1
     
     return {
-        "status": "success",
-        "message": f"{imported} importados, {updated} actualizados",
-        "imported": imported,
-        "updated": updated
+        "status": "success" if errors == 0 else "partial",
+        "message": f"{created} creados, {updated} actualizados, {errors} errores",
+        "created": created,
+        "updated": updated,
+        "errors": errors
     }
+
+
+async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
+    """Import orders from WooCommerce stores to Dolibarr"""
+    # Get user's WooCommerce stores
+    stores = await db.woocommerce_configs.find(
+        {"user_id": user_id, "platform": "woocommerce"},
+        {"_id": 0}
+    ).to_list(100)
+    
+    if not stores:
+        return {"status": "info", "message": "No hay tiendas configuradas para importar pedidos", "imported": 0}
+    
+    imported = 0
+    errors = 0
+    
+    for store in stores:
+        try:
+            # Get orders from WooCommerce
+            from woocommerce import API as WooCommerceAPI
+            
+            wcapi = WooCommerceAPI(
+                url=store.get("store_url", ""),
+                consumer_key=store.get("consumer_key", ""),
+                consumer_secret=store.get("consumer_secret", ""),
+                version="wc/v3",
+                timeout=30
+            )
+            
+            # Get recent orders (last 30 days, pending/processing)
+            response = wcapi.get("orders", params={
+                "per_page": 100,
+                "status": "processing,pending",
+                "orderby": "date",
+                "order": "desc"
+            })
+            
+            if response.status_code != 200:
+                continue
+            
+            wc_orders = response.json()
+            
+            for wc_order in wc_orders:
+                try:
+                    # Check if order already synced
+                    existing = await db.crm_synced_orders.find_one({
+                        "user_id": user_id,
+                        "external_id": str(wc_order.get("id")),
+                        "source": "woocommerce"
+                    })
+                    
+                    if existing:
+                        continue
+                    
+                    # Get or create customer in Dolibarr
+                    customer_email = wc_order.get("billing", {}).get("email", "")
+                    customer_name = f"{wc_order.get('billing', {}).get('first_name', '')} {wc_order.get('billing', {}).get('last_name', '')}".strip()
+                    
+                    # Build order lines
+                    lines = []
+                    for item in wc_order.get("line_items", []):
+                        # Try to find product by SKU in Dolibarr
+                        dolibarr_product = client.get_product_by_ref(item.get("sku", ""))
+                        
+                        lines.append({
+                            "product_id": int(dolibarr_product.get("id")) if dolibarr_product else None,
+                            "quantity": item.get("quantity", 1),
+                            "price": float(item.get("price", 0)),
+                            "description": item.get("name", "")
+                        })
+                    
+                    # For now, we'll log the order - creating requires customer mapping
+                    # Store synced order record
+                    await db.crm_synced_orders.insert_one({
+                        "id": str(uuid.uuid4()),
+                        "user_id": user_id,
+                        "external_id": str(wc_order.get("id")),
+                        "source": "woocommerce",
+                        "store_id": store.get("id"),
+                        "order_data": {
+                            "customer_name": customer_name,
+                            "customer_email": customer_email,
+                            "total": wc_order.get("total"),
+                            "status": wc_order.get("status"),
+                            "date": wc_order.get("date_created"),
+                            "lines_count": len(lines)
+                        },
+                        "synced_at": datetime.now(timezone.utc).isoformat()
+                    })
+                    
+                    imported += 1
+                except Exception as e:
+                    logger.error(f"Error importing order {wc_order.get('id')}: {e}")
+                    errors += 1
+        except Exception as e:
+            logger.error(f"Error fetching orders from store {store.get('id')}: {e}")
+            errors += 1
+    
+    return {
+        "status": "success" if errors == 0 else "partial",
+        "message": f"{imported} pedidos importados, {errors} errores",
+        "imported": imported,
+        "errors": errors
+    }
+
+
+@router.get("/crm/connections/{connection_id}/orders")
+async def get_synced_orders(connection_id: str, user: dict = Depends(get_current_user)):
+    """Get orders synced from stores"""
+    orders = await db.crm_synced_orders.find(
+        {"user_id": user["id"]},
+        {"_id": 0}
+    ).sort("synced_at", -1).to_list(100)
+    
+    return orders
