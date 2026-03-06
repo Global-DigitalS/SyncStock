@@ -199,31 +199,59 @@ class DolibarrClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
-    def upload_product_image(self, product_id: int, image_url: str) -> Dict:
-        """Upload image to a Dolibarr product"""
+    def upload_product_image(self, product_id: int, image_url: str, base_url: str = None) -> Dict:
+        """Upload image to a Dolibarr product
+        
+        Args:
+            product_id: Dolibarr product ID
+            image_url: URL of the image (can be relative like /api/uploads/... or full HTTP URL)
+            base_url: Base URL for relative paths (e.g., https://app.example.com)
+        """
         try:
-            # Download image
-            img_response = requests.get(image_url, timeout=30)
+            # Skip if no image URL
+            if not image_url:
+                return {"status": "skip", "message": "No image URL provided"}
+            
+            # Handle relative URLs (local uploads)
+            if image_url.startswith('/api/') or image_url.startswith('/'):
+                # This is a local relative URL - skip for now as we can't access it from here
+                logger.info(f"Skipping local image URL: {image_url[:50]}...")
+                return {"status": "skip", "message": "Local image URL - skipped"}
+            
+            # Validate it's a proper HTTP/HTTPS URL
+            if not image_url.startswith(('http://', 'https://')):
+                return {"status": "skip", "message": "Invalid image URL format"}
+            
+            # Download image with user agent
+            headers = {"User-Agent": "Mozilla/5.0 (compatible; CatalogSync/1.0)"}
+            img_response = requests.get(image_url, timeout=30, headers=headers)
             if img_response.status_code != 200:
-                return {"status": "error", "message": "No se pudo descargar la imagen"}
+                logger.warning(f"Failed to download image: {img_response.status_code}")
+                return {"status": "error", "message": f"No se pudo descargar la imagen: {img_response.status_code}"}
             
             # Encode to base64
             img_base64 = base64.b64encode(img_response.content).decode('utf-8')
             
-            # Determine file extension
+            # Determine file extension from content type or URL
             content_type = img_response.headers.get('content-type', 'image/jpeg')
-            if 'png' in content_type:
+            if 'png' in content_type or image_url.lower().endswith('.png'):
                 ext = 'png'
-            elif 'gif' in content_type:
+            elif 'gif' in content_type or image_url.lower().endswith('.gif'):
                 ext = 'gif'
+            elif 'webp' in content_type or image_url.lower().endswith('.webp'):
+                ext = 'webp'
             else:
                 ext = 'jpg'
+            
+            # Get product ref for the subdir
+            product = self.get_product_by_id(product_id)
+            product_ref = product.get('ref', str(product_id)) if product else str(product_id)
             
             # Upload to Dolibarr
             payload = {
                 "filename": f"product_{product_id}.{ext}",
                 "modulepart": "product",
-                "ref": str(product_id),
+                "ref": product_ref,
                 "subdir": "",
                 "filecontent": img_base64,
                 "fileencoding": "base64",
@@ -238,26 +266,41 @@ class DolibarrClient:
             )
             
             if response.status_code in [200, 201]:
+                logger.info(f"Successfully uploaded image for product {product_id}")
                 return {"status": "success", "message": "Imagen subida"}
             else:
-                logger.warning(f"Dolibarr image upload failed: {response.status_code}")
+                logger.warning(f"Dolibarr image upload failed: {response.status_code} - {response.text[:100]}")
                 return {"status": "error", "message": f"Error: {response.status_code}"}
+        except requests.exceptions.Timeout:
+            logger.error(f"Timeout downloading image from {image_url[:50]}...")
+            return {"status": "error", "message": "Timeout descargando imagen"}
         except Exception as e:
             logger.error(f"Dolibarr upload_product_image error: {e}")
             return {"status": "error", "message": str(e)}
     
-    def update_stock(self, product_id: int, stock: int, warehouse_id: int = 1) -> Dict:
+    def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> Dict:
         """Update product stock in Dolibarr"""
         try:
-            # First get current stock
+            # First get or create a warehouse
+            if warehouse_id is None:
+                warehouse_id = self.get_or_create_default_warehouse()
+                if not warehouse_id:
+                    logger.warning("No warehouse available, cannot update stock")
+                    return {"status": "warning", "message": "No hay almacén configurado en Dolibarr"}
+            
+            # Get current stock
             product = self.get_product_by_id(product_id)
             if not product:
                 return {"status": "error", "message": "Producto no encontrado"}
             
-            current_stock = int(float(product.get("stock_reel", 0)))
+            current_stock = int(float(product.get("stock_reel") or 0))
             diff = stock - current_stock
             
             if diff == 0:
+                return {"status": "success", "message": "Stock sin cambios"}
+            
+            # Dolibarr does not allow stock movements with qty = 0
+            if abs(diff) == 0:
                 return {"status": "success", "message": "Stock sin cambios"}
             
             # Create stock movement
@@ -269,6 +312,8 @@ class DolibarrClient:
                 "label": "Sincronización desde catálogo"
             }
             
+            logger.info(f"Creating stock movement for product {product_id}: {current_stock} -> {stock} (diff: {diff})")
+            
             response = requests.post(
                 f"{self.base_url}/stockmovements",
                 headers=self.headers,
@@ -277,12 +322,65 @@ class DolibarrClient:
             )
             
             if response.status_code in [200, 201]:
+                logger.info(f"Stock updated successfully: {current_stock} → {stock}")
                 return {"status": "success", "message": f"Stock actualizado: {current_stock} → {stock}"}
             else:
-                # Fallback: update product directly
-                return self.update_product(product_id, {"stock": stock})
+                logger.warning(f"Stock movement failed: {response.status_code} - {response.text[:200]}")
+                # Fallback: try to update product directly (won't work if stock is managed)
+                return {"status": "warning", "message": f"No se pudo crear movimiento: {response.text[:100]}"}
         except Exception as e:
+            logger.error(f"update_stock error: {e}")
             return {"status": "error", "message": str(e)}
+    
+    def get_warehouses(self) -> List[Dict]:
+        """Get all warehouses from Dolibarr"""
+        try:
+            response = requests.get(
+                f"{self.base_url}/warehouses",
+                headers=self.headers,
+                timeout=30
+            )
+            if response.status_code == 200:
+                return response.json()
+            return []
+        except Exception as e:
+            logger.error(f"Dolibarr get_warehouses error: {e}")
+            return []
+    
+    def create_warehouse(self, label: str, location: str = "") -> Optional[int]:
+        """Create a warehouse in Dolibarr"""
+        try:
+            payload = {
+                "label": label,
+                "lieu": location,
+                "statut": 1  # Active
+            }
+            response = requests.post(
+                f"{self.base_url}/warehouses",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            if response.status_code in [200, 201]:
+                warehouse_id = response.json()
+                logger.info(f"Created warehouse '{label}' with ID {warehouse_id}")
+                return warehouse_id
+            else:
+                logger.warning(f"Failed to create warehouse: {response.status_code} - {response.text[:100]}")
+                return None
+        except Exception as e:
+            logger.error(f"create_warehouse error: {e}")
+            return None
+    
+    def get_or_create_default_warehouse(self) -> Optional[int]:
+        """Get the first warehouse or create a default one"""
+        warehouses = self.get_warehouses()
+        if warehouses:
+            return int(warehouses[0].get("id"))
+        
+        # No warehouses exist, create one
+        logger.info("No warehouses found, creating default warehouse...")
+        return self.create_warehouse("Almacén Principal", "Almacén predeterminado")
     
     def get_product_by_id(self, product_id: int) -> Optional[Dict]:
         """Get product by ID"""
@@ -391,19 +489,36 @@ class DolibarrClient:
             return {"status": "error", "message": str(e)}
     
     def get_supplier_by_name(self, name: str) -> Optional[Dict]:
-        """Find supplier by name"""
+        """Find supplier by name using direct API search"""
         try:
-            suppliers = self.get_suppliers(limit=1000)
+            # First try to get suppliers and search
+            suppliers = self.get_suppliers(limit=500)
             for s in suppliers:
                 if s.get("name", "").lower() == name.lower():
                     return s
+            
+            # If not found in list, try direct search with SQL filter
+            try:
+                response = requests.get(
+                    f"{self.base_url}/thirdparties",
+                    headers=self.headers,
+                    params={'sqlfilters': f"(t.nom:=:'{name}')"},
+                    timeout=30
+                )
+                if response.status_code == 200:
+                    results = response.json()
+                    if results:
+                        return results[0]
+            except Exception:
+                pass
+            
             return None
         except Exception as e:
             logger.error(f"Dolibarr get_supplier_by_name error: {e}")
             return None
     
-    def link_product_to_supplier(self, product_ref: str, supplier_id: int, purchase_price: float) -> Dict:
-        """Link a product to a supplier with purchase price in Dolibarr"""
+    def link_product_to_supplier(self, product_ref: str, supplier_id: int, purchase_price: float, supplier_ref: str = None) -> Dict:
+        """Link a product to a supplier with purchase price in Dolibarr using purchase_prices API"""
         try:
             # First get the product by reference
             product = self.get_product_by_ref(product_ref)
@@ -412,16 +527,20 @@ class DolibarrClient:
             
             product_id = product.get("id")
             
-            # Create supplier price entry
-            # Dolibarr API endpoint for product supplier prices
+            # Create supplier price entry using correct Dolibarr API parameters
+            # According to Dolibarr API: POST /products/{id}/purchase_prices
             payload = {
-                "fk_product": product_id,
-                "fk_soc": supplier_id,
-                "ref_fourn": product_ref,  # Supplier's reference
-                "price": purchase_price,
-                "quantity": 1,
-                "remise_percent": 0
+                "fourn_id": supplier_id,           # Supplier ID
+                "buyprice": purchase_price,         # Purchase price
+                "qty": 1,                           # Minimum quantity
+                "price_base_type": "HT",            # Price without tax
+                "ref_fourn": supplier_ref or product_ref,  # Supplier's reference for this product
+                "tva_tx": 0,                        # VAT rate
+                "charges": 0,                       # Additional charges
+                "availability": 1                   # Availability delay code (required by Dolibarr)
             }
+            
+            logger.info(f"Linking product {product_id} to supplier {supplier_id} with price {purchase_price}")
             
             response = requests.post(
                 f"{self.base_url}/products/{product_id}/purchase_prices",
@@ -431,28 +550,15 @@ class DolibarrClient:
             )
             
             if response.status_code in [200, 201]:
+                logger.info(f"Successfully linked product {product_ref} to supplier {supplier_id}")
                 return {"status": "success", "message": "Producto vinculado a proveedor"}
             elif response.status_code == 409:
-                # Already exists, try to update
+                # Already exists
+                logger.info(f"Product {product_ref} already linked to supplier {supplier_id}")
                 return {"status": "success", "message": "Vínculo ya existe"}
             else:
-                # Try alternative endpoint
-                payload_alt = {
-                    "socid": supplier_id,
-                    "ref_supplier": product_ref,
-                    "tva_tx": 0,
-                    "price": purchase_price,
-                    "qty": 1
-                }
-                response_alt = requests.post(
-                    f"{self.base_url}/products/{product_id}/subprice",
-                    headers=self.headers,
-                    json=payload_alt,
-                    timeout=30
-                )
-                if response_alt.status_code in [200, 201]:
-                    return {"status": "success", "message": "Producto vinculado"}
-                return {"status": "error", "message": f"Error: {response.status_code}"}
+                logger.warning(f"Failed to link product to supplier: {response.status_code} - {response.text[:200]}")
+                return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:100]}"}
         except Exception as e:
             logger.error(f"Dolibarr link_product_to_supplier error: {e}")
             return {"status": "error", "message": str(e)}
