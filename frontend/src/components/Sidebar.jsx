@@ -28,7 +28,9 @@ import {
   Settings,
   ChevronDown,
   ChevronRight,
-  DollarSign
+  DollarSign,
+  Link2,
+  Building2
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -39,12 +41,17 @@ const navItems = [
   { path: "/products", label: "Productos", icon: Package },
   { path: "/catalogs", label: "Catálogos", icon: BookOpen },
   { path: "/export", label: "Exportar", icon: Download },
-  { path: "/stores", label: "Tiendas", icon: Store },
   { path: "/webhooks", label: "Webhooks", icon: Webhook },
   { path: "/price-history", label: "Historial de Precios", icon: TrendingUp },
   { path: "/sync-history", label: "Historial de Syncs", icon: History },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
   { path: "/subscriptions", label: "Suscripciones", icon: CreditCard },
+];
+
+// Conexiones submenu items
+const connectionItems = [
+  { path: "/stores", label: "Tiendas", icon: Store },
+  { path: "/crm", label: "CRM", icon: Building2 },
 ];
 
 const adminItems = [
@@ -63,6 +70,7 @@ const Sidebar = ({ open, onToggle }) => {
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [adminExpanded, setAdminExpanded] = useState(false);
+  const [connectionsExpanded, setConnectionsExpanded] = useState(false);
   const [branding, setBranding] = useState({
     app_name: "StockHub",
     app_slogan: "Gestión de Catálogos",
@@ -108,6 +116,10 @@ const Sidebar = ({ open, onToggle }) => {
   useEffect(() => {
     if (location.pathname.startsWith("/admin")) {
       setAdminExpanded(true);
+    }
+    // Auto-expand connections section if on connections route
+    if (location.pathname === "/stores" || location.pathname === "/crm") {
+      setConnectionsExpanded(true);
     }
   }, [location.pathname]);
 
@@ -176,6 +188,54 @@ const Sidebar = ({ open, onToggle }) => {
             </Link>
           );
         })}
+
+        {/* Conexiones Section */}
+        <div className="pt-2 mt-2">
+          <button
+            onClick={() => setConnectionsExpanded(!connectionsExpanded)}
+            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm transition-all duration-200 font-medium ${
+              (location.pathname === "/stores" || location.pathname === "/crm")
+                ? "bg-blue-100 text-blue-700"
+                : "text-slate-600 hover:bg-slate-50"
+            }`}
+            data-testid="connections-section-toggle"
+          >
+            <div className="flex items-center gap-3">
+              <Link2 className="w-5 h-5 text-blue-600" strokeWidth={1.5} />
+              <span className="text-blue-700 font-semibold">Conexiones</span>
+            </div>
+            {connectionsExpanded ? (
+              <ChevronDown className="w-4 h-4 text-blue-500" />
+            ) : (
+              <ChevronRight className="w-4 h-4 text-blue-500" />
+            )}
+          </button>
+
+          {connectionsExpanded && (
+            <div className="mt-1 ml-2 space-y-1">
+              {connectionItems.map((item) => {
+                const Icon = item.icon;
+                const active = isActive(item.path);
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    data-testid={`nav-${item.path.replace("/", "")}`}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-sm text-sm transition-all duration-200 ${
+                      active 
+                        ? "bg-blue-100 text-blue-700 font-medium" 
+                        : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+                    }`}
+                    onClick={() => setMobileOpen(false)}
+                  >
+                    <Icon className="w-4 h-4" strokeWidth={1.5} />
+                    <span>{item.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
 
         {/* Admin Section - Only visible for SuperAdmin */}
         {isSuperAdmin && (

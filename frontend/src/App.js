@@ -25,6 +25,7 @@ import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import Subscriptions from "./pages/Subscriptions";
 import Webhooks from "./pages/Webhooks";
 import EmailConfig from "./pages/EmailConfig";
+import CRMPage from "./pages/CRM";
 
 // Admin Pages
 import AdminBranding from "./pages/AdminBranding";
@@ -525,6 +526,18 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <AdminEmailTemplates />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* CRM Route */}
+          <Route
+            path="/crm"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <CRMPage />
                 </MainLayout>
               </ProtectedRoute>
             }

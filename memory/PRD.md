@@ -198,6 +198,27 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] WooCommerce (API REST completa + exportación de categorías)
 - [x] PrestaShop (via prestapyt + exportación de categorías)
 - [x] Shopify (via ShopifyAPI + colecciones)
+- [x] Magento (REST API con soporte de imágenes base64)
+- [x] Wix eCommerce (REST API completa)
+
+### Integraciones CRM (NUEVO - 2026-03-05)
+- [x] **Módulo CRM Completo** (`/crm`)
+  - Menú "Conexiones" en el sidebar con:
+    - Tiendas (movido desde el nivel principal)
+    - CRM (nueva sección)
+  - **Dolibarr ERP/CRM**:
+    - Conexión vía API REST
+    - Sincronización bidireccional de productos
+    - Importación de clientes (thirdparties)
+    - Estadísticas: productos, clientes, pedidos
+    - Prueba de conexión
+  - Endpoints:
+    - GET /api/crm/connections - Listar conexiones CRM
+    - POST /api/crm/connections - Crear conexión
+    - PUT /api/crm/connections/{id} - Actualizar conexión
+    - DELETE /api/crm/connections/{id} - Eliminar conexión
+    - POST /api/crm/test-connection - Probar conexión
+    - POST /api/crm/connections/{id}/sync - Sincronizar datos
 - [ ] Wix eCommerce (solo UI/modelo)
 - [ ] Magento (solo UI/modelo)
 
