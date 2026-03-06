@@ -4,8 +4,8 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 3.2.0  
-**Última actualización:** 2026-03-05  
+**Versión:** 3.3.0  
+**Última actualización:** 2026-03-06  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
 ---
@@ -201,26 +201,50 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] Magento (REST API con soporte de imágenes base64)
 - [x] Wix eCommerce (REST API completa)
 
-### Integraciones CRM (NUEVO - 2026-03-05)
+### Integraciones CRM (COMPLETADO - 2026-03-06)
 - [x] **Módulo CRM Completo** (`/crm`)
   - Menú "Conexiones" en el sidebar con:
     - Tiendas (movido desde el nivel principal)
     - CRM (nueva sección)
-  - **Dolibarr ERP/CRM**:
-    - Conexión vía API REST
-    - Sincronización bidireccional de productos
-    - Importación de clientes (thirdparties)
-    - Estadísticas: productos, clientes, pedidos
-    - Prueba de conexión
+  - **Dolibarr ERP/CRM - IMPLEMENTACIÓN COMPLETA**:
+    - DolibarrClient class completa con todos los métodos de API
+    - Conexión vía API REST con header DOLAPIKEY
+    - **Sincronización de Productos**:
+      - Crear/actualizar productos (ref, label, description, price, stock, barcode, weight)
+      - Descripciones cortas/largas combinadas en campo description
+      - Marca guardada en note_public
+      - Upload de imágenes vía API documents/upload (base64)
+    - **Sincronización de Stock**:
+      - Movimientos de stock via /stockmovements
+      - Calcula diferencia entre stock actual y deseado
+      - Fallback a actualización directa del producto
+    - **Sincronización de Proveedores**:
+      - Crear/actualizar thirdparties con fournisseur=1
+      - Mapeo de campos: name, email, phone, address, city, zip, country_code
+      - Búsqueda por nombre para evitar duplicados
+      - Guarda dolibarr_id en registro local
+    - **Importación de Pedidos** desde WooCommerce:
+      - Obtiene pedidos processing/pending de tiendas WooCommerce
+      - Mapea líneas de pedido con productos de Dolibarr por SKU
+      - Guarda registro en crm_synced_orders para evitar reimportación
+    - Estadísticas: productos, clientes, proveedores, pedidos
+    - Prueba de conexión con mensaje de versión
+    - 7 opciones de sincronización configurables: productos, stock, precios, descripciones, imágenes, proveedores, pedidos
+  - **UI Frontend Completa**:
+    - Página CRM.jsx con lista de conexiones en cards
+    - Stats grid: productos, proveedores, clientes, pedidos
+    - Quick sync expandible por tipo
+    - Sync completo con diálogo de opciones
+    - Formulario de configuración con campos de Dolibarr
+    - Instrucciones para obtener API Key
   - Endpoints:
-    - GET /api/crm/connections - Listar conexiones CRM
-    - POST /api/crm/connections - Crear conexión
+    - GET /api/crm/connections - Listar conexiones CRM con stats
+    - POST /api/crm/connections - Crear conexión (test automático)
     - PUT /api/crm/connections/{id} - Actualizar conexión
     - DELETE /api/crm/connections/{id} - Eliminar conexión
-    - POST /api/crm/test-connection - Probar conexión
-    - POST /api/crm/connections/{id}/sync - Sincronizar datos
-- [ ] Wix eCommerce (solo UI/modelo)
-- [ ] Magento (solo UI/modelo)
+    - POST /api/crm/test-connection - Probar conexión sin guardar
+    - POST /api/crm/connections/{id}/sync - Sincronizar (all/products/suppliers/orders)
+    - GET /api/crm/connections/{id}/orders - Listar pedidos sincronizados
 
 ### Sistema de Configuración (Actualizado 2026-03-03)
 - [x] **Configuración persistente** en `/etc/suppliersync/config.json`
@@ -262,7 +286,16 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 
 ## Tareas Pendientes
 
-### Completadas en esta sesión (Fork actual - 2026-03-05)
+### Completadas en esta sesión (Fork actual - 2026-03-06)
+- [x] ✅ **Integración Dolibarr CRM Completa (P0)**
+  - DolibarrClient con CRUD completo de productos, proveedores, pedidos
+  - Sincronización de stock vía movimientos o directa
+  - Upload de imágenes a Dolibarr (base64)
+  - Importación de pedidos desde WooCommerce a Dolibarr
+  - UI completa con opciones de sincronización
+  - 100% tests passed (16/16 backend, frontend OK)
+
+### Completadas en sesión anterior (2026-03-05)
 - [x] ✅ **Integración Stripe Completa en Suscripciones (P0)**
   - Checkout sessions con emergentintegrations
   - Redirección a Stripe para pago seguro
@@ -335,6 +368,24 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 ---
 
 ## Historial de Cambios
+
+### 2026-03-06 (Fork actual - Integración CRM Dolibarr)
+- ✅ **Implementación Completa de Integración CRM con Dolibarr**
+  - DolibarrClient class (líneas 23-510 en crm.py):
+    - test_connection(): Prueba API con versión
+    - CRUD de productos: get_products, get_product_by_ref/id, create_product, update_product
+    - upload_product_image(): Sube imágenes base64 a Dolibarr
+    - update_stock(): Actualiza stock via movimientos
+    - CRUD de proveedores (thirdparties): get_suppliers, create_supplier, update_supplier
+    - Pedidos: get_orders, get_supplier_orders, create_order, create_supplier_order
+    - get_stats(): Estadísticas para cards de UI
+  - Funciones de sincronización:
+    - sync_products_to_dolibarr(): Sincroniza productos con todas las opciones
+    - sync_suppliers_to_dolibarr(): Sincroniza proveedores
+    - sync_orders_to_dolibarr(): Importa pedidos de WooCommerce a registro local
+  - Frontend CRM.jsx: UI completa con cards, stats, sync options, diálogos
+  - Sidebar actualizado: Menú "Conexiones" con Tiendas y CRM
+  - Tests: 16/16 backend, 100% frontend pasados
 
 ### 2026-03-04 (Fork actual - Asignación Masiva de Categorías)
 - ✅ **Asignación Masiva de Categorías a Productos**
