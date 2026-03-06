@@ -340,7 +340,13 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         except Exception as e:
             logger.warning(f"Could not fetch existing products: {e}")
     
-    # ==================== STEP 3: EXPORT PRODUCTS ====================
+    # ==================== STEP 3: EXPORT PRODUCTS IN BATCHES ====================
+    # WooCommerce batch API allows up to 100 items per request
+    BATCH_SIZE = 50  # Use 50 for better reliability
+    
+    products_to_create = []
+    products_to_update = []
+    
     for catalog_item in catalog_items:
         product = products_map.get(catalog_item["product_id"])
         if not product:
@@ -416,33 +422,64 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             
             if product.get("weight"):
                 wc_product["weight"] = str(product["weight"])
+            
+            # Determine if create or update
             existing_wc_id = existing_eans.get(ean) if ean else None
             if not existing_wc_id and sku:
                 existing_wc_id = existing_skus.get(sku)
+            
             if existing_wc_id and request.update_existing:
-                response = await asyncio.to_thread(wcapi.put, f"products/{existing_wc_id}", wc_product)
-                if response.status_code in [200, 201]:
-                    updated += 1
-                else:
-                    failed += 1
-                    errors.append(f"Error actualizando {ean or sku}: {response.text[:100]}")
+                wc_product["id"] = existing_wc_id
+                products_to_update.append(wc_product)
             else:
-                response = await asyncio.to_thread(wcapi.post, "products", wc_product)
-                if response.status_code in [200, 201]:
-                    created += 1
-                    if ean:
-                        try:
-                            new_id = response.json().get("id")
-                            if new_id:
-                                existing_eans[ean] = new_id
-                        except Exception:
-                            pass
-                else:
-                    failed += 1
-                    errors.append(f"Error creando {ean or sku or product.get('name', '')}: {response.text[:100]}")
+                products_to_create.append({"product": wc_product, "ean": ean})
+                
         except Exception as e:
             failed += 1
             errors.append(f"Error procesando {product.get('sku', '')}: {str(e)[:100]}")
+    
+    # Process creates in batches
+    for i in range(0, len(products_to_create), BATCH_SIZE):
+        batch = products_to_create[i:i + BATCH_SIZE]
+        batch_data = {"create": [item["product"] for item in batch]}
+        try:
+            response = await asyncio.to_thread(wcapi.post, "products/batch", batch_data)
+            if response.status_code in [200, 201]:
+                result = response.json()
+                created += len(result.get("create", []))
+                # Update EAN mapping for created products
+                for j, created_product in enumerate(result.get("create", [])):
+                    if j < len(batch) and batch[j]["ean"]:
+                        existing_eans[batch[j]["ean"]] = created_product.get("id")
+            else:
+                failed += len(batch)
+                errors.append(f"Error en batch create: {response.text[:100]}")
+        except Exception as e:
+            failed += len(batch)
+            errors.append(f"Error en batch create: {str(e)[:100]}")
+        
+        # Small delay between batches to avoid rate limiting
+        await asyncio.sleep(0.5)
+    
+    # Process updates in batches
+    for i in range(0, len(products_to_update), BATCH_SIZE):
+        batch = products_to_update[i:i + BATCH_SIZE]
+        batch_data = {"update": batch}
+        try:
+            response = await asyncio.to_thread(wcapi.post, "products/batch", batch_data)
+            if response.status_code in [200, 201]:
+                result = response.json()
+                updated += len(result.get("update", []))
+            else:
+                failed += len(batch)
+                errors.append(f"Error en batch update: {response.text[:100]}")
+        except Exception as e:
+            failed += len(batch)
+            errors.append(f"Error en batch update: {str(e)[:100]}")
+        
+        # Small delay between batches
+        await asyncio.sleep(0.5)
+    
     now = datetime.now(timezone.utc).isoformat()
     await db.woocommerce_configs.update_one({"id": request.config_id}, {"$set": {"last_sync": now, "products_synced": created + updated}})
     

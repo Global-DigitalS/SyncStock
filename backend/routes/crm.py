@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # ==================== DOLIBARR CLIENT ====================
 
 class DolibarrClient:
-    """Dolibarr ERP/CRM API Client - Full Integration"""
+    """Dolibarr ERP/CRM API Client - Optimized with connection pooling and rate limiting"""
     
     def __init__(self, api_url: str, api_key: str):
         self.base_url = api_url.rstrip('/')
@@ -32,15 +32,42 @@ class DolibarrClient:
             'Content-Type': 'application/json',
             'Accept': 'application/json'
         }
+        # Reusable session for connection pooling
+        self.session = requests.Session()
+        self.session.headers.update(self.headers)
+        # Configure connection pooling
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=10,
+            pool_maxsize=10,
+            max_retries=3
+        )
+        self.session.mount('http://', adapter)
+        self.session.mount('https://', adapter)
+        # Rate limiting: minimum delay between requests (seconds)
+        self.min_delay = 0.1  # 100ms between requests
+        self.last_request_time = 0
+    
+    def _rate_limited_request(self, method: str, url: str, **kwargs) -> requests.Response:
+        """Make a rate-limited request"""
+        import time
+        # Ensure minimum delay between requests
+        elapsed = time.time() - self.last_request_time
+        if elapsed < self.min_delay:
+            time.sleep(self.min_delay - elapsed)
+        
+        kwargs.setdefault('timeout', 30)
+        response = self.session.request(method, url, **kwargs)
+        self.last_request_time = time.time()
+        return response
+    
+    def close(self):
+        """Close the session"""
+        self.session.close()
     
     def test_connection(self) -> Dict:
         """Test API connection"""
         try:
-            response = requests.get(
-                f"{self.base_url}/status",
-                headers=self.headers,
-                timeout=30
-            )
+            response = self._rate_limited_request('GET', f"{self.base_url}/status", timeout=30)
             if response.status_code == 200:
                 data = response.json()
                 return {
@@ -66,9 +93,9 @@ class DolibarrClient:
     def get_products(self, limit: int = 500) -> List[Dict]:
         """Get products from Dolibarr"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/products",
-                headers=self.headers,
                 params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
                 timeout=60
             )
@@ -82,9 +109,9 @@ class DolibarrClient:
     def get_product_by_ref(self, ref: str) -> Optional[Dict]:
         """Get a product by reference (SKU)"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/products/ref/{ref}",
-                headers=self.headers,
                 timeout=30
             )
             if response.status_code == 200:
@@ -93,6 +120,15 @@ class DolibarrClient:
         except Exception as e:
             logger.error(f"Dolibarr get_product_by_ref error: {e}")
             return None
+    
+    def get_products_by_refs_batch(self, refs: List[str]) -> Dict[str, Dict]:
+        """Get multiple products by reference in batch - returns dict of ref -> product"""
+        result = {}
+        for ref in refs:
+            product = self.get_product_by_ref(ref)
+            if product:
+                result[ref] = product
+        return result
     
     def create_product(self, product_data: Dict) -> Dict:
         """Create a new product in Dolibarr with full data including purchase price"""
@@ -130,9 +166,9 @@ class DolibarrClient:
             if notes:
                 payload["note_public"] = "\n".join(notes)
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/products",
-                headers=self.headers,
                 json=payload,
                 timeout=30
             )
@@ -194,9 +230,9 @@ class DolibarrClient:
             if notes:
                 payload["note_public"] = "\n".join(notes)
             
-            response = requests.put(
+            response = self._rate_limited_request(
+                'PUT',
                 f"{self.base_url}/products/{product_id}",
-                headers=self.headers,
                 json=payload,
                 timeout=30
             )
@@ -267,9 +303,9 @@ class DolibarrClient:
                 "overwriteifexists": 1
             }
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/documents/upload",
-                headers=self.headers,
                 json=payload,
                 timeout=60
             )
@@ -325,7 +361,6 @@ class DolibarrClient:
             
             response = requests.post(
                 f"{self.base_url}/stockmovements",
-                headers=self.headers,
                 json=payload,
                 timeout=30
             )
@@ -346,7 +381,6 @@ class DolibarrClient:
         try:
             response = requests.get(
                 f"{self.base_url}/warehouses",
-                headers=self.headers,
                 timeout=30
             )
             if response.status_code == 200:
@@ -366,7 +400,6 @@ class DolibarrClient:
             }
             response = requests.post(
                 f"{self.base_url}/warehouses",
-                headers=self.headers,
                 json=payload,
                 timeout=30
             )
@@ -396,7 +429,6 @@ class DolibarrClient:
         try:
             response = requests.get(
                 f"{self.base_url}/products/{product_id}",
-                headers=self.headers,
                 timeout=30
             )
             if response.status_code == 200:
@@ -421,7 +453,6 @@ class DolibarrClient:
             
             response = requests.get(
                 f"{self.base_url}/thirdparties",
-                headers=self.headers,
                 params=params,
                 timeout=60
             )
@@ -457,7 +488,6 @@ class DolibarrClient:
             
             response = requests.post(
                 f"{self.base_url}/thirdparties",
-                headers=self.headers,
                 json=payload,
                 timeout=30
             )
@@ -485,7 +515,6 @@ class DolibarrClient:
             
             response = requests.put(
                 f"{self.base_url}/thirdparties/{supplier_id}",
-                headers=self.headers,
                 json=payload,
                 timeout=30
             )
@@ -510,7 +539,6 @@ class DolibarrClient:
             try:
                 response = requests.get(
                     f"{self.base_url}/thirdparties",
-                    headers=self.headers,
                     params={'sqlfilters': f"(t.nom:=:'{name}')"},
                     timeout=30
                 )
@@ -553,7 +581,6 @@ class DolibarrClient:
             
             response = requests.post(
                 f"{self.base_url}/products/{product_id}/purchase_prices",
-                headers=self.headers,
                 json=payload,
                 timeout=30
             )
@@ -579,7 +606,6 @@ class DolibarrClient:
         try:
             response = requests.get(
                 f"{self.base_url}/orders",
-                headers=self.headers,
                 params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
                 timeout=60
             )
@@ -595,7 +621,6 @@ class DolibarrClient:
         try:
             response = requests.get(
                 f"{self.base_url}/supplierorders",
-                headers=self.headers,
                 params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
                 timeout=60
             )
@@ -629,7 +654,6 @@ class DolibarrClient:
             
             response = requests.post(
                 f"{self.base_url}/orders",
-                headers=self.headers,
                 json=payload,
                 timeout=30
             )
@@ -663,7 +687,6 @@ class DolibarrClient:
             
             response = requests.post(
                 f"{self.base_url}/supplierorders",
-                headers=self.headers,
                 json=payload,
                 timeout=30
             )
