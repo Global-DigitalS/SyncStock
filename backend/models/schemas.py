@@ -484,9 +484,12 @@ class SubscriptionPlan(BaseModel):
     features: List[str] = []
     is_active: bool = True
     created_at: str
-    # CRM Sync options
-    crm_sync_enabled: bool = False  # Whether this plan allows CRM auto-sync
-    crm_sync_intervals: List[int] = []  # Allowed intervals in hours: [1, 6, 12, 24]
+    # Auto-sync options (unified for all services: suppliers, stores, CRM)
+    auto_sync_enabled: bool = False  # Whether this plan allows auto-sync
+    sync_intervals: List[int] = []  # Allowed intervals in hours: [1, 6, 12, 24]
+    # Legacy fields for backwards compatibility
+    crm_sync_enabled: bool = False
+    crm_sync_intervals: List[int] = []
 
 class UserSubscription(BaseModel):
     id: str

@@ -1,0 +1,109 @@
+{
+  "summary": "Unified Sync Configuration Feature Testing Complete - All backend APIs and frontend UI working correctly. Fixed ImportError in unified_sync.py and added auto_sync_enabled/sync_intervals fields to admin.py models. All 17 backend tests passed, frontend UI fully functional.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "backend_tests_passed": [
+    "GET /api/sync/settings - Requires authentication (401/403 without auth)",
+    "GET /api/sync/settings - Returns expected fields: enabled, intervals, current_interval, sync_suppliers, sync_stores, sync_crm",
+    "GET /api/sync/settings - User with Enterprise CRM plan gets enabled=true and intervals=[1,6,12,24]",
+    "GET /api/sync/settings - Service toggle fields are booleans",
+    "PUT /api/sync/settings - Requires authentication",
+    "PUT /api/sync/settings - Updates sync interval successfully",
+    "PUT /api/sync/settings - Updates service toggles (sync_suppliers, sync_stores, sync_crm)",
+    "PUT /api/sync/settings - Calculates next_sync time when interval is set",
+    "PUT /api/sync/settings - Invalid interval (3h) is rejected if not in plan",
+    "POST /api/sync/run-now - Requires authentication",
+    "POST /api/sync/run-now - Returns expected structure with status, message, details",
+    "POST /api/sync/run-now - Respects service toggles (CRM=null when disabled)",
+    "POST /api/sync/run-now - Updates last_sync timestamp",
+    "GET /api/admin/plans - Returns plans with auto_sync_enabled and sync_intervals",
+    "POST /api/admin/plans - Creates plan with auto_sync_enabled=true and sync_intervals=[1,6,12,24]",
+    "PUT /api/admin/plans/{id} - Updates auto_sync_enabled and sync_intervals",
+    "GET /api/health - Confirms API is running (scheduler active)"
+  ],
+  "frontend_tests_passed": [
+    "Sidebar shows 'Sincronización' link with RefreshCw icon",
+    "SyncSettings page displays 'Sincronización Automática' title",
+    "SyncSettings page shows 'Sincronizar Ahora' button (data-testid='sync-now-btn')",
+    "SyncSettings page shows interval selector with 'Cada 6 horas' selected",
+    "SyncSettings page shows available intervals badges: Cada hora, Cada 6 horas, Cada 12 horas, Cada 24 horas",
+    "SyncSettings page shows service toggles: Proveedores, Tiendas, CRM with switches",
+    "SyncSettings page shows 'Próxima sincronización' datetime",
+    "SyncSettings page shows 'Guardar Configuración' button",
+    "Sync Now button triggers sync and shows 'Resultado de Sincronización' section",
+    "Sync results show Proveedores, Tiendas, CRM cards with sync counts",
+    "Toast notification appears: 'Sincronización completada: X elementos sincronizados, Y errores'",
+    "AdminPlans page shows 'Gestión de Planes' with plan cards",
+    "AdminPlans form shows 'Sincronización Automática' section (not 'CRM Sync')",
+    "AdminPlans form shows toggle for enabling auto-sync",
+    "AdminPlans form shows interval checkboxes: Cada hora, Cada 6 horas, Cada 12 horas, Cada 24 horas when enabled",
+    "AdminPlans form shows help text: 'Los usuarios de este plan podrán elegir entre estos intervalos para sincronizar Proveedores, Tiendas y CRM'",
+    "Plan cards show 'Sync: 1h, 6h, 12h, 24h' when sync is enabled"
+  ],
+  "scheduler_verified": {
+    "run_scheduled_syncs": "Configured in server.py line 101 with APScheduler",
+    "job_id": "unified_sync",
+    "interval": "hours=1",
+    "description": "Runs every hour to check user-configured syncs and execute due syncs"
+  },
+  "bugs_fixed": [
+    {
+      "file": "/app/backend/services/unified_sync.py",
+      "issue": "ImportError: sync_woocommerce_store function doesn't exist",
+      "fix": "Changed import from 'sync_woocommerce_store' to 'sync_woocommerce_store_price_stock'"
+    },
+    {
+      "file": "/app/backend/routes/admin.py",
+      "issue": "SubscriptionPlanCreate/Update models missing auto_sync_enabled and sync_intervals fields",
+      "fix": "Added auto_sync_enabled: bool and sync_intervals: List[int] to both Pydantic models"
+    }
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_unified_sync.py",
+    "/app/test_reports/pytest/pytest_unified_sync.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "unified_sync.py properly implements get_user_sync_settings() to check user's plan for sync permissions",
+    "run_scheduled_syncs() correctly verifies user plan permissions before executing sync",
+    "SyncSettings.jsx properly fetches settings via /api/sync/settings and displays controls based on plan",
+    "AdminPlans.jsx properly includes unified sync section with switch and interval checkboxes",
+    "Scheduler is properly configured to run unified_sync check every 1 hour"
+  ],
+  "updated_files": [
+    "/app/backend/services/unified_sync.py (fixed import error)",
+    "/app/backend/routes/admin.py (added auto_sync_enabled and sync_intervals to Pydantic models)",
+    "/app/backend/tests/test_unified_sync.py (created)"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests passed)",
+    "frontend": "100% (all UI flows working)"
+  },
+  "test_credentials": {
+    "email": "testuser@example.com",
+    "password": "password",
+    "role": "superadmin",
+    "plan": "Enterprise CRM with auto_sync_enabled=true and sync_intervals=[1,6,12,24]"
+  },
+  "seed_data_creation": "Tests create and cleanup TEST_ prefixed plans",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Unified Sync feature is fully implemented and tested. Backend: unified_sync.py handles scheduled syncs, dashboard.py has /api/sync/settings and /api/sync/run-now endpoints, admin.py and schemas.py support auto_sync_enabled/sync_intervals in plans. Frontend: SyncSettings.jsx page shows sync configuration with interval selector and service toggles, AdminPlans.jsx allows SuperAdmin to configure sync options per plan. Scheduler runs every hour via APScheduler job 'unified_sync' to check and execute due syncs.",
+  "features_verified": {
+    "get_sync_settings": "GET /api/sync/settings returns {enabled, intervals, current_interval, sync_suppliers, sync_stores, sync_crm, last_sync, next_sync}",
+    "update_sync_settings": "PUT /api/sync/settings accepts {interval, sync_suppliers, sync_stores, sync_crm}",
+    "run_sync_now": "POST /api/sync/run-now executes immediate sync for all enabled services",
+    "subscription_plan_sync_fields": "SubscriptionPlan model includes auto_sync_enabled and sync_intervals",
+    "admin_plan_sync_config": "POST/PUT /api/admin/plans supports auto_sync_enabled and sync_intervals",
+    "scheduler_job": "APScheduler job 'unified_sync' runs run_scheduled_syncs every 1 hour",
+    "frontend_sync_settings": "SyncSettings page with interval selector, service toggles, Sync Now button",
+    "frontend_admin_plans": "AdminPlans form has unified sync toggle and interval checkboxes"
+  }
+}

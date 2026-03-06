@@ -39,6 +39,7 @@ from routes.crm import router as crm_router
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
 from services.crm_scheduler import run_scheduled_crm_syncs
+from services.unified_sync import run_scheduled_syncs
 
 # Initialize scheduler
 scheduler = AsyncIOScheduler()
@@ -93,11 +94,13 @@ ws_manager = ConnectionManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    scheduler.add_job(sync_all_suppliers, 'interval', hours=6, id='sync_suppliers', replace_existing=True)
-    scheduler.add_job(sync_all_woocommerce_stores, 'interval', hours=12, id='sync_woocommerce', replace_existing=True)
-    scheduler.add_job(run_scheduled_crm_syncs, 'interval', hours=1, id='sync_crm', replace_existing=True)
+    # Legacy scheduled syncs (fallback for users without unified config)
+    scheduler.add_job(sync_all_suppliers, 'interval', hours=6, id='sync_suppliers_legacy', replace_existing=True)
+    scheduler.add_job(sync_all_woocommerce_stores, 'interval', hours=12, id='sync_woocommerce_legacy', replace_existing=True)
+    # Unified sync scheduler - runs every hour to check user-configured syncs
+    scheduler.add_job(run_scheduled_syncs, 'interval', hours=1, id='unified_sync', replace_existing=True)
     scheduler.start()
-    logger.info("Scheduler started - Supplier sync every 6h, WooCommerce every 12h, CRM check every 1h")
+    logger.info("Scheduler started - Unified sync check every 1h, Legacy: Suppliers 6h, WooCommerce 12h")
     yield
     # Shutdown
     scheduler.shutdown()

@@ -46,8 +46,8 @@ const AdminPlans = () => {
     features: [],
     is_default: false,
     sort_order: 0,
-    crm_sync_enabled: false,
-    crm_sync_intervals: []
+    auto_sync_enabled: false,
+    sync_intervals: []
   });
   const [newFeature, setNewFeature] = useState("");
   
@@ -90,8 +90,8 @@ const AdminPlans = () => {
       features: [],
       is_default: false,
       sort_order: plans.length,
-      crm_sync_enabled: false,
-      crm_sync_intervals: []
+      auto_sync_enabled: false,
+      sync_intervals: []
     });
     setSelectedPlan(null);
     setNewFeature("");
@@ -116,8 +116,8 @@ const AdminPlans = () => {
       features: plan.features || [],
       is_default: plan.is_default || false,
       sort_order: plan.sort_order || 0,
-      crm_sync_enabled: plan.crm_sync_enabled || false,
-      crm_sync_intervals: plan.crm_sync_intervals || []
+      auto_sync_enabled: plan.auto_sync_enabled || plan.crm_sync_enabled || false,
+      sync_intervals: plan.sync_intervals || plan.crm_sync_intervals || []
     });
     setShowDialog(true);
   };
@@ -263,11 +263,11 @@ const AdminPlans = () => {
                   <Store className="w-4 h-4 text-slate-400" />
                   <span>{plan.max_stores} tiendas</span>
                 </div>
-                {plan.crm_sync_enabled && (
+                {(plan.auto_sync_enabled || plan.crm_sync_enabled) && (
                   <div className="flex items-center gap-2 text-sm">
-                    <Building2 className="w-4 h-4 text-blue-500" />
+                    <Clock className="w-4 h-4 text-blue-500" />
                     <span className="text-blue-600 font-medium">
-                      Sync CRM: {plan.crm_sync_intervals?.map(h => `${h}h`).join(", ") || "24h"}
+                      Sync: {(plan.sync_intervals || plan.crm_sync_intervals)?.map(h => `${h}h`).join(", ") || "24h"}
                     </span>
                   </div>
                 )}
@@ -477,28 +477,28 @@ const AdminPlans = () => {
               />
             </div>
 
-            {/* CRM Auto-Sync */}
+            {/* Auto-Sync Unificada */}
             <div className="space-y-4 pt-4 border-t">
               <div className="flex items-center justify-between">
                 <div className="space-y-0.5">
                   <Label className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-blue-600" />
-                    Sincronización CRM Automática
+                    <Clock className="w-4 h-4 text-blue-600" />
+                    Sincronización Automática
                   </Label>
-                  <p className="text-sm text-slate-500">Permite sincronización programada con CRM</p>
+                  <p className="text-sm text-slate-500">Sincronización programada de Proveedores, Tiendas y CRM</p>
                 </div>
                 <Switch
-                  checked={formData.crm_sync_enabled}
+                  checked={formData.auto_sync_enabled}
                   onCheckedChange={(checked) => setFormData({ 
                     ...formData, 
-                    crm_sync_enabled: checked,
-                    crm_sync_intervals: checked ? [24] : []
+                    auto_sync_enabled: checked,
+                    sync_intervals: checked ? [24] : []
                   })}
-                  data-testid="crm-sync-enabled-switch"
+                  data-testid="auto-sync-enabled-switch"
                 />
               </div>
               
-              {formData.crm_sync_enabled && (
+              {formData.auto_sync_enabled && (
                 <div className="space-y-2 pl-6 border-l-2 border-blue-200">
                   <Label className="text-sm font-medium flex items-center gap-2">
                     <Clock className="w-4 h-4" />
@@ -509,18 +509,18 @@ const AdminPlans = () => {
                       <label 
                         key={option.value}
                         className={`flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-colors ${
-                          formData.crm_sync_intervals.includes(option.value)
+                          formData.sync_intervals.includes(option.value)
                             ? "bg-blue-50 border-blue-300 text-blue-700"
                             : "bg-slate-50 border-slate-200 hover:border-slate-300"
                         }`}
                       >
                         <Checkbox
-                          checked={formData.crm_sync_intervals.includes(option.value)}
+                          checked={formData.sync_intervals.includes(option.value)}
                           onCheckedChange={(checked) => {
                             const newIntervals = checked
-                              ? [...formData.crm_sync_intervals, option.value].sort((a, b) => a - b)
-                              : formData.crm_sync_intervals.filter(i => i !== option.value);
-                            setFormData({ ...formData, crm_sync_intervals: newIntervals });
+                              ? [...formData.sync_intervals, option.value].sort((a, b) => a - b)
+                              : formData.sync_intervals.filter(i => i !== option.value);
+                            setFormData({ ...formData, sync_intervals: newIntervals });
                           }}
                         />
                         <span className="text-sm font-medium">{option.label}</span>
@@ -528,7 +528,7 @@ const AdminPlans = () => {
                     ))}
                   </div>
                   <p className="text-xs text-slate-500 mt-2">
-                    Los usuarios de este plan podrán elegir entre estos intervalos para sincronizar con su CRM
+                    Los usuarios de este plan podrán elegir entre estos intervalos para sincronizar Proveedores, Tiendas y CRM
                   </p>
                 </div>
               )}

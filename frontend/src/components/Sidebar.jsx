@@ -30,7 +30,8 @@ import {
   ChevronRight,
   DollarSign,
   Link2,
-  Building2
+  Building2,
+  RefreshCw
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -44,6 +45,7 @@ const navItems = [
   { path: "/webhooks", label: "Webhooks", icon: Webhook },
   { path: "/price-history", label: "Historial de Precios", icon: TrendingUp },
   { path: "/sync-history", label: "Historial de Syncs", icon: History },
+  { path: "/sync-settings", label: "Sincronización", icon: RefreshCw },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
   { path: "/subscriptions", label: "Suscripciones", icon: CreditCard },
 ];

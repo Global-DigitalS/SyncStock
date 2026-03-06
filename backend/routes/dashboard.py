@@ -439,3 +439,45 @@ async def export_catalog(request: ExportRequest, user: dict = Depends(get_curren
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
+
+
+
+# ==================== UNIFIED SYNC CONFIGURATION ====================
+
+@router.get("/sync/settings")
+async def get_sync_settings(user: dict = Depends(get_current_user)):
+    """Get user's unified sync settings"""
+    from services.unified_sync import get_user_sync_settings
+    return await get_user_sync_settings(user["id"])
+
+
+@router.put("/sync/settings")
+async def update_sync_settings(request: dict, user: dict = Depends(get_current_user)):
+    """Update user's unified sync settings"""
+    from services.unified_sync import update_user_sync_settings
+    return await update_user_sync_settings(user["id"], request)
+
+
+@router.post("/sync/run-now")
+async def run_sync_now(user: dict = Depends(get_current_user)):
+    """
+    Run immediate sync for the current user
+    Syncs all enabled services: suppliers, stores, CRM
+    """
+    from services.unified_sync import run_user_sync
+    
+    result = await run_user_sync(user["id"])
+    
+    # Calculate totals
+    total_synced = 0
+    total_errors = 0
+    for key in ["suppliers", "stores", "crm"]:
+        if result.get(key):
+            total_synced += result[key].get("synced", 0)
+            total_errors += result[key].get("errors", 0)
+    
+    return {
+        "status": "success" if total_errors == 0 else "partial",
+        "message": f"Sincronización completada: {total_synced} elementos sincronizados, {total_errors} errores",
+        "details": result
+    }
