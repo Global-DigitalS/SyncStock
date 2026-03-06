@@ -684,7 +684,7 @@ const CRMPage = () => {
                   <SelectItem value="all">Todos los productos seleccionados</SelectItem>
                   {catalogs.map((catalog) => (
                     <SelectItem key={catalog.id} value={catalog.id}>
-                      {catalog.name} ({catalog.products?.length || 0} productos)
+                      {catalog.name} ({catalog.product_count || 0} productos)
                     </SelectItem>
                   ))}
                 </SelectContent>

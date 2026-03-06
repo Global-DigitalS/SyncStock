@@ -915,6 +915,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     
     # Build query filter
     query = {"user_id": user_id, "is_selected": True}
+    catalog_items_map = {}  # product_id -> catalog_item data
     
     # If catalog_id is provided, get only products from that catalog
     if catalog_id:
@@ -922,12 +923,24 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
         if not catalog:
             return {"status": "error", "message": "Catálogo no encontrado", "created": 0, "updated": 0}
         
-        # Get EANs from catalog products
-        catalog_eans = [p.get("ean") for p in catalog.get("products", []) if p.get("ean")]
-        if not catalog_eans:
+        # Get catalog_items with custom prices
+        catalog_items = await db.catalog_items.find(
+            {"catalog_id": catalog_id},
+            {"_id": 0}
+        ).to_list(10000)
+        
+        if not catalog_items:
             return {"status": "warning", "message": "El catálogo no tiene productos", "created": 0, "updated": 0}
         
-        query["ean"] = {"$in": catalog_eans}
+        product_ids = [item.get("product_id") for item in catalog_items if item.get("product_id")]
+        if not product_ids:
+            return {"status": "warning", "message": "El catálogo no tiene productos válidos", "created": 0, "updated": 0}
+        
+        # Create map of product_id -> catalog_item for custom prices
+        catalog_items_map = {item.get("product_id"): item for item in catalog_items}
+        
+        # Change query to filter by product IDs instead of is_selected
+        query = {"user_id": user_id, "id": {"$in": product_ids}}
     
     # Get products based on query
     products = await db.products.find(query, {"_id": 0}).to_list(10000)
@@ -966,11 +979,20 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 purchase_price = product.get("price", 0)
                 product_data["cost_price"] = purchase_price
                 
-                # Sale price = final_price (with markup) or pvp or custom_price
-                # Priority: final_price > pvp > custom_price > calculated markup
-                sale_price = product.get("final_price") or product.get("pvp") or product.get("custom_price")
+                # Get catalog item if syncing from a catalog (may have custom price)
+                catalog_item = catalog_items_map.get(product.get("id"))
+                
+                # Sale price priority:
+                # 1. Catalog item custom_price (if syncing from catalog)
+                # 2. Product final_price
+                # 3. Product pvp
+                # 4. Fallback to purchase price
+                sale_price = None
+                if catalog_item:
+                    sale_price = catalog_item.get("custom_price") or catalog_item.get("final_price")
+                if not sale_price:
+                    sale_price = product.get("final_price") or product.get("pvp") or product.get("custom_price")
                 if not sale_price and purchase_price:
-                    # If no sale price defined, use purchase price (no markup)
                     sale_price = purchase_price
                 product_data["price"] = sale_price or 0
             
