@@ -4,7 +4,7 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 3.3.0  
+**Versión:** 3.4.0  
 **Última actualización:** 2026-03-06  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
 
@@ -54,8 +54,10 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] **Integración en Páginas**
   - SupplierDetail.jsx: Diálogo completo al ver producto de proveedor
   - Products.jsx: Botón "Editar" para modificar producto del mejor proveedor
-- [x] **Sincronización con Tiendas Online** (ACTUALIZADO - 2026-03-05)
+- [x] **Sincronización con Tiendas Online** (ACTUALIZADO - 2026-03-06)
   - **WooCommerce**: Exporta nombre, short_description, long_description, brand, images (principal + galería)
+  - **NUEVO: Creación Automática de Categorías** - Ahora crea las categorías en WooCommerce automáticamente antes de exportar productos, soportando jerarquías con separador '>'
+  - **NUEVO: Campo Personalizado Proveedor** - Añade campos `_supplier_name` y `supplier_name` con el nombre del proveedor de origen
   - **PrestaShop**: Exporta nombre, description, description_short, EAN, peso, imágenes (principal + galería)
   - **Shopify**: Exporta título, body_html, vendor (brand), categoría, SKU, EAN, peso, imágenes (principal + galería), metafields para short_description
   - **Magento**: Exporta nombre, short_description, description, marca (manufacturer), EAN, peso, imágenes (codificadas en base64)
@@ -201,28 +203,36 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - [x] Magento (REST API con soporte de imágenes base64)
 - [x] Wix eCommerce (REST API completa)
 
-### Integraciones CRM (COMPLETADO - 2026-03-06)
+### Integraciones CRM (ACTUALIZADO - 2026-03-06)
 - [x] **Módulo CRM Completo** (`/crm`)
   - Menú "Conexiones" en el sidebar con:
     - Tiendas (movido desde el nivel principal)
     - CRM (nueva sección)
-  - **Dolibarr ERP/CRM - IMPLEMENTACIÓN COMPLETA**:
+  - **Dolibarr ERP/CRM - IMPLEMENTACIÓN COMPLETA CON CORRECCIONES**:
     - DolibarrClient class completa con todos los métodos de API
     - Conexión vía API REST con header DOLAPIKEY
-    - **Sincronización de Productos**:
+    - **Sincronización de Productos** (MEJORADO 2026-03-06):
       - Crear/actualizar productos (ref, label, description, price, stock, barcode, weight)
+      - **NUEVO: Precio de compra** (`cost_price`) - El precio del proveedor se guarda como precio de compra
       - Descripciones cortas/largas combinadas en campo description
-      - Marca guardada en note_public
+      - Marca y proveedor guardados en note_public
       - Upload de imágenes vía API documents/upload (base64)
-    - **Sincronización de Stock**:
+    - **Sincronización de Stock** (MEJORADO 2026-03-06):
       - Movimientos de stock via /stockmovements
       - Calcula diferencia entre stock actual y deseado
+      - **Contador de stocks sincronizados en respuesta**
       - Fallback a actualización directa del producto
-    - **Sincronización de Proveedores**:
+    - **Sincronización de Proveedores** (MEJORADO 2026-03-06):
       - Crear/actualizar thirdparties con fournisseur=1
       - Mapeo de campos: name, email, phone, address, city, zip, country_code
       - Búsqueda por nombre para evitar duplicados
+      - **NUEVO: Vinculación de productos a proveedores** con precio de compra
       - Guarda dolibarr_id en registro local
+    - **Sincronización de Imágenes** (MEJORADO 2026-03-06):
+      - Descarga imagen desde URL
+      - Conversión a base64 con detección de formato (png, gif, jpg)
+      - Upload a Dolibarr via documents/upload
+      - **Contador de imágenes sincronizadas en respuesta**
     - **Importación de Pedidos** desde WooCommerce:
       - Obtiene pedidos processing/pending de tiendas WooCommerce
       - Mapea líneas de pedido con productos de Dolibarr por SKU
