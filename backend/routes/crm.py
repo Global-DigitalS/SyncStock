@@ -850,6 +850,7 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
         raise HTTPException(status_code=404, detail="Conexión no encontrada")
     
     sync_type = request.get("sync_type", "all")
+    catalog_id = request.get("catalog_id")  # Optional: filter by catalog
     platform = connection["platform"]
     config = connection["config"]
     sync_settings = connection.get("sync_settings", {})
@@ -868,7 +869,7 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
         
         # Sync products (stock, price, description, images)
         if sync_type in ["all", "products"]:
-            results["products"] = await sync_products_to_dolibarr(client, user["id"], sync_settings)
+            results["products"] = await sync_products_to_dolibarr(client, user["id"], sync_settings, catalog_id)
         
         # Sync suppliers
         if sync_type in ["all", "suppliers"]:
@@ -899,16 +900,29 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
     return {"status": "error", "message": f"Plataforma no soportada: {platform}"}
 
 
-async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None) -> Dict:
+async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None, catalog_id: str = None) -> Dict:
     """Sync products from our catalog to Dolibarr with full data including purchase price, stock and images"""
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
     
-    # Get user's selected products
-    products = await db.products.find(
-        {"user_id": user_id, "is_selected": True},
-        {"_id": 0}
-    ).to_list(10000)
+    # Build query filter
+    query = {"user_id": user_id, "is_selected": True}
+    
+    # If catalog_id is provided, get only products from that catalog
+    if catalog_id:
+        catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user_id})
+        if not catalog:
+            return {"status": "error", "message": "Catálogo no encontrado", "created": 0, "updated": 0}
+        
+        # Get EANs from catalog products
+        catalog_eans = [p.get("ean") for p in catalog.get("products", []) if p.get("ean")]
+        if not catalog_eans:
+            return {"status": "warning", "message": "El catálogo no tiene productos", "created": 0, "updated": 0}
+        
+        query["ean"] = {"$in": catalog_eans}
+    
+    # Get products based on query
+    products = await db.products.find(query, {"_id": 0}).to_list(10000)
     
     if not products:
         return {"status": "warning", "message": "No hay productos para sincronizar", "created": 0, "updated": 0}

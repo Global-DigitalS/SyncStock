@@ -73,12 +73,14 @@ const CRM_PLATFORMS = {
 
 const CRMPage = () => {
   const [connections, setConnections] = useState([]);
+  const [catalogs, setCatalogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showConfigDialog, setShowConfigDialog] = useState(false);
   const [showSyncDialog, setShowSyncDialog] = useState(false);
   const [selectedPlatform, setSelectedPlatform] = useState(null);
   const [selectedConnection, setSelectedConnection] = useState(null);
+  const [selectedCatalogId, setSelectedCatalogId] = useState("");
   const [configForm, setConfigForm] = useState({});
   const [syncSettings, setSyncSettings] = useState({
     products: true,
@@ -96,6 +98,7 @@ const CRMPage = () => {
 
   useEffect(() => {
     fetchConnections();
+    fetchCatalogs();
   }, []);
 
   const fetchConnections = async () => {
@@ -106,6 +109,15 @@ const CRMPage = () => {
       console.error("Error fetching CRM connections:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchCatalogs = async () => {
+    try {
+      const res = await api.get("/catalogs");
+      setCatalogs(res.data);
+    } catch (error) {
+      console.error("Error fetching catalogs:", error);
     }
   };
 
@@ -221,6 +233,7 @@ const CRMPage = () => {
     setSelectedConnection(connection);
     setSelectedPlatform(CRM_PLATFORMS[connection.platform]);
     setSyncSettings(connection.sync_settings || {});
+    setSelectedCatalogId(""); // Reset catalog selection
     setShowSyncDialog(true);
   };
 
@@ -229,10 +242,17 @@ const CRMPage = () => {
     
     setSyncing(prev => ({ ...prev, [selectedConnection.id]: true }));
     try {
-      const res = await api.post(`/crm/connections/${selectedConnection.id}/sync`, { 
+      const payload = { 
         sync_type: syncType,
         sync_settings: syncSettings
-      });
+      };
+      
+      // Add catalog_id if selected
+      if (selectedCatalogId) {
+        payload.catalog_id = selectedCatalogId;
+      }
+      
+      const res = await api.post(`/crm/connections/${selectedConnection.id}/sync`, payload);
       
       if (res.data.status === "success") {
         toast.success(res.data.message || "Sincronización completada");
@@ -652,31 +672,57 @@ const CRMPage = () => {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-3 py-4">
-            {selectedPlatform?.syncOptions?.map((option) => {
-              const Icon = option.icon;
-              return (
-                <div 
-                  key={option.key}
-                  className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                    syncSettings[option.key] 
-                      ? 'border-blue-300 bg-blue-50' 
-                      : 'border-slate-200 hover:border-slate-300'
-                  }`}
-                  onClick={() => setSyncSettings({...syncSettings, [option.key]: !syncSettings[option.key]})}
-                >
-                  <Checkbox 
-                    checked={syncSettings[option.key] || false}
-                    onCheckedChange={(checked) => setSyncSettings({...syncSettings, [option.key]: checked})}
-                  />
-                  <Icon className="w-5 h-5 text-slate-600" />
-                  <div className="flex-1">
-                    <span className="font-medium">{option.label}</span>
-                    <p className="text-xs text-slate-500">{option.description}</p>
+          <div className="space-y-4 py-4">
+            {/* Catalog Selector */}
+            <div className="space-y-2">
+              <Label className="text-sm font-medium">Catálogo a sincronizar</Label>
+              <Select value={selectedCatalogId} onValueChange={setSelectedCatalogId}>
+                <SelectTrigger data-testid="sync-catalog-selector">
+                  <SelectValue placeholder="Todos los productos seleccionados" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">Todos los productos seleccionados</SelectItem>
+                  {catalogs.map((catalog) => (
+                    <SelectItem key={catalog.id} value={catalog.id}>
+                      {catalog.name} ({catalog.products?.length || 0} productos)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-slate-500">
+                {selectedCatalogId 
+                  ? "Solo se sincronizarán los productos de este catálogo"
+                  : "Se sincronizarán todos los productos marcados como seleccionados"}
+              </p>
+            </div>
+
+            {/* Sync Options */}
+            <div className="space-y-3">
+              {selectedPlatform?.syncOptions?.map((option) => {
+                const Icon = option.icon;
+                return (
+                  <div 
+                    key={option.key}
+                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                      syncSettings[option.key] 
+                        ? 'border-blue-300 bg-blue-50' 
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                    onClick={() => setSyncSettings({...syncSettings, [option.key]: !syncSettings[option.key]})}
+                  >
+                    <Checkbox 
+                      checked={syncSettings[option.key] || false}
+                      onCheckedChange={(checked) => setSyncSettings({...syncSettings, [option.key]: checked})}
+                    />
+                    <Icon className="w-5 h-5 text-slate-600" />
+                    <div className="flex-1">
+                      <span className="font-medium">{option.label}</span>
+                      <p className="text-xs text-slate-500">{option.description}</p>
+                    </div>
                   </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
 
           <DialogFooter>
