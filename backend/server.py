@@ -38,6 +38,7 @@ from routes.crm import router as crm_router
 
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
+from services.crm_scheduler import run_scheduled_crm_syncs
 
 # Initialize scheduler
 scheduler = AsyncIOScheduler()
@@ -94,8 +95,9 @@ async def lifespan(app: FastAPI):
     # Startup
     scheduler.add_job(sync_all_suppliers, 'interval', hours=6, id='sync_suppliers', replace_existing=True)
     scheduler.add_job(sync_all_woocommerce_stores, 'interval', hours=12, id='sync_woocommerce', replace_existing=True)
+    scheduler.add_job(run_scheduled_crm_syncs, 'interval', hours=1, id='sync_crm', replace_existing=True)
     scheduler.start()
-    logger.info("Scheduler started - Supplier sync every 6 hours, WooCommerce price/stock sync every 12 hours")
+    logger.info("Scheduler started - Supplier sync every 6h, WooCommerce every 12h, CRM check every 1h")
     yield
     # Shutdown
     scheduler.shutdown()

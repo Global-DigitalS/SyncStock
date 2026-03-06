@@ -36,6 +36,8 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "price_yearly": 0,
                 "features": ["2 proveedores", "1 catálogo", "1 tienda WooCommerce", "Soporte por email"],
                 "is_active": True,
+                "crm_sync_enabled": False,
+                "crm_sync_intervals": [],
                 "created_at": datetime.now(timezone.utc).isoformat()
             },
             {
@@ -49,6 +51,8 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "price_yearly": 199.99,
                 "features": ["10 proveedores", "5 catálogos", "2 tiendas WooCommerce", "Sincronización automática", "Soporte prioritario"],
                 "is_active": True,
+                "crm_sync_enabled": True,
+                "crm_sync_intervals": [24],  # Solo cada 24 horas
                 "created_at": datetime.now(timezone.utc).isoformat()
             },
             {
@@ -60,8 +64,10 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "max_woocommerce_stores": 10,
                 "price_monthly": 49.99,
                 "price_yearly": 499.99,
-                "features": ["50 proveedores", "20 catálogos", "10 tiendas WooCommerce", "API REST completa", "Exportación ilimitada", "Soporte 24/7"],
+                "features": ["50 proveedores", "20 catálogos", "10 tiendas WooCommerce", "API REST completa", "Exportación ilimitada", "Sync CRM cada 6-24h", "Soporte 24/7"],
                 "is_active": True,
+                "crm_sync_enabled": True,
+                "crm_sync_intervals": [6, 12, 24],  # Cada 6, 12 o 24 horas
                 "created_at": datetime.now(timezone.utc).isoformat()
             },
             {
@@ -73,8 +79,10 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "max_woocommerce_stores": 999999,
                 "price_monthly": 199.99,
                 "price_yearly": 1999.99,
-                "features": ["Proveedores ilimitados", "Catálogos ilimitados", "Tiendas ilimitadas", "Soporte dedicado", "Onboarding personalizado", "SLA garantizado"],
+                "features": ["Proveedores ilimitados", "Catálogos ilimitados", "Tiendas ilimitadas", "Sync CRM cada 1-24h", "Soporte dedicado", "Onboarding personalizado", "SLA garantizado"],
                 "is_active": True,
+                "crm_sync_enabled": True,
+                "crm_sync_intervals": [1, 6, 12, 24],  # Todos los intervalos
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
         ]
@@ -101,6 +109,8 @@ async def create_subscription_plan(plan: dict, superadmin: dict = Depends(get_su
         "price_yearly": plan.get("price_yearly", 0),
         "features": plan.get("features", []),
         "is_active": True,
+        "crm_sync_enabled": plan.get("crm_sync_enabled", False),
+        "crm_sync_intervals": plan.get("crm_sync_intervals", []),
         "created_at": now
     }
     await db.subscription_plans.insert_one(plan_doc)

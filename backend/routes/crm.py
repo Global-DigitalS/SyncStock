@@ -511,6 +511,15 @@ class DolibarrClient:
 
 # ==================== CRM ENDPOINTS ====================
 
+@router.get("/crm/auto-sync-permissions")
+async def get_crm_auto_sync_permissions(user: dict = Depends(get_current_user)):
+    """Get user's CRM auto-sync permissions based on subscription plan"""
+    from services.crm_scheduler import get_user_crm_sync_permission
+    
+    permission = await get_user_crm_sync_permission(user["id"])
+    return permission
+
+
 @router.get("/crm/connections")
 async def get_crm_connections(user: dict = Depends(get_current_user)):
     """Get all CRM connections for the user"""
@@ -556,8 +565,11 @@ async def create_crm_connection(request: dict, user: dict = Depends(get_current_
             "suppliers": True,
             "orders": True
         }),
+        "auto_sync_enabled": request.get("auto_sync_enabled", False),
+        "auto_sync_interval": request.get("auto_sync_interval", 24),  # hours: 1, 6, 12, 24
         "is_connected": False,
         "last_sync": None,
+        "last_sync_error": None,
         "created_at": now,
         "updated_at": now
     }
@@ -593,6 +605,8 @@ async def update_crm_connection(connection_id: str, request: dict, user: dict = 
         "name": request.get("name", connection["name"]),
         "config": request.get("config", connection["config"]),
         "sync_settings": request.get("sync_settings", connection.get("sync_settings", {})),
+        "auto_sync_enabled": request.get("auto_sync_enabled", connection.get("auto_sync_enabled", False)),
+        "auto_sync_interval": request.get("auto_sync_interval", connection.get("auto_sync_interval", 24)),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     

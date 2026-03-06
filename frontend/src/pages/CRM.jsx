@@ -43,7 +43,9 @@ import {
   DollarSign,
   Layers,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Clock,
+  AlertCircle
 } from "lucide-react";
 
 // CRM Platform configurations
@@ -89,13 +91,24 @@ const CRMPage = () => {
     suppliers: true,
     orders: true
   });
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(false);
+  const [autoSyncInterval, setAutoSyncInterval] = useState(24);
+  const [syncPermissions, setSyncPermissions] = useState({ enabled: false, intervals: [] });
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState({});
   const [expandedCard, setExpandedCard] = useState(null);
+  
+  const SYNC_INTERVAL_OPTIONS = [
+    { value: 1, label: "Cada hora" },
+    { value: 6, label: "Cada 6 horas" },
+    { value: 12, label: "Cada 12 horas" },
+    { value: 24, label: "Cada 24 horas" }
+  ];
 
   useEffect(() => {
     fetchConnections();
+    fetchSyncPermissions();
   }, []);
 
   const fetchConnections = async () => {
@@ -106,6 +119,15 @@ const CRMPage = () => {
       console.error("Error fetching CRM connections:", error);
     } finally {
       setLoading(false);
+    }
+  };
+  
+  const fetchSyncPermissions = async () => {
+    try {
+      const res = await api.get("/crm/auto-sync-permissions");
+      setSyncPermissions(res.data);
+    } catch (error) {
+      console.error("Error fetching sync permissions:", error);
     }
   };
 
@@ -121,6 +143,8 @@ const CRMPage = () => {
       suppliers: true,
       orders: true
     });
+    setAutoSyncEnabled(false);
+    setAutoSyncInterval(syncPermissions.intervals?.[syncPermissions.intervals.length - 1] || 24);
     setShowAddDialog(false);
     setShowConfigDialog(true);
   };
@@ -143,6 +167,8 @@ const CRMPage = () => {
       suppliers: true,
       orders: true
     });
+    setAutoSyncEnabled(connection.auto_sync_enabled || false);
+    setAutoSyncInterval(connection.auto_sync_interval || 24);
     setShowConfigDialog(true);
   };
 
@@ -179,7 +205,9 @@ const CRMPage = () => {
         name: configForm.name,
         platform: selectedPlatform.id,
         config: {},
-        sync_settings: syncSettings
+        sync_settings: syncSettings,
+        auto_sync_enabled: autoSyncEnabled && syncPermissions.enabled,
+        auto_sync_interval: autoSyncInterval
       };
       
       selectedPlatform.fields.forEach(field => {
@@ -376,6 +404,14 @@ const CRMPage = () => {
                     <p className="text-xs text-slate-500 text-center">
                       Última sync: {new Date(connection.last_sync).toLocaleString("es-ES")}
                     </p>
+                  )}
+                  
+                  {/* Auto-sync status */}
+                  {connection.auto_sync_enabled && (
+                    <div className="flex items-center justify-center gap-2 text-xs bg-blue-50 text-blue-700 px-2 py-1.5 rounded-lg">
+                      <Clock className="w-3 h-3" />
+                      <span>Sync automático cada {connection.auto_sync_interval}h</span>
+                    </div>
                   )}
 
                   {/* Quick Sync Buttons */}
@@ -600,6 +636,56 @@ const CRMPage = () => {
                 </ol>
               </div>
             )}
+            
+            {/* Auto-Sync Configuration */}
+            <div className="space-y-3 pt-4 border-t">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <Label className="flex items-center gap-2">
+                    <Clock className="w-4 h-4 text-blue-600" />
+                    Sincronización Automática
+                  </Label>
+                  <p className="text-sm text-slate-500">Sincroniza automáticamente con el CRM</p>
+                </div>
+                <Switch
+                  checked={autoSyncEnabled}
+                  onCheckedChange={setAutoSyncEnabled}
+                  disabled={!syncPermissions.enabled}
+                  data-testid="auto-sync-switch"
+                />
+              </div>
+              
+              {!syncPermissions.enabled && (
+                <div className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm">
+                  <AlertCircle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-medium text-amber-800">Función no disponible</p>
+                    <p className="text-amber-700">Tu plan actual no incluye sincronización automática con CRM. Actualiza tu suscripción para acceder a esta funcionalidad.</p>
+                  </div>
+                </div>
+              )}
+              
+              {syncPermissions.enabled && autoSyncEnabled && (
+                <div className="space-y-2 pl-6 border-l-2 border-blue-200">
+                  <Label className="text-sm font-medium">Frecuencia de sincronización</Label>
+                  <Select value={String(autoSyncInterval)} onValueChange={(v) => setAutoSyncInterval(Number(v))}>
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Selecciona intervalo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SYNC_INTERVAL_OPTIONS.filter(opt => syncPermissions.intervals.includes(opt.value)).map((option) => (
+                        <SelectItem key={option.value} value={String(option.value)}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-slate-500">
+                    La sincronización se ejecutará automáticamente según el intervalo seleccionado
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           <DialogFooter className="gap-2">

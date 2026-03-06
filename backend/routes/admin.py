@@ -81,6 +81,9 @@ class SubscriptionPlanCreate(BaseModel):
     features: List[str] = []
     is_default: bool = False
     sort_order: int = 0
+    # CRM Auto-Sync options
+    crm_sync_enabled: bool = False
+    crm_sync_intervals: List[int] = []
 
 class SubscriptionPlanUpdate(BaseModel):
     name: Optional[str] = None
@@ -95,6 +98,9 @@ class SubscriptionPlanUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_default: Optional[bool] = None
     sort_order: Optional[int] = None
+    # CRM Auto-Sync options
+    crm_sync_enabled: Optional[bool] = None
+    crm_sync_intervals: Optional[List[int]] = None
 
 
 # ==================== EMAIL TEMPLATE MODELS ====================
