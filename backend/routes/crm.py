@@ -94,19 +94,23 @@ class DolibarrClient:
             return None
     
     def create_product(self, product_data: Dict) -> Dict:
-        """Create a new product in Dolibarr with full data"""
+        """Create a new product in Dolibarr with full data including purchase price"""
         try:
             # Build description (combine short and long)
             description = product_data.get("long_description") or product_data.get("description", "")
             if product_data.get("short_description"):
                 description = f"{product_data['short_description']}\n\n{description}"
             
+            # The price from supplier is the cost/purchase price
+            cost_price = product_data.get("cost_price") or product_data.get("price", 0)
+            
             payload = {
                 "ref": product_data.get("sku", ""),
                 "label": product_data.get("name", ""),
                 "description": description,
-                "price": product_data.get("price", 0),
+                "price": cost_price,  # Sale price (can be adjusted later)
                 "price_base_type": "HT",  # Price without tax
+                "cost_price": cost_price,  # Purchase/cost price
                 "status": 1,  # On sale
                 "status_buy": 1,  # On purchase
                 "type": 0,  # Product (not service)
@@ -115,9 +119,14 @@ class DolibarrClient:
                 "stock_reel": product_data.get("stock", 0),
             }
             
-            # Add brand as custom field or note
+            # Add brand and supplier info as note
+            notes = []
             if product_data.get("brand"):
-                payload["note_public"] = f"Marca: {product_data['brand']}"
+                notes.append(f"Marca: {product_data['brand']}")
+            if product_data.get("supplier_name"):
+                notes.append(f"Proveedor: {product_data['supplier_name']}")
+            if notes:
+                payload["note_public"] = "\n".join(notes)
             
             response = requests.post(
                 f"{self.base_url}/products",
@@ -139,7 +148,7 @@ class DolibarrClient:
             return {"status": "error", "message": f"Error: {str(e)}"}
     
     def update_product(self, product_id: int, product_data: Dict) -> Dict:
-        """Update an existing product with full data"""
+        """Update an existing product with full data including purchase price"""
         try:
             payload = {}
             
@@ -155,14 +164,26 @@ class DolibarrClient:
             
             if "price" in product_data:
                 payload["price"] = product_data["price"]
+            
+            # Update cost/purchase price
+            if "cost_price" in product_data:
+                payload["cost_price"] = product_data["cost_price"]
+            
             if "stock" in product_data:
                 payload["stock_reel"] = product_data["stock"]
             if "ean" in product_data:
                 payload["barcode"] = product_data["ean"]
             if "weight" in product_data:
                 payload["weight"] = product_data["weight"]
-            if "brand" in product_data:
-                payload["note_public"] = f"Marca: {product_data['brand']}"
+            
+            # Build notes with brand and supplier
+            notes = []
+            if product_data.get("brand"):
+                notes.append(f"Marca: {product_data['brand']}")
+            if product_data.get("supplier_name"):
+                notes.append(f"Proveedor: {product_data['supplier_name']}")
+            if notes:
+                payload["note_public"] = "\n".join(notes)
             
             response = requests.put(
                 f"{self.base_url}/products/{product_id}",
@@ -171,9 +192,7 @@ class DolibarrClient:
                 timeout=30
             )
             if response.status_code == 200:
-                # Update image if provided
-                if product_data.get("image_url"):
-                    self.upload_product_image(product_id, product_data["image_url"])
+                # Update image if provided (handled separately for better error handling)
                 return {"status": "success", "message": "Producto actualizado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
@@ -382,6 +401,61 @@ class DolibarrClient:
         except Exception as e:
             logger.error(f"Dolibarr get_supplier_by_name error: {e}")
             return None
+    
+    def link_product_to_supplier(self, product_ref: str, supplier_id: int, purchase_price: float) -> Dict:
+        """Link a product to a supplier with purchase price in Dolibarr"""
+        try:
+            # First get the product by reference
+            product = self.get_product_by_ref(product_ref)
+            if not product:
+                return {"status": "error", "message": f"Producto no encontrado: {product_ref}"}
+            
+            product_id = product.get("id")
+            
+            # Create supplier price entry
+            # Dolibarr API endpoint for product supplier prices
+            payload = {
+                "fk_product": product_id,
+                "fk_soc": supplier_id,
+                "ref_fourn": product_ref,  # Supplier's reference
+                "price": purchase_price,
+                "quantity": 1,
+                "remise_percent": 0
+            }
+            
+            response = requests.post(
+                f"{self.base_url}/products/{product_id}/purchase_prices",
+                headers=self.headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code in [200, 201]:
+                return {"status": "success", "message": "Producto vinculado a proveedor"}
+            elif response.status_code == 409:
+                # Already exists, try to update
+                return {"status": "success", "message": "Vínculo ya existe"}
+            else:
+                # Try alternative endpoint
+                payload_alt = {
+                    "socid": supplier_id,
+                    "ref_supplier": product_ref,
+                    "tva_tx": 0,
+                    "price": purchase_price,
+                    "qty": 1
+                }
+                response_alt = requests.post(
+                    f"{self.base_url}/products/{product_id}/subprice",
+                    headers=self.headers,
+                    json=payload_alt,
+                    timeout=30
+                )
+                if response_alt.status_code in [200, 201]:
+                    return {"status": "success", "message": "Producto vinculado"}
+                return {"status": "error", "message": f"Error: {response.status_code}"}
+        except Exception as e:
+            logger.error(f"Dolibarr link_product_to_supplier error: {e}")
+            return {"status": "error", "message": str(e)}
     
     # ==================== ORDERS ====================
     
@@ -720,7 +794,7 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
 
 
 async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None) -> Dict:
-    """Sync products from our catalog to Dolibarr with full data"""
+    """Sync products from our catalog to Dolibarr with full data including purchase price, stock and images"""
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
     
@@ -733,66 +807,107 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     if not products:
         return {"status": "warning", "message": "No hay productos para sincronizar", "created": 0, "updated": 0}
     
+    # Get all suppliers for this user to map supplier names
+    suppliers = await db.suppliers.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
+    suppliers_map = {s["id"]: s for s in suppliers}
+    
     created = 0
     updated = 0
     errors = 0
+    images_synced = 0
+    stock_synced = 0
     
     for product in products:
         try:
+            sku = product.get("sku", "")
+            if not sku:
+                errors += 1
+                continue
+            
             # Check if product exists in Dolibarr by SKU
-            existing = client.get_product_by_ref(product.get("sku", ""))
+            existing = client.get_product_by_ref(sku)
             
             product_data = {
-                "sku": product.get("sku", ""),
+                "sku": sku,
                 "name": product.get("name", ""),
             }
             
-            # Add fields based on sync settings
+            # Add purchase/cost price (the supplier price is the purchase price)
             if sync_settings.get("prices", True):
-                product_data["price"] = product.get("price", 0)
+                # The product price from supplier is the purchase/cost price
+                purchase_price = product.get("price", 0)
+                product_data["price"] = purchase_price
+                product_data["cost_price"] = purchase_price  # This is the purchase price
             
+            # Sync stock
             if sync_settings.get("stock", True):
                 product_data["stock"] = product.get("stock", 0)
             
+            # Sync descriptions
             if sync_settings.get("descriptions", True):
                 product_data["description"] = product.get("description", "")
                 product_data["short_description"] = product.get("short_description", "")
                 product_data["long_description"] = product.get("long_description", "")
                 product_data["brand"] = product.get("brand", "")
+                
+                # Add supplier name to notes
+                supplier = suppliers_map.get(product.get("supplier_id"))
+                if supplier:
+                    product_data["supplier_name"] = supplier.get("name", "")
             
             product_data["ean"] = product.get("ean", "")
             product_data["weight"] = product.get("weight", 0)
             
-            if sync_settings.get("images", True):
-                product_data["image_url"] = product.get("image_url", "")
+            # Handle image URL
+            image_url = product.get("image_url", "") if sync_settings.get("images", True) else ""
+            if image_url:
+                product_data["image_url"] = image_url
             
             if existing:
-                result = client.update_product(int(existing.get("id")), product_data)
+                product_id = int(existing.get("id"))
+                result = client.update_product(product_id, product_data)
                 if result["status"] == "success":
                     updated += 1
+                    
+                    # Sync stock using stock movements for accurate tracking
+                    if sync_settings.get("stock", True):
+                        stock_result = client.update_stock(product_id, product.get("stock", 0))
+                        if stock_result.get("status") == "success":
+                            stock_synced += 1
+                    
+                    # Upload image separately for better handling
+                    if image_url and sync_settings.get("images", True):
+                        img_result = client.upload_product_image(product_id, image_url)
+                        if img_result.get("status") == "success":
+                            images_synced += 1
                 else:
                     errors += 1
             else:
                 result = client.create_product(product_data)
                 if result["status"] == "success":
                     created += 1
+                    # Image is uploaded in create_product if image_url is provided
+                    if image_url:
+                        images_synced += 1
                 else:
                     errors += 1
         except Exception as e:
-            logger.error(f"Error syncing product to Dolibarr: {e}")
+            logger.error(f"Error syncing product {product.get('sku', 'unknown')} to Dolibarr: {e}")
             errors += 1
     
     return {
         "status": "success" if errors == 0 else "partial",
-        "message": f"{created} creados, {updated} actualizados, {errors} errores",
+        "message": f"{created} creados, {updated} actualizados, {errors} errores, {images_synced} imágenes, {stock_synced} stocks",
         "created": created,
         "updated": updated,
-        "errors": errors
+        "errors": errors,
+        "images_synced": images_synced,
+        "stock_synced": stock_synced
     }
 
 
 async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
-    """Sync suppliers from our system to Dolibarr"""
+    """Sync suppliers from our system to Dolibarr and link products to suppliers"""
     # Get user's suppliers
     suppliers = await db.suppliers.find(
         {"user_id": user_id},
@@ -805,6 +920,7 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
     created = 0
     updated = 0
     errors = 0
+    supplier_mapping = {}  # our_id -> dolibarr_id
     
     for supplier in suppliers:
         try:
@@ -819,37 +935,67 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
                 "city": supplier.get("city", ""),
                 "zip": supplier.get("zip", ""),
                 "country_code": supplier.get("country_code", "ES"),
-                "notes": f"Tipo conexión: {supplier.get('connection_type', 'N/A')}",
+                "notes": f"Tipo conexión: {supplier.get('connection_type', 'N/A')}. Productos: {supplier.get('product_count', 0)}",
                 "supplier_code": supplier.get("id", "")[:10]
             }
             
             if existing:
-                result = client.update_supplier(int(existing.get("id")), supplier_data)
+                dolibarr_id = int(existing.get("id"))
+                result = client.update_supplier(dolibarr_id, supplier_data)
                 if result["status"] == "success":
                     updated += 1
+                    supplier_mapping[supplier["id"]] = dolibarr_id
                 else:
                     errors += 1
             else:
                 result = client.create_supplier(supplier_data)
                 if result["status"] == "success":
                     created += 1
+                    dolibarr_id = result.get("supplier_id")
+                    supplier_mapping[supplier["id"]] = dolibarr_id
                     # Store Dolibarr ID in our supplier record
                     await db.suppliers.update_one(
                         {"id": supplier["id"]},
-                        {"$set": {"dolibarr_id": result.get("supplier_id")}}
+                        {"$set": {"dolibarr_id": dolibarr_id}}
                     )
                 else:
                     errors += 1
         except Exception as e:
-            logger.error(f"Error syncing supplier to Dolibarr: {e}")
+            logger.error(f"Error syncing supplier {supplier.get('name', 'unknown')} to Dolibarr: {e}")
             errors += 1
+    
+    # Now link products to their suppliers in Dolibarr
+    products_linked = 0
+    if supplier_mapping:
+        try:
+            # Get selected products for this user
+            products = await db.products.find(
+                {"user_id": user_id, "is_selected": True},
+                {"_id": 0, "sku": 1, "supplier_id": 1, "price": 1}
+            ).to_list(10000)
+            
+            for product in products:
+                supplier_id = product.get("supplier_id")
+                if supplier_id and supplier_id in supplier_mapping:
+                    dolibarr_supplier_id = supplier_mapping[supplier_id]
+                    sku = product.get("sku", "")
+                    purchase_price = product.get("price", 0)
+                    
+                    if sku and dolibarr_supplier_id:
+                        # Try to link product to supplier in Dolibarr
+                        result = client.link_product_to_supplier(sku, dolibarr_supplier_id, purchase_price)
+                        if result.get("status") == "success":
+                            products_linked += 1
+        except Exception as e:
+            logger.error(f"Error linking products to suppliers: {e}")
     
     return {
         "status": "success" if errors == 0 else "partial",
-        "message": f"{created} creados, {updated} actualizados, {errors} errores",
+        "message": f"{created} proveedores creados, {updated} actualizados, {errors} errores, {products_linked} productos vinculados",
         "created": created,
         "updated": updated,
-        "errors": errors
+        "errors": errors,
+        "products_linked": products_linked
     }
 
 

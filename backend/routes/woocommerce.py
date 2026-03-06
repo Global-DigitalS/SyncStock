@@ -200,6 +200,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         raise HTTPException(status_code=404, detail="Configuración de WooCommerce no encontrada")
     catalog_items = []
     margin_rules = []
+    catalog_id = request.catalog_id
     if request.catalog_id:
         catalog = await db.catalogs.find_one({"id": request.catalog_id, "user_id": user["id"]})
         if not catalog:
@@ -209,6 +210,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
     else:
         catalog = await db.catalogs.find_one({"user_id": user["id"], "is_default": True})
         if catalog:
+            catalog_id = catalog["id"]
             catalog_items = await db.catalog_items.find({"catalog_id": catalog["id"], "active": True}, {"_id": 0}).to_list(1000)
             margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog["id"]}, {"_id": 0}).sort("priority", -1).to_list(100)
         else:
@@ -226,6 +228,92 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
     errors = []
     existing_eans = {}
     existing_skus = {}
+    
+    # ==================== STEP 1: CREATE/GET CATEGORIES ====================
+    # Build category mapping: category_name -> wc_category_id
+    wc_category_map = {}
+    try:
+        # Get all unique categories from products
+        unique_categories = set()
+        for item in catalog_items:
+            product = products_map.get(item["product_id"])
+            if product and product.get("category"):
+                # Handle hierarchical categories (e.g., "Electronics > Phones > Smartphones")
+                cat_parts = [c.strip() for c in product["category"].split(">")]
+                for i in range(len(cat_parts)):
+                    # Build full path for each level
+                    full_path = " > ".join(cat_parts[:i+1])
+                    unique_categories.add(full_path)
+        
+        if unique_categories:
+            logger.info(f"Found {len(unique_categories)} unique categories to sync")
+            
+            # Get existing WooCommerce categories
+            existing_wc_cats = []
+            page = 1
+            while True:
+                response = await asyncio.to_thread(wcapi.get, "products/categories", params={"per_page": 100, "page": page})
+                if response.status_code == 200:
+                    batch = response.json()
+                    if not batch:
+                        break
+                    existing_wc_cats.extend(batch)
+                    page += 1
+                    if len(batch) < 100:
+                        break
+                else:
+                    break
+            
+            # Build map of existing categories by name and parent
+            existing_cats_by_name = {}
+            for cat in existing_wc_cats:
+                key = f"{cat.get('name', '').lower()}:{cat.get('parent', 0)}"
+                existing_cats_by_name[key] = cat["id"]
+                # Also store by just name for simple lookup
+                existing_cats_by_name[cat.get("name", "").lower()] = cat["id"]
+            
+            # Create categories that don't exist
+            for full_cat_path in sorted(unique_categories):
+                cat_parts = [c.strip() for c in full_cat_path.split(">")]
+                parent_id = 0
+                
+                for i, cat_name in enumerate(cat_parts):
+                    current_path = " > ".join(cat_parts[:i+1])
+                    
+                    # Check if already in our map
+                    if current_path in wc_category_map:
+                        parent_id = wc_category_map[current_path]
+                        continue
+                    
+                    # Check if exists in WooCommerce
+                    lookup_key = f"{cat_name.lower()}:{parent_id}"
+                    if lookup_key in existing_cats_by_name:
+                        wc_category_map[current_path] = existing_cats_by_name[lookup_key]
+                        parent_id = existing_cats_by_name[lookup_key]
+                        continue
+                    
+                    # Create new category
+                    cat_payload = {
+                        "name": cat_name,
+                        "parent": parent_id
+                    }
+                    try:
+                        response = await asyncio.to_thread(wcapi.post, "products/categories", cat_payload)
+                        if response.status_code in [200, 201]:
+                            new_cat = response.json()
+                            wc_category_map[current_path] = new_cat["id"]
+                            parent_id = new_cat["id"]
+                            logger.info(f"Created WooCommerce category: {cat_name} (ID: {new_cat['id']})")
+                        else:
+                            logger.warning(f"Failed to create category {cat_name}: {response.text[:100]}")
+                    except Exception as e:
+                        logger.error(f"Error creating category {cat_name}: {e}")
+            
+            logger.info(f"Category mapping complete: {len(wc_category_map)} categories mapped")
+    except Exception as e:
+        logger.error(f"Error syncing categories: {e}")
+    
+    # ==================== STEP 2: GET EXISTING PRODUCTS ====================
     if request.update_existing:
         try:
             page = 1
@@ -251,6 +339,8 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                     break
         except Exception as e:
             logger.warning(f"Could not fetch existing products: {e}")
+    
+    # ==================== STEP 3: EXPORT PRODUCTS ====================
     for catalog_item in catalog_items:
         product = products_map.get(catalog_item["product_id"])
         if not product:
@@ -276,6 +366,8 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                 "stock_quantity": product.get("stock", 0),
                 "categories": [], "images": [], "meta_data": []
             }
+            
+            # Add EAN meta data
             if ean:
                 wc_product["meta_data"].extend([
                     {"key": "_global_unique_id", "value": ean},
@@ -283,10 +375,29 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                     {"key": "gtin", "value": ean},
                     {"key": "_ean", "value": ean}
                 ])
+            
+            # Add brand meta data
             if product.get("brand"):
                 wc_product["meta_data"].append({"key": "_brand", "value": product["brand"]})
+            
+            # Add supplier name as custom field
+            if product.get("supplier_name"):
+                wc_product["meta_data"].append({"key": "_supplier_name", "value": product["supplier_name"]})
+                wc_product["meta_data"].append({"key": "supplier_name", "value": product["supplier_name"]})
+            
+            # Assign categories by ID (created in step 1)
             if product.get("category"):
-                wc_product["categories"] = [{"name": product["category"]}]
+                cat_path = product["category"].strip()
+                if cat_path in wc_category_map:
+                    wc_product["categories"] = [{"id": wc_category_map[cat_path]}]
+                else:
+                    # Try to find the deepest matching category
+                    cat_parts = [c.strip() for c in cat_path.split(">")]
+                    for i in range(len(cat_parts), 0, -1):
+                        partial_path = " > ".join(cat_parts[:i])
+                        if partial_path in wc_category_map:
+                            wc_product["categories"] = [{"id": wc_category_map[partial_path]}]
+                            break
             
             # Add main image first
             if product.get("image_url"):
@@ -334,9 +445,17 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             errors.append(f"Error procesando {product.get('sku', '')}: {str(e)[:100]}")
     now = datetime.now(timezone.utc).isoformat()
     await db.woocommerce_configs.update_one({"id": request.config_id}, {"$set": {"last_sync": now, "products_synced": created + updated}})
+    
+    # Store the category mapping for future use
+    if wc_category_map and catalog_id:
+        await db.woocommerce_configs.update_one(
+            {"id": request.config_id},
+            {"$set": {f"category_mapping_{catalog_id}": wc_category_map}}
+        )
+    
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()), "type": "woocommerce_export",
-        "message": f"Exportación WooCommerce: {created} creados, {updated} actualizados, {failed} errores",
+        "message": f"Exportación WooCommerce: {created} creados, {updated} actualizados, {failed} errores, {len(wc_category_map)} categorías",
         "product_id": None, "product_name": None,
         "user_id": user["id"], "read": False, "created_at": now
     })
