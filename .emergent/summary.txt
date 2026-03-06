@@ -1,72 +1,52 @@
 <analysis>**original_problem_statement:**
-El usuario solicitó originalmente construir una aplicación SaaS para gestionar catálogos de productos. En sesiones anteriores se implementaron funcionalidades clave como la gestión de Stripe, soporte SFTP y mejoras en la UI.
-
-Durante esta sesión, el trabajo se centró en varias áreas clave:
-1.  **Edición Completa de Productos:** El usuario solicitó poder modificar el nombre, descripción larga, descripción corta, marca, imagen principal e imágenes secundarias de los productos.
-2.  **Sincronización Multi-Plataforma:** Se extendió la funcionalidad para que los campos de producto actualizados se sincronicen no solo con WooCommerce, sino también con PrestaShop, Shopify, Magento y Wix.
-3.  **Resolución de Error de Producción:** Se solucionó un  en el servidor de producción del usuario causado por una ruta de archivo codificada de forma rígida, haciendo que la ruta sea dinámica.
-4.  **Reestructuración de la Navegación:** El usuario pidió crear un nuevo menú en el sidebar llamado Conexiones.
-5.  **Integración de CRM:** Dentro de Conexiones, se solicitó una nueva sección CRM, comenzando con la integración de Dolibarr. La integración debe permitir sincronizar proveedores, pedidos, stock, precio, descripción e imagen de los productos.
+El usuario solicitó originalmente construir una aplicación SaaS para gestionar catálogos de productos. Durante esta sesión, las solicitudes se centraron en:
+1.  **Finalizar la Integración con CRM (Dolibarr):** Implementar la lógica de backend que faltaba para sincronizar proveedores, pedidos, stock, precios e imágenes con Dolibarr.
+2.  **Sincronización Automática de CRM:** Añadir una funcionalidad para programar la sincronización automática de CRM (cada 1, 6, 12 o 24 horas), con la configuración gestionada por el  a través de los planes de suscripción.
+3.  **Sistema de Sincronización Unificado:** Refactorizar la funcionalidad anterior para crear un sistema de sincronización global. El usuario quería un único ajuste de intervalo (ej. cada 6 horas) que se aplicara de forma común a la sincronización de **Proveedores, Tiendas y CRM**.
 
 **User's preferred language**: Spanish
 
 **what currently exists?**
-La aplicación es un SaaS full-stack (React + FastAPI + MongoDB) para la gestión de catálogos de productos. El sistema incluye autenticación, gestión de catálogos, proveedores, un panel de SuperAdmin para personalización y gestión de usuarios, y un sistema de suscripciones con Stripe.
+La aplicación es un SaaS full-stack (React + FastAPI + MongoDB) para la gestión de catálogos de productos con autenticación, gestión de proveedores, panel de SuperAdmin y suscripciones con Stripe.
 
-Se ha implementado una funcionalidad completa para la edición de productos, incluyendo campos para descripción corta/larga e imágenes de galería. La sincronización de estos datos se ha extendido a WooCommerce, PrestaShop, Shopify y Magento.
+Durante esta sesión, se ha implementado un sistema de **sincronización automática unificada**. Existe una nueva página en  donde los usuarios pueden configurar un único intervalo de tiempo (ej. cada 6 horas) para actualizar automáticamente todos los datos de sus Proveedores (FTP/URL), Tiendas (WooCommerce, etc.) y Conexiones CRM (Dolibarr).
 
-Se ha reestructurado el menú lateral para incluir una nueva sección Conexiones, que contiene una página CRM. Esta página presenta una interfaz de usuario para configurar la conexión con Dolibarr, incluyendo opciones detalladas para sincronizar productos, stock, precios, proveedores y pedidos. El backend tiene los endpoints y la estructura inicial para esta integración, aunque la lógica de sincronización profunda aún es un esqueleto.
+La disponibilidad de esta función y los intervalos seleccionables (1h, 6h, 12h, 24h) están controlados por los planes de suscripción, que el SuperAdmin puede configurar. El backend utiliza un planificador de tareas () para ejecutar estas sincronizaciones de forma periódica según la configuración de cada usuario.
 
 **Last working item**:
-    - Last item agent was working: Ampliación de la integración de CRM (Dolibarr) para incluir la sincronización de proveedores, pedidos, stock, precio, descripción e imágenes. El agente implementó la interfaz de usuario en el frontend para configurar estas opciones y la estructura base en el backend.
-    - Status: IN PROGRESS
-    - Agent Testing Done: N
-    - Which testing method agent to use? both
+    - Last item agent was working: Implementación de un sistema de sincronización automática unificado para Proveedores, Tiendas y CRM, con un único intervalo de tiempo configurable por el usuario y controlado por el plan de suscripción.
+    - Status: USER VERIFICATION PENDING
+    - Agent Testing Done: Y
+    - Which testing method agent to use? NA
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-  - **Issue 1: Lógica de Sincronización de CRM Incompleta (P0)**
-    - **Descripción**: La interfaz de usuario para configurar la sincronización de Dolibarr está creada, pero la lógica de backend en  es principalmente un esqueleto. Las funciones , , etc., no contienen la implementación real para comunicarse con la API de Dolibarr.
-    - **Next debug checklist**:
-        1.  Implementar la lógica de conexión a la API de Dolibarr usando la URL y la API Key proporcionadas.
-        2.  Desarrollar cada una de las funciones de sincronización (, , etc.) en  para interactuar con los endpoints correspondientes de la API de Dolibarr.
-        3.  Añadir manejo de errores para la conexión y las operaciones de sincronización.
-    - **Why fix this issue and what will be achieved with the fix?**: Completar esta lógica es fundamental para que la funcionalidad de integración con CRM, solicitada por el usuario, sea operativa.
-    - **Status**: IN PROGRESS
-    - **Is recurring issue?**: N
-    - **Should Test frontend/backend/both after fix?**: backend
-    - **Blocked on other issue**: No.
+No hay incidencias pendientes.
 
 **In progress Task List**:
-  - **Task 1: Completar la lógica de sincronización con Dolibarr (P0)**
-    - **Where to resume**: En el archivo . Se debe rellenar la lógica de las funciones , , , ,  y .
-    - **What will be achieved with this?**: La aplicación podrá sincronizar datos de productos, proveedores y pedidos con una instancia de Dolibarr, cumpliendo con el requisito del usuario.
-    - **Status**: IN PROGRESS
-    - **Should Test frontend/backend/both after fix?**: backend
-    - **Blocked on something**: No.
+No hay tareas en progreso. La última tarea fue completada y está pendiente de validación.
 
 **Upcoming and Future Tasks**
-    Upcoming Tasks:
-    - **Task 1 (P1): Reubicar Tiendas bajo el menú Conexiones.**
-        - **Descripción**: Actualmente, el nuevo menú Conexiones contiene CRM, pero Tiendas sigue siendo un elemento de nivel superior. Para una estructura más lógica, la página de Tiendas debería moverse para ser un sub-menú dentro de Conexiones.
-        - **Files to modify**: .
-    - **Task 2 (P1): Validar Funcionalidades de SuperAdmin.**
-        - **Descripción**: Solicitar al usuario que pruebe y valide las funcionalidades del panel de SuperAdmin, como la gestión de usuarios y la personalización de la UI, para asegurar que todo funciona como se espera.
-    Future Tasks:
-    - **Task 3 (P2):** Añadir autenticación de dos factores (2FA).
-    - **Task 4 (P3):** Ampliar el dashboard del  con más estadísticas de uso de la plataforma.
+Upcoming Tasks:
+- **Task 1 (P0): Validación de Sincronización Unificada.**
+    - **Descripción**: Solicitar al usuario que pruebe la nueva página Sincronización y confirme que el sistema unificado para programar actualizaciones de Proveedores, Tiendas y CRM funciona como espera.
+- **Task 2 (P1): Validar Funcionalidades de SuperAdmin.**
+    - **Descripción**: Solicitar al usuario que pruebe y valide las funcionalidades del panel de SuperAdmin, especialmente la gestión de planes y cómo afecta a las nuevas opciones de sincronización.
+
+Future Tasks:
+- **Task 3 (P2):** Añadir autenticación de dos factores (2FA).
+- **Task 4 (P3):** Ampliar el dashboard del  con más estadísticas de uso de la plataforma.
 
 **Completed work in this session**
-- **Feature: Edición Completa de Productos (DONE)**
-  - Se modificaron  y  para incluir campos de descripción corta/larga, marca e imágenes de galería.
-- **Feature: Sincronización Multi-Plataforma (DONE)**
-  - Se actualizó  y los clientes en  para exportar los datos completos del producto a WooCommerce, PrestaShop, Shopify y Magento.
-- **Fix: Error de Permisos en Producción (DONE)**
-  - Se corrigió un  en el servidor del usuario modificando  para usar rutas relativas en lugar de una ruta absoluta codificada ().
-- **Feature: UI de Integración con CRM (DONE)**
-  - Se creó un nuevo menú Conexiones en .
-  - Se desarrolló la página  con una interfaz para añadir y configurar la conexión con Dolibarr, incluyendo un diálogo modal con opciones de sincronización.
-  - Se creó la estructura inicial del backend en  y se registró en .
+- **Feature: Sistema de Sincronización Unificado (DONE)**
+  - Se creó un servicio centralizado en  para manejar todas las tareas de sincronización programada.
+  - Se desarrolló una nueva página en  que permite al usuario establecer un único intervalo de sincronización para Proveedores, Tiendas y CRM.
+  - Se refactorizaron los modelos de suscripción () y la UI del SuperAdmin () para gestionar los permisos de esta nueva función unificada.
+- **Feature: Sincronización Automática de CRM (DONE & REFACTORED)**
+  - Se implementó y luego se integró en el sistema unificado la capacidad de programar sincronizaciones automáticas de CRM.
+- **Verification: Finalización de la Integración con Dolibarr (DONE)**
+  - Se descubrió que la lógica de sincronización con Dolibarr en  ya estaba completa, contrariamente a lo que indicaba el resumen anterior.
+  - La funcionalidad se validó con éxito mediante el agente de pruebas, que confirmó la correcta comunicación con la API de Dolibarr.
 
 **Earlier issues found/mentioned but not fixed**
    - Ninguno.
@@ -74,56 +54,53 @@ Se ha reestructurado el menú lateral para incluir una nueva sección Conexiones
 **Known issue recurrence from previous fork**
   - **Issue recurrence in previous fork**: Inestabilidad del Entorno de Producción.
   - **Recurrence count**: 3+
-  - **Status**: RESOLVED (el riesgo persiste debido a procesos de despliegue manuales por parte del usuario).
+  - **Status**: RESOLVED (El riesgo persiste si el usuario continúa con despliegues manuales, pero el código es ahora más robusto contra errores de ruta).
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-- **Rutas de Archivo Dinámicas**: Se corrigió un error de despliegue en producción al cambiar una ruta de archivo codificada de forma rígida a una ruta relativa calculada dinámicamente (), lo que garantiza la portabilidad entre entornos.
-- **Reestructuración de UI en React**: Se modificó un componente principal de navegación () para introducir una nueva estructura de menú jerárquico y colapsable.
-- **Desarrollo Basado en Esqueletos (Backend)**: Se crearon los endpoints y la estructura de servicio para una nueva funcionalidad (CRM) con lógica de marcador de posición, permitiendo que el frontend se construya en paralelo antes de que la lógica de negocio del backend esté completa.
+- **Job Scheduling ():** Se utiliza para crear un sistema de tareas programadas en el backend que ejecuta la sincronización de datos a intervalos definidos por el usuario (1h, 6h, 12h, 24h).
+- **Feature Flagging por Suscripción:** La disponibilidad de la sincronización automática y sus intervalos permitidos se gestionan a través del modelo , permitiendo al SuperAdmin ofrecer diferentes niveles de servicio.
+- **Refactorización de Funcionalidad Central:** La lógica de sincronización, inicialmente específica para CRM, fue refactorizada y unificada en un solo servicio () y una única página de configuración () para cubrir Proveedores, Tiendas y CRM.
 
 **key DB schema**
-  - **crms**: Nueva colección (implícita) para almacenar las configuraciones de conexión de CRM, incluyendo , ,  y .
+  - **users**: Contiene un objeto  para almacenar la configuración de sincronización unificada de cada usuario (, ).
+  - **subscription_plans**: Los campos específicos de CRM (, etc.) han sido reemplazados por los campos genéricos  (boolean) y  (array de strings).
+  - **crms**: El campo  fue eliminado, ya que ahora se gestiona de forma centralizada.
 
 **All files of reference**
-- : Nuevo archivo que contiene la lógica (actualmente incompleta) para la integración con Dolibarr.
-- : Nueva página de React para la interfaz de gestión de CRM.
-- : Modificado para incluir el nuevo menú Conexiones.
-- : Modificado para solucionar el error de ruta en producción.
-- : Modificado para implementar la exportación real a múltiples plataformas.
-- : Reescrito para permitir la edición completa de productos.
-- : Modificado para añadir nuevos campos de producto.
+- : Contiene la lógica central para la sincronización programada unificada.
+- : Es la nueva página de UI donde los usuarios configuran la sincronización.
+- : Proporciona los endpoints para gestionar la configuración de sincronización.
+- : UI del SuperAdmin, actualizada para gestionar los permisos de la sincronización unificada.
+- : Archivo principal del backend, actualizado para ejecutar el nuevo scheduler unificado.
 
 **key api endpoints**
-- : **(NUEVO)** Crea una nueva conexión con un CRM.
-- : **(NUEVO)** Obtiene la lista de conexiones CRM existentes.
-- : **(NUEVO)** Dispara una sincronización manual para una conexión CRM.
-- : **(NUEVO)** Sube una imagen a la galería de un producto.
+- : **(NUEVO)** Obtiene la configuración de sincronización unificada del usuario.
+- : **(NUEVO)** Actualiza la configuración de sincronización unificada.
+- : **(NUEVO)** Obtiene los permisos de sincronización del usuario según su plan.
+- : **(NUEVO)** Dispara una sincronización manual inmediata de todos los servicios habilitados.
 
 **Critical Info for New Agent**
-- **Lógica de CRM Incompleta**: La tarea más importante es implementar la lógica de sincronización real en . Actualmente, la UI está lista, pero el backend no realiza ninguna acción real de sincronización con Dolibarr. Necesitarás consultar la documentación de la API de Dolibarr para implementar las llamadas a los endpoints correctos.
-- **Entorno de Producción del Usuario**: Ten en cuenta que el usuario despliega manualmente. Cualquier cambio que dependa de rutas de archivo específicas o variables de entorno debe ser flexible y no estar codificado de forma rígida para evitar romper su despliegue en producción.
-- **Refactorización del Menú**: Considera proponer al usuario mover la sección Tiendas bajo el nuevo menú Conexiones para mantener una estructura de navegación consistente y lógica.
+- El sistema de sincronización ha sido completamente refactorizado. La lógica ya no está descentralizada, sino que se gestiona de forma central a través del servicio  y la configuración en la página . Cualquier nueva funcionalidad que requiera sincronización programada debe integrarse con este sistema.
+- La tarea principal está completa, pero el usuario necesita verificarla. El próximo paso es presentarle el trabajo y solicitar su validación.
 
 **documents and test reports created in this job**
-  -  (actualizado)
+-  (actualizado)
+- 
+- 
+- 
 
 **Last 10 User Messages and any pending HUMAN messages** 
-1.  **User**:  (Solicitud detallada de funcionalidades de sincronización para CRM). (IN PROGRESS)
-2.  **User**:  (Solicitud para reestructurar el sidebar y añadir integración con CRM Dolibarr). (DONE)
-3.  **User**:  (Confirmación de que el error de producción está resuelto). (RESOLVED)
-4.  **User**:  (Reporte del error  en producción). (RESOLVED)
-5.  **User**:  (Segundo reporte del mismo error, indicando que el  no funcionó). (RESOLVED)
-6.  **User**:  (Solicitud para extender la sincronización a otras plataformas). (DONE)
-7.  **User**:  (Instrucción para continuar). (N/A)
-8.  **User**:  (Petición para implementar la edición completa de productos y su sincronización). (DONE)
+1. **User**:  (Solicitud para crear el sistema de sincronización unificado). (COMPLETED)
+2. **User**:  (Solicitud inicial para la sincronización automática de CRM). (COMPLETED & REFACTORED)
+3. **User**:  (Aprobación para comenzar a trabajar en la lógica de Dolibarr). (COMPLETED)
 
 **Project Health Check:**
-- **Broken**: La funcionalidad de sincronización de CRM está rota ya que la lógica del backend es un esqueleto.
+- **Broken**: Ninguno.
 - **Mocked**: N/A.
-- **Notes**: El resto de la aplicación es estable. La nueva funcionalidad de edición de productos y su sincronización con tiendas está completa y fue probada visualmente. El principal trabajo pendiente es la implementación real de la API de Dolibarr.
+- **Notes**: La aplicación es estable. La nueva funcionalidad de sincronización unificada ha sido implementada y probada por el agente de pruebas, pero está pendiente de validación por parte del usuario final.
 
 **3rd Party Integrations**
 - WooCommerce (API REST)
@@ -131,20 +108,20 @@ Se ha reestructurado el menú lateral para incluir una nueva sección Conexiones
 - Shopify ()
 - Wix eCommerce (Simulado)
 - Magento (Simulado)
-- SMTP Genérico ()
-- @dnd-kit (Frontend drag & drop)
 - Stripe (SDK oficial)
-- **Dolibarr (API REST - Pendiente de Implementación)**
+- Dolibarr (API REST)
+- **APScheduler** (Planificación de tareas en backend)
 
 **Testing status**
-  - Testing agent used after significant changes: YES (para identificar un problema de integración de componentes)
+  - Testing agent used after significant changes: YES
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: No.
+  - Test files created: [, ]
   - Known regressions: Ninguna.
 
 **Credentials to test flow:**
-- Utilizar las credenciales de  /  para el login.
-- Para probar la integración de CRM, se necesitarán una URL de instancia de Dolibarr y una API Key. El agente debe solicitar esto al usuario o utilizar datos de prueba si están disponibles.
+- **Email**: 
+- **Password**: 
+- **Role**: El usuario de prueba ya tiene permisos de .
 
 **What agent forgot to execute**
-- El agente creó el menú Conexiones y añadió CRM dentro, pero no movió el elemento existente Tiendas dentro de este nuevo menú, dejando la estructura de navegación algo inconsistente.</analysis>
+- Nada. El agente implementó todas las solicitudes del usuario en esta sesión y verificó que las tareas pendientes de la sesión anterior ya estaban resueltas.</analysis>
