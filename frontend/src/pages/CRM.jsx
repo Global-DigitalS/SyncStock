@@ -270,26 +270,19 @@ const CRMPage = () => {
       
       const res = await api.post(`/crm/connections/${selectedConnection.id}/sync`, payload);
       
-      // Start polling for progress if we got a sync_job_id
+      // Start polling for progress - the backend now returns immediately with job ID
       if (res.data.sync_job_id) {
         pollSyncProgress(res.data.sync_job_id);
       } else {
-        // No job tracking, just show completion
+        // Fallback: No job tracking
         setSyncProgress(prev => ({
           ...prev,
           status: "completed",
           progress: 100,
           current_step: res.data.message || "Sincronización completada"
         }));
+        fetchConnections();
       }
-      
-      if (res.data.status === "success") {
-        toast.success(res.data.message || "Sincronización completada");
-      } else {
-        toast.warning(res.data.message || "Sincronización parcial");
-      }
-      
-      fetchConnections();
     } catch (error) {
       setSyncProgress(prev => ({
         ...prev,
@@ -297,14 +290,13 @@ const CRMPage = () => {
         current_step: error.response?.data?.detail || "Error en la sincronización"
       }));
       toast.error(error.response?.data?.detail || "Error en la sincronización");
-    } finally {
       setSyncing(prev => ({ ...prev, [selectedConnection.id]: false }));
     }
   };
 
   const pollSyncProgress = async (jobId) => {
     let attempts = 0;
-    const maxAttempts = 300; // 5 minutes max
+    const maxAttempts = 600; // 10 minutes max
     
     const poll = async () => {
       try {
@@ -312,15 +304,28 @@ const CRMPage = () => {
         setSyncProgress(res.data);
         
         if (res.data.status === "completed" || res.data.status === "error") {
+          // Sync finished
+          setSyncing(prev => ({ ...prev, [selectedConnection?.id]: false }));
+          fetchConnections();
+          
+          if (res.data.status === "completed") {
+            toast.success("Sincronización completada");
+          }
           return; // Stop polling
         }
         
         attempts++;
         if (attempts < maxAttempts) {
           setTimeout(poll, 1000); // Poll every second
+        } else {
+          setSyncing(prev => ({ ...prev, [selectedConnection?.id]: false }));
         }
       } catch (error) {
         console.error("Error polling sync progress:", error);
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(poll, 2000); // Retry with delay
+        }
       }
     };
     

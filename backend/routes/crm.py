@@ -849,7 +849,7 @@ async def test_crm_connection(request: dict, user: dict = Depends(get_current_us
 
 @router.post("/crm/connections/{connection_id}/sync")
 async def sync_crm_connection(connection_id: str, request: dict, user: dict = Depends(get_current_user)):
-    """Sync data with a CRM - supports multiple sync types with progress tracking"""
+    """Sync data with a CRM - runs in background with progress tracking"""
     import asyncio
     
     connection = await db.crm_connections.find_one({
@@ -885,6 +885,37 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
     }
     await db.sync_jobs.insert_one(sync_job)
     
+    # Run sync in background task
+    asyncio.create_task(run_sync_in_background(
+        sync_job_id=sync_job_id,
+        user_id=user["id"],
+        connection_id=connection_id,
+        platform=platform,
+        config=config,
+        sync_settings=sync_settings,
+        sync_type=sync_type,
+        catalog_id=catalog_id
+    ))
+    
+    # Return immediately with job ID
+    return {
+        "status": "started",
+        "sync_job_id": sync_job_id,
+        "message": "Sincronización iniciada en segundo plano"
+    }
+
+
+async def run_sync_in_background(
+    sync_job_id: str,
+    user_id: str,
+    connection_id: str,
+    platform: str,
+    config: dict,
+    sync_settings: dict,
+    sync_type: str,
+    catalog_id: str = None
+):
+    """Background task for CRM sync with progress updates"""
     results = {
         "products": None,
         "suppliers": None,
@@ -900,7 +931,7 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
             
             # Sync products (stock, price, description, images)
             if sync_type in ["all", "products"]:
-                results["products"] = await sync_products_to_dolibarr(client, user["id"], sync_settings, catalog_id, sync_job_id)
+                results["products"] = await sync_products_to_dolibarr(client, user_id, sync_settings, catalog_id, sync_job_id)
             
             # Sync suppliers
             if sync_type in ["all", "suppliers"]:
@@ -908,7 +939,7 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
                     {"id": sync_job_id},
                     {"$set": {"current_step": "Sincronizando proveedores..."}}
                 )
-                results["suppliers"] = await sync_suppliers_to_dolibarr(client, user["id"])
+                results["suppliers"] = await sync_suppliers_to_dolibarr(client, user_id)
             
             # Import orders from stores to CRM
             if sync_type in ["all", "orders"]:
@@ -916,23 +947,12 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
                     {"id": sync_job_id},
                     {"$set": {"current_step": "Importando pedidos..."}}
                 )
-                results["orders"] = await sync_orders_to_dolibarr(client, user["id"])
+                results["orders"] = await sync_orders_to_dolibarr(client, user_id)
             
             # Update last sync time
             await db.crm_connections.update_one(
                 {"id": connection_id},
                 {"$set": {"last_sync": datetime.now(timezone.utc).isoformat()}}
-            )
-            
-            # Mark job as completed
-            await db.sync_jobs.update_one(
-                {"id": sync_job_id},
-                {"$set": {
-                    "status": "completed",
-                    "progress": 100,
-                    "current_step": "Sincronización completada",
-                    "completed_at": datetime.now(timezone.utc).isoformat()
-                }}
             )
             
             # Build summary message
@@ -941,16 +961,29 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
                 if result:
                     messages.append(f"{key}: {result.get('message', 'OK')}")
             
-            return {
-                "status": "success",
-                "sync_job_id": sync_job_id,
-                "message": " | ".join(messages) if messages else "Sincronización completada",
-                "details": results
-            }
-        
-        return {"status": "error", "message": f"Plataforma no soportada: {platform}"}
+            # Mark job as completed
+            await db.sync_jobs.update_one(
+                {"id": sync_job_id},
+                {"$set": {
+                    "status": "completed",
+                    "progress": 100,
+                    "current_step": " | ".join(messages) if messages else "Sincronización completada",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                    "results": results
+                }}
+            )
+        else:
+            await db.sync_jobs.update_one(
+                {"id": sync_job_id},
+                {"$set": {
+                    "status": "error",
+                    "current_step": f"Plataforma no soportada: {platform}",
+                    "completed_at": datetime.now(timezone.utc).isoformat()
+                }}
+            )
     
     except Exception as e:
+        logger.error(f"Sync error: {e}")
         # Mark job as failed
         await db.sync_jobs.update_one(
             {"id": sync_job_id},
@@ -960,7 +993,6 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
                 "completed_at": datetime.now(timezone.utc).isoformat()
             }}
         )
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/crm/sync-jobs/{job_id}")
