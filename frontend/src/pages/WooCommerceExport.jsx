@@ -25,7 +25,7 @@ import {
 } from "../components/ui/select";
 import {
   Store, Plus, MoreVertical, Trash2, RefreshCw, ExternalLink, Upload, 
-  Wifi, WifiOff, Package, Key, Link2, BookOpen, Clock, Zap, Settings,
+  Wifi, WifiOff, Package, Key, Link2, BookOpen, Settings,
   ShoppingCart, ShoppingBag, Globe, Boxes, Sparkles
 } from "lucide-react";
 
@@ -451,7 +451,6 @@ const StoresPage = () => {
                   <TableHead>Tienda</TableHead>
                   <TableHead>Plataforma</TableHead>
                   <TableHead>Catálogo Asociado</TableHead>
-                  <TableHead className="text-center">Auto-Sync</TableHead>
                   <TableHead className="text-center">Estado</TableHead>
                   <TableHead className="text-right">Productos</TableHead>
                   <TableHead>Última Sync</TableHead>
@@ -498,19 +497,6 @@ const StoresPage = () => {
                           </Badge>
                         ) : (
                           <span className="text-sm text-slate-400">No configurado</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        {config.auto_sync_enabled ? (
-                          <Badge className="bg-emerald-100 text-emerald-700 border-0">
-                            <Zap className="w-3 h-3 mr-1" />
-                            Activo
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" className="text-slate-400">
-                            <Clock className="w-3 h-3 mr-1" />
-                            Desactivado
-                          </Badge>
                         )}
                       </TableCell>
                       <TableCell className="text-center">
@@ -706,7 +692,7 @@ const StoresPage = () => {
               
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="catalog_id">Catálogo para sincronización</Label>
+                  <Label htmlFor="catalog_id">Catálogo para sincronización *</Label>
                   <Select
                     value={formData.catalog_id || "none"}
                     onValueChange={(val) => setFormData({ ...formData, catalog_id: val === "none" ? "" : val })}
@@ -724,18 +710,9 @@ const StoresPage = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                </div>
-
-                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                  <div>
-                    <p className="font-medium text-sm text-slate-900">Sincronización automática</p>
-                    <p className="text-xs text-slate-500">Sincronizar precio y stock cada 12 horas</p>
-                  </div>
-                  <Switch
-                    checked={formData.auto_sync_enabled || false}
-                    onCheckedChange={(checked) => setFormData({ ...formData, auto_sync_enabled: checked })}
-                    data-testid="store-auto-sync-switch"
-                  />
+                  <p className="text-xs text-slate-500">
+                    Selecciona el catálogo que se exportará a esta tienda
+                  </p>
                 </div>
               </div>
             </div>
