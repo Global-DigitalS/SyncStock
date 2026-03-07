@@ -10,6 +10,7 @@ class UserCreate(BaseModel):
     name: str
     company: Optional[str] = None
     role: Optional[str] = "user"  # superadmin, admin, user, viewer
+    plan_id: Optional[str] = None  # Selected subscription plan
 
 class UserLogin(BaseModel):
     email: EmailStr

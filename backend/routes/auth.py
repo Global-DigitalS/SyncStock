@@ -47,8 +47,31 @@ async def register(user: UserCreate):
     user_count = await db.users.count_documents({})
     role = "superadmin" if user_count == 0 else "user"
     
-    # Get default limits for role
-    limits = DEFAULT_LIMITS.get(role, DEFAULT_LIMITS["user"])
+    # Get selected plan or default to free
+    selected_plan_id = getattr(user, 'plan_id', None)
+    plan = None
+    trial_end = None
+    
+    if selected_plan_id:
+        plan = await db.subscription_plans.find_one({"id": selected_plan_id, "is_active": True})
+    
+    if not plan:
+        # Get free plan
+        plan = await db.subscription_plans.find_one({"name": "Free", "is_active": True})
+    
+    # Set limits based on plan or defaults
+    if plan:
+        limits = {
+            "max_suppliers": plan.get("max_suppliers", 2),
+            "max_catalogs": plan.get("max_catalogs", 1),
+            "max_woocommerce_stores": plan.get("max_woocommerce_stores", 1)
+        }
+        # Apply trial period if plan has trial days
+        trial_days = plan.get("trial_days", 0)
+        if trial_days > 0:
+            trial_end = (datetime.now(timezone.utc) + timedelta(days=trial_days)).isoformat()
+    else:
+        limits = DEFAULT_LIMITS.get(role, DEFAULT_LIMITS["user"])
     
     user_id = str(uuid.uuid4())
     user_doc = {
@@ -59,10 +82,26 @@ async def register(user: UserCreate):
         "max_suppliers": limits["max_suppliers"],
         "max_catalogs": limits["max_catalogs"],
         "max_woocommerce_stores": limits["max_woocommerce_stores"],
+        "plan_id": plan["id"] if plan else None,
+        "plan_name": plan["name"] if plan else "Free",
+        "trial_end": trial_end,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_doc)
     token = create_token(user_id, role)
+    
+    # Create subscription record if a paid plan was selected
+    if plan and plan.get("price_monthly", 0) > 0:
+        subscription_doc = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "plan_id": plan["id"],
+            "plan_name": plan["name"],
+            "status": "pending_payment",  # Requires payment
+            "billing_cycle": "monthly",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.user_subscriptions.insert_one(subscription_doc)
     
     # Send welcome email (async, don't block registration)
     try:
@@ -80,7 +119,10 @@ async def register(user: UserCreate):
             "company": company, "role": role,
             "max_suppliers": limits["max_suppliers"],
             "max_catalogs": limits["max_catalogs"],
-            "max_woocommerce_stores": limits["max_woocommerce_stores"]
+            "max_woocommerce_stores": limits["max_woocommerce_stores"],
+            "plan_name": plan["name"] if plan else "Free",
+            "trial_end": trial_end,
+            "is_in_trial": trial_end is not None
         }
     }
 
@@ -98,7 +140,7 @@ async def login(credentials: UserLogin):
         raise HTTPException(status_code=401, detail="INVALID_PASSWORD")
     
     # Check if user is active
-    if user.get("is_active") == False:
+    if user.get("is_active") is False:
         raise HTTPException(status_code=403, detail="ACCOUNT_DISABLED")
     
     role = user.get("role", "user")

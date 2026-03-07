@@ -34,7 +34,8 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "max_woocommerce_stores": 1,
                 "price_monthly": 0,
                 "price_yearly": 0,
-                "features": ["2 proveedores", "1 catálogo", "1 tienda WooCommerce", "Soporte por email"],
+                "trial_days": 14,  # 14 días de prueba con funciones premium
+                "features": ["2 proveedores", "1 catálogo", "1 tienda WooCommerce", "Soporte por email", "14 días de prueba premium"],
                 "is_active": True,
                 "auto_sync_enabled": False,
                 "sync_intervals": [],
@@ -51,6 +52,7 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "max_woocommerce_stores": 2,
                 "price_monthly": 19.99,
                 "price_yearly": 199.99,
+                "trial_days": 0,
                 "features": ["10 proveedores", "5 catálogos", "2 tiendas WooCommerce", "Sincronización cada 24h", "Soporte prioritario"],
                 "is_active": True,
                 "auto_sync_enabled": True,
@@ -68,6 +70,7 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "max_woocommerce_stores": 10,
                 "price_monthly": 49.99,
                 "price_yearly": 499.99,
+                "trial_days": 0,
                 "features": ["50 proveedores", "20 catálogos", "10 tiendas", "Sync cada 6-24h", "API REST", "Soporte 24/7"],
                 "is_active": True,
                 "auto_sync_enabled": True,
@@ -85,6 +88,7 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "max_woocommerce_stores": 999999,
                 "price_monthly": 199.99,
                 "price_yearly": 1999.99,
+                "trial_days": 0,
                 "features": ["Ilimitado", "Sync cada 1-24h", "Soporte dedicado", "Onboarding personalizado", "SLA garantizado"],
                 "is_active": True,
                 "auto_sync_enabled": True,
@@ -99,6 +103,33 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
         plans = default_plans
     
     return [SubscriptionPlan(**p) for p in plans]
+
+
+@router.get("/subscriptions/plans/public")
+async def get_public_subscription_plans():
+    """Get available subscription plans (public endpoint for registration)"""
+    plans = await db.subscription_plans.find(
+        {"is_active": True}, 
+        {"_id": 0}
+    ).sort("price_monthly", 1).to_list(100)
+    
+    # Return simplified plan info for public display
+    public_plans = []
+    for plan in plans:
+        public_plans.append({
+            "id": plan["id"],
+            "name": plan["name"],
+            "description": plan.get("description", ""),
+            "price_monthly": plan.get("price_monthly", 0),
+            "price_yearly": plan.get("price_yearly", 0),
+            "trial_days": plan.get("trial_days", 0),
+            "features": plan.get("features", []),
+            "max_suppliers": plan.get("max_suppliers", 0),
+            "max_catalogs": plan.get("max_catalogs", 0),
+            "max_woocommerce_stores": plan.get("max_woocommerce_stores", 0)
+        })
+    
+    return public_plans
 
 
 @router.post("/subscriptions/plans", response_model=SubscriptionPlan)
@@ -151,6 +182,21 @@ async def delete_subscription_plan(plan_id: str, superadmin: dict = Depends(get_
     return {"message": "Plan desactivado"}
 
 
+from pydantic import BaseModel, EmailStr
+from typing import Optional as OptionalType
+
+
+class BillingInfo(BaseModel):
+    """Billing information for invoices"""
+    company_name: str
+    tax_id: str  # NIF/CIF
+    address: str
+    city: str
+    postal_code: str
+    country: str = "España"
+    billing_email: OptionalType[EmailStr] = None
+
+
 # ==================== USER SUBSCRIPTIONS ====================
 
 @router.get("/subscriptions/my")
@@ -160,6 +206,19 @@ async def get_my_subscription(user: dict = Depends(get_current_user)):
         {"user_id": user["id"], "status": {"$in": ["active", "trial"]}},
         {"_id": 0}
     )
+    
+    # Get user's billing info
+    billing_info = await db.billing_info.find_one({"user_id": user["id"]}, {"_id": 0})
+    
+    # Check if user is in trial period
+    trial_end = user.get("trial_end")
+    is_in_trial = False
+    trial_days_left = 0
+    if trial_end:
+        trial_end_dt = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
+        if trial_end_dt > datetime.now(timezone.utc):
+            is_in_trial = True
+            trial_days_left = (trial_end_dt - datetime.now(timezone.utc)).days
     
     if not subscription:
         # Return free plan info
@@ -171,23 +230,89 @@ async def get_my_subscription(user: dict = Depends(get_current_user)):
                 "max_catalogs": user.get("max_catalogs", 5),
                 "max_woocommerce_stores": user.get("max_woocommerce_stores", 2)
             },
-            "is_free": True
+            "is_free": True,
+            "is_in_trial": is_in_trial,
+            "trial_days_left": trial_days_left,
+            "billing_info": billing_info
         }
     
     plan = await db.subscription_plans.find_one({"id": subscription["plan_id"]}, {"_id": 0})
     return {
         "subscription": subscription,
         "plan": plan,
-        "is_free": False
+        "is_free": False,
+        "is_in_trial": is_in_trial,
+        "trial_days_left": trial_days_left,
+        "billing_info": billing_info
     }
 
 
+@router.post("/subscriptions/billing-info")
+async def save_billing_info(billing: BillingInfo, user: dict = Depends(get_current_user)):
+    """Save or update user's billing information"""
+    billing_doc = {
+        "user_id": user["id"],
+        "company_name": billing.company_name,
+        "tax_id": billing.tax_id.upper(),
+        "address": billing.address,
+        "city": billing.city,
+        "postal_code": billing.postal_code,
+        "country": billing.country,
+        "billing_email": billing.billing_email or user.get("email"),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.billing_info.update_one(
+        {"user_id": user["id"]},
+        {"$set": billing_doc},
+        upsert=True
+    )
+    
+    return {"message": "Datos de facturación guardados", "billing_info": billing_doc}
+
+
+@router.get("/subscriptions/billing-info")
+async def get_billing_info(user: dict = Depends(get_current_user)):
+    """Get user's billing information"""
+    billing_info = await db.billing_info.find_one({"user_id": user["id"]}, {"_id": 0})
+    return billing_info or {}
+
+
 @router.post("/subscriptions/subscribe/{plan_id}")
-async def subscribe_to_plan(plan_id: str, billing_cycle: str = "monthly", user: dict = Depends(get_current_user)):
-    """Subscribe user to a plan (simulated - would integrate with Stripe in production)"""
+async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(get_current_user)):
+    """Subscribe user to a plan - requires billing info for paid plans"""
     plan = await db.subscription_plans.find_one({"id": plan_id, "is_active": True}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
+    
+    billing_cycle = request.get("billing_cycle", "monthly")
+    
+    # For paid plans, require billing information
+    if plan.get("price_monthly", 0) > 0:
+        billing_info = await db.billing_info.find_one({"user_id": user["id"]})
+        
+        # Check if billing info was provided in the request
+        if not billing_info and request.get("billing_info"):
+            billing_data = request["billing_info"]
+            billing_doc = {
+                "user_id": user["id"],
+                "company_name": billing_data.get("company_name", ""),
+                "tax_id": billing_data.get("tax_id", "").upper(),
+                "address": billing_data.get("address", ""),
+                "city": billing_data.get("city", ""),
+                "postal_code": billing_data.get("postal_code", ""),
+                "country": billing_data.get("country", "España"),
+                "billing_email": billing_data.get("billing_email") or user.get("email"),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.billing_info.insert_one(billing_doc)
+            billing_info = billing_doc
+        
+        if not billing_info:
+            raise HTTPException(
+                status_code=400, 
+                detail="Se requieren datos de facturación para planes de pago"
+            )
     
     # Get current subscription to know the old plan name
     current_subscription = await db.user_subscriptions.find_one(
