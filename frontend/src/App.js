@@ -28,6 +28,7 @@ import EmailConfig from "./pages/EmailConfig";
 import CRMPage from "./pages/CRM";
 import SyncSettings from "./pages/SyncSettings";
 import Profile from "./pages/Profile";
+import Landing from "./pages/Landing";
 
 // Admin Pages
 import AdminBranding from "./pages/AdminBranding";
@@ -35,6 +36,7 @@ import AdminPlans from "./pages/AdminPlans";
 import AdminEmailTemplates from "./pages/AdminEmailTemplates";
 import AdminStripe from "./pages/AdminStripe";
 import AdminEmailAccounts from "./pages/AdminEmailAccounts";
+import AdminLanding from "./pages/AdminLanding";
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -274,6 +276,9 @@ function App() {
         <Routes>
           {/* Setup Route */}
           <Route path="/setup" element={<Setup />} />
+          
+          {/* Landing Page (Public) */}
+          <Route path="/landing" element={<Landing />} />
           
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
@@ -538,6 +543,16 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <AdminEmailTemplates />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/landing"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AdminLanding />
                 </MainLayout>
               </ProtectedRoute>
             }

@@ -31,7 +31,8 @@ import {
   DollarSign,
   Link2,
   Building2,
-  RefreshCw
+  RefreshCw,
+  Layout
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -61,6 +62,7 @@ const adminItems = [
   { path: "/admin/subscriptions", label: "Suscripciones", icon: CreditCard },
   { path: "/admin/stripe", label: "Config. Stripe", icon: DollarSign },
   { path: "/admin/branding", label: "Personalización", icon: Palette },
+  { path: "/admin/landing", label: "Landing Page", icon: Layout },
   { path: "/admin/email-config", label: "Config. Email", icon: Mail },
   { path: "/admin/email-templates", label: "Plantillas Email", icon: FileText },
 ];
