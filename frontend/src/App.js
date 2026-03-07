@@ -27,6 +27,7 @@ import Webhooks from "./pages/Webhooks";
 import EmailConfig from "./pages/EmailConfig";
 import CRMPage from "./pages/CRM";
 import SyncSettings from "./pages/SyncSettings";
+import Profile from "./pages/Profile";
 
 // Admin Pages
 import AdminBranding from "./pages/AdminBranding";
@@ -435,6 +436,16 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <Subscriptions />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Profile />
                 </MainLayout>
               </ProtectedRoute>
             }

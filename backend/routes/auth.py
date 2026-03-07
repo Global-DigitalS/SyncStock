@@ -162,6 +162,66 @@ async def get_me(user: dict = Depends(get_current_user)):
     return UserResponse(**user)
 
 
+@router.put("/auth/profile")
+async def update_profile(request: dict, user: dict = Depends(get_current_user)):
+    """Update user's profile information"""
+    allowed_fields = ["name", "company", "phone"]
+    update_data = {}
+    
+    for field in allowed_fields:
+        if field in request and request[field] is not None:
+            if field in ["name", "company"]:
+                update_data[field] = sanitize_string(request[field], max_length=200)
+            else:
+                update_data[field] = request[field]
+    
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No hay datos para actualizar")
+    
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": update_data}
+    )
+    
+    return {"message": "Perfil actualizado correctamente", "updated": list(update_data.keys())}
+
+
+@router.post("/auth/change-password")
+async def change_password(request: dict, user: dict = Depends(get_current_user)):
+    """Change user's password"""
+    current_password = request.get("current_password")
+    new_password = request.get("new_password")
+    
+    if not current_password or not new_password:
+        raise HTTPException(status_code=400, detail="Contraseña actual y nueva son requeridas")
+    
+    if len(new_password) < 6:
+        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 6 caracteres")
+    
+    # Get user with password from database
+    db_user = await db.users.find_one({"id": user["id"]})
+    if not db_user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    # Verify current password
+    if not verify_password(current_password, db_user.get("password", "")):
+        raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
+    
+    # Update password
+    new_hashed = hash_password(new_password)
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {
+            "password": new_hashed,
+            "password_changed_at": datetime.now(timezone.utc).isoformat()
+        }}
+    )
+    
+    return {"message": "Contraseña actualizada correctamente"}
+
+
 @router.get("/auth/permissions")
 async def get_my_permissions(user: dict = Depends(get_current_user)):
     """Get current user's permissions based on role"""

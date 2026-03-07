@@ -294,7 +294,16 @@ const Sidebar = ({ open, onToggle }) => {
 
       {/* User Section */}
       <div className="p-4 border-t border-slate-200">
-        <div className="flex items-center gap-3 px-3 py-2 mb-2">
+        <Link
+          to="/profile"
+          data-testid="nav-profile"
+          className={`flex items-center gap-3 px-3 py-2 mb-2 rounded-sm transition-all duration-200 ${
+            location.pathname === "/profile"
+              ? "bg-indigo-50 text-indigo-700"
+              : "hover:bg-slate-50"
+          }`}
+          onClick={() => setMobileOpen(false)}
+        >
           <div className="w-9 h-9 bg-slate-200 rounded-full flex items-center justify-center">
             <span className="text-sm font-semibold text-slate-600">
               {user?.name?.charAt(0).toUpperCase() || "U"}
@@ -304,7 +313,8 @@ const Sidebar = ({ open, onToggle }) => {
             <p className="text-sm font-medium text-slate-900 truncate">{user?.name}</p>
             <p className="text-xs text-slate-500 truncate">{user?.email}</p>
           </div>
-        </div>
+          <Settings className="w-4 h-4 text-slate-400" />
+        </Link>
         <button
           onClick={handleLogout}
           data-testid="logout-btn"
