@@ -4,9 +4,30 @@
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
 
 ## Estado Actual
-**Versión:** 3.4.0  
-**Última actualización:** 2026-03-06  
+**Versión:** 3.5.0  
+**Última actualización:** 2026-03-07  
 **Estado:** ✅ Producción - Funcionando en menuboard.es
+
+---
+
+## Cambios Recientes (2026-03-07)
+
+### Webhook de Stripe - VERIFICADO
+- ✅ Endpoint `/api/stripe/webhook` ya implementado y funcional
+- Maneja eventos: `checkout.session.completed`, `checkout.session.expired`
+- Activa suscripciones automáticamente al completar pago
+- Verifica firma del webhook si está configurada
+- Actualiza `payment_transactions` y aplica suscripción al usuario
+
+### Landing Page Separada - NUEVO
+- ✅ Creada aplicación independiente en `/app/landing/`
+- Aplicación React standalone lista para desplegar en dominio separado
+- Consume APIs del backend para contenido dinámico
+- Configurable via `.env` para diferentes entornos
+- README con instrucciones de despliegue (Vercel, Netlify, etc.)
+
+### Configuración
+- ✅ Añadida `STRIPE_API_KEY=sk_test_emergent` al backend
 
 ---
 
@@ -474,6 +495,17 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 - ✅ Ruta `/margin-rules` ahora redirige a `/catalogs`
 - ✅ Validados scripts de despliegue multi-dominio (confirmado por usuario)
 - ✅ Verificada conexión FTP (confirmado por usuario)
+
+### 2026-03-07
+- ✅ **Verificado Webhook de Stripe**
+  - Endpoint `/api/stripe/webhook` ya funcional
+  - Maneja `checkout.session.completed` y `checkout.session.expired`
+  - Activa suscripciones automáticamente
+- ✅ **Landing Page Separada**
+  - Creada `/app/landing/` como app React independiente
+  - Lista para desplegar en dominio separado
+  - README con instrucciones de despliegue
+- ✅ Añadida `STRIPE_API_KEY` al backend
 
 ### 2026-03-04 (Fork anterior)
 - ✅ Solucionado problema de instalación en subdominios de Plesk

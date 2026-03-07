@@ -1,151 +1,173 @@
 <analysis>**original_problem_statement:**
-El usuario ha solicitado correcciones y nuevas funcionalidades para la aplicación SaaS de gestión de catálogos:
-
-**Bugs Reportados:**
-1.  **Exportación a WooCommerce:** Al exportar productos, las categorías no se crean en WooCommerce y no se añade un campo personalizado para identificar al proveedor.
-2.  **Sincronización con Dolibarr:** La sincronización de productos a Dolibarr no actualiza correctamente los proveedores, el mejor precio de compra, el stock ni las imágenes.
+El usuario ha solicitado una serie de funcionalidades y correcciones importantes para su aplicación SaaS SyncStock:
 
 **Nuevas Funcionalidades:**
-1.  **Gestión de Productos en Catálogo:**
-    *   Al añadir productos a un catálogo, permitir al usuario seleccionar una categoría específica dentro de ese catálogo.
-    *   Añadir la capacidad de eliminar productos de la lista general.
-2.  **Refactorización de la Sincronización:**
-    *   La exportación/sincronización a tiendas online (ej. WooCommerce) debe realizarse obligatoriamente desde un catálogo previamente creado, no con productos sueltos.
-    *   La configuración de la sincronización automática debe estar centralizada únicamente en la página Sincronización, eliminando cualquier control duplicado en otras secciones (como CRM o Tiendas).
+1.  **Suscripciones y Registro:**
+    *   Añadir días de prueba al plan gratuito.
+    *   Requerir datos de facturación para suscripciones de pago.
+    *   Permitir a los usuarios elegir un plan de suscripción durante el registro.
+    *   Integrar un flujo de pago completo con Stripe para los planes de pago antes de activar la cuenta.
+2.  **Gestión de Usuario:**
+    *   Crear una página de Perfil donde los usuarios puedan editar sus datos personales y de facturación, y cambiar su contraseña.
+3.  **Marketing y Ventas:**
+    *   Crear una landing page de ventas profesional, moderna y orientada a la conversión.
+    *   El contenido de la landing page (textos, características, precios, etc.) debe ser completamente editable desde un panel de administración.
+    *   Los precios en la landing deben cargarse dinámicamente desde la configuración de planes de la aplicación.
+4.  **Mejoras de Funcionalidad:**
+    *   Añadir un selector de catálogo a la página de sincronización de CRM/Dolibarr.
+    *   Implementar una barra de progreso visual para indicar el estado de las sincronizaciones.
+
+**Bugs Reportados:**
+1.  Error en la sincronización con Dolibarr que impedía la actualización del stock.
+2.  Error en la sincronización con Dolibarr donde el precio de venta se establecía incorrectamente al mismo valor que el precio de compra, sin aplicar los márgenes del catálogo.
+3.  Error en la UI donde el selector de catálogos para la sincronización mostraba 0 productos incorrectamente.
+4.  La barra de progreso de sincronización no se cargaba, y el proceso de sincronización era lento y sobrecargaba el servidor.
+5.  Errores de compilación en el frontend que impedían ver las páginas recién creadas.
+
+**Otras Peticiones:**
+*   Cambiar la contraseña del usuario .
 
 **User's preferred language**: Spanish
 
 **what currently exists?**
-La aplicación es un SaaS full-stack (React + FastAPI + MongoDB). En esta sesión, se han implementado soluciones para los bugs críticos de sincronización con WooCommerce y Dolibarr.
+La aplicación es un SaaS full-stack (React + FastAPI + MongoDB) para la gestión y sincronización de catálogos de productos. En esta sesión, se han implementado numerosas funcionalidades y correcciones críticas:
 
-- **WooCommerce**: La exportación ahora crea categorías de forma automática y añade un campo personalizado con el nombre del proveedor.
-- **Dolibarr**: Se ha refactorizado por completo la integración. Ahora crea proveedores si no existen, crea un almacén por defecto para gestionar el stock, vincula los productos a sus proveedores con el precio de compra correcto y gestiona la subida de imágenes (omitiendo URLs locales no accesibles).
-- **Nuevas Funciones**: Se ha añadido un botón para eliminar productos de la vista principal y, al añadir productos a un catálogo, ahora se muestra un selector para elegir la categoría de destino dentro de ese catálogo.
-- **Refactorización UI**: Se ha eliminado la configuración de sincronización automática de las páginas de CRM y Tiendas para centralizarla exclusivamente en la página principal Sincronización, siguiendo la petición del usuario.
+*   **Flujo de Suscripción Completo:** Se ha implementado un nuevo flujo de registro de varios pasos que incluye la selección de planes, la adición de días de prueba, la recopilación de datos de facturación y la redirección a Stripe Checkout para planes de pago.
+*   **Gestión de Perfil de Usuario:** Se ha creado una página de perfil () con pestañas para editar datos personales, de facturación y de seguridad (cambio de contraseña).
+*   **Landing Page Dinámica:** Se ha creado una landing page de ventas () con diseño profesional y contenido totalmente editable a través de un nuevo panel de administración (). Los planes y precios se cargan dinámicamente desde la API.
+*   **Sincronización con Dolibarr Mejorada:**
+    *   Se ha añadido un selector para sincronizar por catálogo.
+    *   Se corrigieron errores críticos con la actualización de stock y la diferenciación de precios de compra/venta, aplicando correctamente los márgenes definidos en los catálogos.
+*   **Optimización de Rendimiento:** Los procesos de sincronización (Dolibarr y WooCommerce) han sido optimizados para ejecutarse como tareas en segundo plano, usar operaciones por lotes (batch) y sesiones HTTP reutilizables, reduciendo drásticamente la carga del servidor y el tiempo de ejecución.
+*   **Experiencia de Usuario:** Se ha implementado una barra de progreso en tiempo real para todas las sincronizaciones, proporcionando feedback visual al usuario.
 
 **Last working item**:
-- Last item agent was working: Se finalizó la refactorización para centralizar la configuración de la sincronización automática, eliminando los controles redundantes de las páginas de Tiendas () y CRM ().
-- Status: IN PROGRESS
-- Agent Testing Done: N
-- Which testing method agent to use? frontend testing agent
+- Last item agent was working: Creación de una landing page de ventas profesional y un panel de administración para editar su contenido. El agente acababa de confirmar que las páginas se habían creado y compilado correctamente y estaba explicando al usuario cómo acceder a ellas.
+- Status: USER VERIFICATION PENDING
+- Agent Testing Done: Y
+- Which testing method agent to use? screenshot tool
 - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-- **Issue 1 (P0): Validar la refactorización de la UI de sincronización.**
-  - **Descripción**: La última tarea completada fue eliminar los controles de sincronización automática de las páginas de CRM y Tiendas. Esta modificación no ha sido probada ni validada por el usuario.
-  - **Status**: TESTING PENDING
-- **Issue 2 (P1): Validar las correcciones de WooCommerce y Dolibarr.**
-  - **Descripción**: Se implementaron soluciones extensas para los problemas de sincronización con WooCommerce y Dolibarr. Aunque el agente realizó pruebas manuales exhaustivas, el usuario aún no ha confirmado que los problemas estén resueltos desde su perspectiva.
+- **Issue 1 (P0): Verificar la nueva Landing Page y su panel de administración.**
+  - **Descripción**: El usuario solicitó una landing page y un panel para gestionarla. El agente ha implementado ambas cosas, pero el usuario necesita confirmar que puede ver la página () y acceder al panel de edición () para configurarla.
   - **Status**: USER VERIFICATION PENDING
-- **Issue 3 (P2): Validar las nuevas funcionalidades de gestión de productos.**
-  - **Descripción**: Se implementó la capacidad de eliminar productos y de asignarlos a una categoría específica del catálogo. Estas funcionalidades fueron probadas a nivel de API por el agente, pero falta la validación completa en el frontend por parte del usuario.
+- **Issue 2 (P1): Verificar el flujo completo de registro y suscripción de pago.**
+  - **Descripción**: Se ha implementado un flujo complejo que incluye la selección de plan, la recopilación de datos de facturación y la redirección a Stripe. Es crucial que el usuario pruebe este flujo de extremo a extremo para un plan de pago y confirme que funciona como se espera. **NOTA:** El agente implementó la redirección a Stripe, pero no el webhook para recibir la confirmación de pago, por lo que el flujo está incompleto.
+  - **Status**: BLOCKED
+- **Issue 3 (P2): Verificar la nueva página de Perfil de Usuario.**
+  - **Descripción**: Se ha creado la página  para la gestión de datos de usuario. El usuario debe probar la edición de datos personales, datos de facturación y el cambio de contraseña.
   - **Status**: USER VERIFICATION PENDING
 
 **In progress Task List**:
-No hay tareas en progreso, las últimas fueron completadas y están pendientes de prueba/validación.
+No hay tareas en progreso. Las últimas tareas están pendientes de validación por parte del usuario.
 
 **Upcoming and Future Tasks**
 Upcoming Tasks:
-- **Task 1 (P0): Presentar y validar todo el trabajo realizado.**
+- **Task 1 (P0): Implementar el webhook de Stripe para activar suscripciones.**
+    - **Descripción**: El flujo de registro para planes de pago redirige a Stripe, pero la aplicación no tiene cómo saber si el pago fue exitoso. Se debe crear un endpoint de webhook () que escuche los eventos de Stripe (ej. ) y active la suscripción del usuario en la base de datos.
+    - **Referencia**: .
+- **Task 2 (P1): Presentar y validar todo el trabajo realizado.**
     - **Descripción**: El agente debe presentar un resumen de todas las correcciones y funcionalidades implementadas en esta sesión y solicitar al usuario que las pruebe. Esto incluye:
-        1. La corrección de exportación a WooCommerce (categorías y campo de proveedor).
-        2. La corrección de sincronización con Dolibarr (proveedores, precio, stock, imágenes).
-        3. Las nuevas funciones de eliminar productos y añadir a una categoría de catálogo.
-        4. La centralización de la configuración de sincronización automática.
-- **Task 2 (P1): Validar Funcionalidades de SuperAdmin.**
-    - **Descripción**: Solicitar al usuario que pruebe y valide las funcionalidades del panel de SuperAdmin, especialmente la gestión de planes y cómo afecta a las opciones de sincronización unificada.
+        1.  El nuevo flujo de registro y pago.
+        2.  La nueva página de perfil.
+        3.  La nueva landing page y su panel de administración.
+        4.  Las correcciones y optimizaciones en la sincronización.
 
 Future Tasks:
-- **Task 3 (P2):** Añadir autenticación de dos factores (2FA).
-- **Task 4 (P3):** Ampliar el dashboard del  con más estadísticas de uso de la plataforma.
+- **Task 3 (P2):** Añadir autenticación de dos factores (2FA) (del backlog anterior).
+- **Task 4 (P3):** Ampliar el dashboard del  con más estadísticas de uso de la plataforma (del backlog anterior).
 
 **Completed work in this session**
-- **Bug Fix: Exportación a WooCommerce (DONE)**
-  - La lógica en  ahora crea categorías (incluyendo jerarquías) antes de exportar productos.
-  - Se añaden los metadatos  y  al producto en WooCommerce.
-- **Bug Fix: Sincronización con Dolibarr (DONE)**
-  - Se reescribió gran parte de .
-  - Se asegura la creación de proveedores antes de vincular productos.
-  - Se crea un almacén por defecto si no existe para gestionar el stock.
-  - Se corrigió el payload para vincular productos a proveedores con su precio de compra (), añadiendo el campo  requerido.
-  - Se evita crear movimientos de stock con cantidad cero.
-  - Se mejoró el manejo de URLs de imágenes para subir solo las que son accesibles externamente.
-- **Feature: Gestión de Productos (DONE)**
-  - Se añadió un endpoint  en  para la eliminación masiva de productos.
-  - Se implementó la lógica en  para permitir la selección y eliminación de productos.
-  - Se modificó el diálogo de Añadir a Catálogo para incluir un selector de categorías del catálogo destino, pasando el  al backend.
-- **Refactor: Centralización de Sincronización (DONE)**
-  - Se eliminaron los componentes de UI y la lógica relacionada con la configuración de auto-sync de  y .
-  - Se reforzó la página  como el único lugar para configurar la sincronización automática.
-
-**Earlier issues found/mentioned but not fixed**
-- Ninguno.
-
-**Known issue recurrence from previous fork**
-- Ninguno en esta sesión.
+- **Feature: Flujo de suscripción y registro con Stripe (IN PROGRESS - PAGO INCOMPLETO)**
+  - Creado un flujo de registro multi-paso en .
+  - Añadido endpoint  para mostrar planes.
+  - Modificado el endpoint  para aceptar un .
+  - Añadidos días de prueba a los planes y lógica de  en el usuario.
+  - Creados endpoints para gestionar .
+  - Implementada la redirección a Stripe Checkout en .
+- **Feature: Página de Perfil de Usuario (DONE)**
+  - Creada la página  con pestañas para datos personales, facturación y seguridad.
+  - Añadidos endpoints  y  en .
+- **Feature: Landing Page Editable (DONE)**
+  - Creada la página  con diseño profesional.
+  - Creado el panel de administración .
+  - Añadidos endpoints en el backend para guardar y servir el contenido dinámico de la landing.
+- **Feature: Barra de Progreso de Sincronización (DONE)**
+  - Creado sistema de seguimiento con la colección  y el endpoint .
+  - Implementado un diálogo de progreso con polling en .
+- **Optimization: Sincronizaciones (DONE)**
+  - Refactorizada la sincronización para ejecutarse en segundo plano ().
+  - Optimizado el cliente de Dolibarr para usar  en .
+  - Optimizada la exportación a WooCommerce para usar operaciones  en .
+- **Bug Fixes: Sincronización con Dolibarr (DONE)**
+  - Corregida la actualización de stock para usar movimientos de stock.
+  - Corregido el cálculo de precios para diferenciar entre precio de compra y de venta (con márgenes de catálogo).
+  - Corregida la obtención de productos de un catálogo para que la sincronización por catálogo funcione.
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-- **Interacción Profunda con API de Terceros (Dolibarr):** Se requirió una depuración exhaustiva para descubrir requisitos no documentados de la API de Dolibarr, como la necesidad de un almacén () para el stock y el campo  para vincular precios de compra.
-- **Flujo de Sincronización Robusto:** Se implementó un flujo secuencial estricto para la sincronización: 1. Crear/Verificar Proveedor, 2. Crear/Verificar Almacén, 3. Crear/Actualizar Producto, 4. Vincular Precio de Compra, 5. Actualizar Stock, 6. Subir Imagen.
-- **Refactorización de UI para Centralización:** Se eliminó código y componentes de UI duplicados para crear una única fuente de verdad para la configuración de la sincronización, mejorando la experiencia de usuario y la mantenibilidad.
+- **Integración con Stripe Checkout:** Creación de sesiones de pago y redirección del usuario para procesar suscripciones.
+- **Tareas en Segundo Plano (Background Tasks):** Uso de  para ejecutar operaciones largas (como la sincronización) sin bloquear la respuesta de la API.
+- **Sondeo de API (Polling):** El frontend consulta periódicamente un endpoint de estado para mostrar el progreso en tiempo real de una tarea en segundo plano.
+- **Optimización de API de Terceros:** Uso de  para reutilización de conexiones (Dolibarr) y operaciones por lotes (WooCommerce) para reducir drásticamente el número de llamadas de red.
+- **Contenido Dinámico (Headless CMS):** La landing page obtiene su contenido de la base de datos a través de una API, permitiendo su edición desde un panel de administración sin necesidad de redesplegar el código.
 
 **key DB schema**
-- No se realizaron cambios en el esquema de la base de datos en esta sesión.
+- : Añadido  (datetime).
+- : Añadido  (integer).
+- ** (NUEVO):** 
+- ** (NUEVO):** 
+- ** (NUEVO):** 
 
 **All files of reference**
-- : Contiene la lógica central y corregida para la sincronización con Dolibarr.
-- : Contiene la lógica para la exportación a WooCommerce, incluyendo la creación de categorías.
-- : Componente principal para la visualización y gestión de productos, ahora con funciones de eliminación y asignación de categoría.
-- : Página de gestión de CRM, refactorizada para eliminar controles de sincronización.
-- : Página de gestión de tiendas, refactorizada para eliminar controles de sincronización y hacer obligatorio el catálogo.
-- : Archivo de rutas de productos, actualizado con el nuevo endpoint de eliminación.
-
-**key api endpoints**
-- : **(NUEVO)** Elimina una lista de productos por sus EANs.
-- : **(MODIFICADO)** Ahora acepta un  para asignar los productos a una categoría específica dentro del catálogo.
+*   : Contiene la lógica clave para el registro, pago con Stripe y datos de facturación.
+*   : Gestiona la sincronización en segundo plano y el seguimiento del progreso.
+*   : Lógica de sincronización con Dolibarr, ahora optimizada.
+*   : Lógica de exportación a WooCommerce, ahora con operaciones batch.
+*   : Implementa el nuevo flujo de registro de varios pasos.
+*   : Página de gestión de perfil de usuario.
+*   : Landing page de ventas.
+*   : Panel de administración de la landing page.
 
 **Critical Info for New Agent**
-- El usuario es técnico y proporciona feedback preciso, incluyendo capturas de pantalla. Es crucial tomar en serio sus informes de errores.
-- La integración con Dolibarr fue particularmente compleja y propensa a errores. La lógica actual en  es el resultado de una depuración intensiva y no debe modificarse sin comprender completamente el flujo y los requisitos de la API de Dolibarr.
-- La próxima interacción con el usuario debe ser para presentar todas las soluciones y nuevas funcionalidades implementadas, y solicitar una validación formal. No inicie nuevas tareas hasta obtener esta confirmación.
+*   **Flujo de pago INCOMPLETO:** El paso más crítico que falta es el **webhook de Stripe**. El agente implementó la redirección para el pago, pero la aplicación no tiene forma de confirmar que el pago se ha realizado. La próxima tarea prioritaria debe ser crear un endpoint que reciba eventos de Stripe para activar las suscripciones de pago. Sin esto, ningún usuario podrá suscribirse a un plan de pago.
+*   El usuario es muy activo y prueba las funcionalidades en detalle. Espera feedback preciso y prepárate para abordar problemas de seguimiento rápidamente.
+*   La optimización de la sincronización fue una petición explícita del usuario. La nueva arquitectura (tareas en segundo plano + polling) es ahora el patrón estándar para operaciones largas en la aplicación.
 
-**documents and test reports created in this job**
--  (actualizado por el agente, pero puede requerir consolidación)
-
-**Last 10 User Messages and any pending HUMAN messages** 
-1. **User**: Informa de bugs en la exportación a WooCommerce (categorías y campo de proveedor) y en la sincronización con Dolibarr (proveedor, precio, stock, imágenes). (ADDRESSED)
-2. **User**: Proporciona captura de pantalla confirmando que la primera corrección de Dolibarr no funcionó. (ADDRESSED)
-3. **User**: Solicita dos nuevas funcionalidades: poder seleccionar una categoría de catálogo al añadir productos y poder eliminar productos. (ADDRESSED)
-4. **User**: Solicita dos refactorizaciones: que la sincronización con tiendas sea desde un catálogo y que la configuración de auto-sync se centralice en una única página. (ADDRESSED)
+**Last 10 User Messages and any pending HUMAN messages**
+1.  **User**: Pide configurar la landing page, ya que no la ve. (IN PROGRESS)
+2.  **User**: Solicita la creación de una landing page profesional y editable para vender suscripciones. (ADDRESSED)
+3.  **User**: Reporta errores de compilación que impiden ver la página de perfil. (ADDRESSED)
+4.  **User**: Solicita una página de perfil para editar datos personales y de facturación. (ADDRESSED)
+5.  **User**: Reporta que el flujo de registro para planes de pago no pide datos de facturación ni pasa por la pasarela de pago. (ADDRESSED)
+6.  **User**: Solicita 3 nuevas funcionalidades de suscripción: días de prueba, datos de facturación y selección de plan en el registro. (ADDRESSED)
+7.  **User**: Pide optimizar las sincronizaciones para que no sobrecarguen el servidor. (ADDRESSED)
+8.  **User**: Informa que la barra de progreso no carga, aunque la sincronización funciona, y pide optimización. (ADDRESSED)
+9.  **User**: Confirma que el problema de los precios de compra/venta está resuelto. (RESOLVED)
+10. **User**: Reporta que el precio de venta en Dolibarr sigue siendo incorrecto y no usa el margen del catálogo. (ADDRESSED)
 
 **Project Health Check:**
-- **Broken**: Ninguno.
-- **Mocked**: N/A.
-- **Notes**: El código base es ahora significativamente más robusto, especialmente en las integraciones con WooCommerce y Dolibarr. Todas las funcionalidades solicitadas por el usuario han sido implementadas, pero están pendientes de prueba y validación final por parte del mismo.
+*   **Broken**: El flujo de suscripción de pago está funcionalmente roto porque no se puede completar el ciclo de pago (falta el webhook de Stripe).
+*   **Mocked**: N/A.
+*   **Notes**: Se ha realizado una cantidad masiva de trabajo en esta sesión, añadiendo características de alto valor. Sin embargo, la funcionalidad de pago, que es crítica, está incompleta. La validación del usuario es necesaria para la mayoría de las nuevas características.
 
 **3rd Party Integrations**
-- WooCommerce (API REST) - Lógica de exportación actualizada.
-- Dolibarr (API REST) - Lógica de sincronización completamente refactorizada.
-- PrestaShop ()
-- Shopify ()
-- Wix eCommerce (Simulado)
-- Magento (Simulado)
-- Stripe (SDK oficial)
-- APScheduler
+*   **Stripe**: Ahora integrado para gestionar pagos de suscripciones a través de Stripe Checkout.
+*   **WooCommerce, Dolibarr, etc.**: Las integraciones existentes se han optimizado significativamente para mejorar el rendimiento.
 
 **Testing status**
-  - Testing agent used after significant changes: YES (dio un falso positivo para el bug de Dolibarr, lo que requirió depuración manual).
-  - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: Ninguno nuevo.
-  - Known regressions: Ninguna.
+*   Testing agent used after significant changes: NO
+*   Troubleshoot agent used after agent stuck in loop: NO
+*   Test files created: []
+*   Known regressions: []
 
 **Credentials to test flow:**
-- **Email**: 
-- **Password**: 
-- **Nota**: El agente descubrió que la configuración real de CRM/Tienda pertenece al usuario . Para pruebas de extremo a extremo, podría ser necesario utilizar este usuario.
+*   **Email**: 
+*   **Password**: 
+*   **Rol**: 
 
 **What agent forgot to execute**
-- El agente no olvidó ninguna tarea. Priorizó correctamente los bugs críticos reportados por el usuario sobre la tarea de validación pendiente del fork anterior. Ahora, el siguiente paso es validar todo el conjunto de cambios con el usuario.</analysis>
+*   **CRÍTICO: Implementar el webhook de Stripe.** El agente creó el flujo para enviar al usuario a pagar, pero olvidó por completo la parte donde Stripe notifica a la aplicación que el pago fue exitoso. Sin este webhook (), ninguna suscripción de pago se activará, dejando la funcionalidad principal de monetización incompleta y rota.</analysis>
