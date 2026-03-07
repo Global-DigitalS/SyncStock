@@ -8,7 +8,6 @@ import { Label } from "../components/ui/label";
 import { Package, Mail, Lock, User, Building2, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Crown, Sparkles, FileText, MapPin, CreditCard } from "lucide-react";
 import axios from "axios";
 import { sanitizeEmail, sanitizeString } from "../utils/sanitizer";
-import api from "../api";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 

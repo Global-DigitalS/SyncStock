@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useAuth } from "../App";
+import { useAuth, api } from "../App";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -11,7 +11,6 @@ import {
   User, Mail, Building2, Phone, Save, Edit2, X, Lock, 
   FileText, MapPin, Globe, CreditCard, Crown, Sparkles, Calendar
 } from "lucide-react";
-import api from "../api";
 
 const Profile = () => {
   const { user, refreshUser } = useAuth();
