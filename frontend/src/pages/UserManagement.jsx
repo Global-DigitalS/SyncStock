@@ -396,7 +396,7 @@ const UserManagement = () => {
             <div className="space-y-2">
               <Label className="flex items-center gap-2">
                 <ShoppingCart className="w-4 h-4 text-slate-500" />
-                Máximo de Tiendas WooCommerce
+                Máximo de Tiendas Online
               </Label>
               <Input
                 type="number"

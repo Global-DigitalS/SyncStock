@@ -234,7 +234,7 @@ const SyncSettings = () => {
                   </div>
                   <div>
                     <p className="font-medium">Tiendas</p>
-                    <p className="text-sm text-slate-500">WooCommerce, PrestaShop, Shopify, etc.</p>
+                    <p className="text-sm text-slate-500">Tiendas online (WooCommerce, PrestaShop, Shopify...)</p>
                   </div>
                 </div>
                 <Switch

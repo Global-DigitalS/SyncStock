@@ -216,7 +216,7 @@ function App() {
     features: [
       { icon: "RefreshCw", title: "Sincronización Automática", description: "Actualiza precios, stock y productos desde tus proveedores sin intervención manual." },
       { icon: "Database", title: "Gestión de Catálogos", description: "Organiza productos en catálogos personalizados con reglas de precios y márgenes." },
-      { icon: "Store", title: "Exportación WooCommerce", description: "Publica productos directamente en tu tienda WooCommerce con un clic." },
+      { icon: "Store", title: "Exportación a Tiendas", description: "Publica productos directamente en tu tienda online con un clic." },
       { icon: "Calculator", title: "Cálculo de Márgenes", description: "Aplica reglas de precios automáticas según categoría, proveedor o producto." },
       { icon: "Layers", title: "Multi-proveedor", description: "Conecta múltiples proveedores y centraliza toda tu gestión de inventario." },
       { icon: "Shield", title: "Seguridad Empresarial", description: "Datos encriptados y backups automáticos para proteger tu información." }
@@ -226,7 +226,7 @@ function App() {
       { quote: "La sincronización con Dolibarr funciona perfectamente. Nuestro stock siempre está actualizado.", author: "Carlos López", role: "Director, ElectroShop" }
     ],
     faq: [
-      { question: "¿Cuánto tiempo tarda la configuración inicial?", answer: "La mayoría de usuarios están operativos en menos de 15 minutos. Solo necesitas los datos de acceso de tu proveedor y tu tienda WooCommerce." },
+      { question: "¿Cuánto tiempo tarda la configuración inicial?", answer: "La mayoría de usuarios están operativos en menos de 15 minutos. Solo necesitas los datos de acceso de tu proveedor y tu tienda online." },
       { question: "¿Puedo probar antes de pagar?", answer: "¡Por supuesto! Ofrecemos 14 días de prueba gratuita con todas las funcionalidades premium." },
       { question: "¿Qué pasa si necesito más proveedores?", answer: "Puedes actualizar tu plan en cualquier momento desde tu panel de control. El cambio es inmediato." }
     ],

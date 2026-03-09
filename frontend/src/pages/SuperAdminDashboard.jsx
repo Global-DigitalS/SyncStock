@@ -129,7 +129,7 @@ const SuperAdminDashboard = () => {
     { name: "Proveedores", value: stats.resources.suppliers, icon: Truck },
     { name: "Productos", value: stats.resources.products, icon: Package },
     { name: "Catálogos", value: stats.resources.catalogs, icon: BookOpen },
-    { name: "Tiendas WC", value: stats.resources.woocommerce_stores, icon: ShoppingCart }
+    { name: "Tiendas", value: stats.resources.woocommerce_stores, icon: ShoppingCart }
   ];
 
   return (
@@ -275,14 +275,14 @@ const SuperAdminDashboard = () => {
         </Card>
       </div>
 
-      {/* WooCommerce & Top Users */}
+      {/* Tiendas Online & Top Users */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-        {/* WooCommerce Stats */}
+        {/* Tiendas Online Stats */}
         <Card className="border-slate-200">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg" style={{ fontFamily: 'Manrope, sans-serif' }}>
               <ShoppingCart className="w-5 h-5 text-purple-600" />
-              WooCommerce
+              Tiendas Online
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">

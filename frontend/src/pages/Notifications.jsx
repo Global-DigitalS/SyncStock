@@ -17,7 +17,7 @@ const NOTIFICATION_ICONS = {
   sync_error: { icon: AlertTriangle, color: "text-rose-600", bg: "bg-rose-50", label: "Error" },
   stock_out: { icon: PackageX, color: "text-rose-600", bg: "bg-rose-50", label: "Sin stock" },
   stock_low: { icon: AlertTriangle, color: "text-amber-600", bg: "bg-amber-50", label: "Stock bajo" },
-  woocommerce_export: { icon: ShoppingCart, color: "text-purple-600", bg: "bg-purple-50", label: "WooCommerce" },
+  woocommerce_export: { icon: ShoppingCart, color: "text-purple-600", bg: "bg-purple-50", label: "Tienda Online" },
   price_change: { icon: TrendingUp, color: "text-blue-600", bg: "bg-blue-50", label: "Cambio precio" },
 };
 

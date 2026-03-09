@@ -113,7 +113,7 @@ const Dashboard = () => {
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg font-semibold flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
                 <ShoppingCart className="w-5 h-5 text-purple-500" strokeWidth={1.5} />
-                Sincronización WooCommerce
+                Sincronización Tiendas Online
               </CardTitle>
               <div className="flex items-center gap-2">
                 <Badge className="bg-purple-100 text-purple-700 border-0">
@@ -187,14 +187,14 @@ const Dashboard = () => {
                   </div>
                 ))}
                 <Link to="/woocommerce" className="block text-center text-sm text-indigo-600 hover:text-indigo-700 font-medium py-2">
-                  Gestionar tiendas WooCommerce <ArrowRight className="w-3 h-3 inline ml-1" />
+                  Gestionar tiendas online <ArrowRight className="w-3 h-3 inline ml-1" />
                 </Link>
               </div>
             )}
 
             {(!syncStatus?.woocommerce_stores || syncStatus.woocommerce_stores.length === 0) && (
               <div className="text-center py-4">
-                <p className="text-sm text-slate-500 mb-2">No hay tiendas WooCommerce configuradas</p>
+                <p className="text-sm text-slate-500 mb-2">No hay tiendas online configuradas</p>
                 <Link to="/woocommerce">
                   <Button size="sm" className="btn-primary">
                     <ShoppingCart className="w-4 h-4 mr-2" />
@@ -336,7 +336,7 @@ const Dashboard = () => {
             <Link to="/woocommerce">
               <Button variant="outline" className="btn-secondary" data-testid="quick-woocommerce">
                 <ShoppingCart className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                WooCommerce
+                Tiendas Online
               </Button>
             </Link>
             <Link to="/export">
