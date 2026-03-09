@@ -395,7 +395,7 @@ const Subscriptions = () => {
                   <TableHead>Precio Anual</TableHead>
                   <TableHead>Proveedores</TableHead>
                   <TableHead>Catálogos</TableHead>
-                  <TableHead>Tiendas WC</TableHead>
+                  <TableHead>Tiendas</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -539,7 +539,7 @@ const Subscriptions = () => {
                       <div className="flex items-center justify-between px-3 py-2 bg-white/50 rounded-lg">
                         <div className="flex items-center gap-2 text-slate-600">
                           <ShoppingCart className="w-4 h-4" />
-                          Tiendas WC
+                          Tiendas
                         </div>
                         <span className="font-semibold text-slate-900">
                           {plan.max_woocommerce_stores >= 999999 ? "∞" : plan.max_woocommerce_stores}
@@ -705,7 +705,7 @@ const Subscriptions = () => {
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-1">
-                  <ShoppingCart className="w-3 h-3" /> Tiendas WC
+                  <ShoppingCart className="w-3 h-3" /> Tiendas
                 </Label>
                 <Input
                   type="number"

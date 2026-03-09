@@ -528,6 +528,29 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
   - Flechas arriba/abajo como alternativa
   - Mensaje instructivo "Arrastra para reordenar"
 
+
+### 2026-03-09 (Sesión actual)
+- ✅ **Días de Prueba en Planes de Suscripción (trial_days)**
+  - Nuevo campo `trial_days` en modelos SubscriptionPlanCreate/Update
+  - Campo "Días de Prueba" en formulario de AdminPlans.jsx
+  - Badge verde "X días de prueba" visible en tarjetas de planes
+  - Botón "Probar X días gratis" en página de suscripciones
+  - Banner "Periodo de prueba activo" con días restantes y fecha de fin
+  - Lógica de backend para iniciar trials sin pago
+  - Plan Starter configurado con 14 días de prueba
+- ✅ **Verificación del Flujo de Stripe**
+  - Endpoint /api/stripe/create-checkout funcional
+  - Generación de URLs de checkout válidas
+  - Cálculo de precios server-side (seguro)
+  - Webhook de Stripe ya implementado y funcionando
+- ✅ **Corrección de Texto "Tiendas Online"**
+  - Cambiado "Tiendas WC" a "Tiendas" en página de suscripciones
+  - Consistencia total con el cambio anterior de "Tiendas WooCommerce"
+- ✅ **Testing Completo**
+  - Backend: 92% tests pasados (11/12)
+  - Frontend: 100% verificado
+  - Todas las funcionalidades solicitadas probadas y funcionando
+
 ### 2026-03-04 (Fork anterior)
 - ✅ Solucionado problema de instalación en subdominios de Plesk
 - ✅ Actualizado `install.sh` para detectar automáticamente subdominios (ej: app.sync-stock.com)
