@@ -20,7 +20,8 @@ import {
 } from "../components/ui/table";
 import {
   CreditCard, Plus, Pencil, Trash2, RefreshCw, CheckCircle, 
-  Truck, BookOpen, Package, Store, Star, Users, Clock, Building2
+  Truck, BookOpen, Package, Store, Star, Users, Clock, Building2,
+  GripVertical, Database
 } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
 
@@ -41,6 +42,7 @@ const AdminPlans = () => {
     max_catalogs: 3,
     max_products: 1000,
     max_stores: 1,
+    max_crm_connections: 1,
     price_monthly: 0,
     price_yearly: 0,
     features: [],
@@ -50,6 +52,7 @@ const AdminPlans = () => {
     sync_intervals: []
   });
   const [newFeature, setNewFeature] = useState("");
+  const [draggedFeatureIndex, setDraggedFeatureIndex] = useState(null);
   
   const SYNC_INTERVAL_OPTIONS = [
     { value: 1, label: "Cada hora" },
@@ -85,6 +88,7 @@ const AdminPlans = () => {
       max_catalogs: 3,
       max_products: 1000,
       max_stores: 1,
+      max_crm_connections: 1,
       price_monthly: 0,
       price_yearly: 0,
       features: [],
@@ -95,6 +99,7 @@ const AdminPlans = () => {
     });
     setSelectedPlan(null);
     setNewFeature("");
+    setDraggedFeatureIndex(null);
   };
 
   const openCreate = () => {
@@ -111,6 +116,7 @@ const AdminPlans = () => {
       max_catalogs: plan.max_catalogs || 3,
       max_products: plan.max_products || 1000,
       max_stores: plan.max_stores || 1,
+      max_crm_connections: plan.max_crm_connections || 1,
       price_monthly: plan.price_monthly || 0,
       price_yearly: plan.price_yearly || 0,
       features: plan.features || [],
@@ -179,6 +185,43 @@ const AdminPlans = () => {
       ...formData,
       features: formData.features.filter(f => f !== feature)
     });
+  };
+
+  // Drag & Drop handlers for features
+  const handleDragStart = (e, index) => {
+    setDraggedFeatureIndex(index);
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", index);
+  };
+
+  const handleDragOver = (e, index) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+
+  const handleDrop = (e, targetIndex) => {
+    e.preventDefault();
+    if (draggedFeatureIndex === null || draggedFeatureIndex === targetIndex) return;
+    
+    const newFeatures = [...formData.features];
+    const [draggedItem] = newFeatures.splice(draggedFeatureIndex, 1);
+    newFeatures.splice(targetIndex, 0, draggedItem);
+    
+    setFormData({ ...formData, features: newFeatures });
+    setDraggedFeatureIndex(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedFeatureIndex(null);
+  };
+
+  const moveFeature = (index, direction) => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= formData.features.length) return;
+    
+    const newFeatures = [...formData.features];
+    [newFeatures[index], newFeatures[newIndex]] = [newFeatures[newIndex], newFeatures[index]];
+    setFormData({ ...formData, features: newFeatures });
   };
 
   if (loading) {
@@ -262,6 +305,10 @@ const AdminPlans = () => {
                 <div className="flex items-center gap-2 text-sm">
                   <Store className="w-4 h-4 text-slate-400" />
                   <span>{plan.max_stores} tiendas</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <Database className="w-4 h-4 text-slate-400" />
+                  <span>{plan.max_crm_connections || 1} conexiones CRM</span>
                 </div>
                 {(plan.auto_sync_enabled || plan.crm_sync_enabled) && (
                   <div className="flex items-center gap-2 text-sm">
@@ -431,6 +478,19 @@ const AdminPlans = () => {
                     className="input-base"
                   />
                 </div>
+                <div className="space-y-2">
+                  <Label htmlFor="max_crm_connections" className="text-sm flex items-center gap-2">
+                    <Database className="w-4 h-4" /> Conexiones CRM
+                  </Label>
+                  <Input
+                    id="max_crm_connections"
+                    type="number"
+                    value={formData.max_crm_connections}
+                    onChange={(e) => setFormData({ ...formData, max_crm_connections: parseInt(e.target.value) || 0 })}
+                    className="input-base"
+                    data-testid="max-crm-input"
+                  />
+                </div>
               </div>
             </div>
 
@@ -449,18 +509,60 @@ const AdminPlans = () => {
                   <Plus className="w-4 h-4" />
                 </Button>
               </div>
-              <div className="flex flex-wrap gap-2">
+              {formData.features.length > 0 && (
+                <p className="text-xs text-slate-500">Arrastra para reordenar las características</p>
+              )}
+              <div className="space-y-2">
                 {formData.features.map((feature, idx) => (
-                  <Badge key={idx} variant="secondary" className="py-1 px-3">
-                    {feature}
-                    <button 
-                      type="button"
-                      onClick={() => removeFeature(feature)}
-                      className="ml-2 hover:text-rose-600"
-                    >
-                      ×
-                    </button>
-                  </Badge>
+                  <div
+                    key={idx}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDrop={(e) => handleDrop(e, idx)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center gap-2 p-2 rounded-lg border bg-white transition-all ${
+                      draggedFeatureIndex === idx 
+                        ? "opacity-50 border-purple-400 bg-purple-50" 
+                        : "border-slate-200 hover:border-slate-300 hover:shadow-sm"
+                    }`}
+                  >
+                    <GripVertical className="w-4 h-4 text-slate-400 cursor-grab active:cursor-grabbing flex-shrink-0" />
+                    <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                    <span className="flex-1 text-sm">{feature}</span>
+                    <div className="flex items-center gap-1">
+                      <button 
+                        type="button"
+                        onClick={() => moveFeature(idx, 'up')}
+                        disabled={idx === 0}
+                        className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Subir"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                        </svg>
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => moveFeature(idx, 'down')}
+                        disabled={idx === formData.features.length - 1}
+                        className="p-1 text-slate-400 hover:text-slate-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Bajar"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={() => removeFeature(feature)}
+                        className="p-1 text-slate-400 hover:text-rose-600"
+                        title="Eliminar"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>

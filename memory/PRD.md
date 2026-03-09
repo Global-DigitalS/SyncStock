@@ -520,6 +520,13 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
   - Persistencia en localStorage
   - Transiciones suaves entre temas
   - Diseño adaptado para ambos modos
+- ✅ **Planes: Límite de Conexiones CRM**
+  - Nuevo campo `max_crm_connections` en límites del plan
+  - Visible en tarjetas de planes y formulario de edición
+- ✅ **Planes: Ordenación Manual de Características**
+  - Drag & drop para reordenar características
+  - Flechas arriba/abajo como alternativa
+  - Mensaje instructivo "Arrastra para reordenar"
 
 ### 2026-03-04 (Fork anterior)
 - ✅ Solucionado problema de instalación en subdominios de Plesk
