@@ -506,6 +506,11 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
   - Lista para desplegar en dominio separado
   - README con instrucciones de despliegue
 - ✅ Añadida `STRIPE_API_KEY` al backend
+- ✅ **CRM: Selección de Catálogo Obligatoria**
+  - Eliminada opción "Todos los productos"
+  - Ahora es obligatorio seleccionar un catálogo para sincronizar
+  - Botón deshabilitado si no hay catálogo seleccionado
+  - Mensaje de advertencia visible
 
 ### 2026-03-04 (Fork anterior)
 - ✅ Solucionado problema de instalación en subdominios de Plesk

@@ -243,6 +243,12 @@ const CRMPage = () => {
   const handleSync = async (syncType = "all") => {
     if (!selectedConnection) return;
     
+    // Require catalog selection
+    if (!selectedCatalogId) {
+      toast.error("Debes seleccionar un catálogo para sincronizar");
+      return;
+    }
+    
     setSyncing(prev => ({ ...prev, [selectedConnection.id]: true }));
     setShowSyncDialog(false);
     setShowProgressDialog(true);
@@ -260,13 +266,9 @@ const CRMPage = () => {
     try {
       const payload = { 
         sync_type: syncType,
-        sync_settings: syncSettings
+        sync_settings: syncSettings,
+        catalog_id: selectedCatalogId  // Always required now
       };
-      
-      // Add catalog_id if selected
-      if (selectedCatalogId) {
-        payload.catalog_id = selectedCatalogId;
-      }
       
       const res = await api.post(`/crm/connections/${selectedConnection.id}/sync`, payload);
       
@@ -731,32 +733,44 @@ const CRMPage = () => {
               Sincronización Completa
             </DialogTitle>
             <DialogDescription>
-              Selecciona qué datos sincronizar con {selectedConnection?.name}
+              Selecciona el catálogo y qué datos sincronizar con {selectedConnection?.name}
             </DialogDescription>
           </DialogHeader>
           
           <div className="space-y-4 py-4">
-            {/* Catalog Selector */}
+            {/* Catalog Selector - Required */}
             <div className="space-y-2">
-              <Label className="text-sm font-medium">Catálogo a sincronizar</Label>
-              <Select value={selectedCatalogId || "all"} onValueChange={(val) => setSelectedCatalogId(val === "all" ? "" : val)}>
-                <SelectTrigger data-testid="sync-catalog-selector">
-                  <SelectValue placeholder="Todos los productos seleccionados" />
+              <Label className="text-sm font-medium">
+                Catálogo a sincronizar <span className="text-red-500">*</span>
+              </Label>
+              <Select value={selectedCatalogId} onValueChange={setSelectedCatalogId}>
+                <SelectTrigger data-testid="sync-catalog-selector" className={!selectedCatalogId ? "border-amber-300" : ""}>
+                  <SelectValue placeholder="Selecciona un catálogo..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Todos los productos seleccionados</SelectItem>
-                  {catalogs.map((catalog) => (
-                    <SelectItem key={catalog.id} value={catalog.id}>
-                      {catalog.name} ({catalog.product_count || 0} productos)
-                    </SelectItem>
-                  ))}
+                  {catalogs.length === 0 ? (
+                    <div className="p-3 text-sm text-slate-500 text-center">
+                      No hay catálogos disponibles
+                    </div>
+                  ) : (
+                    catalogs.map((catalog) => (
+                      <SelectItem key={catalog.id} value={catalog.id}>
+                        {catalog.name} ({catalog.product_count || 0} productos)
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
-              <p className="text-xs text-slate-500">
-                {selectedCatalogId 
-                  ? "Solo se sincronizarán los productos de este catálogo"
-                  : "Se sincronizarán todos los productos marcados como seleccionados"}
-              </p>
+              {!selectedCatalogId && (
+                <p className="text-xs text-amber-600">
+                  Debes seleccionar un catálogo para sincronizar
+                </p>
+              )}
+              {selectedCatalogId && (
+                <p className="text-xs text-slate-500">
+                  Solo se sincronizarán los productos de este catálogo
+                </p>
+              )}
             </div>
 
             {/* Sync Options */}
@@ -795,7 +809,8 @@ const CRMPage = () => {
             <Button 
               onClick={() => handleSync("all")} 
               className="btn-primary"
-              disabled={syncing[selectedConnection?.id]}
+              disabled={syncing[selectedConnection?.id] || !selectedCatalogId}
+              data-testid="start-sync-btn"
             >
               {syncing[selectedConnection?.id] ? (
                 <>
