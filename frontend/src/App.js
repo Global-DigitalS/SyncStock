@@ -55,27 +55,17 @@ const WebSocketContext = createContext(null);
 
 export const useWebSocket = () => useContext(WebSocketContext);
 
-// API instance with auth
-export const api = axios.create({ baseURL: API });
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
+// API instance with auth — usa httpOnly cookie automáticamente (withCredentials)
+export const api = axios.create({ baseURL: API, withCredentials: true });
 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Don't redirect if already on login/register page - let the component handle the error
       const currentPath = window.location.hash || window.location.pathname;
       const isAuthPage = currentPath.includes('/login') || currentPath.includes('/register') || currentPath.includes('/forgot-password');
-      
+
       if (!isAuthPage) {
-        localStorage.removeItem("token");
         localStorage.removeItem("user");
         window.location.href = "/#/login";
       }
@@ -200,36 +190,29 @@ const AuthProvider = ({ children }) => {
   }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
+    // Inicializa usuario desde caché local y luego valida con el servidor (via cookie httpOnly)
     const savedUser = localStorage.getItem("user");
-    
-    if (token && savedUser) {
-      const userData = JSON.parse(savedUser);
-      setUser(userData);
-      // Verify token is still valid
-      api.get("/auth/me")
-        .then((res) => {
-          setUser(res.data);
-          localStorage.setItem("user", JSON.stringify(res.data));
-          connectWebSocket(res.data.id);
-        })
-        .catch(() => {
-          localStorage.removeItem("token");
-          localStorage.removeItem("user");
-          setUser(null);
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
+    if (savedUser) {
+      try { setUser(JSON.parse(savedUser)); } catch (_) {}
     }
-    
+    api.get("/auth/me")
+      .then((res) => {
+        setUser(res.data);
+        localStorage.setItem("user", JSON.stringify(res.data));
+        connectWebSocket(res.data.id);
+      })
+      .catch(() => {
+        localStorage.removeItem("user");
+        setUser(null);
+      })
+      .finally(() => setLoading(false));
+
     return () => disconnectWebSocket();
   }, []);
 
   const login = async (email, password) => {
     const res = await api.post("/auth/login", { email, password });
-    const { token, user: userData } = res.data;
-    localStorage.setItem("token", token);
+    const { user: userData } = res.data;
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
     connectWebSocket(userData.id);
@@ -238,17 +221,16 @@ const AuthProvider = ({ children }) => {
 
   const register = async (data) => {
     const res = await api.post("/auth/register", data);
-    const { token, user: userData } = res.data;
-    localStorage.setItem("token", token);
+    const { user: userData } = res.data;
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
     connectWebSocket(userData.id);
     return userData;
   };
 
-  const logout = () => {
+  const logout = async () => {
     disconnectWebSocket();
-    localStorage.removeItem("token");
+    try { await api.post("/auth/logout"); } catch (_) {}
     localStorage.removeItem("user");
     setUser(null);
   };

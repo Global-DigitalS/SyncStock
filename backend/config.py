@@ -39,24 +39,30 @@ DB_NAME = os.environ.get('DB_NAME', 'supplier_sync_db')
 # =============================================================================
 
 # Tiempo máximo de espera para conexión (en milisegundos)
-MONGO_CONNECT_TIMEOUT_MS = int(os.environ.get('MONGO_CONNECT_TIMEOUT_MS', 5000))
+MONGO_CONNECT_TIMEOUT_MS = int(os.environ.get('MONGO_CONNECT_TIMEOUT_MS', 10000))
 
 # Tiempo máximo de espera para operaciones de servidor (en milisegundos)
-MONGO_SERVER_SELECTION_TIMEOUT_MS = int(os.environ.get('MONGO_SERVER_SELECTION_TIMEOUT_MS', 5000))
+MONGO_SERVER_SELECTION_TIMEOUT_MS = int(os.environ.get('MONGO_SERVER_SELECTION_TIMEOUT_MS', 30000))
 
 # Número máximo de conexiones en el pool
 MONGO_MAX_POOL_SIZE = int(os.environ.get('MONGO_MAX_POOL_SIZE', 100))
 
-# Número mínimo de conexiones en el pool
-MONGO_MIN_POOL_SIZE = int(os.environ.get('MONGO_MIN_POOL_SIZE', 0))
+# Número mínimo de conexiones en el pool (pre-calentadas para evitar latencia inicial)
+MONGO_MIN_POOL_SIZE = int(os.environ.get('MONGO_MIN_POOL_SIZE', 10))
 
 # =============================================================================
 # CONFIGURACIÓN DE SEGURIDAD JWT
 # =============================================================================
 
 # Clave secreta para firmar tokens JWT
-# IMPORTANTE: Cambia este valor en producción por una clave segura y única
-JWT_SECRET = os.environ.get('JWT_SECRET', 'stockhub-secret-key-2024-secure-token')
+# IMPORTANTE: Debe configurarse obligatoriamente como variable de entorno JWT_SECRET
+# Generar con: python -c "import secrets; print(secrets.token_hex(64))"
+JWT_SECRET = os.environ.get('JWT_SECRET')
+if not JWT_SECRET:
+    raise RuntimeError(
+        "La variable de entorno JWT_SECRET es obligatoria y no está configurada. "
+        "Genera un valor seguro con: python -c \"import secrets; print(secrets.token_hex(64))\""
+    )
 
 # Algoritmo de encriptación para JWT
 JWT_ALGORITHM = "HS256"

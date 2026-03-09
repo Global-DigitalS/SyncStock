@@ -3,6 +3,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
 import os
+import re
 import aiofiles
 
 from services.database import db
@@ -38,10 +39,11 @@ async def get_products(
     if category:
         query["category"] = category
     if search:
+        _s = re.escape(search[:100])
         query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"sku": {"$regex": search, "$options": "i"}},
-            {"ean": {"$regex": search, "$options": "i"}}
+            {"name": {"$regex": _s, "$options": "i"}},
+            {"sku": {"$regex": _s, "$options": "i"}},
+            {"ean": {"$regex": _s, "$options": "i"}},
         ]
     if min_stock is not None:
         query["stock"] = {"$gte": min_stock}
@@ -85,10 +87,11 @@ async def get_category_hierarchy(
             "count": {"$sum": 1},
             "selected_count": {"$sum": {"$cond": ["$is_selected", 1, 0]}}
         }},
-        {"$sort": {"_id.category": 1, "_id.subcategory": 1, "_id.subcategory2": 1}}
+        {"$sort": {"_id.category": 1, "_id.subcategory": 1, "_id.subcategory2": 1}},
+        {"$limit": 2000},
     ]
-    
-    results = await db.products.aggregate(pipeline).to_list(1000)
+
+    results = await db.products.aggregate(pipeline).to_list(2000)
     
     # Construir árbol jerárquico
     hierarchy = {}
@@ -201,7 +204,7 @@ async def get_product(product_id: str, user: dict = Depends(get_current_user)):
 
 @router.put("/products/{product_id}", response_model=ProductResponse)
 async def update_product(product_id: str, update: ProductUpdate, user: dict = Depends(get_current_user)):
-    existing = await db.products.find_one({"id": product_id, "user_id": user["id"]})
+    existing = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "id": 1})
     if not existing:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     update_data = {k: v for k, v in update.model_dump().items() if v is not None}
@@ -285,10 +288,11 @@ async def get_unified_products(
     if category:
         match_query["category"] = category
     if search:
+        _s = re.escape(search[:100])
         match_query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"sku": {"$regex": search, "$options": "i"}},
-            {"ean": {"$regex": search, "$options": "i"}}
+            {"name": {"$regex": _s, "$options": "i"}},
+            {"sku": {"$regex": _s, "$options": "i"}},
+            {"ean": {"$regex": _s, "$options": "i"}},
         ]
     pipeline = [
         {"$match": match_query},
@@ -368,10 +372,11 @@ async def get_unified_products_count(
     if category:
         match_query["category"] = category
     if search:
+        _s = re.escape(search[:100])
         match_query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"sku": {"$regex": search, "$options": "i"}},
-            {"ean": {"$regex": search, "$options": "i"}}
+            {"name": {"$regex": _s, "$options": "i"}},
+            {"sku": {"$regex": _s, "$options": "i"}},
+            {"ean": {"$regex": _s, "$options": "i"}},
         ]
     pipeline = [
         {"$match": match_query},
@@ -547,10 +552,11 @@ async def get_supplier_products(
     if subcategory2:
         query["subcategory2"] = subcategory2
     if search:
+        _s = re.escape(search[:100])
         query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"sku": {"$regex": search, "$options": "i"}},
-            {"ean": {"$regex": search, "$options": "i"}}
+            {"name": {"$regex": _s, "$options": "i"}},
+            {"sku": {"$regex": _s, "$options": "i"}},
+            {"ean": {"$regex": _s, "$options": "i"}},
         ]
     if is_selected is not None:
         query["is_selected"] = is_selected
@@ -583,10 +589,11 @@ async def get_supplier_products_count(
     if subcategory2:
         query["subcategory2"] = subcategory2
     if search:
+        _s = re.escape(search[:100])
         query["$or"] = [
-            {"name": {"$regex": search, "$options": "i"}},
-            {"sku": {"$regex": search, "$options": "i"}},
-            {"ean": {"$regex": search, "$options": "i"}}
+            {"name": {"$regex": _s, "$options": "i"}},
+            {"sku": {"$regex": _s, "$options": "i"}},
+            {"ean": {"$regex": _s, "$options": "i"}},
         ]
     if is_selected is not None:
         query["is_selected"] = is_selected
@@ -616,9 +623,10 @@ async def get_supplier_categories(
             "count": {"$sum": 1},
             "selected_count": {"$sum": {"$cond": [{"$eq": ["$is_selected", True]}, 1, 0]}}
         }},
-        {"$sort": {"_id": 1}}
+        {"$sort": {"_id": 1}},
+        {"$limit": 1000},
     ]
-    
+
     results = await db.products.aggregate(pipeline).to_list(1000)
     
     return [
@@ -642,22 +650,33 @@ async def upload_product_image(
     user: dict = Depends(get_current_user)
 ):
     """Upload main image or gallery image for a product"""
-    product = await db.products.find_one({"id": product_id, "user_id": user["id"]})
+    product = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "id": 1, "gallery_images": 1})
     if not product:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     
-    # Validate file type
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
-    
-    # Generate unique filename
-    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
-    filename = f"{product_id}_{image_type}_{uuid.uuid4().hex[:8]}.{ext}"
+    # Validate file type with whitelist
+    ALLOWED_EXTENSIONS = {"jpg", "jpeg", "png", "gif", "webp"}
+    ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
+    MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+    if not file.content_type or file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(status_code=400, detail="Tipo de imagen no permitido. Use JPG, PNG, GIF o WebP")
+
+    raw_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if raw_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="Extensión de archivo no permitida. Use .jpg, .png, .gif o .webp")
+
+    # Read and validate size
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(status_code=400, detail="El archivo supera el tamaño máximo permitido de 5 MB")
+
+    # Generate unique filename with sanitized extension
+    filename = f"{product_id}_{image_type}_{uuid.uuid4().hex[:8]}.{raw_ext}"
     filepath = os.path.join(UPLOAD_DIR, filename)
-    
+
     # Save file
     async with aiofiles.open(filepath, "wb") as f:
-        content = await file.read()
         await f.write(content)
     
     # Build URL - use the /api/uploads/ route
@@ -690,7 +709,7 @@ async def remove_gallery_image(
     user: dict = Depends(get_current_user)
 ):
     """Remove an image from product gallery"""
-    product = await db.products.find_one({"id": product_id, "user_id": user["id"]})
+    product = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "id": 1, "gallery_images": 1})
     if not product:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     
@@ -709,7 +728,7 @@ async def remove_gallery_image(
 @router.delete("/products/{product_id}")
 async def delete_product(product_id: str, user: dict = Depends(get_current_user)):
     """Delete a single product"""
-    product = await db.products.find_one({"id": product_id, "user_id": user["id"]})
+    product = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "id": 1})
     if not product:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     

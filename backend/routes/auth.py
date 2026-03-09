@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from datetime import datetime, timezone, timedelta
 import uuid
 import secrets
@@ -7,7 +7,7 @@ from pydantic import BaseModel, EmailStr
 
 from services.database import db
 from services.auth import (
-    hash_password, verify_password, create_token, get_current_user, 
+    hash_password, verify_password, create_token, get_current_user,
     get_admin_user, get_superadmin_user, ROLE_PERMISSIONS, DEFAULT_LIMITS,
     get_user_resource_usage
 )
@@ -15,10 +15,13 @@ from services.sanitizer import sanitize_string, sanitize_email, sanitize_passwor
 from models.schemas import UserCreate, UserLogin, UserResponse, UserUpdate, UserLimits, UserFullUpdate
 from services.email_service import get_email_service, get_password_reset_email_template
 from services.config_manager import get_config
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import logging
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ==================== PASSWORD RESET MODELS ====================
@@ -31,8 +34,22 @@ class ResetPasswordRequest(BaseModel):
     new_password: str
 
 
+def _set_auth_cookie(response: Response, token: str, expiration_hours: int = 168):
+    """Set httpOnly JWT cookie on the response."""
+    response.set_cookie(
+        key="auth_token",
+        value=token,
+        httponly=True,
+        secure=True,       # Solo HTTPS en producción
+        samesite="lax",
+        max_age=expiration_hours * 3600,
+        path="/",
+    )
+
+
 @router.post("/auth/register", response_model=dict)
-async def register(user: UserCreate):
+@limiter.limit("5/minute")
+async def register(request: Request, response: Response, user: UserCreate):
     # Sanitize inputs
     email = sanitize_email(user.email)
     name = sanitize_string(user.name, max_length=100)
@@ -89,7 +106,8 @@ async def register(user: UserCreate):
     }
     await db.users.insert_one(user_doc)
     token = create_token(user_id, role)
-    
+    _set_auth_cookie(response, token)
+
     # Create subscription record if a paid plan was selected
     if plan and plan.get("price_monthly", 0) > 0:
         subscription_doc = {
@@ -128,16 +146,15 @@ async def register(user: UserCreate):
 
 
 @router.post("/auth/login", response_model=dict)
-async def login(credentials: UserLogin):
+@limiter.limit("10/minute")
+async def login(request: Request, response: Response, credentials: UserLogin):
     # Sanitize inputs
     email = sanitize_email(credentials.email)
     password = sanitize_password(credentials.password)
     
     user = await db.users.find_one({"email": email})
-    if not user:
-        raise HTTPException(status_code=401, detail="USER_NOT_FOUND")
-    if not verify_password(password, user["password"]):
-        raise HTTPException(status_code=401, detail="INVALID_PASSWORD")
+    if not user or not verify_password(password, user.get("password", "")):
+        raise HTTPException(status_code=401, detail="Credenciales inválidas")
     
     # Check if user is active
     if user.get("is_active") is False:
@@ -145,8 +162,9 @@ async def login(credentials: UserLogin):
     
     role = user.get("role", "user")
     token = create_token(user["id"], role)
+    _set_auth_cookie(response, token)
     return {
-        "token": token,
+        "token": token,  # Mantenido para compatibilidad con clientes API
         "user": {
             "id": user["id"], "email": user["email"], "name": user["name"],
             "company": user.get("company"), "role": role,
@@ -155,6 +173,13 @@ async def login(credentials: UserLogin):
             "max_woocommerce_stores": user.get("max_woocommerce_stores", DEFAULT_LIMITS.get(role, {}).get("max_woocommerce_stores", 2))
         }
     }
+
+
+@router.post("/auth/logout")
+async def logout(response: Response):
+    """Cierra sesión borrando la cookie httpOnly."""
+    response.delete_cookie(key="auth_token", path="/")
+    return {"message": "Sesión cerrada correctamente"}
 
 
 @router.get("/auth/me", response_model=UserResponse)
@@ -443,12 +468,13 @@ async def delete_user(user_id: str, admin: dict = Depends(get_admin_user)):
 # ==================== PASSWORD RESET ENDPOINTS ====================
 
 @router.post("/auth/forgot-password")
-async def forgot_password(request: ForgotPasswordRequest):
+@limiter.limit("3/minute")
+async def forgot_password(request: Request, body: ForgotPasswordRequest):
     """
     Request password reset email.
     Always returns success to prevent email enumeration attacks.
     """
-    user = await db.users.find_one({"email": request.email})
+    user = await db.users.find_one({"email": body.email})
     
     if user:
         # Generate reset token

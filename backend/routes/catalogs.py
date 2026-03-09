@@ -152,25 +152,42 @@ async def add_products_to_catalog(catalog_id: str, data: CatalogProductAdd, user
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    added = 0
-    for product_id in data.product_ids:
-        product = await db.products.find_one({"id": product_id, "user_id": user["id"]})
-        if not product:
+
+    product_ids = list(data.product_ids)
+
+    # Batch: validar que todos los productos existen y pertenecen al usuario
+    valid_products = await db.products.find(
+        {"id": {"$in": product_ids}, "user_id": user["id"]},
+        {"_id": 0, "id": 1}
+    ).to_list(len(product_ids))
+    valid_ids = {p["id"] for p in valid_products}
+
+    # Batch: obtener los que ya están en el catálogo
+    existing_items = await db.catalog_items.find(
+        {"catalog_id": catalog_id, "product_id": {"$in": product_ids}},
+        {"_id": 0, "product_id": 1}
+    ).to_list(len(product_ids))
+    already_in_catalog = {i["product_id"] for i in existing_items}
+
+    now = datetime.now(timezone.utc).isoformat()
+    category_ids = data.category_ids if data.category_ids else []
+    to_insert = []
+    for pid in product_ids:
+        if pid not in valid_ids or pid in already_in_catalog:
             continue
-        existing = await db.catalog_items.find_one({"catalog_id": catalog_id, "product_id": product_id})
-        if existing:
-            continue
-        custom_price = data.custom_prices.get(product_id) if data.custom_prices else None
-        category_ids = data.category_ids if data.category_ids else []
-        await db.catalog_items.insert_one({
+        custom_price = data.custom_prices.get(pid) if data.custom_prices else None
+        to_insert.append({
             "id": str(uuid.uuid4()), "catalog_id": catalog_id,
-            "product_id": product_id, "user_id": user["id"],
+            "product_id": pid, "user_id": user["id"],
             "custom_price": custom_price, "custom_name": None, "active": True,
             "category_ids": category_ids,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": now,
         })
-        added += 1
-    return {"added": added, "message": f"{added} productos añadidos al catálogo"}
+
+    if to_insert:
+        await db.catalog_items.insert_many(to_insert)
+
+    return {"added": len(to_insert), "message": f"{len(to_insert)} productos añadidos al catálogo"}
 
 
 @router.get("/catalogs/{catalog_id}/products")
@@ -189,13 +206,22 @@ async def get_catalog_products(
         query["category_ids"] = category_id
     items = await db.catalog_items.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
     margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
+
+    # Batch: cargar todos los productos en una sola query
+    product_ids_page = [item["product_id"] for item in items]
+    products_list = await db.products.find(
+        {"id": {"$in": product_ids_page}},
+        {"_id": 0, "user_id": 0}
+    ).to_list(len(product_ids_page))
+    products_map = {p["id"]: p for p in products_list}
+
+    search_lower = search.lower() if search else None
     result = []
     for item in items:
-        product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0, "user_id": 0})
+        product = products_map.get(item["product_id"])
         if not product:
             continue
-        if search:
-            search_lower = search.lower()
+        if search_lower:
             if search_lower not in product.get("name", "").lower() and search_lower not in product.get("sku", "").lower():
                 continue
         base_price = item.get("custom_price") or product.get("price", 0)
@@ -206,7 +232,7 @@ async def get_catalog_products(
             "custom_price": item.get("custom_price"), "custom_name": item.get("custom_name"),
             "active": item.get("active", True), "final_price": final_price,
             "category_ids": item.get("category_ids", []),
-            "created_at": item["created_at"]
+            "created_at": item["created_at"],
         })
     return result
 

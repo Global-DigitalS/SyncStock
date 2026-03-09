@@ -20,16 +20,44 @@ router = APIRouter()
 
 @router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(user: dict = Depends(get_current_user)):
-    total_suppliers = await db.suppliers.count_documents({"user_id": user["id"]})
-    total_products = await db.products.count_documents({"user_id": user["id"]})
-    total_catalog_items = await db.catalog_items.count_documents({"user_id": user["id"]})
-    total_catalogs = await db.catalogs.count_documents({"user_id": user["id"]})
-    low_stock_count = await db.products.count_documents({"user_id": user["id"], "stock": {"$gt": 0, "$lte": 5}})
-    out_of_stock_count = await db.products.count_documents({"user_id": user["id"], "stock": 0})
-    unread_notifications = await db.notifications.count_documents({"user_id": user["id"], "read": False})
+    uid = user["id"]
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-    recent_price_changes = await db.price_history.count_documents({"user_id": user["id"], "created_at": {"$gte": week_ago}})
-    wc_configs = await db.woocommerce_configs.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+
+    # Unificar conteos de productos en una sola aggregation con $facet
+    products_facet = await db.products.aggregate([
+        {"$match": {"user_id": uid}},
+        {"$facet": {
+            "total":        [{"$count": "n"}],
+            "low_stock":    [{"$match": {"stock": {"$gt": 0, "$lte": 5}}}, {"$count": "n"}],
+            "out_of_stock": [{"$match": {"stock": 0}}, {"$count": "n"}],
+        }}
+    ]).to_list(1)
+    pf = products_facet[0] if products_facet else {}
+    total_products    = (pf.get("total")        or [{}])[0].get("n", 0)
+    low_stock_count   = (pf.get("low_stock")    or [{}])[0].get("n", 0)
+    out_of_stock_count = (pf.get("out_of_stock") or [{}])[0].get("n", 0)
+
+    # Contar el resto en paralelo con gather (IO-bound, no bloquean entre sí)
+    import asyncio
+    (
+        total_suppliers,
+        total_catalogs,
+        total_catalog_items,
+        unread_notifications,
+        recent_price_changes,
+    ) = await asyncio.gather(
+        db.suppliers.count_documents({"user_id": uid}),
+        db.catalogs.count_documents({"user_id": uid}),
+        db.catalog_items.count_documents({"user_id": uid}),
+        db.notifications.count_documents({"user_id": uid, "read": False}),
+        db.price_history.count_documents({"user_id": uid, "created_at": {"$gte": week_ago}}),
+    )
+
+    wc_configs = await db.woocommerce_configs.find(
+        {"user_id": uid},
+        {"_id": 0, "is_connected": 1, "auto_sync_enabled": 1, "products_synced": 1}
+    ).to_list(100)
+
     return DashboardStats(
         total_suppliers=total_suppliers, total_products=total_products,
         total_catalog_items=total_catalog_items, total_catalogs=total_catalogs,
@@ -45,22 +73,38 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
 @router.get("/dashboard/superadmin-stats")
 async def get_superadmin_dashboard_stats(superadmin: dict = Depends(get_superadmin_user)):
     """Dashboard estadísticas globales para SuperAdmin"""
-    # User stats
-    total_users = await db.users.count_documents({})
-    users_by_role = {}
-    for role in ["superadmin", "admin", "user", "viewer"]:
-        users_by_role[role] = await db.users.count_documents({"role": role})
-    
-    # Resource stats (global)
-    total_suppliers = await db.suppliers.count_documents({})
-    total_products = await db.products.count_documents({})
-    total_catalogs = await db.catalogs.count_documents({})
-    total_wc_stores = await db.woocommerce_configs.count_documents({})
-    
-    # Sync stats
+    import asyncio
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-    syncs_this_week = await db.sync_history.count_documents({"created_at": {"$gte": week_ago}})
-    sync_errors_this_week = await db.sync_history.count_documents({"created_at": {"$gte": week_ago}, "status": "error"})
+
+    # Todos los conteos en paralelo con asyncio.gather
+    (
+        total_users,
+        total_suppliers,
+        total_products,
+        total_catalogs,
+        total_wc_stores,
+        syncs_this_week,
+        sync_errors_this_week,
+        wc_connected,
+        wc_auto_sync,
+    ) = await asyncio.gather(
+        db.users.count_documents({}),
+        db.suppliers.count_documents({}),
+        db.products.count_documents({}),
+        db.catalogs.count_documents({}),
+        db.woocommerce_configs.count_documents({}),
+        db.sync_history.count_documents({"created_at": {"$gte": week_ago}}),
+        db.sync_history.count_documents({"created_at": {"$gte": week_ago}, "status": "error"}),
+        db.woocommerce_configs.count_documents({"is_connected": True}),
+        db.woocommerce_configs.count_documents({"auto_sync_enabled": True}),
+    )
+
+    # Conteo de usuarios por rol con $facet en una sola query
+    roles_facet = await db.users.aggregate([
+        {"$facet": {r: [{"$match": {"role": r}}, {"$count": "n"}] for r in ["superadmin", "admin", "user", "viewer"]}}
+    ]).to_list(1)
+    rf = roles_facet[0] if roles_facet else {}
+    users_by_role = {r: (rf.get(r) or [{}])[0].get("n", 0) for r in ["superadmin", "admin", "user", "viewer"]}
     
     # Top users by resources
     pipeline = [
@@ -84,12 +128,10 @@ async def get_superadmin_dashboard_stats(superadmin: dict = Depends(get_superadm
     top_suppliers = [{"user_id": u["_id"], "name": users_map.get(u["_id"], {}).get("name", "Unknown"), "email": users_map.get(u["_id"], {}).get("email", ""), "count": u["count"]} for u in top_users_suppliers]
     top_products = [{"user_id": u["_id"], "name": users_map.get(u["_id"], {}).get("name", "Unknown"), "email": users_map.get(u["_id"], {}).get("email", ""), "count": u["count"]} for u in top_users_products]
     
-    # Recent user registrations
-    recent_users = await db.users.find({}, {"_id": 0, "password": 0}).sort("created_at", -1).limit(5).to_list(5)
-    
-    # WooCommerce stats
-    wc_connected = await db.woocommerce_configs.count_documents({"is_connected": True})
-    wc_auto_sync = await db.woocommerce_configs.count_documents({"auto_sync_enabled": True})
+    # Recent user registrations - solo campos necesarios
+    recent_users = await db.users.find(
+        {}, {"_id": 0, "password": 0, "max_suppliers": 0, "max_catalogs": 0, "max_woocommerce_stores": 0}
+    ).sort("created_at", -1).limit(5).to_list(5)
     
     return {
         "users": {
@@ -135,12 +177,19 @@ async def get_dashboard_sync_status(user: dict = Depends(get_current_user)):
     wc_configs = await db.woocommerce_configs.find(
         {"user_id": user["id"]}, {"_id": 0, "consumer_key": 0, "consumer_secret": 0}
     ).to_list(100)
+
+    # Batch: cargar todos los catálogos referenciados en una sola query
+    catalog_ids = [c["catalog_id"] for c in wc_configs if c.get("catalog_id")]
+    catalogs_map = {}
+    if catalog_ids:
+        catalogs_list = await db.catalogs.find(
+            {"id": {"$in": catalog_ids}}, {"_id": 0, "id": 1, "name": 1}
+        ).to_list(len(catalog_ids))
+        catalogs_map = {cat["id"]: cat["name"] for cat in catalogs_list}
+
     wc_syncs = []
     for c in wc_configs:
-        catalog_name = None
-        if c.get("catalog_id"):
-            cat = await db.catalogs.find_one({"id": c["catalog_id"]}, {"_id": 0, "name": 1})
-            catalog_name = cat["name"] if cat else None
+        catalog_name = catalogs_map.get(c.get("catalog_id"))
         next_sync = None
         if c.get("auto_sync_enabled"):
             if c.get("last_sync"):

@@ -1,3 +1,4 @@
+slowapi==0.1.9
 
 # eCommerce integrations
 APScheduler==3.11.2

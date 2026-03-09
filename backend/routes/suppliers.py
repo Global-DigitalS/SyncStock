@@ -14,6 +14,7 @@ from services.sync import (
     browse_ftp_directory
 )
 from services.sanitizer import sanitize_string, sanitize_dict, sanitize_path
+from services.encryption import encrypt_password, decrypt_password
 from models.schemas import SupplierCreate, SupplierUpdate, SupplierResponse, ProductResponse
 
 router = APIRouter()
@@ -48,7 +49,7 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
         "connection_type": supplier.connection_type or "ftp",
         "file_url": supplier.file_url,
         "ftp_schema": supplier.ftp_schema, "ftp_host": supplier.ftp_host,
-        "ftp_user": supplier.ftp_user, "ftp_password": supplier.ftp_password,
+        "ftp_user": supplier.ftp_user, "ftp_password": encrypt_password(supplier.ftp_password) if supplier.ftp_password else None,
         "ftp_port": supplier.ftp_port, "ftp_path": supplier.ftp_path,
         "ftp_paths": [p if isinstance(p, dict) else p.model_dump() for p in (supplier.ftp_paths or [])],
         "ftp_mode": supplier.ftp_mode,
@@ -97,6 +98,8 @@ async def update_supplier(supplier_id: str, supplier: SupplierUpdate, user: dict
     if not existing:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     update_data = {k: v for k, v in supplier.model_dump().items() if v is not None}
+    if "ftp_password" in update_data and update_data["ftp_password"]:
+        update_data["ftp_password"] = encrypt_password(update_data["ftp_password"])
     if update_data:
         await db.suppliers.update_one({"id": supplier_id}, {"$set": update_data})
     updated = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0, "ftp_password": 0, "user_id": 0})
@@ -117,6 +120,9 @@ async def sync_supplier_manual(supplier_id: str, user: dict = Depends(get_curren
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    # Desencriptar contraseña FTP antes de usar
+    if supplier.get("ftp_password"):
+        supplier["ftp_password"] = decrypt_password(supplier["ftp_password"])
     connection_type = supplier.get('connection_type', 'ftp')
     has_multifile = bool(supplier.get('ftp_paths'))
     if connection_type == 'url':
@@ -281,6 +287,8 @@ async def ftp_browse_supplier(supplier_id: str, data: dict, user: dict = Depends
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    if supplier.get("ftp_password"):
+        supplier["ftp_password"] = decrypt_password(supplier["ftp_password"])
     path = data.get("path", "/")
     try:
         result = await browse_ftp_directory(supplier, path)
@@ -299,7 +307,9 @@ async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    
+    if supplier.get("ftp_password"):
+        supplier["ftp_password"] = decrypt_password(supplier["ftp_password"])
+
     base_path = data.get("path", "/")
     max_depth = min(data.get("max_depth", 2), 3)  # Máximo 3 niveles para evitar timeout
     
@@ -457,7 +467,9 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    
+    if supplier.get("ftp_password"):
+        supplier["ftp_password"] = decrypt_password(supplier["ftp_password"])
+
     connection_type = supplier.get('connection_type', 'ftp')
     try:
         if connection_type == 'url':

@@ -5,11 +5,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Dict, Set
 
-from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 load_dotenv()
 
@@ -40,6 +43,10 @@ from routes.crm import router as crm_router
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
 from services.crm_scheduler import run_scheduled_crm_syncs
 from services.unified_sync import run_scheduled_syncs
+from services.database import ensure_indexes
+
+# Initialize rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 # Initialize scheduler
 scheduler = AsyncIOScheduler()
@@ -94,6 +101,7 @@ ws_manager = ConnectionManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    await ensure_indexes()
     # Legacy scheduled syncs (fallback for users without unified config)
     scheduler.add_job(sync_all_suppliers, 'interval', hours=6, id='sync_suppliers_legacy', replace_existing=True)
     scheduler.add_job(sync_all_woocommerce_stores, 'interval', hours=12, id='sync_woocommerce_legacy', replace_existing=True)
@@ -107,6 +115,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="SupplierSync Pro", lifespan=lifespan)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Main API router with /api prefix
 api_router = APIRouter(prefix="/api")
@@ -164,10 +174,20 @@ app.include_router(api_router)
 # Using /api/uploads to ensure proper routing through ingress
 app.mount("/api/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+_cors_origins_env = os.environ.get('CORS_ORIGINS', '')
+if not _cors_origins_env or _cors_origins_env.strip() == '*':
+    logger.warning(
+        "CORS_ORIGINS no está configurado o usa '*'. "
+        "Define orígenes explícitos en producción (ej: CORS_ORIGINS=https://app.tudominio.com)"
+    )
+    _cors_origins = ["*"]
+else:
+    _cors_origins = [o.strip() for o in _cors_origins_env.split(',') if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=True,
-    allow_origins=os.environ.get('CORS_ORIGINS', '*').split(','),
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_cors_origins,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
 )

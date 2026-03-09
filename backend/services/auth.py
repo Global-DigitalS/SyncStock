@@ -2,7 +2,8 @@ import jwt
 import bcrypt
 import os
 from datetime import datetime, timezone, timedelta
-from fastapi import Depends, HTTPException
+from typing import Optional
+from fastapi import Depends, HTTPException, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from services.database import db
 
@@ -17,7 +18,7 @@ except ImportError:
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = int(os.environ.get('JWT_EXPIRATION_HOURS', 168))  # 7 días por defecto
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 # Role permissions - superadmin tiene control total
 ROLE_PERMISSIONS = {
@@ -109,13 +110,29 @@ async def get_user_resource_usage(user: dict) -> dict:
     }
 
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+async def _extract_token(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials],
+) -> str:
+    """Extract JWT token from httpOnly cookie or Authorization header."""
+    token = request.cookies.get("auth_token")
+    if not token and credentials:
+        token = credentials.credentials
+    if not token:
+        raise HTTPException(status_code=401, detail="No autenticado")
+    return token
+
+
+async def get_current_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict:
+    token = await _extract_token(request, credentials)
     try:
-        payload = jwt.decode(credentials.credentials, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
         user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0, "password": 0})
         if not user:
             raise HTTPException(status_code=401, detail="Usuario no encontrado")
-        # Ensure role is set
         if "role" not in user:
             user["role"] = "user"
         return user
@@ -125,17 +142,23 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Token inválido")
 
 
-async def get_admin_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+async def get_admin_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict:
     """Get current user and verify admin role"""
-    user = await get_current_user(credentials)
+    user = await get_current_user(request, credentials)
     if user.get("role") not in ["admin", "superadmin"]:
         raise HTTPException(status_code=403, detail="Se requiere rol de administrador")
     return user
 
 
-async def get_superadmin_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict:
+async def get_superadmin_user(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+) -> dict:
     """Get current user and verify superadmin role"""
-    user = await get_current_user(credentials)
+    user = await get_current_user(request, credentials)
     if user.get("role") != "superadmin":
         raise HTTPException(status_code=403, detail="Se requiere rol de SuperAdmin")
     return user
