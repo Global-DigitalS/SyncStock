@@ -127,7 +127,7 @@ class SupplierResponse(BaseModel):
     csv_line_break: Optional[str] = None
     csv_header_row: Optional[int] = None
     column_mapping: Optional[Dict[str, Any]] = None
-    detected_columns: Optional[List[str]] = None
+    detected_columns: Optional[Any] = None  # Can be List[str] or Dict[str, List[str]] for multi-file
     product_count: int = 0
     last_sync: Optional[str] = None
     created_at: str

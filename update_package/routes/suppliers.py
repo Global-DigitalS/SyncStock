@@ -65,10 +65,22 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
     return SupplierResponse(**supplier_doc)
 
 
+def _normalize_supplier_data(supplier: dict) -> dict:
+    """Normalize supplier data to handle both single-file and multi-file formats."""
+    # Fix detected_columns if it's a dict (multi-file suppliers)
+    if isinstance(supplier.get("detected_columns"), dict):
+        all_columns = []
+        for cols in supplier["detected_columns"].values():
+            if isinstance(cols, list):
+                all_columns.extend(cols)
+        supplier["detected_columns"] = list(set(all_columns))
+    return supplier
+
+
 @router.get("/suppliers", response_model=List[SupplierResponse])
 async def get_suppliers(user: dict = Depends(get_current_user)):
     suppliers = await db.suppliers.find({"user_id": user["id"]}, {"_id": 0, "ftp_password": 0, "user_id": 0}).to_list(1000)
-    return [SupplierResponse(**s) for s in suppliers]
+    return [SupplierResponse(**_normalize_supplier_data(s)) for s in suppliers]
 
 
 @router.get("/suppliers/{supplier_id}", response_model=SupplierResponse)
@@ -76,7 +88,7 @@ async def get_supplier(supplier_id: str, user: dict = Depends(get_current_user))
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]}, {"_id": 0, "ftp_password": 0, "user_id": 0})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    return SupplierResponse(**supplier)
+    return SupplierResponse(**_normalize_supplier_data(supplier))
 
 
 @router.put("/suppliers/{supplier_id}", response_model=SupplierResponse)
