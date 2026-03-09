@@ -70,6 +70,27 @@ const CRM_PLATFORMS = {
     ],
     features: ["Sincronizar productos", "Stock y precios", "Proveedores", "Pedidos de tiendas"]
   },
+  odoo: {
+    id: "odoo",
+    name: "Odoo",
+    description: "Plataforma ERP/CRM completa",
+    logo: "/odoo-logo.png",
+    color: "#875a7b",
+    fields: [
+      { key: "api_url", label: "URL de Odoo", placeholder: "https://tu-odoo.com", type: "text", required: true },
+      { key: "api_token", label: "API Token", placeholder: "Tu token de acceso de Odoo", type: "password", required: true },
+    ],
+    syncOptions: [
+      { key: "products", label: "Productos", icon: Package, description: "Sincronizar catálogo de productos" },
+      { key: "stock", label: "Stock", icon: Layers, description: "Actualizar niveles de inventario" },
+      { key: "prices", label: "Precios", icon: DollarSign, description: "Sincronizar precios de productos" },
+      { key: "descriptions", label: "Descripciones", icon: FileText, description: "Incluir descripciones y marca" },
+      { key: "images", label: "Imágenes", icon: Image, description: "Subir imágenes de productos" },
+      { key: "suppliers", label: "Proveedores", icon: Truck, description: "Sincronizar lista de proveedores" },
+      { key: "orders", label: "Pedidos", icon: ShoppingCart, description: "Importar pedidos desde tiendas" },
+    ],
+    features: ["Sincronizar productos", "Stock y precios", "Proveedores", "Pedidos de tiendas"]
+  },
 };
 
 const CRMPage = () => {
@@ -615,7 +636,7 @@ const CRMPage = () => {
               <Input
                 value={configForm.name || ""}
                 onChange={(e) => setConfigForm({ ...configForm, name: e.target.value })}
-                placeholder="Mi Dolibarr"
+                placeholder={`Mi ${selectedPlatform?.name}`}
                 data-testid="crm-connection-name"
               />
             </div>
@@ -682,6 +703,20 @@ const CRMPage = () => {
                   <li>Activa el módulo "API REST (servidor)"</li>
                   <li>Ve a tu perfil de usuario → Pestaña "API"</li>
                   <li>Genera o copia tu clave API</li>
+                </ol>
+              </div>
+            )}
+
+            {/* Odoo specific help */}
+            {selectedPlatform?.id === "odoo" && (
+              <div className="bg-purple-50 p-3 rounded-lg text-sm">
+                <p className="font-medium text-purple-800 mb-1">¿Cómo obtener el API Token?</p>
+                <ol className="text-purple-700 space-y-1 list-decimal list-inside">
+                  <li>Accede a tu Odoo como administrador</li>
+                  <li>Ve a Settings (Configuración)</li>
+                  <li>Haz clic en "Manage Users" (Gestionar usuarios)</li>
+                  <li>Selecciona tu usuario</li>
+                  <li>Copia el "Access Token" o genera uno nuevo</li>
                 </ol>
               </div>
             )}
