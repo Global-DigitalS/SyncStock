@@ -68,7 +68,8 @@ const defaultFormData = {
   csv_enclosure: '"',
   csv_line_break: "\\n",
   csv_header_row: 1,
-  column_mapping: null
+  column_mapping: null,
+  strip_ean_quotes: false
 };
 
 const Suppliers = () => {
@@ -143,7 +144,8 @@ const Suppliers = () => {
       csv_enclosure: supplier.csv_enclosure || '"',
       csv_line_break: supplier.csv_line_break || "\\n",
       csv_header_row: supplier.csv_header_row || 1,
-      column_mapping: supplier.column_mapping || null
+      column_mapping: supplier.column_mapping || null,
+      strip_ean_quotes: supplier.strip_ean_quotes || false
     });
     setSelectedFtpFiles(supplier.ftp_paths || []);
     setShowDialog(true);
@@ -791,6 +793,23 @@ const Suppliers = () => {
                     />
                     <p className="text-xs text-slate-500">Número de fila donde empiezan los nombres de columna</p>
                   </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-3 bg-amber-50 rounded-sm border border-amber-200">
+                  <input
+                    type="checkbox"
+                    id="strip_ean_quotes"
+                    checked={formData.strip_ean_quotes || false}
+                    onChange={(e) => setFormData({ ...formData, strip_ean_quotes: e.target.checked })}
+                    className="w-4 h-4 text-amber-600 rounded cursor-pointer"
+                    data-testid="strip-ean-quotes-checkbox"
+                  />
+                  <label htmlFor="strip_ean_quotes" className="flex-1 cursor-pointer">
+                    <p className="text-sm font-medium text-amber-800">Limpiar comillas simples del EAN</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Si el proveedor envía los códigos EAN entre comillas simples ('1234567890'), activa esta opción para eliminarlas automáticamente.
+                    </p>
+                  </label>
                 </div>
 
                 <div className="p-3 bg-indigo-50 rounded-sm border border-indigo-200">

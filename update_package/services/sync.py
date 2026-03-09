@@ -147,7 +147,7 @@ def parse_xml_content(content: bytes) -> list:
     return []
 
 
-def normalize_product_data(raw: dict) -> dict:
+def normalize_product_data(raw: dict, strip_ean_quotes: bool = False) -> dict:
     mapping = {
         'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number', 
                 'articulo', 'codigo_articulo', 'cod', 'item_code', 'cod_articulo', 'ref_articulo', 'codigo_producto',
@@ -196,6 +196,9 @@ def normalize_product_data(raw: dict) -> dict:
                         value = int(float(str(value).replace(',', '.')))
                     except Exception:
                         value = 0
+                elif field == 'ean' and strip_ean_quotes:
+                    # Remove single quotes from EAN if strip_ean_quotes is enabled
+                    value = str(value).strip().replace("'", "")
                 result[field] = value
                 break
     
@@ -207,9 +210,9 @@ def normalize_product_data(raw: dict) -> dict:
     return result
 
 
-def apply_column_mapping(raw_data: dict, column_mapping: dict) -> dict:
+def apply_column_mapping(raw_data: dict, column_mapping: dict, strip_ean_quotes: bool = False) -> dict:
     if not column_mapping:
-        return normalize_product_data(raw_data)
+        return normalize_product_data(raw_data, strip_ean_quotes)
     result = {}
     raw_lower = {str(k).lower().strip(): v for k, v in raw_data.items()}
     raw_original = {str(k).strip(): v for k, v in raw_data.items()}
@@ -240,6 +243,9 @@ def apply_column_mapping(raw_data: dict, column_mapping: dict) -> dict:
                     combined_value = float(str(combined_value).replace(',', '.').replace('€', '').replace('$', '').strip())
                 elif field_type == 'int':
                     combined_value = int(float(str(combined_value).replace(',', '.')))
+                elif field_type == 'string' and system_field == 'ean' and strip_ean_quotes:
+                    # Remove single quotes from EAN if strip_ean_quotes is enabled
+                    combined_value = str(combined_value).strip().replace("'", "")
             except Exception:
                 if field_type in ['float', 'int']:
                     combined_value = 0
@@ -269,6 +275,7 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
     enclosure = supplier.get('csv_enclosure', '"')
     header_row = supplier.get('csv_header_row', 1) or 1
     column_mapping = supplier.get('column_mapping')
+    strip_ean_quotes = supplier.get('strip_ean_quotes', False)
     detected_columns = []
     try:
         if file_format == 'csv':
@@ -334,7 +341,7 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 needs_mapping = True
         for raw in raw_products:
             try:
-                normalized = apply_column_mapping(raw, column_mapping) if column_mapping else normalize_product_data(raw)
+                normalized = apply_column_mapping(raw, column_mapping, strip_ean_quotes) if column_mapping else normalize_product_data(raw, strip_ean_quotes)
                 if not normalized.get('sku') or not normalized.get('name'):
                     errors += 1
                     continue
