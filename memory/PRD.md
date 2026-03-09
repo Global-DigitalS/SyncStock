@@ -511,6 +511,15 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
   - Ahora es obligatorio seleccionar un catálogo para sincronizar
   - Botón deshabilitado si no hay catálogo seleccionado
   - Mensaje de advertencia visible
+- ✅ **Landing Page: Logo y Favicon Dinámicos**
+  - Carga automática del logo desde configuración de branding
+  - Favicon dinámico desde `/api/branding/public`
+  - Título de página personalizable
+- ✅ **Landing Page: Tema Claro/Oscuro**
+  - Toggle de tema en la barra de navegación
+  - Persistencia en localStorage
+  - Transiciones suaves entre temas
+  - Diseño adaptado para ambos modos
 
 ### 2026-03-04 (Fork anterior)
 - ✅ Solucionado problema de instalación en subdominios de Plesk
