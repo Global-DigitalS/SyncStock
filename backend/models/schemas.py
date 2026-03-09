@@ -480,8 +480,10 @@ class SubscriptionPlan(BaseModel):
     max_suppliers: int
     max_catalogs: int
     max_woocommerce_stores: int
+    max_crm_connections: int = 1
     price_monthly: float
     price_yearly: float
+    trial_days: int = 0  # Días de prueba gratuita
     features: List[str] = []
     is_active: bool = True
     created_at: str

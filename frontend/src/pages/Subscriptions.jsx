@@ -12,7 +12,7 @@ import { Textarea } from "../components/ui/textarea";
 import {
   Check, Zap, Crown, Building2, Rocket, CreditCard, 
   Truck, BookOpen, ShoppingCart, Sparkles, Settings, Plus, Trash2, X,
-  Loader2, ExternalLink, AlertCircle
+  Loader2, ExternalLink, AlertCircle, CalendarDays
 } from "lucide-react";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
@@ -156,12 +156,12 @@ const Subscriptions = () => {
     }
   };
 
-  const handleSubscribe = async (plan) => {
+  const handleSubscribe = async (plan, startTrial = false) => {
     if (currentSubscription?.plan?.name === plan.name && !currentSubscription?.is_free) {
       toast.info("Ya estás suscrito a este plan");
       return;
     }
-    setConfirmDialog(plan);
+    setConfirmDialog({ ...plan, startTrial });
   };
 
   const confirmSubscription = async () => {
@@ -169,9 +169,25 @@ const Subscriptions = () => {
     setSubscribing(true);
     
     try {
-      // If Stripe is enabled and plan has a price, use Stripe checkout
       const planPrice = yearlyBilling ? confirmDialog.price_yearly : confirmDialog.price_monthly;
+      const startTrial = confirmDialog.startTrial;
       
+      // If starting a trial, use direct subscription flow (no payment)
+      if (startTrial && confirmDialog.trial_days > 0) {
+        const billingCycle = yearlyBilling ? "yearly" : "monthly";
+        const res = await api.post(`/subscriptions/subscribe/${confirmDialog.id}`, {
+          billing_cycle: billingCycle,
+          start_trial: true
+        });
+        
+        toast.success(res.data.message || `¡Periodo de prueba activado!`);
+        setConfirmDialog(null);
+        fetchData();
+        setTimeout(() => window.location.reload(), 1500);
+        return;
+      }
+      
+      // If Stripe is enabled and plan has a price, use Stripe checkout
       if (stripeEnabled && planPrice > 0) {
         // Create Stripe checkout session
         const billingCycle = yearlyBilling ? "yearly" : "monthly";
@@ -189,7 +205,9 @@ const Subscriptions = () => {
       } else {
         // Demo mode - use the existing subscription flow
         const billingCycle = yearlyBilling ? "yearly" : "monthly";
-        await api.post(`/subscriptions/subscribe/${confirmDialog.id}?billing_cycle=${billingCycle}`);
+        await api.post(`/subscriptions/subscribe/${confirmDialog.id}`, {
+          billing_cycle: billingCycle
+        });
         toast.success(`¡Suscrito al plan ${confirmDialog.name} exitosamente!`);
         setConfirmDialog(null);
         fetchData();
@@ -335,6 +353,27 @@ const Subscriptions = () => {
         </div>
       )}
 
+      {/* Trial Period Banner */}
+      {currentSubscription?.is_in_trial && (
+        <Alert className="mb-6 max-w-2xl mx-auto border-emerald-200 bg-emerald-50">
+          <CalendarDays className="h-4 w-4 text-emerald-600" />
+          <AlertTitle className="text-emerald-800">Periodo de prueba activo</AlertTitle>
+          <AlertDescription className="text-emerald-700">
+            Estás disfrutando de {currentSubscription.trial_days_left} días restantes de prueba del plan {currentPlanName}.
+            {currentSubscription.trial_end && (
+              <span className="block mt-1 text-sm">
+                Tu prueba termina el {new Date(currentSubscription.trial_end).toLocaleDateString('es-ES', { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </span>
+            )}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* SuperAdmin: Plans Table View (Edit Mode) */}
       {editMode && isSuperAdmin ? (
         <Card className="max-w-5xl mx-auto border-slate-200">
@@ -467,6 +506,14 @@ const Subscriptions = () => {
                           Ahorras {savings}%
                         </div>
                       )}
+                      {plan.trial_days > 0 && plan.price_monthly > 0 && (
+                        <div className="mt-2">
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                            <CalendarDays className="w-3 h-3 mr-1" />
+                            {plan.trial_days} días de prueba
+                          </Badge>
+                        </div>
+                      )}
                     </div>
 
                     {/* Limits */}
@@ -511,7 +558,21 @@ const Subscriptions = () => {
                     </div>
                   </CardContent>
 
-                  <CardFooter>
+                  <CardFooter className="flex flex-col gap-2">
+                    {/* Trial Button - Show if plan has trial and user can use it */}
+                    {plan.trial_days > 0 && plan.price_monthly > 0 && !isCurrentPlan && (
+                      <Button
+                        variant="outline"
+                        className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                        onClick={() => handleSubscribe(plan, true)}
+                        data-testid={`trial-${plan.name.toLowerCase()}`}
+                      >
+                        <CalendarDays className="w-4 h-4 mr-2" />
+                        Probar {plan.trial_days} días gratis
+                      </Button>
+                    )}
+                    
+                    {/* Main Subscribe Button */}
                     <Button
                       className={`w-full ${
                         isCurrentPlan 
@@ -520,7 +581,7 @@ const Subscriptions = () => {
                             ? "bg-indigo-600 hover:bg-indigo-700 text-white"
                             : "btn-primary"
                       }`}
-                      onClick={() => handleSubscribe(plan)}
+                      onClick={() => handleSubscribe(plan, false)}
                       disabled={isCurrentPlan}
                       data-testid={`subscribe-${plan.name.toLowerCase()}`}
                     >

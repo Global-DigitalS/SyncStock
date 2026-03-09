@@ -21,7 +21,7 @@ import {
 import {
   CreditCard, Plus, Pencil, Trash2, RefreshCw, CheckCircle, 
   Truck, BookOpen, Package, Store, Star, Users, Clock, Building2,
-  GripVertical, Database
+  GripVertical, Database, CalendarDays
 } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
 
@@ -45,6 +45,7 @@ const AdminPlans = () => {
     max_crm_connections: 1,
     price_monthly: 0,
     price_yearly: 0,
+    trial_days: 0,
     features: [],
     is_default: false,
     sort_order: 0,
@@ -91,6 +92,7 @@ const AdminPlans = () => {
       max_crm_connections: 1,
       price_monthly: 0,
       price_yearly: 0,
+      trial_days: 0,
       features: [],
       is_default: false,
       sort_order: plans.length,
@@ -119,6 +121,7 @@ const AdminPlans = () => {
       max_crm_connections: plan.max_crm_connections || 1,
       price_monthly: plan.price_monthly || 0,
       price_yearly: plan.price_yearly || 0,
+      trial_days: plan.trial_days || 0,
       features: plan.features || [],
       is_default: plan.is_default || false,
       sort_order: plan.sort_order || 0,
@@ -287,6 +290,14 @@ const AdminPlans = () => {
                   o {plan.price_yearly}€/año (ahorra {Math.round((1 - plan.price_yearly / (plan.price_monthly * 12)) * 100)}%)
                 </p>
               )}
+              {plan.trial_days > 0 && (
+                <div className="flex items-center gap-2 mt-2">
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                    <CalendarDays className="w-3 h-3 mr-1" />
+                    {plan.trial_days} días de prueba
+                  </Badge>
+                </div>
+              )}
 
               {/* Limits */}
               <div className="space-y-2 pt-4 border-t">
@@ -401,7 +412,7 @@ const AdminPlans = () => {
             </div>
 
             {/* Pricing */}
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="price_monthly">Precio Mensual (€)</Label>
                 <Input
@@ -422,6 +433,21 @@ const AdminPlans = () => {
                   value={formData.price_yearly}
                   onChange={(e) => setFormData({ ...formData, price_yearly: parseFloat(e.target.value) || 0 })}
                   className="input-base"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="trial_days" className="flex items-center gap-2">
+                  <CalendarDays className="w-4 h-4" /> Días de Prueba
+                </Label>
+                <Input
+                  id="trial_days"
+                  type="number"
+                  min="0"
+                  value={formData.trial_days}
+                  onChange={(e) => setFormData({ ...formData, trial_days: parseInt(e.target.value) || 0 })}
+                  className="input-base"
+                  placeholder="0"
+                  data-testid="trial-days-input"
                 />
               </div>
             </div>

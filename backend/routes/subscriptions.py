@@ -144,8 +144,12 @@ async def create_subscription_plan(plan: dict, superadmin: dict = Depends(get_su
         "max_suppliers": plan.get("max_suppliers", 10),
         "max_catalogs": plan.get("max_catalogs", 5),
         "max_woocommerce_stores": plan.get("max_woocommerce_stores", 2),
+        "max_crm_connections": plan.get("max_crm_connections", 1),
+        "max_stores": plan.get("max_stores", plan.get("max_woocommerce_stores", 2)),
+        "max_products": plan.get("max_products", 1000),
         "price_monthly": plan.get("price_monthly", 0),
         "price_yearly": plan.get("price_yearly", 0),
+        "trial_days": plan.get("trial_days", 0),
         "features": plan.get("features", []),
         "is_active": True,
         "auto_sync_enabled": plan.get("auto_sync_enabled", False),
@@ -211,28 +215,53 @@ async def get_my_subscription(user: dict = Depends(get_current_user)):
     billing_info = await db.billing_info.find_one({"user_id": user["id"]}, {"_id": 0})
     
     # Check if user is in trial period
-    trial_end = user.get("trial_end")
     is_in_trial = False
     trial_days_left = 0
-    if trial_end:
-        trial_end_dt = datetime.fromisoformat(trial_end.replace('Z', '+00:00'))
-        if trial_end_dt > datetime.now(timezone.utc):
-            is_in_trial = True
-            trial_days_left = (trial_end_dt - datetime.now(timezone.utc)).days
+    trial_end = None
     
-    if not subscription:
+    if subscription and subscription.get("status") == "trial":
+        trial_end_str = subscription.get("current_period_end")
+        if trial_end_str:
+            trial_end_dt = datetime.fromisoformat(trial_end_str.replace('Z', '+00:00'))
+            if trial_end_dt > datetime.now(timezone.utc):
+                is_in_trial = True
+                trial_days_left = (trial_end_dt - datetime.now(timezone.utc)).days
+                trial_end = trial_end_str
+            else:
+                # Trial has ended, update status
+                await db.user_subscriptions.update_one(
+                    {"id": subscription["id"]},
+                    {"$set": {"status": "trial_ended"}}
+                )
+                subscription["status"] = "trial_ended"
+    
+    # Also check user-level trial_end (legacy support)
+    user_trial_end = user.get("trial_end")
+    if user_trial_end and not is_in_trial:
+        try:
+            trial_end_dt = datetime.fromisoformat(user_trial_end.replace('Z', '+00:00'))
+            if trial_end_dt > datetime.now(timezone.utc):
+                is_in_trial = True
+                trial_days_left = (trial_end_dt - datetime.now(timezone.utc)).days
+                trial_end = user_trial_end
+        except (ValueError, AttributeError):
+            pass
+    
+    if not subscription or subscription.get("status") in ["trial_ended", "cancelled", "expired"]:
         # Return free plan info
         return {
-            "subscription": None,
+            "subscription": subscription,
             "plan": {
                 "name": "Free",
                 "max_suppliers": user.get("max_suppliers", 10),
                 "max_catalogs": user.get("max_catalogs", 5),
-                "max_woocommerce_stores": user.get("max_woocommerce_stores", 2)
+                "max_woocommerce_stores": user.get("max_woocommerce_stores", 2),
+                "max_crm_connections": user.get("max_crm_connections", 1)
             },
             "is_free": True,
             "is_in_trial": is_in_trial,
             "trial_days_left": trial_days_left,
+            "trial_end": trial_end,
             "billing_info": billing_info
         }
     
@@ -243,6 +272,7 @@ async def get_my_subscription(user: dict = Depends(get_current_user)):
         "is_free": False,
         "is_in_trial": is_in_trial,
         "trial_days_left": trial_days_left,
+        "trial_end": trial_end,
         "billing_info": billing_info
     }
 
@@ -280,15 +310,17 @@ async def get_billing_info(user: dict = Depends(get_current_user)):
 
 @router.post("/subscriptions/subscribe/{plan_id}")
 async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(get_current_user)):
-    """Subscribe user to a plan - requires billing info for paid plans"""
+    """Subscribe user to a plan - requires billing info for paid plans, supports trial periods"""
     plan = await db.subscription_plans.find_one({"id": plan_id, "is_active": True}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
     
     billing_cycle = request.get("billing_cycle", "monthly")
+    start_trial = request.get("start_trial", False)  # If user wants to start trial
+    trial_days = plan.get("trial_days", 0)
     
-    # For paid plans, require billing information
-    if plan.get("price_monthly", 0) > 0:
+    # For paid plans, require billing information unless starting a trial
+    if plan.get("price_monthly", 0) > 0 and not start_trial:
         billing_info = await db.billing_info.find_one({"user_id": user["id"]})
         
         # Check if billing info was provided in the request
@@ -316,19 +348,39 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
     
     # Get current subscription to know the old plan name
     current_subscription = await db.user_subscriptions.find_one(
-        {"user_id": user["id"], "status": "active"},
+        {"user_id": user["id"], "status": {"$in": ["active", "trial"]}},
         {"_id": 0}
     )
     old_plan_name = current_subscription.get("plan_name", "Free") if current_subscription else "Free"
     
+    # Check if user already used trial for this plan
+    existing_trial = await db.user_subscriptions.find_one({
+        "user_id": user["id"],
+        "plan_id": plan_id,
+        "status": {"$in": ["trial", "trial_ended"]}
+    })
+    
+    # Determine if we should start a trial
+    is_trial = False
+    if start_trial and trial_days > 0 and not existing_trial:
+        is_trial = True
+    
     # Cancel existing subscription
     await db.user_subscriptions.update_many(
-        {"user_id": user["id"], "status": "active"},
+        {"user_id": user["id"], "status": {"$in": ["active", "trial"]}},
         {"$set": {"status": "cancelled"}}
     )
     
     now = datetime.now(timezone.utc)
-    period_end = now + timedelta(days=30 if billing_cycle == "monthly" else 365)
+    
+    if is_trial:
+        # Trial period
+        period_end = now + timedelta(days=trial_days)
+        status = "trial"
+    else:
+        # Regular subscription
+        period_end = now + timedelta(days=30 if billing_cycle == "monthly" else 365)
+        status = "active"
     
     subscription_id = str(uuid.uuid4())
     subscription_doc = {
@@ -336,8 +388,10 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
         "user_id": user["id"],
         "plan_id": plan_id,
         "plan_name": plan["name"],
-        "status": "active",
+        "status": status,
         "billing_cycle": billing_cycle,
+        "is_trial": is_trial,
+        "trial_days": trial_days if is_trial else 0,
         "current_period_start": now.isoformat(),
         "current_period_end": period_end.isoformat(),
         "created_at": now.isoformat()
@@ -350,7 +404,9 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
         {"$set": {
             "max_suppliers": plan["max_suppliers"],
             "max_catalogs": plan["max_catalogs"],
-            "max_woocommerce_stores": plan["max_woocommerce_stores"]
+            "max_woocommerce_stores": plan.get("max_woocommerce_stores", plan.get("max_stores", 1)),
+            "max_crm_connections": plan.get("max_crm_connections", 1),
+            "trial_end": period_end.isoformat() if is_trial else None
         }}
     )
     
@@ -369,10 +425,13 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
     except Exception as e:
         logger.error(f"Failed to send subscription change email: {e}")
     
+    message = f"¡Periodo de prueba de {trial_days} días activado para el plan {plan['name']}!" if is_trial else f"Suscrito al plan {plan['name']} exitosamente"
+    
     return {
-        "message": f"Suscrito al plan {plan['name']} exitosamente",
+        "message": message,
         "subscription": subscription_doc,
-        "plan": plan
+        "plan": plan,
+        "is_trial": is_trial
     }
 
 

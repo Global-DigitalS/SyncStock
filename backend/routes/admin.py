@@ -76,8 +76,10 @@ class SubscriptionPlanCreate(BaseModel):
     max_catalogs: int = 3
     max_products: int = 1000
     max_stores: int = 1
+    max_crm_connections: int = 1
     price_monthly: float = 0
     price_yearly: float = 0
+    trial_days: int = 0
     features: List[str] = []
     is_default: bool = False
     sort_order: int = 0
@@ -95,8 +97,10 @@ class SubscriptionPlanUpdate(BaseModel):
     max_catalogs: Optional[int] = None
     max_products: Optional[int] = None
     max_stores: Optional[int] = None
+    max_crm_connections: Optional[int] = None
     price_monthly: Optional[float] = None
     price_yearly: Optional[float] = None
+    trial_days: Optional[int] = None
     features: Optional[List[str]] = None
     is_active: Optional[bool] = None
     is_default: Optional[bool] = None

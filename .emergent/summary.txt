@@ -1,168 +1,145 @@
 <analysis>**original_problem_statement:**
 El usuario ha solicitado una serie de funcionalidades y correcciones importantes para su aplicación SaaS SyncStock:
 
-**Nuevas Funcionalidades:**
-1.  **Suscripciones y Registro:**
-    *   Añadir días de prueba al plan gratuito.
-    *   Requerir datos de facturación para suscripciones de pago.
-    *   Permitir a los usuarios elegir un plan de suscripción durante el registro.
-    *   Integrar un flujo de pago completo con Stripe para los planes de pago antes de activar la cuenta.
-2.  **Gestión de Usuario:**
-    *   Crear una página de Perfil donde los usuarios puedan editar sus datos personales y de facturación, y cambiar su contraseña.
-3.  **Marketing y Ventas:**
-    *   Crear una landing page de ventas profesional, moderna y orientada a la conversión.
-    *   El contenido de la landing page (textos, características, precios, etc.) debe ser completamente editable desde un panel de administración.
-    *   Los precios en la landing deben cargarse dinámicamente desde la configuración de planes de la aplicación.
-4.  **Mejoras de Funcionalidad:**
-    *   Añadir un selector de catálogo a la página de sincronización de CRM/Dolibarr.
-    *   Implementar una barra de progreso visual para indicar el estado de las sincronizaciones.
+**Funcionalidades y Mejoras Solicitadas en esta Sesión:**
+1.  **Flujo de Pago:** Implementar el webhook de Stripe para completar el ciclo de pago y activar las suscripciones automáticamente tras un pago exitoso.
+2.  **Landing Page:**
+    *   Separar la landing page en una carpeta/aplicación independiente para que pueda ser desplegada en un dominio diferente.
+    *   Hacer que la landing page cargue dinámicamente el logo y el favicon desde la configuración de personalización de la aplicación.
+    *   Añadir la posibilidad de cambiar entre un tema claro y uno oscuro en la landing page.
+3.  **Sincronización CRM:** Hacer que la selección de un catálogo sea obligatoria para poder iniciar una sincronización con el CRM (eliminar la opción de sincronizar todo).
+4.  **Planes de Suscripción:**
+    *   En la configuración de planes, añadir un nuevo límite para definir el Número de conexiones CRM permitidas.
+    *   En la sección de Características de un plan, permitir que las características se puedan reordenar manualmente (arrastrando y soltando).
+5.  **Cambios de Texto (UI):** Reemplazar todas las apariciones del texto Tiendas WooCommerce por Tiendas Online en la interfaz de usuario.
 
-**Bugs Reportados:**
-1.  Error en la sincronización con Dolibarr que impedía la actualización del stock.
-2.  Error en la sincronización con Dolibarr donde el precio de venta se establecía incorrectamente al mismo valor que el precio de compra, sin aplicar los márgenes del catálogo.
-3.  Error en la UI donde el selector de catálogos para la sincronización mostraba 0 productos incorrectamente.
-4.  La barra de progreso de sincronización no se cargaba, y el proceso de sincronización era lento y sobrecargaba el servidor.
-5.  Errores de compilación en el frontend que impedían ver las páginas recién creadas.
-
-**Otras Peticiones:**
-*   Cambiar la contraseña del usuario .
+**Funcionalidades y Bugs del Backlog Anterior:**
+*   **Gestión de Usuario:** Crear una página de Perfil para editar datos y cambiar contraseña.
+*   **Marketing:** Crear una landing page de ventas profesional y orientada a la conversión, con contenido editable desde un panel de administración.
+*   **Errores de Sincronización:** Corregir bugs relacionados con la actualización de stock y el cálculo de precios en la sincronización con Dolibarr.
+*   **Rendimiento:** Optimizar los procesos de sincronización para que no sobrecarguen el servidor.
 
 **User's preferred language**: Spanish
 
 **what currently exists?**
-La aplicación es un SaaS full-stack (React + FastAPI + MongoDB) para la gestión y sincronización de catálogos de productos. En esta sesión, se han implementado numerosas funcionalidades y correcciones críticas:
-
-*   **Flujo de Suscripción Completo:** Se ha implementado un nuevo flujo de registro de varios pasos que incluye la selección de planes, la adición de días de prueba, la recopilación de datos de facturación y la redirección a Stripe Checkout para planes de pago.
-*   **Gestión de Perfil de Usuario:** Se ha creado una página de perfil () con pestañas para editar datos personales, de facturación y de seguridad (cambio de contraseña).
-*   **Landing Page Dinámica:** Se ha creado una landing page de ventas () con diseño profesional y contenido totalmente editable a través de un nuevo panel de administración (). Los planes y precios se cargan dinámicamente desde la API.
-*   **Sincronización con Dolibarr Mejorada:**
-    *   Se ha añadido un selector para sincronizar por catálogo.
-    *   Se corrigieron errores críticos con la actualización de stock y la diferenciación de precios de compra/venta, aplicando correctamente los márgenes definidos en los catálogos.
-*   **Optimización de Rendimiento:** Los procesos de sincronización (Dolibarr y WooCommerce) han sido optimizados para ejecutarse como tareas en segundo plano, usar operaciones por lotes (batch) y sesiones HTTP reutilizables, reduciendo drásticamente la carga del servidor y el tiempo de ejecución.
-*   **Experiencia de Usuario:** Se ha implementado una barra de progreso en tiempo real para todas las sincronizaciones, proporcionando feedback visual al usuario.
+La aplicación es un SaaS full-stack (React + FastAPI + MongoDB) para la gestión y sincronización de catálogos de productos. En esta sesión, el agente ha implementado varias funcionalidades clave solicitadas por el usuario. La aplicación ahora tiene una landing page separada en  con soporte para temas claro/oscuro y carga dinámica de logo/favicon. Se ha modificado la gestión de planes de suscripción para incluir un límite de conexiones CRM y permitir la ordenación manual de características. Además, se ha hecho obligatorio seleccionar un catálogo para las sincronizaciones y se ha actualizado el texto de la interfaz para que ponga Tiendas Online en lugar de Tiendas WooCommerce. El agente también encontró una implementación existente del webhook de Stripe y la configuró, aunque no se ha probado de extremo a extremo.
 
 **Last working item**:
-- Last item agent was working: Creación de una landing page de ventas profesional y un panel de administración para editar su contenido. El agente acababa de confirmar que las páginas se habían creado y compilado correctamente y estaba explicando al usuario cómo acceder a ellas.
+- Last item agent was working: Reemplazar todas las instancias de Tiendas WooCommerce por Tiendas Online en la interfaz de usuario.
 - Status: USER VERIFICATION PENDING
 - Agent Testing Done: Y
 - Which testing method agent to use? screenshot tool
 - User Testing Done: N
 
 **All Pending/In progress Issue list**:
-- **Issue 1 (P0): Verificar la nueva Landing Page y su panel de administración.**
-  - **Descripción**: El usuario solicitó una landing page y un panel para gestionarla. El agente ha implementado ambas cosas, pero el usuario necesita confirmar que puede ver la página () y acceder al panel de edición () para configurarla.
+- **Issue 1 (P0): Verificar el flujo de pago con Stripe de extremo a extremo.**
+  - **Descripción**: El agente anterior encontró una implementación de webhook de Stripe en  y añadió la clave secreta al entorno. Sin embargo, no se ha realizado una prueba completa para confirmar que un pago exitoso a través de Stripe Checkout actualiza correctamente el estado de la suscripción del usuario en la base de datos. Esta es la tarea más crítica pendiente.
+  - **Status**: TESTING PENDING
+- **Issue 2 (P1): Verificar todas las nuevas funcionalidades implementadas en esta sesión.**
+  - **Descripción**: El usuario necesita probar y confirmar que los siguientes cambios funcionan como se espera:
+    1.  La obligatoriedad de seleccionar un catálogo para la sincronización CRM.
+    2.  El nuevo campo Conexiones CRM y la ordenación manual de características en la gestión de planes.
+    3.  El cambio de texto de Tiendas WooCommerce a Tiendas Online.
+    4.  La nueva landing page separada (funcionalidad de tema y logo/favicon).
   - **Status**: USER VERIFICATION PENDING
-- **Issue 2 (P1): Verificar el flujo completo de registro y suscripción de pago.**
-  - **Descripción**: Se ha implementado un flujo complejo que incluye la selección de plan, la recopilación de datos de facturación y la redirección a Stripe. Es crucial que el usuario pruebe este flujo de extremo a extremo para un plan de pago y confirme que funciona como se espera. **NOTA:** El agente implementó la redirección a Stripe, pero no el webhook para recibir la confirmación de pago, por lo que el flujo está incompleto.
-  - **Status**: BLOCKED
-- **Issue 3 (P2): Verificar la nueva página de Perfil de Usuario.**
-  - **Descripción**: Se ha creado la página  para la gestión de datos de usuario. El usuario debe probar la edición de datos personales, datos de facturación y el cambio de contraseña.
+- **Issue 3 (P2): Verificar las funcionalidades de la sesión anterior.**
+  - **Descripción**: El usuario aún no ha confirmado formalmente el funcionamiento de la página  ni del panel de administración de la landing ().
   - **Status**: USER VERIFICATION PENDING
 
 **In progress Task List**:
-No hay tareas en progreso. Las últimas tareas están pendientes de validación por parte del usuario.
+No hay tareas en progreso. Todo el trabajo reciente está pendiente de prueba o verificación.
 
 **Upcoming and Future Tasks**
 Upcoming Tasks:
-- **Task 1 (P0): Implementar el webhook de Stripe para activar suscripciones.**
-    - **Descripción**: El flujo de registro para planes de pago redirige a Stripe, pero la aplicación no tiene cómo saber si el pago fue exitoso. Se debe crear un endpoint de webhook () que escuche los eventos de Stripe (ej. ) y active la suscripción del usuario en la base de datos.
+- **Task 1 (P0): Desplegar y servir la nueva landing page separada.**
+    - **Descripción**: El código para la nueva landing page se encuentra en , pero es una aplicación React independiente. Necesita su propia configuración de  y ser servida (por ejemplo, con Nginx o un servidor estático) para que sea accesible en su propio dominio o subdominio.
     - **Referencia**: .
-- **Task 2 (P1): Presentar y validar todo el trabajo realizado.**
-    - **Descripción**: El agente debe presentar un resumen de todas las correcciones y funcionalidades implementadas en esta sesión y solicitar al usuario que las pruebe. Esto incluye:
-        1.  El nuevo flujo de registro y pago.
-        2.  La nueva página de perfil.
-        3.  La nueva landing page y su panel de administración.
-        4.  Las correcciones y optimizaciones en la sincronización.
+- **Task 2 (P1): Presentar un resumen consolidado al usuario.**
+    - **Descripción**: Se ha completado una gran cantidad de trabajo en las últimas dos sesiones. El agente debe presentar un resumen claro de todas las nuevas características y correcciones, y guiar al usuario a través de los pasos de verificación para cada una, especialmente el flujo de pago.
+- **Task 3 (P2): Limpiar el código antiguo de la landing page.**
+    - **Descripción**: Una vez que se confirme que la nueva landing en  es la definitiva, se debe eliminar el componente  y su ruta asociada en  para evitar duplicidad y confusión.
 
 Future Tasks:
-- **Task 3 (P2):** Añadir autenticación de dos factores (2FA) (del backlog anterior).
-- **Task 4 (P3):** Ampliar el dashboard del  con más estadísticas de uso de la plataforma (del backlog anterior).
+- **Task 4 (P3):** Añadir autenticación de dos factores (2FA) (del backlog anterior).
+- **Task 5 (P4):** Ampliar el dashboard del  con más estadísticas de uso de la plataforma (del backlog anterior).
 
 **Completed work in this session**
-- **Feature: Flujo de suscripción y registro con Stripe (IN PROGRESS - PAGO INCOMPLETO)**
-  - Creado un flujo de registro multi-paso en .
-  - Añadido endpoint  para mostrar planes.
-  - Modificado el endpoint  para aceptar un .
-  - Añadidos días de prueba a los planes y lógica de  en el usuario.
-  - Creados endpoints para gestionar .
-  - Implementada la redirección a Stripe Checkout en .
-- **Feature: Página de Perfil de Usuario (DONE)**
-  - Creada la página  con pestañas para datos personales, facturación y seguridad.
-  - Añadidos endpoints  y  en .
-- **Feature: Landing Page Editable (DONE)**
-  - Creada la página  con diseño profesional.
-  - Creado el panel de administración .
-  - Añadidos endpoints en el backend para guardar y servir el contenido dinámico de la landing.
-- **Feature: Barra de Progreso de Sincronización (DONE)**
-  - Creado sistema de seguimiento con la colección  y el endpoint .
-  - Implementado un diálogo de progreso con polling en .
-- **Optimization: Sincronizaciones (DONE)**
-  - Refactorizada la sincronización para ejecutarse en segundo plano ().
-  - Optimizado el cliente de Dolibarr para usar  en .
-  - Optimizada la exportación a WooCommerce para usar operaciones  en .
-- **Bug Fixes: Sincronización con Dolibarr (DONE)**
-  - Corregida la actualización de stock para usar movimientos de stock.
-  - Corregido el cálculo de precios para diferenciar entre precio de compra y de venta (con márgenes de catálogo).
-  - Corregida la obtención de productos de un catálogo para que la sincronización por catálogo funcione.
+- **Feature: Flujo de Pago con Stripe (CONFIGURADO, PENDIENTE DE TEST)**
+  - Verificada la existencia de un endpoint de webhook en .
+  - Añadida la clave  al archivo .
+- **Feature: Landing Page Separada (DONE)**
+  - Creada una nueva aplicación React en  para la landing page.
+  - Implementado un sistema de temas (claro/oscuro) con persistencia en .
+  - Añadida lógica para cargar dinámicamente el  y  desde el endpoint de branding de la API.
+- **Feature: Gestión de Planes Mejorada (DONE)**
+  - Modificado  para añadir el campo Conexiones CRM.
+  - Implementada la ordenación manual de características mediante drag-and-drop en el mismo archivo.
+- **Feature: Sincronización CRM Obligatoria por Catálogo (DONE)**
+  - Modificado  para eliminar la opción Todos los productos y hacer obligatoria la selección de un catálogo antes de sincronizar.
+- **UI: Cambio de Nomenclatura (DONE)**
+  - Reemplazado el texto Tiendas WooCommerce por Tiendas Online en múltiples archivos del frontend para consistencia.
+
+**Earlier issues found/mentioned but not fixed**
+- La funcionalidad del webhook de Stripe no está rota, pero su correcta operatividad no ha sido verificada. El agente encontró código existente y asumió que funcionaría tras configurar la clave API. Esto supone un riesgo, ya que el flujo de monetización principal de la aplicación podría no estar funcionando. Se debe realizar una prueba de pago completa.
+
+**Known issue recurrence from previous fork**
+- **Issue**: Flujo de pago incompleto por falta de webhook de Stripe.
+- **Recurrence count**: 1
+- **Status**: IN PROGRESS (El código del webhook se ha encontrado y configurado, pero no se ha probado funcionalmente).
 
 **Code Architecture**
 
 
 **Key Technical Concepts**
-- **Integración con Stripe Checkout:** Creación de sesiones de pago y redirección del usuario para procesar suscripciones.
-- **Tareas en Segundo Plano (Background Tasks):** Uso de  para ejecutar operaciones largas (como la sincronización) sin bloquear la respuesta de la API.
-- **Sondeo de API (Polling):** El frontend consulta periódicamente un endpoint de estado para mostrar el progreso en tiempo real de una tarea en segundo plano.
-- **Optimización de API de Terceros:** Uso de  para reutilización de conexiones (Dolibarr) y operaciones por lotes (WooCommerce) para reducir drásticamente el número de llamadas de red.
-- **Contenido Dinámico (Headless CMS):** La landing page obtiene su contenido de la base de datos a través de una API, permitiendo su edición desde un panel de administración sin necesidad de redesplegar el código.
+- **Aplicación React Independiente:** Creación de una segunda aplicación frontend () desacoplada de la principal para despliegue independiente.
+- **Gestión de Temas (Theming):** Uso de variables CSS y  para implementar un selector de tema claro/oscuro persistente.
+- **Drag-and-Drop:** Implementación de reordenación manual de elementos en una lista utilizando eventos de arrastrar y soltar en React.
+- **Webhook de Stripe:** Endpoint en el backend que escucha eventos asíncronos de Stripe (ej. ) para ejecutar lógica de negocio (activar una suscripción).
 
 **key DB schema**
-- : Añadido  (datetime).
-- : Añadido  (integer).
-- ** (NUEVO):** 
-- ** (NUEVO):** 
-- ** (NUEVO):** 
+- : El modelo ahora es interpretado para incluir  (integer), aunque el cambio se realizó en el frontend, el backend deberá guardarlo.
 
 **All files of reference**
-*   : Contiene la lógica clave para el registro, pago con Stripe y datos de facturación.
-*   : Gestiona la sincronización en segundo plano y el seguimiento del progreso.
-*   : Lógica de sincronización con Dolibarr, ahora optimizada.
-*   : Lógica de exportación a WooCommerce, ahora con operaciones batch.
-*   : Implementa el nuevo flujo de registro de varios pasos.
-*   : Página de gestión de perfil de usuario.
-*   : Landing page de ventas.
-*   : Panel de administración de la landing page.
+- : Contiene la lógica del webhook de Stripe que debe ser probada.
+- : Nuevo directorio con la aplicación de la landing page.
+- : Lógica de la interfaz para la gestión de planes (límite de CRM y ordenación).
+- : Lógica de la interfaz para la sincronización de CRM (selector de catálogo obligatorio).
+
+**Areas that need refactoring**:
+- : Este componente y su ruta asociada deberían ser eliminados una vez que se valide y despliegue la nueva aplicación de landing page en .
+
+**key api endpoints**
+- : Endpoint CRÍTICO que debe ser probado. Recibe notificaciones de Stripe para finalizar el proceso de suscripción.
 
 **Critical Info for New Agent**
-*   **Flujo de pago INCOMPLETO:** El paso más crítico que falta es el **webhook de Stripe**. El agente implementó la redirección para el pago, pero la aplicación no tiene forma de confirmar que el pago se ha realizado. La próxima tarea prioritaria debe ser crear un endpoint que reciba eventos de Stripe para activar las suscripciones de pago. Sin esto, ningún usuario podrá suscribirse a un plan de pago.
-*   El usuario es muy activo y prueba las funcionalidades en detalle. Espera feedback preciso y prepárate para abordar problemas de seguimiento rápidamente.
-*   La optimización de la sincronización fue una petición explícita del usuario. La nueva arquitectura (tareas en segundo plano + polling) es ahora el patrón estándar para operaciones largas en la aplicación.
+- **TESTEAR EL WEBHOOK DE STRIPE:** La prioridad número uno es simular un flujo de pago completo. Esto implica registrar un usuario, seleccionar un plan de pago, ser redirigido a Stripe, completar el pago de prueba y verificar que el webhook () se activa y actualiza correctamente la suscripción del usuario en la base de datos. Sin esta prueba, la funcionalidad de monetización de la aplicación no está garantizada.
+- **DESPLIEGUE DE LA LANDING:** La nueva landing page en  es una aplicación separada. No se servirá automáticamente. Debes planificar cómo construirla y servirla como un sitio estático independiente.
+- **GUÍA AL USUARIO:** Hay muchas funcionalidades nuevas pendientes de verificación. Es crucial presentar un plan de pruebas claro al usuario para obtener su feedback y poder avanzar.
+
+**documents and test reports created in this job**
+-  (actualizado múltiples veces).
 
 **Last 10 User Messages and any pending HUMAN messages**
-1.  **User**: Pide configurar la landing page, ya que no la ve. (IN PROGRESS)
-2.  **User**: Solicita la creación de una landing page profesional y editable para vender suscripciones. (ADDRESSED)
-3.  **User**: Reporta errores de compilación que impiden ver la página de perfil. (ADDRESSED)
-4.  **User**: Solicita una página de perfil para editar datos personales y de facturación. (ADDRESSED)
-5.  **User**: Reporta que el flujo de registro para planes de pago no pide datos de facturación ni pasa por la pasarela de pago. (ADDRESSED)
-6.  **User**: Solicita 3 nuevas funcionalidades de suscripción: días de prueba, datos de facturación y selección de plan en el registro. (ADDRESSED)
-7.  **User**: Pide optimizar las sincronizaciones para que no sobrecarguen el servidor. (ADDRESSED)
-8.  **User**: Informa que la barra de progreso no carga, aunque la sincronización funciona, y pide optimización. (ADDRESSED)
-9.  **User**: Confirma que el problema de los precios de compra/venta está resuelto. (RESOLVED)
-10. **User**: Reporta que el precio de venta en Dolibarr sigue siendo incorrecto y no usa el margen del catálogo. (ADDRESSED)
+1.  **User**: Pide cambiar Tiendas WooCommerce a Tiendas Online. (DONE)
+2.  **User**: Pide añadir límite de conexiones CRM y ordenación manual de características en los planes. (DONE)
+3.  **User**: Pide que la landing page cargue el logo/favicon de la personalización y tenga un tema claro/oscuro. (DONE)
+4.  **User**: Confirma que el botón de sincronización está deshabilitado sin catálogo. (VERIFIED)
+5.  **User**: Pide que la sincronización con CRM solo sea posible seleccionando un catálogo. (DONE)
+6.  **User**: Solicita implementar el webhook de Stripe y separar la landing page. (IN PROGRESS / DONE)
 
 **Project Health Check:**
-*   **Broken**: El flujo de suscripción de pago está funcionalmente roto porque no se puede completar el ciclo de pago (falta el webhook de Stripe).
+*   **Broken**: El flujo de suscripción de pago debe considerarse roto hasta que el webhook de Stripe sea probado de extremo a extremo y se confirme que activa las suscripciones.
 *   **Mocked**: N/A.
-*   **Notes**: Se ha realizado una cantidad masiva de trabajo en esta sesión, añadiendo características de alto valor. Sin embargo, la funcionalidad de pago, que es crítica, está incompleta. La validación del usuario es necesaria para la mayoría de las nuevas características.
+*   **Notes**: La aplicación ha avanzado significativamente con muchas características solicitadas por el usuario. La principal deuda técnica es la falta de pruebas en el flujo de pago, que es la funcionalidad de monetización central.
 
 **3rd Party Integrations**
-*   **Stripe**: Ahora integrado para gestionar pagos de suscripciones a través de Stripe Checkout.
-*   **WooCommerce, Dolibarr, etc.**: Las integraciones existentes se han optimizado significativamente para mejorar el rendimiento.
+*   **Stripe**: Integrado para Stripe Checkout y webhooks. La configuración del webhook está presente pero su funcionalidad no está verificada.
 
 **Testing status**
-*   Testing agent used after significant changes: NO
-*   Troubleshoot agent used after agent stuck in loop: NO
-*   Test files created: []
-*   Known regressions: []
+- Testing agent used after significant changes: NO
+- Troubleshoot agent used after agent stuck in loop: NO
+- Test files created: []
+- Known regressions: []
 
 **Credentials to test flow:**
 *   **Email**: 
@@ -170,4 +147,4 @@ Future Tasks:
 *   **Rol**: 
 
 **What agent forgot to execute**
-*   **CRÍTICO: Implementar el webhook de Stripe.** El agente creó el flujo para enviar al usuario a pagar, pero olvidó por completo la parte donde Stripe notifica a la aplicación que el pago fue exitoso. Sin este webhook (), ninguna suscripción de pago se activará, dejando la funcionalidad principal de monetización incompleta y rota.</analysis>
+- El agente no ejecutó una prueba de extremo a extremo para el webhook de Stripe. Encontró el código existente, añadió la clave de entorno y asumió que funcionaría, verificando solo que el endpoint devolvía una respuesta esperada a una llamada sin firma. No simuló un pago real para confirmar que la lógica de activación de la suscripción se ejecuta correctamente en la base de datos, lo que deja la funcionalidad de pago principal sin verificar.</analysis>
