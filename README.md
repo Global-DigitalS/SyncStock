@@ -249,4 +249,75 @@ sudo systemctl status mongod
 
 ---
 
+## 🔗 Integraciones CRM
+
+StockHUB3 incluye integraciones con los principales ERPs/CRMs del mercado para sincronización automática de productos, proveedores y órdenes.
+
+### Plataformas Soportadas
+
+#### 🏢 Dolibarr
+- **Versión**: 15.0+
+- **Autenticación**: API Key
+- **Características**: Productos, Proveedores, Órdenes, Stock, Almacenes
+- **Estado**: ✅ Estable
+
+#### ⚙️ Odoo (NUEVO)
+- **Versión**: 17.0+
+- **Autenticación**: API Token (Bearer)
+- **Características**: Productos, Proveedores, Órdenes, Stock, Almacenes
+- **Estado**: ✅ Implementado y Probado
+
+### Configurar una Integración CRM
+
+1. Ve al Dashboard → CRM → Nueva Conexión
+2. Selecciona la plataforma (Dolibarr u Odoo)
+3. Ingresa los datos de conexión:
+   - **URL base** de tu instancia
+   - **API Key** (Dolibarr) o **API Token** (Odoo)
+4. Haz clic en "Test Connection"
+5. Si es exitosa, guarda y configura opciones de sincronización
+
+### Opciones de Sincronización
+
+```json
+{
+  "products": true,      // Sincronizar productos
+  "stock": true,         // Sincronizar niveles de stock
+  "prices": true,        // Sincronizar precios
+  "descriptions": true,  // Sincronizar descripciones
+  "images": true,        // Sincronizar imágenes de productos
+  "suppliers": true,     // Sincronizar proveedores
+  "orders": true         // Importar órdenes
+}
+```
+
+### Sincronización Automática
+
+- **Intervalo**: 1, 6, 12 o 24 horas
+- **Tipo**: Completo o parcial (solo productos, solo proveedores, etc.)
+- **Monitoreo**: Ve el progreso en tiempo real
+- **Historial**: Registro de todos los syncronizaciones
+
+### Documentación Detallada
+
+Para información completa sobre:
+- **Configuración**: Ver [ODOO_INTEGRATION.md](ODOO_INTEGRATION.md)
+- **Guía Técnica**: Ver [ODOO_INTEGRATION_SUMMARY.md](ODOO_INTEGRATION_SUMMARY.md)
+
+### Limitaciones Conocidas
+
+- Las órdenes se importan desde WooCommerce hacia el CRM (unidireccional)
+- No se sincronizan atributos de productos (variantes, colores, etc.)
+- No hay descuentos ni promociones automáticas
+- Clientes/contactos se crean pero no se actualizan completamente
+
+### Próximas Integraciones Planeadas
+
+- [ ] SAP Business One
+- [ ] NetSuite
+- [ ] Microsoft Dynamics 365
+- [ ] QuickBooks Enterprise
+
+---
+
 **SupplierSync Pro** © 2026 - Gestión inteligente de catálogos de proveedores
