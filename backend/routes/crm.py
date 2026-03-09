@@ -1577,9 +1577,6 @@ async def run_sync_in_background(
                     "results": results
                 }}
             )
-                    "results": results
-                }}
-            )
         else:
             await db.sync_jobs.update_one(
                 {"id": sync_job_id},
