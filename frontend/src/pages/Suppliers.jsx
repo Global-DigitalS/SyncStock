@@ -525,6 +525,7 @@ const Suppliers = () => {
                       <SelectItem value="xlsx">Excel (XLSX)</SelectItem>
                       <SelectItem value="xls">Excel (XLS)</SelectItem>
                       <SelectItem value="xml">XML</SelectItem>
+                      <SelectItem value="zip">ZIP (descompresión automática)</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
