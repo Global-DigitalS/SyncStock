@@ -24,10 +24,16 @@ module.exports = {
           900: '#312e81',
         }
       },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Manrope', 'system-ui', 'sans-serif'],
+        mono: ['JetBrains Mono', 'monospace'],
+      },
       animation: {
-        'fade-in': 'fadeIn 0.5s ease-out',
-        'slide-up': 'slideUp 0.6s ease-out',
+        'fade-in': 'fadeIn 0.5s ease-out forwards',
+        'slide-up': 'slideUp 0.6s ease-out forwards',
         'float': 'float 6s ease-in-out infinite',
+        'pulse-slow': 'pulse 3s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: {
@@ -40,7 +46,7 @@ module.exports = {
         },
         float: {
           '0%, 100%': { transform: 'translateY(0)' },
-          '50%': { transform: 'translateY(-10px)' },
+          '50%': { transform: 'translateY(-8px)' },
         },
       },
     },

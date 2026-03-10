@@ -277,8 +277,57 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
     column_mapping = supplier.get('column_mapping')
     strip_ean_quotes = supplier.get('strip_ean_quotes', False)
     detected_columns = []
+
+    # Auto-detect ZIP by magic bytes (PK signature) regardless of configured file_format
+    if len(content) >= 4 and content[:2] == b'PK':
+        file_format = 'zip'
+
     try:
-        if file_format == 'csv':
+        if file_format == 'zip':
+            # Extract and find the best compatible file inside the ZIP
+            try:
+                extracted = extract_zip_files(content)
+            except Exception as e:
+                return {"imported": 0, "updated": 0, "errors": 0, "message": f"Error al descomprimir ZIP: {e}"}
+
+            if not extracted:
+                return {"imported": 0, "updated": 0, "errors": 0, "message": "El archivo ZIP está vacío"}
+
+            logger.info(f"ZIP detectado con {len(extracted)} archivo(s): {list(extracted.keys())}")
+
+            # Priority order for compatible formats
+            priority_ext = [('.csv', 'csv'), ('.xlsx', 'xlsx'), ('.xls', 'xls'), ('.xml', 'xml'), ('.txt', 'csv')]
+            best_fname = None
+            best_content = None
+            best_fmt = None
+
+            for ext, fmt in priority_ext:
+                # Among multiple files with same extension, pick the largest (more data)
+                candidates = [
+                    (fname, fcontent)
+                    for fname, fcontent in extracted.items()
+                    if fname.lower().endswith(ext)
+                    and not fname.split('/')[-1].startswith('.')
+                    and not fname.split('/')[-1].startswith('__')
+                ]
+                if candidates:
+                    candidates.sort(key=lambda x: len(x[1]), reverse=True)
+                    best_fname, best_content = candidates[0]
+                    best_fmt = fmt
+                    break
+
+            if best_fname is None:
+                names = list(extracted.keys())
+                return {
+                    "imported": 0, "updated": 0, "errors": 0,
+                    "message": f"El ZIP no contiene archivos compatibles (csv/xlsx/xls/xml). Archivos encontrados: {names}"
+                }
+
+            logger.info(f"ZIP: procesando '{best_fname}' como {best_fmt.upper()}")
+            zip_supplier = {**supplier, 'file_format': best_fmt}
+            return await process_supplier_file(zip_supplier, best_content)
+
+        elif file_format == 'csv':
             try:
                 decoded = content.decode('utf-8')
             except Exception:

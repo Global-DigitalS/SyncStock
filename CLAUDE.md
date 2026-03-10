@@ -1,215 +1,215 @@
-# CLAUDE.md — StockHUB3 AI Assistant Guide
+# CLAUDE.md — Guía para Asistentes IA en StockHUB3
 
-This file provides context for AI assistants (Claude Code, etc.) working on the StockHUB3 codebase.
-
----
-
-## Project Overview
-
-**StockHUB3** (also called "SupplierSync Pro") is a B2B SaaS platform for supplier catalog management and synchronization. It enables businesses to:
-
-- Aggregate product catalogs from multiple suppliers (FTP, SFTP, URL, CSV, XLSX, XML)
-- Manage multi-store synchronization (WooCommerce, Shopify, PrestaShop)
-- Integrate with CRM systems (Dolibarr, Odoo)
-- Publish and export customized catalogs with margin rules and custom pricing
-- Monitor price history, stock levels, and sync events in real time
-- Process payments via Stripe
-
-**Language note**: The application UI and internal docs are primarily in Spanish (`es`).
+Este archivo proporciona contexto para asistentes IA (Claude Code, etc.) que trabajen en el código de StockHUB3.
 
 ---
 
-## Repository Structure
+## Descripción General del Proyecto
+
+**StockHUB3** (también llamado "SupplierSync Pro") es una plataforma SaaS B2B para gestión y sincronización de catálogos de proveedores. Permite a las empresas:
+
+- Agregar catálogos de productos de múltiples proveedores (FTP, SFTP, URL, CSV, XLSX, XML)
+- Gestionar sincronización multi-tienda (WooCommerce, Shopify, PrestaShop)
+- Integrar sistemas CRM (Dolibarr, Odoo)
+- Publicar y exportar catálogos personalizados con reglas de margen y precios
+- Monitorear historial de precios, niveles de stock y eventos de sincronización en tiempo real
+- Procesar pagos vía Stripe
+
+**Idioma**: La UI de la aplicación y la documentación interna están en español (`es`). Todo texto visible al usuario debe estar en español.
+
+---
+
+## Estructura del Repositorio
 
 ```
 StockHUB3/
-├── backend/                    # FastAPI REST API (Python)
-│   ├── routes/                 # 14 API route modules
-│   ├── services/               # Business logic & integrations
-│   ├── models/                 # Pydantic schemas (schemas.py)
-│   ├── tests/                  # pytest test suites
-│   ├── config.py               # App settings (env vars + config.json)
-│   ├── server.py               # FastAPI app entry point
-│   ├── requirements.txt        # Python dependencies
-│   ├── DATABASE.md             # MongoDB schema reference
-│   └── uploads/                # Uploaded product images
-├── frontend/                   # React 19 SPA
+├── backend/                    # API REST con FastAPI (Python)
+│   ├── routes/                 # 14 módulos de rutas API
+│   ├── services/               # Lógica de negocio e integraciones
+│   ├── models/                 # Esquemas Pydantic (schemas.py)
+│   ├── tests/                  # Suites de pruebas pytest
+│   ├── config.py               # Configuración de la app (vars de entorno + config.json)
+│   ├── server.py               # Punto de entrada FastAPI
+│   ├── requirements.txt        # Dependencias Python
+│   ├── DATABASE.md             # Referencia del esquema MongoDB
+│   └── uploads/                # Imágenes de productos subidas
+├── frontend/                   # SPA React 19
 │   ├── src/
-│   │   ├── pages/              # 20+ page components
-│   │   ├── components/         # 72+ reusable components
-│   │   │   ├── ui/             # Radix UI wrappers
-│   │   │   ├── dialogs/        # Modal dialog components
-│   │   │   └── shared/         # Common shared components
-│   │   ├── hooks/              # Custom React hooks
-│   │   ├── lib/                # Utilities
-│   │   ├── utils/              # Helper functions
+│   │   ├── pages/              # 20+ componentes de página
+│   │   ├── components/         # 72+ componentes reutilizables
+│   │   │   ├── ui/             # Wrappers de Radix UI
+│   │   │   ├── dialogs/        # Componentes de diálogo modal
+│   │   │   └── shared/         # Componentes compartidos comunes
+│   │   ├── hooks/              # Hooks personalizados de React
+│   │   ├── lib/                # Utilidades
+│   │   ├── utils/              # Funciones auxiliares
 │   │   ├── App.js              # Router + Auth Context + WebSocket Context
-│   │   └── index.js            # Entry point
+│   │   └── index.js            # Punto de entrada
 │   ├── package.json
-│   └── build/                  # Production build output (gitignored)
-├── landing/                    # Marketing landing page (React 18)
-├── backend_test.py             # API integration test runner
-├── install.sh                  # Automated Plesk installation script
-├── update.sh                   # Zero-downtime update script
-├── design_guidelines.json      # UI/UX design system specification
-├── ODOO_INTEGRATION.md         # Odoo CRM integration docs
-└── README-DEPLOY-PLESK.md      # Plesk deployment guide
+│   └── build/                  # Salida del build de producción (en gitignore)
+├── landing/                    # Página de marketing (React 18)
+├── backend_test.py             # Runner de pruebas de integración API
+├── install.sh                  # Script de instalación automatizada para Plesk
+├── update.sh                   # Script de actualización sin tiempo de inactividad
+├── design_guidelines.json      # Especificación del sistema de diseño UI/UX
+├── ODOO_INTEGRATION.md         # Documentación de integración con Odoo CRM
+└── README-DEPLOY-PLESK.md      # Guía de despliegue en Plesk
 ```
 
 ---
 
-## Technology Stack
+## Stack Tecnológico
 
 ### Backend
-| Component | Technology |
+| Componente | Tecnología |
 |-----------|-----------|
 | Framework | FastAPI 0.110+ |
-| Server | Uvicorn |
-| Database | MongoDB (Motor async driver 3.3+) |
-| Auth | JWT (PyJWT), bcrypt |
-| Scheduler | APScheduler 3.11 |
-| Validation | Pydantic v2 |
+| Servidor | Uvicorn |
+| Base de datos | MongoDB (Motor async driver 3.3+) |
+| Autenticación | JWT (PyJWT), bcrypt |
+| Planificador | APScheduler 3.11 |
+| Validación | Pydantic v2 |
 | Rate Limiting | SlowAPI |
-| Data Processing | Pandas, OpenPyXL, XlRd, xmltodict |
+| Procesamiento de datos | Pandas, OpenPyXL, XlRd, xmltodict |
 | FTP/SFTP | ftplib (stdlib), Paramiko |
 | E-commerce | WooCommerce API, Shopify API |
-| Payments | Stripe |
-| Email | SMTP + Jinja2 templates |
-| HTTP Client | Requests, aiohttp |
+| Pagos | Stripe |
+| Email | SMTP + plantillas Jinja2 |
+| Cliente HTTP | Requests, aiohttp |
 
 ### Frontend
-| Component | Technology |
+| Componente | Tecnología |
 |-----------|-----------|
 | Framework | React 19.0.0 |
-| Routing | React Router DOM 7 |
-| UI Components | Radix UI (20+ packages) |
-| Styling | Tailwind CSS 3.4 |
-| Forms | React Hook Form + Zod |
-| Charts | Recharts |
-| HTTP Client | Axios |
-| Date Utils | date-fns |
-| Excel Export | XLSX |
-| Toasts | Sonner |
-| Icons | Lucide React |
-| Build Tool | CRACO (CRA override) |
-| Drag & Drop | DND Kit |
+| Enrutamiento | React Router DOM 7 |
+| Componentes UI | Radix UI (20+ paquetes) |
+| Estilos | Tailwind CSS 3.4 |
+| Formularios | React Hook Form + Zod |
+| Gráficos | Recharts |
+| Cliente HTTP | Axios |
+| Fechas | date-fns |
+| Exportación Excel | XLSX |
+| Notificaciones | Sonner |
+| Iconos | Lucide React |
+| Herramienta de build | CRACO (override de CRA) |
+| Arrastrar y soltar | DND Kit |
 
 ---
 
-## Architecture
+## Arquitectura
 
-### System Overview
+### Visión General del Sistema
 ```
-React SPA (frontend)
+SPA React (frontend)
     ↕ HTTPS + WebSocket
-FastAPI (backend, port 8001)
+FastAPI (backend, puerto 8001)
     ↕ Motor (async)
 MongoDB
 ```
 
-### Backend Route Modules (`backend/routes/`)
+### Módulos de Rutas del Backend (`backend/routes/`)
 
-| Module | Prefix | Key Responsibility |
-|--------|--------|--------------------|
-| `auth.py` | `/auth` | Register, login, logout, JWT, password reset |
-| `suppliers.py` | `/suppliers` | CRUD, FTP/URL sync, column mapping |
-| `products.py` | `/products` | Product inventory, search, filtering, image upload |
-| `catalogs.py` | `/catalogs` | Multi-catalog CRUD, items, margin rules |
-| `woocommerce.py` | `/woocommerce` | WooCommerce store connections and sync |
-| `stores.py` | `/stores` | Multi-platform store configuration |
-| `dashboard.py` | `/dashboard` | Analytics, metrics, recent activity |
-| `subscriptions.py` | `/subscriptions` | Plans, billing, limits enforcement |
-| `crm.py` | `/crm` | Dolibarr & Odoo integration, sync |
-| `email.py` | `/email` | SMTP config, templates, test send |
-| `stripe.py` | `/stripe` | Checkout sessions, webhooks |
-| `admin.py` | `/admin` | Superadmin user/plan management |
-| `webhooks.py` | `/webhooks` | Third-party webhook receivers |
-| `setup.py` | `/setup` | Initial setup wizard, config management |
+| Módulo | Prefijo | Responsabilidad Principal |
+|--------|---------|--------------------------|
+| `auth.py` | `/auth` | Registro, login, logout, JWT, recuperación de contraseña |
+| `suppliers.py` | `/suppliers` | CRUD, sincronización FTP/URL, mapeo de columnas |
+| `products.py` | `/products` | Inventario de productos, búsqueda, filtrado, subida de imágenes |
+| `catalogs.py` | `/catalogs` | CRUD multi-catálogo, ítems, reglas de margen |
+| `woocommerce.py` | `/woocommerce` | Conexiones y sincronización con tiendas WooCommerce |
+| `stores.py` | `/stores` | Configuración de tiendas multi-plataforma |
+| `dashboard.py` | `/dashboard` | Analíticas, métricas, actividad reciente |
+| `subscriptions.py` | `/subscriptions` | Planes, facturación, control de límites |
+| `crm.py` | `/crm` | Integración y sincronización con Dolibarr y Odoo |
+| `email.py` | `/email` | Config SMTP, plantillas, envío de prueba |
+| `stripe.py` | `/stripe` | Sesiones de checkout, webhooks |
+| `admin.py` | `/admin` | Gestión de usuarios y planes por el superadmin |
+| `webhooks.py` | `/webhooks` | Receptores de webhooks de terceros |
+| `setup.py` | `/setup` | Asistente de configuración inicial, gestión de config |
 
-**Special endpoints:**
-- `GET /health` — Root health check
-- `GET /api/health` — API health check
-- `WebSocket /ws/notifications/{user_id}` — Real-time notifications
+**Endpoints especiales:**
+- `GET /health` — Health check raíz
+- `GET /api/health` — Health check de la API
+- `WebSocket /ws/notifications/{user_id}` — Notificaciones en tiempo real
 
-### Backend Services (`backend/services/`)
+### Servicios del Backend (`backend/services/`)
 
-| Service | Responsibility |
-|---------|---------------|
-| `auth.py` | JWT creation/validation, bcrypt hashing, RBAC permission check |
-| `database.py` | MongoDB connection pooling, index creation |
-| `sync.py` | FTP/URL downloads, CSV/XLSX/XML parsing, product upsert, notification triggers |
-| `email_service.py` | SMTP integration, Jinja2 email templates |
-| `config_manager.py` | Persistent config at `/etc/suppliersync/config.json` |
-| `platforms.py` | E-commerce platform API integrations |
-| `crm_scheduler.py` | Scheduled CRM sync jobs (Dolibarr, Odoo) |
-| `unified_sync.py` | User-configured supplier sync scheduling |
+| Servicio | Responsabilidad |
+|---------|----------------|
+| `auth.py` | Creación/validación de JWT, hashing bcrypt, comprobación de permisos RBAC |
+| `database.py` | Pool de conexiones MongoDB, creación de índices |
+| `sync.py` | Descargas FTP/URL, parseo CSV/XLSX/XML, upsert de productos, disparadores de notificaciones |
+| `email_service.py` | Integración SMTP, plantillas de email con Jinja2 |
+| `config_manager.py` | Config persistente en `/etc/suppliersync/config.json` |
+| `platforms.py` | Integraciones con APIs de plataformas e-commerce |
+| `crm_scheduler.py` | Jobs programados de sincronización CRM (Dolibarr, Odoo) |
+| `unified_sync.py` | Planificación de sincronización de proveedores configurada por el usuario |
 
-### Frontend State Management
+### Gestión de Estado en el Frontend
 
-- **Auth Context** (`App.js`) — Global user object, login/logout, token state
-- **WebSocket Context** (`App.js`) — Real-time notification connection
-- **Local Storage** — Session persistence (`localStorage.user`)
-- **Component State** — `useState` for forms, modals, tables
-- **Axios Interceptors** — Automatic JWT cookie handling
-
----
-
-## MongoDB Collections
-
-See `backend/DATABASE.md` for full schema details.
-
-| Collection | Purpose |
-|------------|---------|
-| `users` | User accounts with roles |
-| `suppliers` | FTP/SFTP/URL data sources |
-| `products` | Imported product inventory |
-| `catalogs` | Multi-catalog definitions |
-| `catalog_items` | Products in catalogs with custom pricing |
-| `catalog_margin_rules` | Profit margin configurations per catalog |
-| `woocommerce_configs` | WooCommerce store connections |
-| `notifications` | System alerts (sync, stock, price) |
-| `price_history` | Price change audit trail |
-| `subscription_plans` | Plan tier definitions |
-| `subscriptions` | User subscription assignments |
-| `crm_connections` | Dolibarr/Odoo connection configs |
-
-**ID convention**: All records use `id` as a UUID v4 string. The MongoDB `_id` field is always excluded from API responses. Never use MongoDB ObjectId for application-level IDs.
+- **Auth Context** (`App.js`) — Objeto de usuario global, login/logout, estado del token
+- **WebSocket Context** (`App.js`) — Conexión de notificaciones en tiempo real
+- **Local Storage** — Persistencia de sesión (`localStorage.user`)
+- **Estado de componente** — `useState` para formularios, modales, tablas
+- **Interceptores de Axios** — Manejo automático de cookies JWT
 
 ---
 
-## Authentication & Authorization
+## Colecciones MongoDB
 
-### JWT Flow
-1. User logs in → password verified with bcrypt
-2. JWT token created containing `user_id`, `role`, expiry (default 7 days)
-3. Token stored in **httpOnly, Secure, SameSite=Lax** cookie
-4. Backend validates token via `get_current_user()` FastAPI dependency
+Ver `backend/DATABASE.md` para detalles completos del esquema.
 
-### Role-Based Access Control
+| Colección | Propósito |
+|-----------|----------|
+| `users` | Cuentas de usuario con roles |
+| `suppliers` | Fuentes de datos FTP/SFTP/URL |
+| `products` | Inventario de productos importados |
+| `catalogs` | Definiciones de múltiples catálogos |
+| `catalog_items` | Productos en catálogos con precios personalizados |
+| `catalog_margin_rules` | Configuraciones de margen de beneficio por catálogo |
+| `woocommerce_configs` | Conexiones a tiendas WooCommerce |
+| `notifications` | Alertas del sistema (sync, stock, precios) |
+| `price_history` | Historial de cambios de precio |
+| `subscription_plans` | Definiciones de niveles de plan |
+| `subscriptions` | Asignaciones de suscripciones a usuarios |
+| `crm_connections` | Configuraciones de conexión Dolibarr/Odoo |
 
-| Role | Suppliers | Catalogs | WooCommerce | Special Permissions |
-|------|-----------|----------|-------------|---------------------|
-| `superadmin` | Unlimited | Unlimited | Unlimited | manage_users, manage_limits, manage_settings, unlimited |
+**Convención de IDs**: Todos los registros usan `id` como string UUID v4. El campo `_id` de MongoDB siempre se excluye de las respuestas de la API. Nunca usar MongoDB ObjectId para IDs a nivel de aplicación.
+
+---
+
+## Autenticación y Autorización
+
+### Flujo JWT
+1. El usuario inicia sesión → contraseña verificada con bcrypt
+2. Se crea token JWT con `user_id`, `role`, expiración (7 días por defecto)
+3. Token almacenado en cookie **httpOnly, Secure, SameSite=Lax**
+4. El backend valida el token mediante la dependencia `get_current_user()` de FastAPI
+
+### Control de Acceso Basado en Roles (RBAC)
+
+| Rol | Proveedores | Catálogos | WooCommerce | Permisos Especiales |
+|-----|-------------|-----------|-------------|---------------------|
+| `superadmin` | Ilimitado | Ilimitado | Ilimitado | manage_users, manage_limits, manage_settings, unlimited |
 | `admin` | 50 | 20 | 10 | manage_settings |
-| `user` | 10 | 5 | 2 | Standard CRUD + sync + export |
-| `viewer` | 0 | 0 | 0 | Read-only |
+| `user` | 10 | 5 | 2 | CRUD estándar + sync + export |
+| `viewer` | 0 | 0 | 0 | Solo lectura |
 
-### Security Patterns
-- Rate limit: 5 requests/minute on `/auth/register`
-- Per-endpoint rate limiting via `SlowAPI`
-- Passwords: minimum validation + bcrypt hashing
-- Input sanitization on all user inputs
-- CORS: configurable origins (defaults to `*` in dev)
+### Patrones de Seguridad
+- Rate limit: 5 peticiones/minuto en `/auth/register`
+- Rate limiting por endpoint via `SlowAPI`
+- Contraseñas: validación mínima + hashing bcrypt
+- Saneamiento de entrada en todos los inputs de usuario
+- CORS: orígenes configurables (por defecto `*` en desarrollo)
 
 ---
 
-## Environment Variables
+## Variables de Entorno
 
 ### Backend
 ```env
 MONGO_URL=mongodb://localhost:27017
 DB_NAME=supplier_sync_db
-JWT_SECRET=<128-char hex string>
+JWT_SECRET=<cadena hex de 128 caracteres>
 JWT_EXPIRATION_HOURS=168
 CORS_ORIGINS=*
 PRICE_CHANGE_THRESHOLD_PERCENT=10
@@ -223,62 +223,62 @@ MONGO_MAX_POOL_SIZE=10
 
 ### Frontend
 ```env
-REACT_APP_BACKEND_URL=https://yourdomain.com
+REACT_APP_BACKEND_URL=https://tudominio.com
 ```
 
-### Persistent Configuration
-Stored at `/etc/suppliersync/config.json` (outside app directory, survives updates).
-Contains: `mongo_url`, `db_name`, `jwt_secret`, `cors_origins`, SMTP credentials.
+### Configuración Persistente
+Almacenada en `/etc/suppliersync/config.json` (fuera del directorio de la app, sobrevive a actualizaciones).
+Contiene: `mongo_url`, `db_name`, `jwt_secret`, `cors_origins`, credenciales SMTP.
 
 ---
 
-## Development Commands
+## Comandos de Desarrollo
 
 ### Backend
 
 ```bash
-# Install dependencies
+# Instalar dependencias
 cd backend
 pip install -r requirements.txt
 
-# Run development server
+# Servidor de desarrollo
 uvicorn server:app --reload --host 0.0.0.0 --port 8001
 
-# Run tests
+# Ejecutar tests
 cd backend
 pytest tests/
 
-# Run API integration tests
+# Ejecutar tests de integración API
 python backend_test.py
 ```
 
 ### Frontend
 
 ```bash
-# Install dependencies
+# Instalar dependencias
 cd frontend
-yarn install   # or: npm install
+yarn install   # o: npm install
 
-# Development server
-yarn start     # or: npm start
+# Servidor de desarrollo
+yarn start     # o: npm start
 
-# Production build
-yarn build     # or: npm build
+# Build de producción
+yarn build     # o: npm build
 
-# Run tests
-yarn test      # or: npm test
+# Ejecutar tests
+yarn test      # o: npm test
 ```
 
-### Production (systemd)
+### Producción (systemd)
 
 ```bash
-# Service management
+# Gestión del servicio
 sudo systemctl start suppliersync-backend
 sudo systemctl stop suppliersync-backend
 sudo systemctl restart suppliersync-backend
 sudo systemctl status suppliersync-backend
 
-# Logs
+# Ver logs
 sudo journalctl -u suppliersync-backend -f
 
 # Health checks
@@ -288,22 +288,22 @@ curl http://localhost:8001/api/health
 
 ---
 
-## Code Conventions
+## Convenciones de Código
 
 ### Python (Backend)
 
-- **Style**: snake_case for functions, variables, module names
-- **Models**: Pydantic v2 `BaseModel` in `backend/models/schemas.py`
-- **Routes**: One file per feature domain in `backend/routes/`
-- **Dependencies**: Use FastAPI `Depends()` for auth (`get_current_user`), DB, services
-- **IDs**: Always UUID v4 strings, never MongoDB ObjectId
-- **API responses**: Exclude `_id`, always return `id`
-- **Error handling**: `raise HTTPException(status_code=..., detail="...")`
-- **Async**: All database operations use `await` with Motor async driver
-- **Field exclusion**: Use `response_model_exclude` or manual dict cleanup to hide `_id`
+- **Estilo**: snake_case para funciones, variables y nombres de módulos
+- **Modelos**: Pydantic v2 `BaseModel` en `backend/models/schemas.py`
+- **Rutas**: Un archivo por dominio funcional en `backend/routes/`
+- **Dependencias**: Usar `Depends()` de FastAPI para auth (`get_current_user`), DB, servicios
+- **IDs**: Siempre strings UUID v4, nunca MongoDB ObjectId
+- **Respuestas API**: Excluir `_id`, siempre devolver `id`
+- **Manejo de errores**: `raise HTTPException(status_code=..., detail="...")`
+- **Async**: Todas las operaciones de base de datos usan `await` con el driver async Motor
+- **Exclusión de campos**: Usar `response_model_exclude` o limpieza manual del dict para ocultar `_id`
 
 ```python
-# Example: standard route pattern
+# Ejemplo: patrón estándar de ruta
 @router.get("/{item_id}")
 async def get_item(
     item_id: str,
@@ -312,27 +312,27 @@ async def get_item(
 ):
     item = await db.collection.find_one({"id": item_id, "user_id": current_user["id"]})
     if not item:
-        raise HTTPException(status_code=404, detail="Item not found")
-    item.pop("_id", None)  # Always remove MongoDB _id
+        raise HTTPException(status_code=404, detail="Elemento no encontrado")
+    item.pop("_id", None)  # Siempre eliminar _id de MongoDB
     return item
 ```
 
 ### JavaScript/React (Frontend)
 
-- **Style**: camelCase for variables/functions, PascalCase for components
-- **File naming**: PascalCase for components (`ProductCard.js`), camelCase for hooks (`useProducts.js`)
-- **API calls**: Axios with `withCredentials: true` for cookie-based auth
-- **Forms**: React Hook Form + Zod schema validation
-- **Toasts**: `import { toast } from "sonner"` — use `toast.success()`, `toast.error()`
-- **Icons**: Lucide React (`import { IconName } from "lucide-react"`)
-- **Styling**: Tailwind CSS utility classes; use `cn()` from `lib/utils` for conditional classes
-- **UI components**: Prefer existing Radix UI wrappers in `components/ui/`
+- **Estilo**: camelCase para variables/funciones, PascalCase para componentes
+- **Nombres de archivo**: PascalCase para componentes (`ProductCard.js`), camelCase para hooks (`useProducts.js`)
+- **Llamadas API**: Axios con `withCredentials: true` para auth basada en cookies
+- **Formularios**: React Hook Form + validación con esquema Zod
+- **Toasts**: `import { toast } from "sonner"` — usar `toast.success()`, `toast.error()`
+- **Iconos**: Lucide React (`import { NombreIcono } from "lucide-react"`)
+- **Estilos**: Clases utilitarias de Tailwind CSS; usar `cn()` de `lib/utils` para clases condicionales
+- **Componentes UI**: Preferir los wrappers de Radix UI existentes en `components/ui/`
 
 ```javascript
-// Example: standard API call pattern
+// Ejemplo: patrón estándar de llamada API
 const fetchData = async () => {
   try {
-    const response = await axios.get(`${backendUrl}/api/resource`, {
+    const response = await axios.get(`${backendUrl}/api/recurso`, {
       withCredentials: true,
     });
     setData(response.data);
@@ -343,171 +343,171 @@ const fetchData = async () => {
 };
 ```
 
-### API Design Patterns
+### Patrones de Diseño de API
 
-- REST conventions: `GET` list, `POST` create, `GET /{id}` single, `PUT /{id}` update, `DELETE /{id}` delete
-- All routes prefixed with `/api/` (mounted in `server.py`)
-- Pagination: `skip` and `limit` query params (not cursor-based)
-- Filtering: query params (`?search=`, `?category=`, `?supplier_id=`)
-- Sorting: `?sort_by=field&sort_order=asc|desc`
+- Convenciones REST: `GET` listar, `POST` crear, `GET /{id}` individual, `PUT /{id}` actualizar, `DELETE /{id}` eliminar
+- Todas las rutas con prefijo `/api/` (montadas en `server.py`)
+- Paginación: parámetros de query `skip` y `limit` (no cursor-based)
+- Filtrado: parámetros de query (`?search=`, `?category=`, `?supplier_id=`)
+- Ordenación: `?sort_by=campo&sort_order=asc|desc`
 
 ---
 
 ## Testing
 
-### Backend Tests (`backend/tests/`)
+### Tests del Backend (`backend/tests/`)
 
 ```bash
 cd backend
 pytest tests/
-pytest tests/test_catalogs.py        # Specific module
+pytest tests/test_catalogs.py        # Módulo específico
 pytest tests/ -v                     # Verbose
-pytest tests/ -k "test_auth"         # Filter by name
+pytest tests/ -k "test_auth"         # Filtrar por nombre
 ```
 
-Test files cover:
-- `test_admin_panel.py` — Admin user management
-- `test_catalogs.py` — Catalog CRUD and items
-- `test_crm_dolibarr.py` — CRM integration
-- `test_product_detail.py` — Product operations
-- `test_products_sorting_price_history.py` — Sorting and price history
-- `test_roles_users_websocket.py` — RBAC and WebSocket
-- `test_stripe_checkout_sftp.py` — Stripe and SFTP
-- `test_stores_multiplatform.py` — Multi-store sync
-- `test_url_connection.py` — URL-based supplier connections
-- And more...
+Archivos de test cubren:
+- `test_admin_panel.py` — Gestión de usuarios admin
+- `test_catalogs.py` — CRUD de catálogos e ítems
+- `test_crm_dolibarr.py` — Integración CRM
+- `test_product_detail.py` — Operaciones de producto
+- `test_products_sorting_price_history.py` — Ordenación e historial de precios
+- `test_roles_users_websocket.py` — RBAC y WebSocket
+- `test_stripe_checkout_sftp.py` — Stripe y SFTP
+- `test_stores_multiplatform.py` — Sincronización multi-tienda
+- `test_url_connection.py` — Conexiones de proveedores por URL
+- Y más...
 
-Test results are archived in `test_reports/` as JSON files.
+Los resultados de tests se archivan en `test_reports/` como archivos JSON.
 
-### Integration Tests
+### Tests de Integración
 
 ```bash
-# Full API integration test suite
+# Suite completa de tests de integración API
 python backend_test.py
 ```
 
 ---
 
-## Deployment
+## Despliegue
 
-### Target Environments
-- Plesk Obsidian 18.0+ (primary)
+### Entornos Objetivo
+- Plesk Obsidian 18.0+ (principal)
 - Ubuntu 20.04+ / Debian 11+ / CentOS 8+ / Rocky Linux 8+
-- Minimum: 1 GB RAM, 10 GB disk, ports 80/443/8001 open
+- Mínimo: 1 GB RAM, 10 GB disco, puertos 80/443/8001 abiertos
 
-### Installation
+### Instalación
 ```bash
-sudo bash install.sh   # Full automated setup
+sudo bash install.sh   # Configuración automática completa
 ```
 
-### Updates (zero-downtime)
+### Actualizaciones (sin tiempo de inactividad)
 ```bash
-sudo bash update.sh    # Preserves /etc/suppliersync/config.json
+sudo bash update.sh    # Preserva /etc/suppliersync/config.json
 ```
 
-### Nginx Configuration
-- Frontend static files served from Nginx
-- Backend proxied at `/api/` → `http://127.0.0.1:8001`
-- WebSocket proxied at `/ws/` → `http://127.0.0.1:8001`
+### Configuración Nginx
+- Archivos estáticos del frontend servidos desde Nginx
+- Backend proxied en `/api/` → `http://127.0.0.1:8001`
+- WebSocket proxied en `/ws/` → `http://127.0.0.1:8001`
 
-### No Docker
-The project is not containerized. It deploys directly to the host OS with Nginx + systemd + MongoDB.
-
----
-
-## Key Files for Common Tasks
-
-| Task | Key Files |
-|------|-----------|
-| Add a new API route | `backend/routes/<new>.py`, register in `backend/server.py` |
-| Add a Pydantic model | `backend/models/schemas.py` |
-| Add a new page | `frontend/src/pages/<NewPage>.js`, add route in `frontend/src/App.js` |
-| Add a UI component | `frontend/src/components/ui/<Component>.js` |
-| Modify DB schema | Update collection + document `backend/DATABASE.md` |
-| Add env variable | `backend/config.py` + deployment docs |
-| Add email template | `backend/services/email_service.py` |
-| Add a cron job | `backend/services/unified_sync.py` or `crm_scheduler.py` |
-| Modify auth/RBAC | `backend/services/auth.py` |
-| Add a new test | `backend/tests/test_<feature>.py` |
+### Sin Docker
+El proyecto no está containerizado. Se despliega directamente en el SO host con Nginx + systemd + MongoDB.
 
 ---
 
-## Design System
+## Archivos Clave para Tareas Comunes
 
-See `design_guidelines.json` for the full specification. Key points:
-
-- **Primary font**: System/Tailwind default
-- **UI language**: Spanish (all labels, messages, buttons in `es`)
-- **Component library**: Radix UI primitives wrapped in `components/ui/`
-- **Color approach**: Tailwind semantic colors (no hardcoded hex in JSX)
-- **Icons**: Lucide React exclusively
-- **Toast notifications**: Sonner (`toast.success`, `toast.error`, `toast.warning`, `toast.info`)
-- **Empty states**: Use `<EmptyState />` from `components/shared/`
-- **Modals**: Use `<Dialog>` from `components/ui/dialog`
-
----
-
-## Common Pitfalls to Avoid
-
-1. **Never use MongoDB ObjectId** as an application ID — always use UUID v4 strings
-2. **Always remove `_id`** from MongoDB documents before returning in API responses
-3. **Use `withCredentials: true`** on all Axios calls — auth is cookie-based, not header-based
-4. **Spanish UI text** — all user-facing strings must be in Spanish
-5. **Check subscription limits** before creating resources (suppliers, catalogs, WooCommerce stores)
-6. **Use async/await** consistently in Python routes — never use sync blocking calls with Motor
-7. **Do not modify `/etc/suppliersync/config.json`** path — it's the persistent config location
-8. **Run `item.pop("_id", None)`** on every MongoDB document returned to the API client
-9. **Rate limiting** — be aware of SlowAPI decorators when testing endpoints rapidly
-10. **Frontend build** is not checked in — run `yarn build` before deployment
+| Tarea | Archivos Clave |
+|-------|---------------|
+| Añadir una nueva ruta API | `backend/routes/<nuevo>.py`, registrar en `backend/server.py` |
+| Añadir un modelo Pydantic | `backend/models/schemas.py` |
+| Añadir una nueva página | `frontend/src/pages/<NuevaPagina>.js`, añadir ruta en `frontend/src/App.js` |
+| Añadir un componente UI | `frontend/src/components/ui/<Componente>.js` |
+| Modificar esquema de BD | Actualizar colección + documentar en `backend/DATABASE.md` |
+| Añadir variable de entorno | `backend/config.py` + docs de despliegue |
+| Añadir plantilla de email | `backend/services/email_service.py` |
+| Añadir un cron job | `backend/services/unified_sync.py` o `crm_scheduler.py` |
+| Modificar auth/RBAC | `backend/services/auth.py` |
+| Añadir un nuevo test | `backend/tests/test_<funcionalidad>.py` |
 
 ---
 
-## WebSocket Real-Time Notifications
+## Sistema de Diseño
 
-The backend maintains a `ConnectionManager` that broadcasts notifications to connected users.
+Ver `design_guidelines.json` para la especificación completa. Puntos clave:
+
+- **Fuente principal**: Sistema/Tailwind por defecto
+- **Idioma de la UI**: Español (todas las etiquetas, mensajes y botones en `es`)
+- **Librería de componentes**: Primitivos de Radix UI envueltos en `components/ui/`
+- **Colores**: Colores semánticos de Tailwind (sin hex hardcodeado en JSX)
+- **Iconos**: Lucide React exclusivamente
+- **Notificaciones toast**: Sonner (`toast.success`, `toast.error`, `toast.warning`, `toast.info`)
+- **Estados vacíos**: Usar `<EmptyState />` de `components/shared/`
+- **Modales**: Usar `<Dialog>` de `components/ui/dialog`
+
+---
+
+## Errores Comunes a Evitar
+
+1. **Nunca usar MongoDB ObjectId** como ID de aplicación — siempre usar strings UUID v4
+2. **Siempre eliminar `_id`** de los documentos MongoDB antes de devolver en respuestas API
+3. **Usar `withCredentials: true`** en todas las llamadas Axios — la auth es basada en cookies, no en headers
+4. **Texto de UI en español** — todos los strings visibles al usuario deben estar en español
+5. **Verificar límites de suscripción** antes de crear recursos (proveedores, catálogos, tiendas WooCommerce)
+6. **Usar async/await** consistentemente en rutas Python — nunca usar llamadas síncronas bloqueantes con Motor
+7. **No modificar la ruta `/etc/suppliersync/config.json`** — es la ubicación de configuración persistente
+8. **Ejecutar `item.pop("_id", None)`** en cada documento MongoDB devuelto al cliente API
+9. **Rate limiting** — tener en cuenta los decoradores SlowAPI al hacer pruebas con endpoints rápidamente
+10. **El build del frontend no está en el repo** — ejecutar `yarn build` antes del despliegue
+
+---
+
+## Notificaciones en Tiempo Real por WebSocket
+
+El backend mantiene un `ConnectionManager` que difunde notificaciones a los usuarios conectados.
 
 - Endpoint: `ws://<host>/ws/notifications/{user_id}`
-- Events: sync completion, price changes, low stock alerts, import errors
-- Frontend connection managed in `App.js` WebSocket Context
-- Reconnection: handled automatically by the frontend
+- Eventos: finalización de sync, cambios de precio, alertas de stock bajo, errores de importación
+- Conexión del frontend gestionada en el WebSocket Context de `App.js`
+- Reconexión: gestionada automáticamente por el frontend
 
 ---
 
-## CRM Integrations
+## Integraciones CRM
 
 ### Dolibarr
-- REST API v1 integration
-- Syncs: products, customers, orders
-- Config stored in `crm_connections` collection
-- Routes: `backend/routes/crm.py`
+- Integración REST API v1
+- Sincroniza: productos, clientes, pedidos
+- Config almacenada en la colección `crm_connections`
+- Rutas: `backend/routes/crm.py`
 
 ### Odoo
-- XML-RPC protocol
-- Syncs: products, partners, invoices
-- Detailed docs: `ODOO_INTEGRATION.md`
-- Config stored in `crm_connections` collection
+- Protocolo XML-RPC
+- Sincroniza: productos, partners, facturas
+- Documentación detallada: `ODOO_INTEGRATION.md`
+- Config almacenada en la colección `crm_connections`
 
 ---
 
-## Subscription / Limits System
+## Sistema de Suscripciones y Límites
 
-Enforce limits before creating resources:
+Verificar límites antes de crear recursos:
 
 ```python
-# Pattern used throughout routes
+# Patrón usado en todas las rutas
 subscription = await get_user_subscription(user_id, db)
 current_count = await db.suppliers.count_documents({"user_id": user_id})
 if current_count >= subscription["max_suppliers"]:
     raise HTTPException(status_code=403, detail="Has alcanzado el límite de proveedores")
 ```
 
-Plans are stored in `subscription_plans` collection and assigned via `subscriptions` collection.
+Los planes se almacenan en la colección `subscription_plans` y se asignan mediante la colección `subscriptions`.
 
 ---
 
-## Git Workflow
+## Flujo de Trabajo Git
 
-- Primary branch: `master`
-- Feature/AI branches: `claude/<description>-<session-id>`
-- Commit messages: descriptive, may be in Spanish
-- No CI/CD pipeline — manual deployment via scripts
+- Rama principal: `master`
+- Ramas de funcionalidades/IA: `claude/<descripcion>-<session-id>`
+- Mensajes de commit: descriptivos, pueden estar en español
+- Sin pipeline CI/CD — despliegue manual mediante scripts
