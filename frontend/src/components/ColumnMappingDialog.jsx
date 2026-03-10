@@ -286,7 +286,7 @@ const ColumnMappingDialog = ({
                         <SelectItem value="none">
                           <span className="text-slate-400">-- Sin mapear --</span>
                         </SelectItem>
-                        {detectedColumns.map(col => (
+                        {detectedColumns.filter(Boolean).map(col => (
                           <SelectItem key={col} value={col}>
                             <span className="font-mono text-sm">{col}</span>
                           </SelectItem>

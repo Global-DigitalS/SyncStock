@@ -656,7 +656,7 @@ const StoresPage = () => {
                       <SelectValue placeholder={`Seleccionar ${field.label}`} />
                     </SelectTrigger>
                     <SelectContent>
-                      {field.options?.map(opt => (
+                      {field.options?.filter(Boolean).map(opt => (
                         <SelectItem key={opt} value={opt}>{opt}</SelectItem>
                       ))}
                     </SelectContent>
