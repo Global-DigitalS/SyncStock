@@ -109,7 +109,7 @@ const CategorySelectionCascade = ({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Seleccionar categoría</SelectItem>
-            {hierarchy.map((cat) => (
+            {hierarchy.filter(cat => cat.name).map((cat) => (
               <SelectItem key={cat.name} value={cat.name}>
                 <div className="flex items-center justify-between w-full gap-2">
                   <span>{cat.name}</span>
@@ -132,7 +132,7 @@ const CategorySelectionCascade = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas las subcategorías</SelectItem>
-                {subcategories.map((subcat) => (
+                {subcategories.filter(subcat => subcat.name).map((subcat) => (
                   <SelectItem key={subcat.name} value={subcat.name}>
                     <div className="flex items-center justify-between w-full gap-2">
                       <span>{subcat.name}</span>
@@ -157,7 +157,7 @@ const CategorySelectionCascade = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">Todas</SelectItem>
-                {subcategories2.map((subcat2) => (
+                {subcategories2.filter(subcat2 => subcat2.name).map((subcat2) => (
                   <SelectItem key={subcat2.name} value={subcat2.name}>
                     <div className="flex items-center justify-between w-full gap-2">
                       <span>{subcat2.name}</span>

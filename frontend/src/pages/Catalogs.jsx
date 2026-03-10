@@ -680,7 +680,7 @@ const Catalogs = () => {
                             <SelectValue placeholder="Seleccionar categoría" />
                           </SelectTrigger>
                           <SelectContent>
-                            {categories.map((cat) => (
+                            {categories.filter(Boolean).map((cat) => (
                               <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                             ))}
                           </SelectContent>

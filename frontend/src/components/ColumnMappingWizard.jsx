@@ -172,7 +172,7 @@ const ColumnMappingWizard = ({ open, onOpenChange, supplier, onSave }) => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="none">— Sin asignar —</SelectItem>
-                        {preview.columns.map((col) => (
+                        {preview.columns.filter(Boolean).map((col) => (
                           <SelectItem key={col} value={col}>
                             {col}
                           </SelectItem>

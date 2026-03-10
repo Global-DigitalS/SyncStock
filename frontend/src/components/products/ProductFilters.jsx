@@ -44,7 +44,7 @@ const ProductFilters = ({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">Todas las categorías</SelectItem>
-            {categories.map((cat) => (
+            {categories.filter(Boolean).map((cat) => (
               <SelectItem key={cat} value={cat}>{cat}</SelectItem>
             ))}
           </SelectContent>
