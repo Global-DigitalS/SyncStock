@@ -285,7 +285,7 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
 
     try:
         if file_format == 'zip':
-            # Extract and find the best compatible file inside the ZIP
+            # Extract and find compatible files inside the ZIP
             try:
                 extracted = extract_zip_files(content)
             except Exception as e:
@@ -296,37 +296,171 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
 
             logger.info(f"ZIP detectado con {len(extracted)} archivo(s): {list(extracted.keys())}")
 
-            # Priority order for compatible formats
-            priority_ext = [('.csv', 'csv'), ('.xlsx', 'xlsx'), ('.xls', 'xls'), ('.xml', 'xml'), ('.txt', 'csv')]
-            best_fname = None
-            best_content = None
-            best_fmt = None
+            # Collect all compatible flat files (csv, txt, xlsx, xls, xml)
+            compatible_exts = ('.csv', '.txt', '.xlsx', '.xls', '.xml')
+            compatible_files = [
+                (fname, fcontent)
+                for fname, fcontent in extracted.items()
+                if fname.lower().endswith(compatible_exts)
+                and not fname.split('/')[-1].startswith('.')
+                and not fname.split('/')[-1].startswith('__')
+            ]
 
-            for ext, fmt in priority_ext:
-                # Among multiple files with same extension, pick the largest (more data)
-                candidates = [
-                    (fname, fcontent)
-                    for fname, fcontent in extracted.items()
-                    if fname.lower().endswith(ext)
-                    and not fname.split('/')[-1].startswith('.')
-                    and not fname.split('/')[-1].startswith('__')
-                ]
-                if candidates:
-                    candidates.sort(key=lambda x: len(x[1]), reverse=True)
-                    best_fname, best_content = candidates[0]
-                    best_fmt = fmt
-                    break
-
-            if best_fname is None:
+            if not compatible_files:
                 names = list(extracted.keys())
                 return {
                     "imported": 0, "updated": 0, "errors": 0,
-                    "message": f"El ZIP no contiene archivos compatibles (csv/xlsx/xls/xml). Archivos encontrados: {names}"
+                    "message": f"El ZIP no contiene archivos compatibles (csv/xlsx/xls/xml/txt). Archivos encontrados: {names}"
                 }
 
-            logger.info(f"ZIP: procesando '{best_fname}' como {best_fmt.upper()}")
-            zip_supplier = {**supplier, 'file_format': best_fmt}
-            return await process_supplier_file(zip_supplier, best_content)
+            # If only one compatible file, process it directly
+            if len(compatible_files) == 1:
+                best_fname, best_content = compatible_files[0]
+                best_fmt = 'csv' if best_fname.lower().endswith(('.csv', '.txt')) else best_fname.rsplit('.', 1)[-1].lower()
+                logger.info(f"ZIP (único archivo): procesando '{best_fname}' como {best_fmt.upper()}")
+                zip_supplier = {**supplier, 'file_format': best_fmt}
+                return await process_supplier_file(zip_supplier, best_content)
+
+            # Multiple compatible files: auto-detect roles from filenames and merge
+            logger.info(f"ZIP multi-archivo: detectando roles automáticamente para {len(compatible_files)} archivos")
+            role_keywords = {
+                'stock':    ['stock', 'inventory', 'disponibilidad', 'existencias', 'qty', 'quantity'],
+                'prices':   ['price', 'precio', 'tarif', 'coste', 'cost', 'pvp', 'pvd'],
+                'products': ['product', 'catalog', 'article', 'catalogo', 'articulo', 'master', 'items'],
+            }
+
+            all_file_data = {}
+            for fname, fcontent in compatible_files:
+                fname_base = fname.split('/')[-1].lower()
+                detected_role = 'products'  # default
+                for role, keywords in role_keywords.items():
+                    if any(kw in fname_base for kw in keywords):
+                        detected_role = role
+                        break
+
+                # Determine header_row per file (StockFile.txt-style files often have header)
+                # Use supplier setting; individual files can override if needed
+                file_hdr = header_row
+                try:
+                    if fname.lower().endswith(('.xlsx', '.xls')):
+                        fmt = 'xlsx' if fname.lower().endswith('.xlsx') else 'xls'
+                        if fmt == 'xlsx':
+                            wb = load_workbook(filename=io.BytesIO(fcontent), read_only=True)
+                            ws = wb.active
+                            rows = list(ws.iter_rows(values_only=True))
+                            hdrs = [str(h).strip() if h else f'col_{i}' for i, h in enumerate(rows[0])]
+                            file_rows = [dict(zip(hdrs, r)) for r in rows[1:] if any(r)]
+                        else:
+                            wb = xlrd.open_workbook(file_contents=fcontent)
+                            ws = wb.sheet_by_index(0)
+                            hdrs = [str(ws.cell_value(0, c)).strip() or f'col_{c}' for c in range(ws.ncols)]
+                            file_rows = [{hdrs[c]: ws.cell_value(r, c) for c in range(ws.ncols)} for r in range(1, ws.nrows)]
+                    else:
+                        file_rows = parse_text_file(fcontent, separator, file_hdr)
+                except Exception as fe:
+                    logger.warning(f"  No se pudo parsear {fname}: {fe}")
+                    continue
+
+                # Don't overwrite an existing role with fewer rows
+                if detected_role not in all_file_data or len(file_rows) > len(all_file_data[detected_role]):
+                    all_file_data[detected_role] = file_rows
+                logger.info(f"  {fname} → role={detected_role}, filas={len(file_rows)}")
+
+            if not all_file_data:
+                return {"imported": 0, "updated": 0, "errors": 0, "message": "No se pudo parsear ningún archivo del ZIP"}
+
+            products_data = all_file_data.get('products', [])
+            prices_data   = all_file_data.get('prices', [])
+            stock_data    = all_file_data.get('stock', [])
+
+            # Fallback: if no 'products' role detected, use the largest file
+            if not products_data:
+                largest_role = max(all_file_data, key=lambda r: len(all_file_data[r]))
+                products_data = all_file_data[largest_role]
+
+            # Build lookup tables for price and stock
+            prices_lookup = {}
+            if prices_data:
+                pk = list(prices_data[0].keys())[0] if prices_data else None
+                if pk:
+                    for row in prices_data:
+                        k = str(row.get(pk, '')).strip()
+                        if k:
+                            prices_lookup[k] = row
+
+            stock_lookup = {}
+            if stock_data:
+                sk = list(stock_data[0].keys())[0] if stock_data else None
+                if sk:
+                    for row in stock_data:
+                        k = str(row.get(sk, '')).strip()
+                        if k:
+                            stock_lookup[k] = row
+
+            logger.info(f"ZIP merge: {len(products_data)} productos, {len(prices_lookup)} precios, {len(stock_lookup)} stock")
+
+            # Merge and upsert products
+            now = datetime.now(timezone.utc).isoformat()
+            imported = 0
+            updated = 0
+            errors = 0
+            needs_mapping = False
+            merge_key = list(products_data[0].keys())[0] if products_data else None
+            column_mapping = supplier.get('column_mapping')
+
+            for raw in products_data:
+                try:
+                    prod_id = str(raw.get(merge_key, '')).strip() if merge_key else ''
+                    merged = dict(raw)
+                    if prod_id and prod_id in prices_lookup:
+                        for k, v in prices_lookup[prod_id].items():
+                            if k not in merged or not merged[k]:
+                                merged[k] = v
+                    if prod_id and prod_id in stock_lookup:
+                        for k, v in stock_lookup[prod_id].items():
+                            if k not in merged or not merged[k]:
+                                merged[k] = v
+
+                    normalized = apply_column_mapping(merged, column_mapping, strip_ean_quotes) if column_mapping else normalize_product_data(merged, strip_ean_quotes)
+                    sku = normalized.get('sku') or prod_id
+                    name = normalized.get('name', '')
+                    if not sku or not name:
+                        errors += 1
+                        needs_mapping = True
+                        continue
+
+                    existing = await db.products.find_one({"sku": sku, "supplier_id": supplier['id']})
+                    product_doc = {
+                        "sku": sku, "name": name,
+                        "description": normalized.get('description'),
+                        "price": normalized.get('price', 0),
+                        "stock": normalized.get('stock', 0),
+                        "category": normalized.get('category'),
+                        "brand": normalized.get('brand'),
+                        "ean": normalized.get('ean'),
+                        "weight": normalized.get('weight'),
+                        "image_url": normalized.get('image_url'),
+                        "supplier_id": supplier['id'],
+                        "supplier_name": supplier["name"],
+                        "user_id": supplier["user_id"],
+                        "updated_at": now
+                    }
+                    if existing:
+                        await db.products.update_one({"id": existing['id']}, {"$set": {**product_doc, "updated_at": now}})
+                        updated += 1
+                    else:
+                        product_doc["id"] = str(uuid.uuid4())
+                        product_doc["created_at"] = now
+                        await db.products.insert_one(product_doc)
+                        imported += 1
+                except Exception as e:
+                    logger.error(f"Error procesando producto ZIP: {e}")
+                    errors += 1
+
+            msg = f"ZIP procesado: {imported} importados, {updated} actualizados"
+            if needs_mapping:
+                msg += ". Configura el mapeo de columnas para mejorar la detección."
+            return {"imported": imported, "updated": updated, "errors": errors, "message": msg, "needs_mapping": needs_mapping}
 
         elif file_format == 'csv':
             try:
@@ -731,11 +865,14 @@ async def browse_ftp_directory(config: dict, path: str = "/") -> dict:
 # ==================== MULTI-FILE SYNC ====================
 
 def parse_text_file(content: bytes, separator: str = ";", header_row: int = 1) -> list:
-    """Parse a semicolon-delimited text file"""
+    """Parse a semicolon-delimited text file. header_row=0 means no header (positional col names)."""
     try:
-        decoded = content.decode('utf-8', errors='replace')
+        decoded = content.decode('utf-8-sig', errors='replace')
     except Exception:
-        decoded = content.decode('latin-1', errors='replace')
+        try:
+            decoded = content.decode('utf-8', errors='replace')
+        except Exception:
+            decoded = content.decode('latin-1', errors='replace')
     lines = decoded.strip().split('\n')
     if header_row > 1:
         lines = lines[header_row - 1:]
@@ -743,7 +880,14 @@ def parse_text_file(content: bytes, separator: str = ";", header_row: int = 1) -
         return []
     if separator == '\\t':
         separator = '\t'
-    reader = csv.DictReader(lines, delimiter=separator, quotechar='"')
+    if header_row == 0:
+        first_line = lines[0].rstrip('\r') if lines else ''
+        first_row_parsed = list(csv.reader([first_line], delimiter=separator, quotechar='"'))
+        num_cols = len(first_row_parsed[0]) if first_row_parsed else 0
+        fieldnames = [f'col_{i}' for i in range(num_cols)]
+        reader = csv.DictReader(lines, fieldnames=fieldnames, delimiter=separator, quotechar='"')
+    else:
+        reader = csv.DictReader(lines, delimiter=separator, quotechar='"')
     return list(reader)
 
 
