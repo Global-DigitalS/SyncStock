@@ -88,6 +88,7 @@ class SupplierCreate(BaseModel):
     csv_header_row: Optional[int] = 1
     column_mapping: Optional[Dict[str, Any]] = None
     strip_ean_quotes: Optional[bool] = False
+    preset_id: Optional[str] = None
 
 class SupplierUpdate(BaseModel):
     name: Optional[str] = None
@@ -109,6 +110,7 @@ class SupplierUpdate(BaseModel):
     csv_header_row: Optional[int] = None
     column_mapping: Optional[Dict[str, Any]] = None
     strip_ean_quotes: Optional[bool] = None
+    preset_id: Optional[str] = None
 
 class SupplierResponse(BaseModel):
     id: str
@@ -130,6 +132,7 @@ class SupplierResponse(BaseModel):
     csv_header_row: Optional[int] = None
     column_mapping: Optional[Dict[str, Any]] = None
     strip_ean_quotes: Optional[bool] = False
+    preset_id: Optional[str] = None
     detected_columns: Optional[Any] = None  # Can be List[str] or Dict[str, List[str]] for multi-file
     product_count: int = 0
     last_sync: Optional[str] = None
