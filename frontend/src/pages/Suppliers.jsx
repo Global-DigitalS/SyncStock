@@ -70,7 +70,8 @@ const defaultFormData = {
   csv_line_break: "\\n",
   csv_header_row: 1,
   column_mapping: null,
-  strip_ean_quotes: false
+  strip_ean_quotes: false,
+  preset_id: null
 };
 
 const Suppliers = () => {
@@ -146,7 +147,8 @@ const Suppliers = () => {
       csv_line_break: supplier.csv_line_break || "\\n",
       csv_header_row: supplier.csv_header_row || 1,
       column_mapping: supplier.column_mapping || null,
-      strip_ean_quotes: supplier.strip_ean_quotes || false
+      strip_ean_quotes: supplier.strip_ean_quotes || false,
+      preset_id: supplier.preset_id || null
     });
     setSelectedFtpFiles(supplier.ftp_paths || []);
     setShowDialog(true);
@@ -196,13 +198,30 @@ const Suppliers = () => {
       if (selectedSupplier) {
         await api.put(`/suppliers/${selectedSupplier.id}`, payload);
         toast.success("Proveedor actualizado");
+        setShowDialog(false);
+        resetForm();
+        fetchSuppliers();
+        // Trigger sync in background after saving
+        const supplierId = selectedSupplier.id;
+        toast.info("Sincronizando catálogo...");
+        api.post(`/suppliers/${supplierId}/sync`)
+          .then((res) => {
+            const d = res.data;
+            toast.success(
+              `Sincronización completada: ${d.imported ?? 0} importados, ${d.updated ?? 0} actualizados`
+            );
+            fetchSuppliers();
+          })
+          .catch((err) => {
+            toast.error(err.response?.data?.detail || "Error al sincronizar el catálogo");
+          });
       } else {
         await api.post("/suppliers", payload);
         toast.success("Proveedor creado");
+        setShowDialog(false);
+        resetForm();
+        fetchSuppliers();
       }
-      setShowDialog(false);
-      resetForm();
-      fetchSuppliers();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al guardar");
     } finally {
@@ -489,7 +508,8 @@ const Suppliers = () => {
               {/* Tab General */}
               <TabsContent value="general" className="space-y-4">
                 <SupplierPresetSelector
-                  onApplyPreset={(config) => setFormData((prev) => ({ ...prev, ...config }))}
+                  selectedId={formData.preset_id}
+                  onApplyPreset={(preset) => setFormData((prev) => ({ ...prev, ...preset.config, preset_id: preset.id }))}
                 />
 
                 <div className="space-y-2">
