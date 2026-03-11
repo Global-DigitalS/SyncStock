@@ -379,21 +379,23 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 products_data = all_file_data[largest_role]
 
             # Build lookup tables for price and stock
+            prices_merge_key = None
             prices_lookup = {}
             if prices_data:
-                pk = list(prices_data[0].keys())[0] if prices_data else None
-                if pk:
+                prices_merge_key = list(prices_data[0].keys())[0] if prices_data else None
+                if prices_merge_key:
                     for row in prices_data:
-                        k = str(row.get(pk, '')).strip()
+                        k = str(row.get(prices_merge_key, '')).strip()
                         if k:
                             prices_lookup[k] = row
 
+            stock_merge_key = None
             stock_lookup = {}
             if stock_data:
-                sk = list(stock_data[0].keys())[0] if stock_data else None
-                if sk:
+                stock_merge_key = list(stock_data[0].keys())[0] if stock_data else None
+                if stock_merge_key:
                     for row in stock_data:
-                        k = str(row.get(sk, '')).strip()
+                        k = str(row.get(stock_merge_key, '')).strip()
                         if k:
                             stock_lookup[k] = row
 
@@ -414,11 +416,20 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                     merged = dict(raw)
                     if prod_id and prod_id in prices_lookup:
                         for k, v in prices_lookup[prod_id].items():
-                            if k not in merged or not merged[k]:
+                            if header_row == 0:
+                                # Headerless files: all files use col_0, col_1, ... so we
+                                # prefix prices columns to avoid overwriting product fields
+                                if k != prices_merge_key:
+                                    merged[f"prices_{k}"] = v
+                            elif k not in merged or not merged[k]:
                                 merged[k] = v
                     if prod_id and prod_id in stock_lookup:
                         for k, v in stock_lookup[prod_id].items():
-                            if k not in merged or not merged[k]:
+                            if header_row == 0:
+                                # Same prefix strategy for stock columns
+                                if k != stock_merge_key:
+                                    merged[f"stock_{k}"] = v
+                            elif k not in merged or not merged[k]:
                                 merged[k] = v
 
                     normalized = apply_column_mapping(merged, column_mapping, strip_ean_quotes) if column_mapping else normalize_product_data(merged, strip_ean_quotes)

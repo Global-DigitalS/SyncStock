@@ -476,7 +476,7 @@ SUPPLIER_PRESETS = [
     {
         "id": "techdata_es",
         "name": "Tech Data (España)",
-        "description": "ZIP con múltiples archivos — CSV punto y coma, sin cabecera.",
+        "description": "ZIP con GM_ES_C_Product + GM_ES_C_Prices — CSV punto y coma, sin cabecera. Stock requiere StockFile.txt por separado.",
         "config": {
             "file_format": "zip",
             "csv_separator": ";",
@@ -484,7 +484,18 @@ SUPPLIER_PRESETS = [
             "csv_line_break": "\\n",
             "csv_header_row": 0,
             "strip_ean_quotes": False,
-            "column_mapping": None
+            "column_mapping": {
+                "sku": "col_0",
+                "name": "col_1",
+                "description": "col_2",
+                "brand": "col_5",
+                "ean": "col_12",
+                "weight": "col_13",
+                "category": "col_15",
+                "subcategory": "col_17",
+                "subcategory2": "col_19",
+                "price": "prices_col_3"
+            }
         }
     },
     {
