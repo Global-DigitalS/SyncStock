@@ -273,7 +273,8 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
     file_format = supplier.get('file_format', 'csv').lower()
     separator = supplier.get('csv_separator', ';')
     enclosure = supplier.get('csv_enclosure', '"')
-    header_row = supplier.get('csv_header_row', 1) or 1
+    _header_row_raw = supplier.get('csv_header_row', 1)
+    header_row = 1 if _header_row_raw is None else int(_header_row_raw)
     column_mapping = supplier.get('column_mapping')
     strip_ean_quotes = supplier.get('strip_ean_quotes', False)
     detected_columns = []
@@ -329,15 +330,26 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
 
         elif file_format == 'csv':
             try:
-                decoded = content.decode('utf-8')
+                decoded = content.decode('utf-8-sig')
             except Exception:
-                decoded = content.decode('latin-1')
+                try:
+                    decoded = content.decode('utf-8')
+                except Exception:
+                    decoded = content.decode('latin-1')
             lines = decoded.split('\n')
             if header_row > 1:
                 lines = lines[header_row-1:]
             if separator == '\\t':
                 separator = '\t'
-            reader = csv.DictReader(lines, delimiter=separator, quotechar=enclosure if enclosure else '"')
+            if header_row == 0:
+                # Headerless file: generate positional column names (col_0, col_1, ...)
+                first_line = lines[0].rstrip('\r') if lines else ''
+                first_row_parsed = list(csv.reader([first_line], delimiter=separator, quotechar=enclosure if enclosure else '"'))
+                num_cols = len(first_row_parsed[0]) if first_row_parsed else 0
+                fieldnames = [f'col_{i}' for i in range(num_cols)]
+                reader = csv.DictReader(lines, fieldnames=fieldnames, delimiter=separator, quotechar=enclosure if enclosure else '"')
+            else:
+                reader = csv.DictReader(lines, delimiter=separator, quotechar=enclosure if enclosure else '"')
             raw_products = list(reader)
             if raw_products:
                 detected_columns = list(raw_products[0].keys())
