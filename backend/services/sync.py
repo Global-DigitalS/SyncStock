@@ -18,6 +18,15 @@ from config import PRICE_CHANGE_THRESHOLD_PERCENT, LOW_STOCK_THRESHOLD
 logger = logging.getLogger(__name__)
 
 
+def sanitize_ean_quotes(value) -> str:
+    """Remove single-quote variants that some suppliers prepend/append to EAN values."""
+    if value is None:
+        return ""
+    # ASCII apostrophe + common unicode apostrophe variants
+    quote_chars = "'‘’´`＇"
+    return str(value).strip().translate({ord(ch): None for ch in quote_chars})
+
+
 async def send_realtime_notification(user_id: str, notification: dict):
     """Send notification via WebSocket if user is connected"""
     try:
@@ -198,7 +207,7 @@ def normalize_product_data(raw: dict, strip_ean_quotes: bool = False) -> dict:
                         value = 0
                 elif field == 'ean' and strip_ean_quotes:
                     # Remove single quotes from EAN if strip_ean_quotes is enabled
-                    value = str(value).strip().replace("'", "")
+                    value = sanitize_ean_quotes(value)
                 result[field] = value
                 break
     
@@ -245,7 +254,7 @@ def apply_column_mapping(raw_data: dict, column_mapping: dict, strip_ean_quotes:
                     combined_value = int(float(str(combined_value).replace(',', '.')))
                 elif field_type == 'string' and system_field == 'ean' and strip_ean_quotes:
                     # Remove single quotes from EAN if strip_ean_quotes is enabled
-                    combined_value = str(combined_value).strip().replace("'", "")
+                    combined_value = sanitize_ean_quotes(combined_value)
             except Exception:
                 if field_type in ['float', 'int']:
                     combined_value = 0
