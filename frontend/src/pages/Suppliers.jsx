@@ -188,7 +188,7 @@ const Suppliers = () => {
     const payload = {
       ...formData,
       ftp_port: parseInt(formData.ftp_port) || 21,
-      csv_header_row: parseInt(formData.csv_header_row) || 1,
+      csv_header_row: parseInt(formData.csv_header_row) >= 0 ? parseInt(formData.csv_header_row) : 1,
       ftp_paths: selectedFtpFiles.length > 0 ? selectedFtpFiles : null
     };
 
@@ -790,14 +790,14 @@ const Suppliers = () => {
                     <Input
                       id="csv_header_row"
                       type="number"
-                      min="1"
+                      min="0"
                       value={formData.csv_header_row}
                       onChange={(e) => setFormData({ ...formData, csv_header_row: e.target.value })}
                       placeholder="1"
                       className="input-base font-mono"
                       data-testid="csv-header-row"
                     />
-                    <p className="text-xs text-slate-500">Número de fila donde empiezan los nombres de columna</p>
+                    <p className="text-xs text-slate-500">Fila de cabecera (1 = primera fila). Usa 0 si el archivo no tiene cabecera (ej: INGRAM PRICE09.TXT).</p>
                   </div>
                 </div>
 
