@@ -195,32 +195,70 @@ const Suppliers = () => {
     };
 
     try {
+      let supplierId;
+      let hasColumnMapping;
+
       if (selectedSupplier) {
         await api.put(`/suppliers/${selectedSupplier.id}`, payload);
         toast.success("Proveedor actualizado");
-        setShowDialog(false);
-        resetForm();
-        fetchSuppliers();
-        // Trigger sync in background after saving
-        const supplierId = selectedSupplier.id;
+        supplierId = selectedSupplier.id;
+        hasColumnMapping = !!payload.column_mapping;
+      } else {
+        const res = await api.post("/suppliers", payload);
+        toast.success("Proveedor creado");
+        supplierId = res.data.id;
+        hasColumnMapping = !!payload.column_mapping;
+      }
+
+      setShowDialog(false);
+      resetForm();
+      fetchSuppliers();
+
+      // Trigger sync + auto column mapping in background
+      const canSync =
+        (payload.connection_type === "url" && payload.file_url) ||
+        (payload.connection_type !== "url" &&
+          (payload.ftp_host || (payload.ftp_paths && payload.ftp_paths.length > 0)));
+
+      if (canSync) {
         toast.info("Sincronizando catálogo...");
         api.post(`/suppliers/${supplierId}/sync`)
-          .then((res) => {
+          .then(async (res) => {
             const d = res.data;
+            if (d.status === "error") {
+              toast.error(`Error en sincronización: ${d.message}`);
+              return;
+            }
             toast.success(
               `Sincronización completada: ${d.imported ?? 0} importados, ${d.updated ?? 0} actualizados`
             );
             fetchSuppliers();
+
+            // Auto-detect and save column mapping if none configured
+            if (!hasColumnMapping) {
+              try {
+                const preview = await api.post(`/suppliers/${supplierId}/preview-file`);
+                if (
+                  preview.data.status === "success" &&
+                  preview.data.suggested_mapping &&
+                  Object.keys(preview.data.suggested_mapping).length > 0
+                ) {
+                  await api.put(`/suppliers/${supplierId}`, {
+                    column_mapping: preview.data.suggested_mapping
+                  });
+                  toast.success(
+                    `Mapeo automático: ${Object.keys(preview.data.suggested_mapping).length} campos detectados`
+                  );
+                  fetchSuppliers();
+                }
+              } catch (_) {
+                // preview-file may fail for multi-file; ignore silently
+              }
+            }
           })
           .catch((err) => {
             toast.error(err.response?.data?.detail || "Error al sincronizar el catálogo");
           });
-      } else {
-        await api.post("/suppliers", payload);
-        toast.success("Proveedor creado");
-        setShowDialog(false);
-        resetForm();
-        fetchSuppliers();
       }
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al guardar");

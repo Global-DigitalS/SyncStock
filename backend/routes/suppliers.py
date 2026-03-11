@@ -57,6 +57,8 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
         "csv_separator": supplier.csv_separator, "csv_enclosure": supplier.csv_enclosure,
         "csv_line_break": supplier.csv_line_break, "csv_header_row": supplier.csv_header_row,
         "column_mapping": supplier.column_mapping,
+        "strip_ean_quotes": supplier.strip_ean_quotes or False,
+        "preset_id": supplier.preset_id,
         "product_count": 0, "last_sync": None, "created_at": now
     }
     await db.suppliers.insert_one(supplier_doc)
@@ -103,9 +105,18 @@ async def update_supplier(supplier_id: str, supplier: SupplierUpdate, user: dict
     existing = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not existing:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    update_data = {k: v for k, v in supplier.model_dump().items() if v is not None}
+    raw = supplier.model_dump()
+    # Keep fields that were explicitly sent: exclude None only for optional connection fields
+    # but allow None for column_mapping (to clear it when switching presets)
+    always_allow_none = {"column_mapping", "preset_id", "ftp_path", "ftp_paths", "file_url", "description"}
+    update_data = {
+        k: v for k, v in raw.items()
+        if v is not None or k in always_allow_none
+    }
     if "ftp_password" in update_data and update_data["ftp_password"]:
         update_data["ftp_password"] = encrypt_password(update_data["ftp_password"])
+    elif "ftp_password" in update_data and not update_data["ftp_password"]:
+        update_data.pop("ftp_password")  # don't overwrite with empty string
     if update_data:
         await db.suppliers.update_one({"id": supplier_id}, {"$set": update_data})
     updated = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0, "ftp_password": 0, "user_id": 0})
