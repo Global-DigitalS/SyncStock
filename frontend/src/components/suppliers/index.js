@@ -6,3 +6,4 @@ export { default as SelectedFilesList, ROLE_LABELS, ROLE_COLORS } from './Select
 export { default as ConnectionTypeSelector } from './ConnectionTypeSelector';
 export { default as CategoryCascadeFilter } from './CategoryCascadeFilter';
 export { default as CategorySelectionCascade } from './CategorySelectionCascade';
+export { default as SupplierPresetSelector } from './SupplierPresetSelector';

@@ -48,6 +48,7 @@ import {
   FtpFileBrowser,
   FtpConnectionStatus,
   ConnectionTypeSelector,
+  SupplierPresetSelector,
   ROLE_LABELS
 } from "../components/suppliers";
 
@@ -487,6 +488,10 @@ const Suppliers = () => {
 
               {/* Tab General */}
               <TabsContent value="general" className="space-y-4">
+                <SupplierPresetSelector
+                  onApplyPreset={(config) => setFormData((prev) => ({ ...prev, ...config }))}
+                />
+
                 <div className="space-y-2">
                   <Label htmlFor="name">Nombre del proveedor *</Label>
                   <Input

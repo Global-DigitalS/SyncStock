@@ -84,6 +84,12 @@ async def get_suppliers(user: dict = Depends(get_current_user)):
     return [SupplierResponse(**_normalize_supplier_data(s)) for s in suppliers]
 
 
+@router.get("/suppliers/presets")
+async def get_supplier_presets_route(user: dict = Depends(get_current_user)):
+    """Devuelve la lista de plantillas predefinidas para proveedores conocidos"""
+    return SUPPLIER_PRESETS
+
+
 @router.get("/suppliers/{supplier_id}", response_model=SupplierResponse)
 async def get_supplier(supplier_id: str, user: dict = Depends(get_current_user)):
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]}, {"_id": 0, "ftp_password": 0, "user_id": 0})
@@ -430,6 +436,105 @@ async def import_products(supplier_id: str, file: UploadFile = File(...), user: 
     return {"imported": imported, "updated": updated, "total": imported + updated}
 
 
+# ==================== SUPPLIER PRESETS ====================
+
+SUPPLIER_PRESETS = [
+    {
+        "id": "ingram_es",
+        "name": "INGRAM MICRO (España)",
+        "description": "PRICE09.TXT — CSV coma, sin cabecera, Latin-1. Mapeo posicional automático.",
+        "config": {
+            "file_format": "csv",
+            "csv_separator": ",",
+            "csv_enclosure": '"',
+            "csv_line_break": "\\n",
+            "csv_header_row": 0,
+            "strip_ean_quotes": False,
+            "column_mapping": {
+                "sku": "col_0",
+                "name": "col_2",
+                "ean": "col_3",
+                "weight": "col_4",
+                "brand": "col_5",
+                "category": "col_6",
+                "stock": "col_7",
+                "price": "col_8"
+            }
+        }
+    },
+    {
+        "id": "techdata_es",
+        "name": "Tech Data (España)",
+        "description": "ZIP con múltiples archivos — CSV punto y coma, sin cabecera.",
+        "config": {
+            "file_format": "zip",
+            "csv_separator": ";",
+            "csv_enclosure": '"',
+            "csv_line_break": "\\n",
+            "csv_header_row": 0,
+            "strip_ean_quotes": False,
+            "column_mapping": None
+        }
+    },
+    {
+        "id": "mcr_es",
+        "name": "MCR (España)",
+        "description": "CSV único — punto y coma, con cabecera, UTF-8 BOM.",
+        "config": {
+            "file_format": "csv",
+            "csv_separator": ";",
+            "csv_enclosure": '"',
+            "csv_line_break": "\\n",
+            "csv_header_row": 1,
+            "strip_ean_quotes": False,
+            "column_mapping": None
+        }
+    },
+    {
+        "id": "esprinet_es",
+        "name": "Esprinet (España)",
+        "description": "CSV estándar — punto y coma, con cabecera.",
+        "config": {
+            "file_format": "csv",
+            "csv_separator": ";",
+            "csv_enclosure": '"',
+            "csv_line_break": "\\n",
+            "csv_header_row": 1,
+            "strip_ean_quotes": False,
+            "column_mapping": None
+        }
+    },
+    {
+        "id": "binary_es",
+        "name": "Binary (España)",
+        "description": "CSV estándar — punto y coma, con cabecera.",
+        "config": {
+            "file_format": "csv",
+            "csv_separator": ";",
+            "csv_enclosure": '"',
+            "csv_line_break": "\\n",
+            "csv_header_row": 1,
+            "strip_ean_quotes": False,
+            "column_mapping": None
+        }
+    },
+    {
+        "id": "infortisa_es",
+        "name": "Infortisa (España)",
+        "description": "CSV estándar — punto y coma, con cabecera.",
+        "config": {
+            "file_format": "csv",
+            "csv_separator": ";",
+            "csv_enclosure": '"',
+            "csv_line_break": "\\n",
+            "csv_header_row": 1,
+            "strip_ean_quotes": False,
+            "column_mapping": None
+        }
+    }
+]
+
+
 # Standard field aliases for auto-detection
 FIELD_ALIASES = {
     'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number', 'articulo', 'codigo_articulo', 'cod', 'item_code'],
@@ -485,19 +590,30 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
         separator = supplier.get('csv_separator', ';')
         if separator == '\\t':
             separator = '\t'
-        header_row = supplier.get('csv_header_row', 1) or 1
-        
+        _header_row_raw = supplier.get('csv_header_row', 1)
+        header_row = 1 if _header_row_raw is None else int(_header_row_raw)
+
         try:
-            decoded = content.decode('utf-8')
-        except:
-            decoded = content.decode('latin-1')
-        
+            decoded = content.decode('utf-8-sig')
+        except Exception:
+            try:
+                decoded = content.decode('utf-8')
+            except Exception:
+                decoded = content.decode('latin-1')
+
         lines = decoded.split('\n')
         if header_row > 1:
             lines = lines[header_row-1:]
-        
+
         import csv
-        reader = csv.DictReader(lines, delimiter=separator)
+        if header_row == 0:
+            first_line = lines[0].rstrip('\r') if lines else ''
+            first_row_parsed = list(csv.reader([first_line], delimiter=separator))
+            num_cols = len(first_row_parsed[0]) if first_row_parsed else 0
+            fieldnames = [f'col_{i}' for i in range(num_cols)]
+            reader = csv.DictReader(lines, fieldnames=fieldnames, delimiter=separator)
+        else:
+            reader = csv.DictReader(lines, delimiter=separator)
         raw_products = list(reader)[:10]  # First 10 for preview
         
         columns = list(raw_products[0].keys()) if raw_products else []
