@@ -238,13 +238,32 @@ async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_use
             return v.isoformat()
         return str(v)
 
+    # Auto-reset sync_status if stuck in "running" for more than 30 minutes
+    sync_status = supplier.get('sync_status') or 'idle'
+    sync_started_at = supplier.get('sync_started_at')
+    if sync_status == 'running' and sync_started_at:
+        try:
+            started_str = sync_started_at.isoformat() if hasattr(sync_started_at, 'isoformat') else str(sync_started_at)
+            started_dt = datetime.fromisoformat(started_str)
+            if started_dt.tzinfo is None:
+                started_dt = started_dt.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - started_dt).total_seconds()
+            if elapsed > 1800:  # 30 minutes
+                sync_status = 'error'
+                await db.suppliers.update_one(
+                    {"id": supplier_id},
+                    {"$set": {"sync_status": "error", "sync_last_result": "Sincronización interrumpida (tiempo máximo superado)"}}
+                )
+        except Exception:
+            pass
+
     return {
         "last_sync": _to_str(supplier.get('last_sync')),
         "ftp_configured": has_ftp,
         "product_count": int(supplier.get('product_count') or 0),
         "ftp_paths_count": len(supplier.get('ftp_paths') or []),
-        "sync_status": supplier.get('sync_status') or 'idle',
-        "sync_started_at": _to_str(supplier.get('sync_started_at')),
+        "sync_status": sync_status,
+        "sync_started_at": _to_str(sync_started_at),
         "sync_last_result": str(supplier.get('sync_last_result') or ''),
     }
 
@@ -527,7 +546,7 @@ SUPPLIER_PRESETS = [
     {
         "id": "ingram_es",
         "name": "INGRAM MICRO (España)",
-        "description": "PRICE09.TXT — CSV coma, sin cabecera, Latin-1. Mapeo posicional automático.",
+        "description": "PRICE09.ZIP — ZIP con PRICE09.TXT (CSV coma, sin cabecera, 29 columnas). Ruta SFTP: /PRICE09.ZIP",
         "config": {
             "file_format": "csv",
             "csv_separator": ",",
@@ -536,14 +555,15 @@ SUPPLIER_PRESETS = [
             "csv_header_row": 0,
             "strip_ean_quotes": False,
             "column_mapping": {
-                "sku": "col_0",
-                "name": "col_2",
-                "ean": "col_3",
-                "weight": "col_4",
-                "brand": "col_5",
-                "category": "col_6",
-                "stock": "col_7",
-                "price": "col_8"
+                "sku": "col_1",
+                "name": "col_6",
+                "description": "col_7",
+                "ean": "col_4",
+                "weight": "col_8",
+                "brand": "col_2",
+                "category": "col_5",
+                "stock": "col_23",
+                "price": "col_24"
             }
         }
     },
