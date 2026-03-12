@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 import uuid
@@ -446,73 +446,100 @@ async def sync_store_price_stock(config_id: str, user: dict = Depends(get_curren
         return {"status": "error", "message": f"Error en la sincronización: {str(e)}"}
 
 
+async def _run_export_background(config: dict, catalog_items: list, catalog_id: str,
+                                  update_existing: bool, platform: str, user: dict):
+    """Background task: runs the full export and saves a notification with results."""
+    config_id = config["id"]
+    store_name = config.get("name", config_id)
+    try:
+        if platform == "woocommerce":
+            from routes.woocommerce import export_to_woocommerce
+            from models.schemas import WooCommerceExportRequest
+            wc_request = WooCommerceExportRequest(
+                config_id=config_id,
+                catalog_id=catalog_id,
+                update_existing=update_existing
+            )
+            result = await export_to_woocommerce(wc_request, user)
+            summary = f"Exportación WooCommerce '{store_name}': {result.created} creados, {result.updated} actualizados, {result.failed} errores"
+            errors_detail = "; ".join(result.errors[:5]) if result.errors else ""
+        elif platform == "prestashop":
+            result = await export_to_prestashop(config, catalog_items, catalog_id, user)
+            summary = f"Exportación PrestaShop '{store_name}': {result['created']} creados, {result['updated']} actualizados, {result['failed']} errores"
+            errors_detail = "; ".join(result.get("errors", [])[:5])
+        elif platform == "shopify":
+            result = await export_to_shopify(config, catalog_items, catalog_id, user)
+            summary = f"Exportación Shopify '{store_name}': {result['created']} creados, {result['updated']} actualizados, {result['failed']} errores"
+            errors_detail = "; ".join(result.get("errors", [])[:5])
+        elif platform == "magento":
+            result = await export_to_magento(config, catalog_items, catalog_id, user)
+            summary = f"Exportación Magento '{store_name}': {result['created']} creados, {result['updated']} actualizados, {result['failed']} errores"
+            errors_detail = "; ".join(result.get("errors", [])[:5])
+        elif platform == "wix":
+            result = await export_to_wix(config, catalog_items, catalog_id, user)
+            summary = f"Exportación Wix '{store_name}': {result['created']} creados, {result['updated']} actualizados, {result['failed']} errores"
+            errors_detail = "; ".join(result.get("errors", [])[:5])
+        else:
+            summary = f"Plataforma '{platform}' no soportada"
+            errors_detail = ""
+
+        if errors_detail:
+            summary += f". Errores: {errors_detail}"
+    except Exception as e:
+        summary = f"Error en exportación de '{store_name}': {str(e)[:200]}"
+        logger.error(f"Background export error for store {config_id}: {e}")
+
+    now = datetime.now(timezone.utc).isoformat()
+    await db.notifications.insert_one({
+        "id": str(uuid.uuid4()),
+        "type": "store_export",
+        "message": summary,
+        "product_id": None,
+        "product_name": None,
+        "user_id": user["id"],
+        "read": False,
+        "created_at": now
+    })
+
+
 @router.post("/stores/export")
-async def export_to_store(request: dict, user: dict = Depends(get_current_user)):
-    """Export products to a store"""
+async def export_to_store(request: dict, background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
+    """Export products to a store — runs in background to avoid gateway timeouts."""
     config_id = request.get("config_id")
     catalog_id = request.get("catalog_id")
     update_existing = request.get("update_existing", True)
-    
+
     config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
     if not config:
         raise HTTPException(status_code=404, detail="Configuración de tienda no encontrada")
-    
+
     platform = config.get("platform", "woocommerce")
-    
-    # Get catalog items
-    catalog_items = []
-    if catalog_id:
-        catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
-        if not catalog:
-            raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-        catalog_items = await db.catalog_items.find({"catalog_id": catalog_id, "active": True}, {"_id": 0}).to_list(1000)
-    
+
+    # Validate catalog and fetch items synchronously before returning
+    if not catalog_id:
+        raise HTTPException(status_code=400, detail="Catálogo no especificado")
+    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    if not catalog:
+        raise HTTPException(status_code=404, detail="Catálogo no encontrado")
+    catalog_items = await db.catalog_items.find({"catalog_id": catalog_id, "active": True}, {"_id": 0}).to_list(1000)
     if not catalog_items:
-        return {"status": "warning", "created": 0, "updated": 0, "failed": 0, "errors": ["No hay productos activos para exportar"]}
-    
-    if platform == "woocommerce":
-        # Use existing WooCommerce export logic
-        from routes.woocommerce import export_to_woocommerce
-        from models.schemas import WooCommerceExportRequest
-        
-        wc_request = WooCommerceExportRequest(
-            config_id=config_id,
-            catalog_id=catalog_id,
-            update_existing=update_existing
-        )
-        result = await export_to_woocommerce(wc_request, user)
-        return {
-            "status": result.status,
-            "created": result.created,
-            "updated": result.updated,
-            "failed": result.failed,
-            "errors": result.errors
-        }
-    elif platform == "prestashop":
-        # Real PrestaShop export
-        return await export_to_prestashop(config, catalog_items, catalog_id, user)
+        return {"status": "warning", "created": 0, "updated": 0, "failed": 0,
+                "errors": ["No hay productos activos para exportar"]}
 
-    elif platform == "shopify":
-        # Real Shopify export
-        return await export_to_shopify(config, catalog_items, catalog_id, user)
+    if platform not in SUPPORTED_PLATFORMS and platform != "woocommerce":
+        return {"status": "error", "created": 0, "updated": 0, "failed": 0,
+                "errors": [f"Plataforma {platform} no soportada para exportación"]}
 
-    elif platform == "magento":
-        # Real Magento export
-        return await export_to_magento(config, catalog_items, catalog_id, user)
+    # Launch export in background — returns immediately to avoid 504 timeout
+    background_tasks.add_task(
+        _run_export_background, config, catalog_items, catalog_id, update_existing, platform, user
+    )
 
-    elif platform == "wix":
-        # Real Wix export
-        return await export_to_wix(config, catalog_items, catalog_id, user)
-    
-    else:
-        # Unsupported platform
-        return {
-            "status": "error",
-            "created": 0,
-            "updated": 0,
-            "failed": 0,
-            "errors": [f"Plataforma {platform} no soportada para exportación"]
-        }
+    return {
+        "status": "started",
+        "message": f"Exportación iniciada en segundo plano ({len(catalog_items)} productos). Recibirás una notificación al finalizar.",
+        "total_products": len(catalog_items)
+    }
 
 
 async def export_to_prestashop(config: dict, catalog_items: list, catalog_id: str, user: dict) -> dict:
