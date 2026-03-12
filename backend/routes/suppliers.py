@@ -92,6 +92,35 @@ async def get_supplier_presets_route(user: dict = Depends(get_current_user)):
     return SUPPLIER_PRESETS
 
 
+@router.post("/suppliers/{supplier_id}/apply-preset")
+async def apply_preset_to_supplier(supplier_id: str, data: dict, user: dict = Depends(get_current_user)):
+    """Aplica una plantilla predefinida a un proveedor ya existente (actualiza config de formato y mapeo)."""
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    preset_id = data.get("preset_id")
+    preset = next((p for p in SUPPLIER_PRESETS if p["id"] == preset_id), None)
+    if not preset:
+        raise HTTPException(status_code=404, detail=f"Plantilla '{preset_id}' no encontrada")
+    config = preset["config"]
+    update_fields = {
+        "file_format": config.get("file_format"),
+        "csv_separator": config.get("csv_separator"),
+        "csv_enclosure": config.get("csv_enclosure"),
+        "csv_line_break": config.get("csv_line_break"),
+        "csv_header_row": config.get("csv_header_row"),
+        "strip_ean_quotes": config.get("strip_ean_quotes", False),
+        "column_mapping": config.get("column_mapping"),
+        "preset_id": preset_id,
+    }
+    await db.suppliers.update_one({"id": supplier_id}, {"$set": update_fields})
+    updated = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0, "ftp_password": 0, "user_id": 0})
+    return {
+        "message": f"Plantilla '{preset['name']}' aplicada correctamente. Sincroniza el proveedor para importar los productos.",
+        "supplier": SupplierResponse(**_normalize_supplier_data(updated))
+    }
+
+
 @router.get("/suppliers/{supplier_id}", response_model=SupplierResponse)
 async def get_supplier(supplier_id: str, user: dict = Depends(get_current_user)):
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]}, {"_id": 0, "ftp_password": 0, "user_id": 0})
