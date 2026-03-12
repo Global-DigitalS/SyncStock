@@ -991,16 +991,18 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     all_file_data = {}
     all_detected_columns = {}
 
-    # Use supplier-level csv_header_row (set by preset) for all file parsing.
-    # Per-file header_row in ftp_paths entries is a UI default and may not reflect
-    # the actual file format; the preset sets the authoritative value.
+    # Use supplier-level csv_header_row and csv_separator (set by preset) for all
+    # file parsing. Per-file values in ftp_paths are UI defaults and may not
+    # reflect the actual file format; the preset sets the authoritative values.
     _sup_hdr_raw = supplier.get('csv_header_row', 1)
     supplier_hdr = 1 if _sup_hdr_raw is None else int(_sup_hdr_raw)
+    _sup_sep = supplier.get('csv_separator') or ';'
+    supplier_sep = '\t' if _sup_sep == '\\t' else _sup_sep
 
     for file_config in ftp_paths:
         file_path = await resolve_latest_file(supplier, file_config)
         role = file_config.get('role', 'products')
-        sep = file_config.get('separator', ';')
+        sep = supplier_sep
         label = file_config.get('label', file_path)
 
         if not file_path:
