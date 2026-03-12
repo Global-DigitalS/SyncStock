@@ -490,19 +490,19 @@ async def export_to_store(request: dict, user: dict = Depends(get_current_user))
         }
     elif platform == "prestashop":
         # Real PrestaShop export
-        return await export_to_prestashop(config, catalog_items, user)
-    
+        return await export_to_prestashop(config, catalog_items, catalog_id, user)
+
     elif platform == "shopify":
         # Real Shopify export
-        return await export_to_shopify(config, catalog_items, user)
-    
+        return await export_to_shopify(config, catalog_items, catalog_id, user)
+
     elif platform == "magento":
         # Real Magento export
-        return await export_to_magento(config, catalog_items, user)
-    
+        return await export_to_magento(config, catalog_items, catalog_id, user)
+
     elif platform == "wix":
         # Real Wix export
-        return await export_to_wix(config, catalog_items, user)
+        return await export_to_wix(config, catalog_items, catalog_id, user)
     
     else:
         # Unsupported platform
@@ -515,24 +515,24 @@ async def export_to_store(request: dict, user: dict = Depends(get_current_user))
         }
 
 
-async def export_to_prestashop(config: dict, catalog_items: list, user: dict) -> dict:
+async def export_to_prestashop(config: dict, catalog_items: list, catalog_id: str, user: dict) -> dict:
     """Export products to PrestaShop with full product data"""
-    
+
     client = PrestaShopClient(
         store_url=config.get("store_url", ""),
         api_key=config.get("api_key", "")
     )
-    
+
     created = 0
     updated = 0
     failed = 0
     errors = []
-    
+
     # Get products data
     product_ids = [item["product_id"] for item in catalog_items]
     products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
     products_map = {p["id"]: p for p in products}
-    
+
     # Get existing products from PrestaShop by reference (SKU)
     existing_products = client.get_products(limit=5000)
     existing_refs = {}
@@ -540,10 +540,9 @@ async def export_to_prestashop(config: dict, catalog_items: list, user: dict) ->
         ref = p.get("reference", "")
         if ref:
             existing_refs[ref] = p.get("id")
-    
+
     # Get margin rules for this catalog
-    margin_rules = await db.margin_rules.find({"catalog_id": config.get("catalog_id")}, {"_id": 0}).to_list(100)
-    margin_rules.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
     
     for item in catalog_items:
         product = products_map.get(item["product_id"])
@@ -619,24 +618,24 @@ async def export_to_prestashop(config: dict, catalog_items: list, user: dict) ->
     }
 
 
-async def export_to_shopify(config: dict, catalog_items: list, user: dict) -> dict:
+async def export_to_shopify(config: dict, catalog_items: list, catalog_id: str, user: dict) -> dict:
     """Export products to Shopify with full product data"""
-    
+
     client = ShopifyClient(
         store_url=config.get("store_url", ""),
         access_token=config.get("access_token", "")
     )
-    
+
     created = 0
     updated = 0
     failed = 0
     errors = []
-    
+
     # Get products data
     product_ids = [item["product_id"] for item in catalog_items]
     products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
     products_map = {p["id"]: p for p in products}
-    
+
     # Get existing products from Shopify by SKU
     existing_products = client.get_products(limit=250)
     existing_skus = {}
@@ -645,10 +644,9 @@ async def export_to_shopify(config: dict, catalog_items: list, user: dict) -> di
             sku = variant.get("sku", "")
             if sku:
                 existing_skus[sku] = p.get("id")
-    
+
     # Get margin rules
-    margin_rules = await db.margin_rules.find({"catalog_id": config.get("catalog_id")}, {"_id": 0}).to_list(100)
-    margin_rules.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
     
     for item in catalog_items:
         product = products_map.get(item["product_id"])
@@ -724,31 +722,30 @@ async def export_to_shopify(config: dict, catalog_items: list, user: dict) -> di
     }
 
 
-async def export_to_magento(config: dict, catalog_items: list, user: dict) -> dict:
+async def export_to_magento(config: dict, catalog_items: list, catalog_id: str, user: dict) -> dict:
     """Export products to Magento with full product data"""
-    
+
     client = MagentoClient(
         store_url=config.get("store_url", ""),
         access_token=config.get("access_token", "")
     )
-    
+
     created = 0
     updated = 0
     failed = 0
     errors = []
-    
+
     # Get products data
     product_ids = [item["product_id"] for item in catalog_items]
     products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
     products_map = {p["id"]: p for p in products}
-    
+
     # Get existing products from Magento by SKU
     existing_products = client.get_products(limit=500)
     existing_skus = {p.get("sku", ""): True for p in existing_products}
-    
+
     # Get margin rules
-    margin_rules = await db.margin_rules.find({"catalog_id": config.get("catalog_id")}, {"_id": 0}).to_list(100)
-    margin_rules.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
     
     for item in catalog_items:
         product = products_map.get(item["product_id"])
@@ -823,32 +820,31 @@ async def export_to_magento(config: dict, catalog_items: list, user: dict) -> di
     }
 
 
-async def export_to_wix(config: dict, catalog_items: list, user: dict) -> dict:
+async def export_to_wix(config: dict, catalog_items: list, catalog_id: str, user: dict) -> dict:
     """Export products to Wix with full product data"""
-    
+
     client = WixClient(
         store_url=config.get("store_url", ""),
         api_key=config.get("api_key", ""),
         site_id=config.get("site_id", "")
     )
-    
+
     created = 0
     updated = 0
     failed = 0
     errors = []
-    
+
     # Get products data
     product_ids = [item["product_id"] for item in catalog_items]
     products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
     products_map = {p["id"]: p for p in products}
-    
+
     # Get existing products from Wix by SKU
     existing_products = client.get_products(limit=500)
     existing_skus = {p.get("sku", ""): p.get("id") for p in existing_products if p.get("sku")}
-    
+
     # Get margin rules
-    margin_rules = await db.margin_rules.find({"catalog_id": config.get("catalog_id")}, {"_id": 0}).to_list(100)
-    margin_rules.sort(key=lambda x: x.get("priority", 0), reverse=True)
+    margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
     
     for item in catalog_items:
         product = products_map.get(item["product_id"])
