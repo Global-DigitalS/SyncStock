@@ -795,7 +795,7 @@ const StoresPage = () => {
                 'bg-rose-50 border-rose-200'
               }`}>
                 <p className="font-medium mb-2">Resultado:</p>
-                <div className="grid grid-cols-3 gap-4 text-center">
+                <div className="grid grid-cols-3 gap-4 text-center mb-3">
                   <div>
                     <p className="text-2xl font-bold text-emerald-600">{exportResult.created}</p>
                     <p className="text-xs text-slate-600">Creados</p>
@@ -809,6 +809,16 @@ const StoresPage = () => {
                     <p className="text-xs text-slate-600">Errores</p>
                   </div>
                 </div>
+                {exportResult.errors?.length > 0 && (
+                  <div className="mt-2 border-t border-rose-200 pt-2">
+                    <p className="text-xs font-semibold text-rose-700 mb-1">Detalle de errores:</p>
+                    <div className="max-h-32 overflow-y-auto space-y-1">
+                      {exportResult.errors.map((err, i) => (
+                        <p key={i} className="text-xs text-rose-600 font-mono bg-rose-100 px-2 py-1 rounded break-all">{err}</p>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
