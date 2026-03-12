@@ -1027,6 +1027,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     supplier_hdr = 1 if _sup_hdr_raw is None else int(_sup_hdr_raw)
     _sup_sep = supplier.get('csv_separator') or ';'
     supplier_sep = '\t' if _sup_sep == '\\t' else _sup_sep
+    strip_ean_quotes = supplier.get('strip_ean_quotes', False)
 
     for file_config in ftp_paths:
         file_path = await resolve_latest_file(supplier, file_config)
@@ -1154,9 +1155,9 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
 
             column_mapping = supplier.get('column_mapping')
             if column_mapping:
-                normalized = apply_column_mapping(merged, column_mapping)
+                normalized = apply_column_mapping(merged, column_mapping, strip_ean_quotes)
             else:
-                normalized = normalize_product_data(merged)
+                normalized = normalize_product_data(merged, strip_ean_quotes)
 
             sku = normalized.get('sku') or prod_id
             name = normalized.get('name', '')
