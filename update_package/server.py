@@ -106,7 +106,7 @@ async def lifespan(app: FastAPI):
     scheduler.shutdown()
 
 
-app = FastAPI(title="SupplierSync Pro", lifespan=lifespan)
+app = FastAPI(title="SyncStock", lifespan=lifespan)
 
 # Main API router with /api prefix
 api_router = APIRouter(prefix="/api")

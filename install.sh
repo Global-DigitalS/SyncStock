@@ -7,11 +7,11 @@
 #         USAGE: sudo bash install.sh
 #                sudo bash install.sh --fix-plesk
 #
-#   DESCRIPTION: Script de instalación automática de SupplierSync Pro
+#   DESCRIPTION: Script de instalación automática de SyncStock
 #                Optimizado para Plesk Obsidian con Document Root en app/
 #
 #       VERSION: 2.0.0
-#        AUTHOR: SupplierSync Pro
+#        AUTHOR: SyncStock
 #
 #===============================================================================
 
@@ -31,7 +31,7 @@ NC='\033[0m' # No Color
 #-------------------------------------------------------------------------------
 # Variables de configuración
 #-------------------------------------------------------------------------------
-APP_NAME="suppliersync"
+APP_NAME="syncstock"
 APP_DIR=""
 DOMAIN=""
 INSTALL_MONGODB="no"
@@ -45,7 +45,7 @@ PLESK_USER=""
 print_header() {
     echo ""
     echo -e "${PURPLE}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${PURPLE}║${NC}        ${CYAN}SupplierSync Pro - Instalación Automática${NC}            ${PURPLE}║${NC}"
+    echo -e "${PURPLE}║${NC}        ${CYAN}SyncStock - Instalación Automática${NC}            ${PURPLE}║${NC}"
     echo -e "${PURPLE}║${NC}              ${YELLOW}Optimizado para Plesk Obsidian${NC}                 ${PURPLE}║${NC}"
     echo -e "${PURPLE}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
@@ -405,7 +405,7 @@ setup_backend() {
     
     # Verificar si existe configuración persistente
     # Usar directorio específico por dominio
-    PERSISTENT_CONFIG_DIR="/etc/suppliersync/$DOMAIN"
+    PERSISTENT_CONFIG_DIR="/etc/syncstock/$DOMAIN"
     PERSISTENT_CONFIG="$PERSISTENT_CONFIG_DIR/config.json"
     
     mkdir -p "$PERSISTENT_CONFIG_DIR"
@@ -417,7 +417,7 @@ setup_backend() {
         # Extraer MONGO_URL y DB_NAME de la configuración existente para el .env
         if command -v python3 &> /dev/null; then
             EXISTING_MONGO=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('mongo_url',''))" 2>/dev/null || echo "")
-            EXISTING_DB=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('db_name','supplier_sync_db'))" 2>/dev/null || echo "supplier_sync_db")
+            EXISTING_DB=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('db_name','syncstock_db'))" 2>/dev/null || echo "syncstock_db")
             
             if [ -n "$EXISTING_MONGO" ]; then
                 MONGODB_URL="$EXISTING_MONGO"
@@ -432,7 +432,7 @@ setup_backend() {
     # Crear archivo .env para el backend
     cat > .env << EOF
 MONGO_URL=${MONGODB_URL:-mongodb://localhost:27017}
-DB_NAME=${EXISTING_DB:-supplier_sync_db}
+DB_NAME=${EXISTING_DB:-syncstock_db}
 CORS_ORIGINS=https://$DOMAIN,https://www.$DOMAIN
 CONFIG_PATH=$PERSISTENT_CONFIG
 EOF
@@ -934,7 +934,7 @@ fix_plesk() {
     mkdir -p "$PLESK_NGINX_DIR"
     
     cat > "$PLESK_NGINX_DIR/nginx_custom.conf" << 'NGINX_EOF'
-# SupplierSync Pro - Configuración para Plesk
+# SyncStock - Configuración para Plesk
 # Document Root: app/frontend/build
 # Nota: Usamos HashRouter, no se requiere configuración especial para SPA
 
@@ -1060,7 +1060,7 @@ case "${1:-}" in
         ;;
     --help|-h)
         echo ""
-        echo "SupplierSync Pro - Script de Instalación"
+        echo "SyncStock - Script de Instalación"
         echo ""
         echo "Uso:"
         echo "  sudo bash install.sh              Instalación completa"

@@ -110,7 +110,7 @@ Si no estás satisfecho con nuestra respuesta, tienes derecho a presentar una re
 export default function Privacy() {
   const { branding, theme } = useApp();
   const dark = theme === "dark";
-  const appName = branding.app_name || "StockHUB";
+  const appName = branding.app_name || "SyncStock";
   const today = new Date().toLocaleDateString("es-ES", { year: "numeric", month: "long", day: "numeric" });
 
   const render = (text) => text.replace(/{app_name}/g, appName);

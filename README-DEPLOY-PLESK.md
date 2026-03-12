@@ -1,6 +1,6 @@
-# Guía de Despliegue en Plesk - SupplierSync Pro
+# Guía de Despliegue en Plesk - SyncStock
 
-Esta guía detalla cómo desplegar SupplierSync Pro en un servidor Plesk. **Toda la configuración se realiza desde la interfaz web** - no necesitas editar archivos de configuración manualmente.
+Esta guía detalla cómo desplegar SyncStock en un servidor Plesk. **Toda la configuración se realiza desde la interfaz web** - no necesitas editar archivos de configuración manualmente.
 
 ## Índice
 1. [Requisitos Previos](#requisitos-previos)
@@ -43,7 +43,7 @@ python3 -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 
 # 3. Crear servicio (ver sección Backend)
-sudo systemctl enable --now suppliersync-backend
+sudo systemctl enable --now syncstock-backend
 
 # 4. Frontend
 cd ../frontend
@@ -71,13 +71,13 @@ pip install -r requirements.txt
 
 ### 2. Crear el servicio systemd
 ```bash
-sudo nano /etc/systemd/system/suppliersync-backend.service
+sudo nano /etc/systemd/system/syncstock-backend.service
 ```
 
 Contenido:
 ```ini
 [Unit]
-Description=SupplierSync Pro Backend
+Description=SyncStock Backend
 After=network.target
 
 [Service]
@@ -96,14 +96,14 @@ WantedBy=multi-user.target
 ### 3. Iniciar el servicio
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl enable suppliersync-backend
-sudo systemctl start suppliersync-backend
+sudo systemctl enable syncstock-backend
+sudo systemctl start syncstock-backend
 ```
 
 ### 4. Verificar
 ```bash
 curl http://localhost:8001/health
-# Respuesta: {"status": "healthy", "service": "SupplierSync Pro API"}
+# Respuesta: {"status": "healthy", "service": "SyncStock API"}
 ```
 
 **⚠️ NOTA IMPORTANTE**: No necesitas crear ningún archivo `.env`. Toda la configuración (MongoDB, JWT, CORS) se realiza desde la interfaz web en el primer acceso.
@@ -190,7 +190,7 @@ Al acceder a `https://tu-dominio.com` por primera vez, serás redirigido automá
    - MongoDB Local: `mongodb://localhost:27017`
    - MongoDB Atlas: `mongodb+srv://usuario:contraseña@cluster.mongodb.net`
 
-2. **Nombre de la base de datos**: Por defecto `supplier_sync_db`
+2. **Nombre de la base de datos**: Por defecto `syncstock_db`
 
 3. **Probar Conexión**: Verifica que la conexión funciona antes de continuar
 
@@ -232,7 +232,7 @@ Respuesta cuando está configurado:
   "is_configured": true,
   "has_database": true,
   "has_superadmin": true,
-  "database_name": "supplier_sync_db",
+  "database_name": "syncstock_db",
   "message": "Aplicación configurada correctamente."
 }
 ```
@@ -244,7 +244,7 @@ Respuesta cuando está configurado:
 ### El backend no inicia
 ```bash
 # Ver logs
-sudo journalctl -u suppliersync-backend -f
+sudo journalctl -u syncstock-backend -f
 
 # Verificar permisos
 sudo chown -R www-data:www-data /var/www/vhosts/tu-dominio.com/app/backend
@@ -268,7 +268,7 @@ Si ya existe configuración pero no puedes acceder:
 1. Eliminar el archivo de configuración para resetear:
    ```bash
    rm /var/www/vhosts/tu-dominio.com/app/backend/config.json
-   sudo systemctl restart suppliersync-backend
+   sudo systemctl restart syncstock-backend
    ```
 
 2. Acceder a `https://tu-dominio.com/setup`
@@ -297,7 +297,7 @@ Estructura del archivo (se genera automáticamente):
 ```json
 {
   "mongo_url": "mongodb://...",
-  "db_name": "supplier_sync_db",
+  "db_name": "syncstock_db",
   "jwt_secret": "...(generado automáticamente)...",
   "cors_origins": "*",
   "is_configured": true
@@ -312,10 +312,10 @@ Estructura del archivo (se genera automáticamente):
 
 ```bash
 # Reiniciar backend
-sudo systemctl restart suppliersync-backend
+sudo systemctl restart syncstock-backend
 
 # Ver logs en tiempo real
-sudo journalctl -u suppliersync-backend -f
+sudo journalctl -u syncstock-backend -f
 
 # Reiniciar Nginx
 sudo systemctl reload nginx
@@ -324,7 +324,7 @@ sudo systemctl reload nginx
 cd /var/www/vhosts/tu-dominio.com/app
 git pull
 cd backend && source venv/bin/activate && pip install -r requirements.txt
-sudo systemctl restart suppliersync-backend
+sudo systemctl restart syncstock-backend
 cd ../frontend && yarn install && yarn build
 ```
 
@@ -352,6 +352,6 @@ cd ../frontend && yarn install && yarn build
 
 ---
 
-**SupplierSync Pro** - Gestión inteligente de catálogos de proveedores
+**SyncStock** - Gestión inteligente de catálogos de proveedores
 
 © 2026 - Toda la configuración desde la web, sin archivos de configuración manuales.

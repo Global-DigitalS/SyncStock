@@ -1,4 +1,4 @@
-# SupplierSync Pro - Product Requirements Document (PRD)
+# SyncStock - Product Requirements Document (PRD)
 
 ## Descripción del Producto
 Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite descargar archivos de productos desde FTP/SFTP o URL, crear catálogos personalizados con reglas de márgenes, y exportar a múltiples plataformas de eCommerce.
@@ -312,9 +312,9 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
     - Sidebar: Nuevo enlace "Sincronización"
 
 ### Sistema de Configuración (Actualizado 2026-03-03)
-- [x] **Configuración persistente** en `/etc/suppliersync/config.json`
+- [x] **Configuración persistente** en `/etc/syncstock/config.json`
 - [x] **Migración automática** de configuración antigua
-- [x] **Backups automáticos** en `/etc/suppliersync/backups/`
+- [x] **Backups automáticos** en `/etc/syncstock/backups/`
 - [x] **Scripts de instalación/actualización** que preservan configuración
 - [x] Endpoints de gestión de configuración:
   - `GET /api/setup/status` - Estado de configuración
@@ -338,7 +338,7 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 - **Backend:** FastAPI en puerto 8001 (systemd service)
 - **Frontend:** React build en `/var/www/vhosts/menuboard.es/app/frontend/build`
 - **MongoDB:** Docker container con autenticación
-- **Configuración:** `/etc/suppliersync/config.json` (persistente)
+- **Configuración:** `/etc/syncstock/config.json` (persistente)
 
 ### IMPORTANTE: Configuración de Nginx en Plesk
 Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualmente:
@@ -426,7 +426,7 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 ├── update.sh            # Actualizaciones
 └── README.md
 
-/etc/suppliersync/        # Configuración persistente
+/etc/syncstock/        # Configuración persistente
 ├── config.json          # Config principal
 └── backups/             # Backups automáticos
 ```
@@ -556,7 +556,7 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 - ✅ Actualizado `install.sh` para detectar automáticamente subdominios (ej: app.sync-stock.com)
 - ✅ Añadido soporte para múltiples instalaciones con puertos dinámicos (8001, 8002, etc.)
 - ✅ Cada instalación ahora tiene su propio servicio systemd con nombre único
-- ✅ Configuración persistente ahora separada por dominio (`/etc/suppliersync/DOMINIO/`)
+- ✅ Configuración persistente ahora separada por dominio (`/etc/syncstock/DOMINIO/`)
 - ✅ Mejorado el sistema de recarga de conexión MongoDB (`reload_database_config()`)
 - ✅ Nuevo endpoint `POST /api/setup/reload-database` para recargar config sin reiniciar
 

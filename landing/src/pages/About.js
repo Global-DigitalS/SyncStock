@@ -4,7 +4,7 @@ import { useApp } from "../context/AppContext";
 import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
 
 const DEFAULT_TIMELINE = [
-  { year: "2022", title: "Fundación", description: "StockHUB nace de la frustración de gestionar proveedores con hojas de cálculo. El primer MVP conecta 3 proveedores con WooCommerce." },
+  { year: "2022", title: "Fundación", description: "SyncStock nace de la frustración de gestionar proveedores con hojas de cálculo. El primer MVP conecta 3 proveedores con WooCommerce." },
   { year: "2023", title: "Primeros 100 clientes", description: "Lanzamos soporte para PrestaShop, Shopify y la integración con Dolibarr. La comunidad crece hasta 100 empresas activas." },
   { year: "2024", title: "CRM y Odoo", description: "Añadimos integración Odoo XML-RPC, sincronización automática programada y el panel de analíticas avanzadas." },
   { year: "2025", title: "+500 empresas", description: "Superamos los 500 clientes activos. Lanzamos la API pública y los webhooks salientes para integraciones personalizadas." },
@@ -72,7 +72,7 @@ export default function About() {
               </h2>
               <div className={cn("space-y-4 text-base leading-relaxed", dark ? "text-slate-300" : "text-slate-600")}>
                 <p>
-                  {about.story || "Fundada en 2022, StockHUB nació de la frustración de gestionar docenas de proveedores con hojas de cálculo. Hoy ayudamos a más de 500 empresas a automatizar sus catálogos."}
+                  {about.story || "Fundada en 2022, SyncStock nació de la frustración de gestionar docenas de proveedores con hojas de cálculo. Hoy ayudamos a más de 500 empresas a automatizar sus catálogos."}
                 </p>
                 <p>
                   Cada día, miles de productos se sincronizan a través de nuestra plataforma entre proveedores y tiendas online en toda Europa. Lo que empezó como una solución para un problema concreto, se ha convertido en la plataforma de referencia para la gestión de inventario B2B.

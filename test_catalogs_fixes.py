@@ -9,7 +9,7 @@ from pathlib import Path
 
 def test_catalog_imports():
     """Test that all imports are present"""
-    with open("vscode-vfs://github/Global-DigitalS/StockHUB3/backend/routes/catalogs.py", "r") as f:
+    with open("vscode-vfs://github/Global-DigitalS/SyncStock/backend/routes/catalogs.py", "r") as f:
         content = f.read()
     
     required_imports = [
@@ -37,7 +37,7 @@ def test_catalog_imports():
 
 def test_database_collection_references():
     """Test that all database references use correct collection names"""
-    with open("vscode-vfs://github/Global-DigitalS/StockHUB3/backend/routes/catalogs.py", "r") as f:
+    with open("vscode-vfs://github/Global-DigitalS/SyncStock/backend/routes/catalogs.py", "r") as f:
         content = f.read()
     
     print("\n" + "=" * 60)
@@ -88,7 +88,7 @@ def test_database_collection_references():
 
 def test_function_definitions():
     """Test that all expected endpoints are defined"""
-    with open("vscode-vfs://github/Global-DigitalS/StockHUB3/backend/routes/catalogs.py", "r") as f:
+    with open("vscode-vfs://github/Global-DigitalS/SyncStock/backend/routes/catalogs.py", "r") as f:
         content = f.read()
     
     print("\n" + "=" * 60)
@@ -127,7 +127,7 @@ def test_function_definitions():
 
 def test_error_handling():
     """Test that proper error handling is in place"""
-    with open("vscode-vfs://github/Global-DigitalS/StockHUB3/backend/routes/catalogs.py", "r") as f:
+    with open("vscode-vfs://github/Global-DigitalS/SyncStock/backend/routes/catalogs.py", "r") as f:
         content = f.read()
     
     print("\n" + "=" * 60)
@@ -163,7 +163,7 @@ def test_error_handling():
 
 def test_response_models():
     """Test that response models are used correctly"""
-    with open("vscode-vfs://github/Global-DigitalS/StockHUB3/backend/routes/catalogs.py", "r") as f:
+    with open("vscode-vfs://github/Global-DigitalS/SyncStock/backend/routes/catalogs.py", "r") as f:
         content = f.read()
     
     print("\n" + "=" * 60)

@@ -43,7 +43,7 @@ const EmailConfig = () => {
     smtp_user: "",
     smtp_password: "",
     smtp_from_email: "",
-    smtp_from_name: "SupplierSync Pro",
+    smtp_from_name: "SyncStock",
     smtp_use_tls: true,
     smtp_use_ssl: false
   });
@@ -64,7 +64,7 @@ const EmailConfig = () => {
         smtp_user: res.data.smtp_user || "",
         smtp_password: "",
         smtp_from_email: res.data.smtp_from_email || "",
-        smtp_from_name: res.data.smtp_from_name || "SupplierSync Pro",
+        smtp_from_name: res.data.smtp_from_name || "SyncStock",
         smtp_use_tls: res.data.smtp_use_tls ?? true,
         smtp_use_ssl: res.data.smtp_use_ssl ?? false
       });
@@ -355,7 +355,7 @@ const EmailConfig = () => {
                   <Input
                     value={config.smtp_from_name}
                     onChange={(e) => setConfig({ ...config, smtp_from_name: e.target.value })}
-                    placeholder="SupplierSync Pro"
+                    placeholder="SyncStock"
                     className="input-base"
                     data-testid="smtp-from-name"
                   />

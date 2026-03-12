@@ -37,7 +37,7 @@ class SetupStatus(BaseModel):
 
 class SetupRequest(BaseModel):
     mongo_url: str
-    db_name: str = "supplier_sync_db"
+    db_name: str = "syncstock_db"
     jwt_secret: str = ""  # Si vacío, se genera automáticamente
     cors_origins: str = "*"
     admin_email: EmailStr
@@ -50,7 +50,7 @@ class SetupRequest(BaseModel):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from_email: str = ""
-    smtp_from_name: str = "SupplierSync Pro"
+    smtp_from_name: str = "SyncStock"
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
 
@@ -249,7 +249,7 @@ async def configure_app(setup: SetupRequest):
             try:
                 # Intentar reiniciar el servicio systemd con sudo
                 result = subprocess.run(
-                    ['sudo', 'systemctl', 'restart', 'suppliersync-backend'], 
+                    ['sudo', 'systemctl', 'restart', 'syncstock-backend'], 
                     capture_output=True, 
                     timeout=15
                 )
@@ -258,7 +258,7 @@ async def configure_app(setup: SetupRequest):
                 else:
                     # Intentar sin sudo (por si el usuario tiene permisos)
                     subprocess.run(
-                        ['systemctl', 'restart', 'suppliersync-backend'], 
+                        ['systemctl', 'restart', 'syncstock-backend'], 
                         capture_output=True, 
                         timeout=15
                     )
@@ -272,7 +272,7 @@ async def configure_app(setup: SetupRequest):
                     logger.info("Backend service restarted via supervisorctl")
                 except Exception as e2:
                     logger.warning(f"Could not restart via supervisorctl: {e2}")
-                    logger.info("Manual restart may be required: sudo systemctl restart suppliersync-backend")
+                    logger.info("Manual restart may be required: sudo systemctl restart syncstock-backend")
         
         # Iniciar la recarga/reinicio en un hilo separado
         restart_thread = threading.Thread(target=reload_and_restart, daemon=True)
@@ -313,7 +313,7 @@ async def test_mongo_connection(data: dict):
     from motor.motor_asyncio import AsyncIOMotorClient
     
     mongo_url = data.get("mongo_url", "")
-    db_name = data.get("db_name", "supplier_sync_db")
+    db_name = data.get("db_name", "syncstock_db")
     
     if not mongo_url:
         return {"success": False, "message": "URL de MongoDB requerida"}

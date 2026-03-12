@@ -36,7 +36,7 @@ class DatabaseManager:
         """
         Obtiene la configuración de MongoDB.
         Prioridad:
-        1. Archivo config.json persistente (/etc/suppliersync/)
+        1. Archivo config.json persistente (/etc/syncstock/)
         2. Variables de entorno
         3. Valores por defecto (solo para desarrollo local)
         """
@@ -46,7 +46,7 @@ class DatabaseManager:
             config = get_config()
             if config.mongo_url and config.mongo_url.strip() and config.is_configured:
                 logger.info("Using MongoDB config from config.json")
-                return config.mongo_url, config.db_name or 'supplier_sync_db'
+                return config.mongo_url, config.db_name or 'syncstock_db'
         except ImportError:
             pass
         except Exception as e:
@@ -58,11 +58,11 @@ class DatabaseManager:
         
         if env_mongo_url:
             logger.info("Using MONGO_URL from environment variables")
-            return env_mongo_url, env_db_name or 'supplier_sync_db'
+            return env_mongo_url, env_db_name or 'syncstock_db'
         
         # Último recurso: localhost (desarrollo)
         logger.info("Using default localhost MongoDB config")
-        return 'mongodb://localhost:27017', 'supplier_sync_db'
+        return 'mongodb://localhost:27017', 'syncstock_db'
     
     def _initialize(self):
         """Inicializa o reinicializa la conexión a MongoDB."""

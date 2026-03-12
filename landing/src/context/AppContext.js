@@ -5,7 +5,7 @@ const API_URL = process.env.REACT_APP_API_URL || "https://api.sync-stock.com";
 const APP_URL = process.env.REACT_APP_APP_URL || "https://app.sync-stock.com";
 
 const defaultBranding = {
-  app_name: "StockHUB",
+  app_name: "SyncStock",
   app_slogan: "Sincronización de Inventario B2B",
   logo_url: null,
   favicon_url: null,
@@ -13,7 +13,7 @@ const defaultBranding = {
   secondary_color: "#0f172a",
   accent_color: "#10b981",
   footer_text: "",
-  page_title: "StockHUB — Sincronización de Inventario B2B Automatizada",
+  page_title: "SyncStock — Sincronización de Inventario B2B Automatizada",
   hero_title: "Gestiona tu inventario de forma inteligente",
   hero_subtitle: "Sincroniza proveedores, configura márgenes y exporta a tu tienda online en minutos.",
 };
@@ -116,12 +116,12 @@ const defaultContent = {
     { name: "Stripe", icon: "Lock", category: "Pagos" },
   ],
   how_it_works: [
-    { step: 1, title: "Conecta tus proveedores", description: "Añade fuentes de datos FTP, SFTP, URL, CSV o Excel. StockHUB importa y mapea automáticamente los campos del catálogo." },
+    { step: 1, title: "Conecta tus proveedores", description: "Añade fuentes de datos FTP, SFTP, URL, CSV o Excel. SyncStock importa y mapea automáticamente los campos del catálogo." },
     { step: 2, title: "Configura tus catálogos", description: "Define reglas de margen, filtra productos y organiza múltiples catálogos para diferentes canales de venta." },
     { step: 3, title: "Publica en tus tiendas", description: "Sincroniza automáticamente con WooCommerce, Shopify, PrestaShop y tu CRM. Siempre actualizado." },
   ],
   testimonials: [
-    { quote: "StockHUB nos ha ahorrado más de 20 horas semanales en gestión de catálogos. Increíble.", author: "María García", role: "CEO, TechStore España", avatar: null, rating: 5 },
+    { quote: "SyncStock nos ha ahorrado más de 20 horas semanales en gestión de catálogos. Increíble.", author: "María García", role: "CEO, TechStore España", avatar: null, rating: 5 },
     { quote: "La sincronización con Dolibarr funciona perfectamente. Sin errores y en tiempo real.", author: "Carlos López", role: "Director Operaciones, Distribuciones López", avatar: null, rating: 5 },
     { quote: "Gestionamos 15 proveedores y 3 tiendas desde un panel. Antes era un caos total.", author: "Ana Martínez", role: "Gestora de Compras, Comercial Martínez SL", avatar: null, rating: 5 },
   ],
@@ -137,16 +137,16 @@ const defaultContent = {
   ],
   cta_final: {
     title: "¿Listo para automatizar tu negocio?",
-    subtitle: "Únete a cientos de empresas que ya optimizan su gestión de inventario con StockHUB",
+    subtitle: "Únete a cientos de empresas que ya optimizan su gestión de inventario con SyncStock",
     button_text: "Comenzar Prueba Gratuita",
   },
   footer: {
-    company_description: "StockHUB es la plataforma líder en sincronización de inventarios para eCommerce B2B.",
+    company_description: "SyncStock es la plataforma líder en sincronización de inventarios para eCommerce B2B.",
     social: { twitter: "", linkedin: "", facebook: "" },
   },
   about: {
     mission: "Nuestra misión es eliminar el trabajo manual en la gestión de inventarios B2B, permitiendo a las empresas centrarse en lo que realmente importa: vender y crecer.",
-    story: "Fundada en 2022, StockHUB nació de la frustración de gestionar docenas de proveedores con hojas de cálculo. Hoy ayudamos a más de 500 empresas a automatizar sus catálogos.",
+    story: "Fundada en 2022, SyncStock nació de la frustración de gestionar docenas de proveedores con hojas de cálculo. Hoy ayudamos a más de 500 empresas a automatizar sus catálogos.",
     values: [
       { title: "Automatización", description: "Eliminamos tareas repetitivas para que tu equipo se enfoque en el negocio." },
       { title: "Fiabilidad", description: "Nuestros sistemas funcionan 24/7 con una disponibilidad del 99.9%." },
@@ -154,7 +154,7 @@ const defaultContent = {
       { title: "Privacidad", description: "Tus datos son tuyos. Nunca los compartimos ni los usamos para publicidad." },
     ],
     team: [
-      { name: "Equipo StockHUB", role: "Desarrolladores & Soporte", description: "Un equipo apasionado por la automatización y el eCommerce B2B." },
+      { name: "Equipo SyncStock", role: "Desarrolladores & Soporte", description: "Un equipo apasionado por la automatización y el eCommerce B2B." },
     ],
   },
 };

@@ -70,9 +70,9 @@ const AdminEmailAccounts = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("transactional");
   const [configs, setConfigs] = useState({
-    transactional: { ...defaultConfig, smtp_from_name: "SupplierSync" },
-    support: { ...defaultConfig, smtp_from_name: "Soporte SupplierSync" },
-    billing: { ...defaultConfig, smtp_from_name: "Facturación SupplierSync" }
+    transactional: { ...defaultConfig, smtp_from_name: "SyncStock" },
+    support: { ...defaultConfig, smtp_from_name: "Soporte SyncStock" },
+    billing: { ...defaultConfig, smtp_from_name: "Facturación SyncStock" }
   });
   const [showPasswords, setShowPasswords] = useState({});
   const [saving, setSaving] = useState({});

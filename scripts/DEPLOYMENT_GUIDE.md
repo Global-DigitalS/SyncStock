@@ -26,7 +26,7 @@ cat diagnostico.txt
 
 ```bash
 # Logs del backend (systemd)
-journalctl -u suppliersync-backend -f --no-pager -n 100
+journalctl -u syncstock-backend -f --no-pager -n 100
 
 # Si usas supervisor
 tail -f /var/log/supervisor/backend.err.log
@@ -73,7 +73,7 @@ APP_DIR=/var/www/vhosts/app.sync-stock.com/app ./scripts/update.sh
 cd /var/www/vhosts/app.sync-stock.com/app
 
 # 2. Detener servicio
-sudo systemctl stop suppliersync-backend
+sudo systemctl stop syncstock-backend
 
 # 3. Hacer backup
 tar -czf /var/backups/syncstock_$(date +%Y%m%d).tar.gz .
@@ -95,7 +95,7 @@ REACT_APP_BACKEND_URL=https://app.sync-stock.com yarn build
 cd ..
 
 # 7. Reiniciar servicio
-sudo systemctl start suppliersync-backend
+sudo systemctl start syncstock-backend
 
 # 8. Verificar
 curl http://localhost:8001/api/health
@@ -167,7 +167,7 @@ sudo systemctl reload nginx
 **Solución:**
 ```bash
 # 1. Verificar logs
-journalctl -u suppliersync-backend -n 50 --no-pager
+journalctl -u syncstock-backend -n 50 --no-pager
 
 # 2. Verificar MongoDB
 cd /var/www/vhosts/app.sync-stock.com/app/backend
@@ -182,7 +182,7 @@ asyncio.run(test())
 "
 
 # 3. Reiniciar servicio
-sudo systemctl restart suppliersync-backend
+sudo systemctl restart syncstock-backend
 ```
 
 ### WebSocket no conecta

@@ -1,8 +1,8 @@
-# Resumen de Integración de Odoo 17 en StockHUB3
+# Resumen de Integración de Odoo 17 en SyncStock
 
 ## Estado: ✅ COMPLETADO
 
-Se ha implementado exitosamente una integración completa de Odoo 17 como nuevo CRM en StockHUB3, mantiendo la misma arquitectura y patrones que la integración existente con Dolibarr.
+Se ha implementado exitosamente una integración completa de Odoo 17 como nuevo CRM en SyncStock, mantiendo la misma arquitectura y patrones que la integración existente con Dolibarr.
 
 ---
 
@@ -67,13 +67,13 @@ Se ha implementado exitosamente una integración completa de Odoo 17 como nuevo 
 Tres funciones nuevas implementadas:
 
 **`async def sync_products_to_odoo()`** 
-- Sincroniza productos desde StockHUB3 a Odoo
+- Sincroniza productos desde SyncStock a Odoo
 - Soporta catálogos específicos y margin rules
 - Crea nuevos productos o actualiza existentes
 - Sincroniza imágenes y stock
 
 **`async def sync_suppliers_to_odoo()`**
-- Sincroniza proveedores desde StockHUB3 a Odoo
+- Sincroniza proveedores desde SyncStock a Odoo
 - Crea nuevos partners o actualiza existentes
 
 **`async def sync_orders_to_odoo()`**
@@ -261,13 +261,13 @@ async def sync_products_to_odoo(
     catalog_id: str = None,
     sync_job_id: str = None
 ) -> Dict:
-    # Syncs products from StockHUB3 to Odoo
+    # Syncs products from SyncStock to Odoo
     
 async def sync_suppliers_to_odoo(
     client: OdooClient,
     user_id: str
 ) -> Dict:
-    # Syncs suppliers from StockHUB3 to Odoo
+    # Syncs suppliers from SyncStock to Odoo
 
 async def sync_orders_to_odoo(
     client: OdooClient,
@@ -300,7 +300,7 @@ async def sync_orders_to_odoo(
    - Ejecutar test-connection
 
 2. **Prueba de sincronización**
-   - Crear catálogo de prueba en StockHUB3
+   - Crear catálogo de prueba en SyncStock
    - Sincronizar productos a Odoo
    - Verificar creación en Odoo
 

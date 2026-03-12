@@ -6,11 +6,11 @@
 #
 #         USAGE: sudo bash update.sh
 #
-#   DESCRIPTION: Script de actualización de SupplierSync Pro
+#   DESCRIPTION: Script de actualización de SyncStock
 #                Preserva la configuración existente (MongoDB, SuperAdmin, etc.)
 #
 #       VERSION: 1.0.0
-#        AUTHOR: SupplierSync Pro
+#        AUTHOR: SyncStock
 #
 #===============================================================================
 
@@ -30,9 +30,9 @@ NC='\033[0m' # No Color
 #-------------------------------------------------------------------------------
 # Variables
 #-------------------------------------------------------------------------------
-APP_NAME="suppliersync"
-PERSISTENT_CONFIG="/etc/suppliersync/config.json"
-BACKUP_DIR="/etc/suppliersync/backups"
+APP_NAME="syncstock"
+PERSISTENT_CONFIG="/etc/syncstock/config.json"
+BACKUP_DIR="/etc/syncstock/backups"
 
 #-------------------------------------------------------------------------------
 # Funciones de utilidad
@@ -40,7 +40,7 @@ BACKUP_DIR="/etc/suppliersync/backups"
 print_header() {
     echo ""
     echo -e "${PURPLE}╔════════════════════════════════════════════════════════════════╗${NC}"
-    echo -e "${PURPLE}║${NC}        ${CYAN}SupplierSync Pro - Actualización${NC}                       ${PURPLE}║${NC}"
+    echo -e "${PURPLE}║${NC}        ${CYAN}SyncStock - Actualización${NC}                       ${PURPLE}║${NC}"
     echo -e "${PURPLE}║${NC}              ${YELLOW}Preserva tu configuración${NC}                       ${PURPLE}║${NC}"
     echo -e "${PURPLE}╚════════════════════════════════════════════════════════════════╝${NC}"
     echo ""
@@ -172,14 +172,14 @@ detect_installation() {
     fi
     
     # Configuración persistente por dominio
-    PERSISTENT_CONFIG_DIR="/etc/suppliersync/$DOMAIN"
+    PERSISTENT_CONFIG_DIR="/etc/syncstock/$DOMAIN"
     PERSISTENT_CONFIG="$PERSISTENT_CONFIG_DIR/config.json"
     BACKUP_DIR="$PERSISTENT_CONFIG_DIR/backups"
     
     # Fallback a configuración antigua si no existe la nueva
-    if [ ! -f "$PERSISTENT_CONFIG" ] && [ -f "/etc/suppliersync/config.json" ]; then
-        PERSISTENT_CONFIG="/etc/suppliersync/config.json"
-        BACKUP_DIR="/etc/suppliersync/backups"
+    if [ ! -f "$PERSISTENT_CONFIG" ] && [ -f "/etc/syncstock/config.json" ]; then
+        PERSISTENT_CONFIG="/etc/syncstock/config.json"
+        BACKUP_DIR="/etc/syncstock/backups"
     fi
     
     print_success "Instalación encontrada en: $APP_DIR"
@@ -314,7 +314,7 @@ update_backend() {
         # Extraer valores para actualizar .env
         if command -v python3 &> /dev/null; then
             MONGO_URL=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('mongo_url',''))" 2>/dev/null || echo "")
-            DB_NAME=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('db_name','supplier_sync_db'))" 2>/dev/null || echo "supplier_sync_db")
+            DB_NAME=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('db_name','syncstock_db'))" 2>/dev/null || echo "syncstock_db")
             CORS=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('cors_origins','*'))" 2>/dev/null || echo "*")
             
             if [ -n "$MONGO_URL" ]; then
@@ -344,7 +344,7 @@ EOF
             journalctl -u ${SERVICE_NAME} --no-pager -n 20
         fi
     else
-        # Intentar con nombre antiguo (suppliersync-backend)
+        # Intentar con nombre antiguo (syncstock-backend)
         if systemctl is-enabled --quiet ${APP_NAME}-backend 2>/dev/null; then
             print_warning "Usando nombre de servicio antiguo: ${APP_NAME}-backend"
             systemctl restart ${APP_NAME}-backend
@@ -520,7 +520,7 @@ verify_update() {
     
     # Verificar configuración
     if [ -f "$PERSISTENT_CONFIG" ]; then
-        print_success "Configuración: Persistente (/etc/suppliersync/)"
+        print_success "Configuración: Persistente (/etc/syncstock/)"
         
         # Verificar que la configuración es válida
         if python3 -c "import json; json.load(open('$PERSISTENT_CONFIG'))" 2>/dev/null; then

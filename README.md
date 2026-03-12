@@ -1,4 +1,4 @@
-# SupplierSync Pro - Guía de Instalación
+# SyncStock - Guía de Instalación
 
 ## Instalación Automática (Recomendado)
 
@@ -81,13 +81,13 @@ location /health {
 
 La configuración (MongoDB, JWT, SMTP, etc.) se guarda en:
 ```
-/etc/suppliersync/config.json
+/etc/syncstock/config.json
 ```
 
 Esta ubicación está **fuera** del directorio de la aplicación, por lo que:
 - ✅ Actualizar el código no afecta tu configuración
 - ✅ El SuperAdmin y conexión a MongoDB se preservan
-- ✅ Los backups automáticos se guardan en `/etc/suppliersync/backups/`
+- ✅ Los backups automáticos se guardan en `/etc/syncstock/backups/`
 
 ### Recarga Dinámica de Configuración
 
@@ -154,7 +154,7 @@ Si prefieres control total, consulta [README-DEPLOY-PLESK.md](README-DEPLOY-PLES
 ├── update.sh              # Script de actualización (preserva config)
 └── README.md              # Este archivo
 
-/etc/suppliersync/          # Configuración persistente (fuera del app)
+/etc/syncstock/          # Configuración persistente (fuera del app)
 ├── config.json            # Configuración principal
 └── backups/               # Backups automáticos
 ```
@@ -165,13 +165,13 @@ Si prefieres control total, consulta [README-DEPLOY-PLESK.md](README-DEPLOY-PLES
 
 ```bash
 # Estado del backend
-sudo systemctl status suppliersync-backend
+sudo systemctl status syncstock-backend
 
 # Ver logs en tiempo real
-sudo journalctl -u suppliersync-backend -f
+sudo journalctl -u syncstock-backend -f
 
 # Reiniciar backend
-sudo systemctl restart suppliersync-backend
+sudo systemctl restart syncstock-backend
 
 # Health check
 curl http://localhost:8001/health
@@ -201,7 +201,7 @@ curl -X POST http://localhost:8001/api/setup/reload-database
 │  Paso 1: Configuración del Sistema                              │
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  • URL de MongoDB      [mongodb://localhost:27017    ]     │ │
-│  │  • Nombre de BD        [supplier_sync_db             ]     │ │
+│  │  • Nombre de BD        [syncstock_db             ]     │ │
 │  │  • [Probar Conexión]                                       │ │
 │  │                                                             │ │
 │  │  Seguridad (opcional):                                     │ │
@@ -238,7 +238,7 @@ curl -X POST http://localhost:8001/api/setup/reload-database
 
 ```bash
 # Logs del backend
-sudo journalctl -u suppliersync-backend --no-pager -n 50
+sudo journalctl -u syncstock-backend --no-pager -n 50
 
 # Logs de Nginx
 sudo tail -50 /var/log/nginx/error.log
@@ -251,7 +251,7 @@ sudo systemctl status mongod
 
 ## 🔗 Integraciones CRM
 
-StockHUB3 incluye integraciones con los principales ERPs/CRMs del mercado para sincronización automática de productos, proveedores y órdenes.
+SyncStock incluye integraciones con los principales ERPs/CRMs del mercado para sincronización automática de productos, proveedores y órdenes.
 
 ### Plataformas Soportadas
 
@@ -320,4 +320,4 @@ Para información completa sobre:
 
 ---
 
-**SupplierSync Pro** © 2026 - Gestión inteligente de catálogos de proveedores
+**SyncStock** © 2026 - Gestión inteligente de catálogos de proveedores

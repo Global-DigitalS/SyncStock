@@ -32,7 +32,7 @@ class SmtpConfigRequest(BaseModel):
     smtp_user: str
     smtp_password: str
     smtp_from_email: Optional[str] = ""
-    smtp_from_name: Optional[str] = "SupplierSync Pro"
+    smtp_from_name: Optional[str] = "SyncStock"
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
 
@@ -105,9 +105,9 @@ async def get_all_email_accounts(user: dict = Depends(get_superadmin_user)):
         else:
             # Return default config
             default_names = {
-                "transactional": "SupplierSync",
-                "support": "Soporte SupplierSync",
-                "billing": "Facturación SupplierSync"
+                "transactional": "SyncStock",
+                "support": "Soporte SyncStock",
+                "billing": "Facturación SyncStock"
             }
             result[account_type] = {
                 "smtp_host": "",
@@ -115,7 +115,7 @@ async def get_all_email_accounts(user: dict = Depends(get_superadmin_user)):
                 "smtp_user": "",
                 "smtp_password": "",
                 "smtp_from_email": "",
-                "smtp_from_name": default_names.get(account_type, "SupplierSync"),
+                "smtp_from_name": default_names.get(account_type, "SyncStock"),
                 "smtp_use_tls": True,
                 "smtp_use_ssl": False,
                 "enabled": False,
@@ -223,7 +223,7 @@ async def send_test_email_from_account(
             "smtp_user": config.get("smtp_user"),
             "smtp_password": config.get("smtp_password"),
             "smtp_from_email": config.get("smtp_from_email") or config.get("smtp_user"),
-            "smtp_from_name": config.get("smtp_from_name", "SupplierSync"),
+            "smtp_from_name": config.get("smtp_from_name", "SyncStock"),
             "smtp_use_tls": config.get("smtp_use_tls", True),
             "smtp_use_ssl": config.get("smtp_use_ssl", False)
         }

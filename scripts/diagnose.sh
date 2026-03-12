@@ -26,33 +26,33 @@ echo ""
 # 1. Verificar servicios
 echo "1️⃣  ESTADO DE SERVICIOS"
 echo "------------------------"
-if systemctl is-active --quiet suppliersync-backend 2>/dev/null; then
+if systemctl is-active --quiet syncstock-backend 2>/dev/null; then
     echo "✅ Backend: ACTIVO"
 else
     echo "❌ Backend: INACTIVO"
     echo "   Intentando con nombre alternativo..."
-    systemctl status suppliersync* 2>/dev/null | head -5
+    systemctl status syncstock* 2>/dev/null | head -5
 fi
 echo ""
 
 # 2. Verificar logs del backend
 echo "2️⃣  ÚLTIMOS ERRORES DEL BACKEND"
 echo "--------------------------------"
-BACKEND_LOG="/var/log/suppliersync-backend.log"
+BACKEND_LOG="/var/log/syncstock-backend.log"
 if [ -f "$BACKEND_LOG" ]; then
     echo "Últimas 20 líneas con errores:"
     grep -i "error\|exception\|traceback" "$BACKEND_LOG" | tail -20
 else
     echo "⚠️  Log no encontrado en $BACKEND_LOG"
     echo "Buscando logs alternativos..."
-    find /var/log -name "*suppliersync*" -o -name "*syncstock*" 2>/dev/null | head -5
+    find /var/log -name "*syncstock*" -o -name "*syncstock*" 2>/dev/null | head -5
 fi
 echo ""
 
 # 3. Verificar journalctl
 echo "3️⃣  LOGS DE SYSTEMD"
 echo "-------------------"
-journalctl -u suppliersync-backend --no-pager -n 30 2>/dev/null || echo "No se encontraron logs de systemd"
+journalctl -u syncstock-backend --no-pager -n 30 2>/dev/null || echo "No se encontraron logs de systemd"
 echo ""
 
 # 4. Verificar conexión a MongoDB

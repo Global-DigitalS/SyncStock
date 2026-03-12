@@ -321,7 +321,7 @@ class TestSupplierEndpoints:
         print(f"Supplier deleted: {supplier_id}")
 
 
-class TestSupplierSyncEndpoints:
+class TestSyncStockEndpoints:
     """Supplier FTP sync endpoint tests"""
     
     @pytest.fixture(scope="class")
