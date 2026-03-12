@@ -5,9 +5,11 @@ La configuración se guarda en un archivo JSON FUERA del directorio de la aplica
 para que persista entre actualizaciones.
 
 Ubicaciones de configuración (en orden de prioridad):
+0. Variable de entorno CONFIG_PATH (establecida por install.sh/update.sh para instalaciones de dominio)
 1. /etc/syncstock/config.json (producción - persistente entre actualizaciones)
-2. ~/.syncstock/config.json (desarrollo local)
-3. [APP_DIR]/backend/config.json (fallback, sobrescrito en actualizaciones)
+2. /etc/syncstock/<subdir>/config.json (instalaciones multi-dominio de Plesk)
+3. ~/.syncstock/config.json (desarrollo local)
+4. [APP_DIR]/backend/config.json (fallback, sobrescrito en actualizaciones)
 """
 import os
 import json
@@ -30,21 +32,38 @@ def get_config_path() -> Path:
     Determina la ruta del archivo de configuración.
     Prioriza ubicaciones persistentes que no se sobrescriben en actualizaciones.
     """
+    # 0. Variable de entorno CONFIG_PATH (instalaciones Plesk con dominio específico)
+    env_config_path = os.environ.get('CONFIG_PATH', '').strip()
+    if env_config_path:
+        env_config = Path(env_config_path)
+        if env_config.exists():
+            logger.info(f"Using config from CONFIG_PATH env var: {env_config}")
+            return env_config
+
     # 1. Ubicación del sistema (producción) - más persistente
     system_config = SYSTEM_CONFIG_DIR / "config.json"
     if system_config.exists():
         return system_config
-    
-    # 2. Ubicación del usuario (desarrollo)
+
+    # 2. Buscar en subdirectorios de /etc/syncstock/ (instalaciones multi-dominio Plesk)
+    if SYSTEM_CONFIG_DIR.exists():
+        for subdir in sorted(SYSTEM_CONFIG_DIR.iterdir()):
+            if subdir.is_dir():
+                candidate = subdir / "config.json"
+                if candidate.exists():
+                    logger.info(f"Found domain-specific config: {candidate}")
+                    return candidate
+
+    # 3. Ubicación del usuario (desarrollo)
     user_config = USER_CONFIG_DIR / "config.json"
     if user_config.exists():
         return user_config
-    
-    # 3. Ubicación de la aplicación (fallback)
+
+    # 4. Ubicación de la aplicación (fallback)
     app_config = APP_CONFIG_DIR / "config.json"
     if app_config.exists():
         return app_config
-    
+
     # Si no existe ninguno, usar la ubicación del sistema si es posible crear
     try:
         SYSTEM_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -85,6 +104,27 @@ def generate_jwt_secret() -> str:
     return secrets.token_urlsafe(64)
 
 
+def _get_all_config_locations() -> list:
+    """Devuelve todas las ubicaciones posibles del archivo de configuración en orden de prioridad."""
+    locations = []
+    # 0. CONFIG_PATH env var (Plesk domain-specific installs)
+    env_config_path = os.environ.get('CONFIG_PATH', '').strip()
+    if env_config_path:
+        locations.append(Path(env_config_path))
+    # 1. Ubicación del sistema
+    locations.append(SYSTEM_CONFIG_DIR / "config.json")
+    # 2. Subdirectorios de dominio bajo /etc/syncstock/ (Plesk multi-dominio)
+    if SYSTEM_CONFIG_DIR.exists():
+        for subdir in sorted(SYSTEM_CONFIG_DIR.iterdir()):
+            if subdir.is_dir():
+                locations.append(subdir / "config.json")
+    # 3. Ubicación del usuario
+    locations.append(USER_CONFIG_DIR / "config.json")
+    # 4. Ubicación de la aplicación (fallback)
+    locations.append(APP_CONFIG_DIR / "config.json")
+    return locations
+
+
 def load_config() -> AppConfig:
     """
     Carga la configuración desde el archivo JSON.
@@ -93,13 +133,9 @@ def load_config() -> AppConfig:
     """
     global CONFIG_FILE
     config = AppConfig()
-    
+
     # Buscar configuración en todas las ubicaciones posibles
-    config_locations = [
-        SYSTEM_CONFIG_DIR / "config.json",  # Producción (persistente)
-        USER_CONFIG_DIR / "config.json",     # Desarrollo
-        APP_CONFIG_DIR / "config.json"       # Fallback
-    ]
+    config_locations = _get_all_config_locations()
     
     config_loaded = False
     for config_path in config_locations:
@@ -294,9 +330,8 @@ def get_config_info() -> dict:
         "is_persistent": str(CONFIG_FILE).startswith("/etc/syncstock"),
         "is_configured": config.is_configured,
         "locations_checked": [
-            {"path": str(SYSTEM_CONFIG_DIR / "config.json"), "exists": (SYSTEM_CONFIG_DIR / "config.json").exists(), "type": "system"},
-            {"path": str(USER_CONFIG_DIR / "config.json"), "exists": (USER_CONFIG_DIR / "config.json").exists(), "type": "user"},
-            {"path": str(APP_CONFIG_DIR / "config.json"), "exists": (APP_CONFIG_DIR / "config.json").exists(), "type": "app"}
+            {"path": str(p), "exists": p.exists(), "type": "config"}
+            for p in _get_all_config_locations()
         ],
         "recommendation": "La configuración se guarda en /etc/syncstock/ para persistir entre actualizaciones." if str(CONFIG_FILE).startswith("/etc/syncstock") else "Considera mover la configuración a /etc/syncstock/ para que persista entre actualizaciones."
     }
