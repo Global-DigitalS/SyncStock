@@ -4,6 +4,7 @@ from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
 import logging
+import asyncio
 
 from services.database import db
 from services.auth import get_current_user, check_user_limit
@@ -191,17 +192,36 @@ async def sync_supplier_manual(supplier_id: str, user: dict = Depends(get_curren
     else:
         if not has_multifile and (not supplier.get('ftp_host') or not supplier.get('ftp_path')):
             raise HTTPException(status_code=400, detail="Configuración FTP incompleta.")
-    try:
-        if has_multifile:
-            result = await sync_supplier_multifile(supplier)
-        else:
-            result = await sync_supplier(supplier)
-        if result.get('status') == 'error':
-            return {"status": "error", "message": result.get('message', 'Error en sincronización')}
-        return result
-    except Exception as e:
-        logger.error(f"Exception in sync_supplier_manual: {e}")
-        return {"status": "error", "message": str(e)}
+
+    # Mark sync as running immediately so the UI can show progress
+    await db.suppliers.update_one(
+        {"id": supplier_id},
+        {"$set": {"sync_status": "running", "sync_started_at": datetime.now(timezone.utc).isoformat()}}
+    )
+
+    async def _run_sync():
+        try:
+            if has_multifile:
+                result = await sync_supplier_multifile(supplier)
+            else:
+                result = await sync_supplier(supplier)
+            status = result.get('status', 'error')
+            await db.suppliers.update_one(
+                {"id": supplier_id},
+                {"$set": {"sync_status": status, "sync_last_result": result.get('message', '')}}
+            )
+        except Exception as exc:
+            logger.error(f"Background sync error for {supplier_id}: {exc}")
+            await db.suppliers.update_one(
+                {"id": supplier_id},
+                {"$set": {"sync_status": "error", "sync_last_result": str(exc)}}
+            )
+
+    asyncio.create_task(_run_sync())
+    return {
+        "status": "queued",
+        "message": f"Sincronización de '{supplier.get('name', supplier_id)}' iniciada en segundo plano."
+    }
 
 
 @router.get("/suppliers/{supplier_id}/sync-status")
@@ -214,7 +234,10 @@ async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_use
         "last_sync": supplier.get('last_sync'),
         "ftp_configured": has_ftp,
         "product_count": supplier.get('product_count', 0),
-        "ftp_paths_count": len(supplier.get('ftp_paths', []))
+        "ftp_paths_count": len(supplier.get('ftp_paths', [])),
+        "sync_status": supplier.get('sync_status', 'idle'),
+        "sync_started_at": supplier.get('sync_started_at'),
+        "sync_last_result": supplier.get('sync_last_result', ''),
     }
 
 

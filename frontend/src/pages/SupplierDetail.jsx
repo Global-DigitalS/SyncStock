@@ -170,7 +170,11 @@ const SupplierDetail = () => {
       await api.post(`/suppliers/${supplierId}/apply-preset`, { preset_id: supplier.preset_id });
       // Now sync with the updated config
       const syncRes = await api.post(`/suppliers/${supplierId}/sync`);
-      if (syncRes.data.imported + syncRes.data.updated > 0) {
+      if (syncRes.data.status === "queued") {
+        toast.info("Plantilla aplicada. Sincronización iniciada en segundo plano...");
+        await pollSyncStatus(supplierId);
+        toast.success("Sincronización completada");
+      } else if (syncRes.data.imported + syncRes.data.updated > 0) {
         toast.success(`Plantilla aplicada y sincronización completada: ${syncRes.data.imported} nuevos, ${syncRes.data.updated} actualizados`);
       } else {
         toast.warning(syncRes.data.message || "Plantilla aplicada pero no se importaron productos.");
@@ -183,12 +187,40 @@ const SupplierDetail = () => {
     }
   };
 
+  // Poll sync-status every 5s until the background task finishes (max 10 min)
+  const pollSyncStatus = async (id, maxWaitMs = 600_000) => {
+    const interval = 5000;
+    const deadline = Date.now() + maxWaitMs;
+    while (Date.now() < deadline) {
+      await new Promise(r => setTimeout(r, interval));
+      try {
+        const res = await api.get(`/suppliers/${id}/sync-status`);
+        setSyncStatus(res.data);
+        if (res.data.sync_status !== "running") return res.data;
+      } catch (_) { /* continue polling on transient errors */ }
+    }
+    return null;
+  };
+
   const handleSync = async () => {
     setSyncing(true);
     try {
       const res = await api.post(`/suppliers/${supplierId}/sync`);
-      
-      // Check if mapping is needed
+
+      if (res.data.status === "queued") {
+        // Background sync — poll until done
+        toast.info(res.data.message || "Sincronización iniciada en segundo plano...");
+        const pollResult = await pollSyncStatus(supplierId);
+        if (pollResult?.sync_status === "error") {
+          toast.error(`Error en la sincronización: ${pollResult.sync_last_result || "error desconocido"}`);
+        } else {
+          toast.success("Sincronización completada");
+        }
+        fetchData();
+        return;
+      }
+
+      // Legacy synchronous response handling
       if (res.data.needs_mapping) {
         toast.warning(res.data.message || "Se necesita configurar el mapeo de columnas", {
           duration: 8000,
@@ -203,7 +235,7 @@ const SupplierDetail = () => {
       } else {
         toast.info("Sincronización completada sin cambios");
       }
-      
+
       fetchData();
     } catch (error) {
       toast.error(error.response?.data?.message || error.response?.data?.detail || "Error en la sincronización");

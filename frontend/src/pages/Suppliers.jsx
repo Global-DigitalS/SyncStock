@@ -225,6 +225,11 @@ const Suppliers = () => {
         api.post(`/suppliers/${supplierId}/sync`)
           .then(async (res) => {
             const d = res.data;
+            if (d.status === "queued") {
+              toast.info(d.message || "Sincronización iniciada en segundo plano");
+              fetchSuppliers();
+              return;
+            }
             if (d.status === "error") {
               toast.error(`Error en sincronización: ${d.message}`);
               return;
