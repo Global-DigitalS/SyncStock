@@ -438,6 +438,18 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             failed += 1
             errors.append(f"Error procesando {product.get('sku', '')}: {str(e)[:100]}")
     
+    def _extract_wc_error(response_text: str) -> str:
+        """Extract a readable error message from WooCommerce response"""
+        try:
+            data = __import__("json").loads(response_text)
+            if isinstance(data, dict):
+                msg = data.get("message") or data.get("error") or ""
+                code = data.get("code", "")
+                return f"[{code}] {msg}" if code else msg or response_text[:200]
+        except Exception:
+            pass
+        return response_text[:200]
+
     # Process creates in batches
     for i in range(0, len(products_to_create), BATCH_SIZE):
         batch = products_to_create[i:i + BATCH_SIZE]
@@ -446,21 +458,27 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             response = await asyncio.to_thread(wcapi.post, "products/batch", batch_data)
             if response.status_code in [200, 201]:
                 result = response.json()
-                created += len(result.get("create", []))
-                # Update EAN mapping for created products
+                # Handle per-product errors within a successful batch response
                 for j, created_product in enumerate(result.get("create", [])):
-                    if j < len(batch) and batch[j]["ean"]:
-                        existing_eans[batch[j]["ean"]] = created_product.get("id")
+                    if created_product.get("error"):
+                        failed += 1
+                        sku = batch[j]["product"].get("sku", "") if j < len(batch) else ""
+                        err = created_product["error"]
+                        errors.append(f"SKU '{sku}': [{err.get('code','')}] {err.get('message','')}")
+                    else:
+                        created += 1
+                        if j < len(batch) and batch[j]["ean"]:
+                            existing_eans[batch[j]["ean"]] = created_product.get("id")
             else:
                 failed += len(batch)
-                errors.append(f"Error en batch create: {response.text[:100]}")
+                errors.append(f"Error batch create (HTTP {response.status_code}): {_extract_wc_error(response.text)}")
         except Exception as e:
             failed += len(batch)
-            errors.append(f"Error en batch create: {str(e)[:100]}")
-        
+            errors.append(f"Error batch create (excepción): {str(e)[:200]}")
+
         # Small delay between batches to avoid rate limiting
         await asyncio.sleep(0.5)
-    
+
     # Process updates in batches
     for i in range(0, len(products_to_update), BATCH_SIZE):
         batch = products_to_update[i:i + BATCH_SIZE]
@@ -469,13 +487,19 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             response = await asyncio.to_thread(wcapi.post, "products/batch", batch_data)
             if response.status_code in [200, 201]:
                 result = response.json()
-                updated += len(result.get("update", []))
+                for updated_product in result.get("update", []):
+                    if updated_product.get("error"):
+                        failed += 1
+                        err = updated_product["error"]
+                        errors.append(f"ID {updated_product.get('id','?')}: [{err.get('code','')}] {err.get('message','')}")
+                    else:
+                        updated += 1
             else:
                 failed += len(batch)
-                errors.append(f"Error en batch update: {response.text[:100]}")
+                errors.append(f"Error batch update (HTTP {response.status_code}): {_extract_wc_error(response.text)}")
         except Exception as e:
             failed += len(batch)
-            errors.append(f"Error en batch update: {str(e)[:100]}")
+            errors.append(f"Error batch update (excepción): {str(e)[:200]}")
         
         # Small delay between batches
         await asyncio.sleep(0.5)
@@ -498,7 +522,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
     })
     return WooCommerceExportResult(
         status="success" if failed == 0 else "partial" if (created + updated) > 0 else "error",
-        created=created, updated=updated, failed=failed, errors=errors[:10]
+        created=created, updated=updated, failed=failed, errors=errors[:20]
     )
 
 
