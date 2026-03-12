@@ -697,3 +697,155 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
     except Exception as e:
         logger.error(f"Error previewing file: {e}")
         return {"status": "error", "message": str(e), "columns": []}
+
+
+@router.post("/suppliers/{supplier_id}/diagnose")
+async def diagnose_supplier_zip(supplier_id: str, user: dict = Depends(get_current_user)):
+    """
+    Descarga el archivo del proveedor y devuelve un diagnóstico detallado
+    sin importar nada a la base de datos. Útil para depurar problemas de mapeo.
+    """
+    from services.sync import (
+        download_file_from_ftp, download_file_from_url,
+        extract_zip_files, parse_text_file, apply_column_mapping
+    )
+    import csv as csv_mod
+
+    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    if supplier.get("ftp_password"):
+        supplier["ftp_password"] = decrypt_password(supplier["ftp_password"])
+
+    separator = supplier.get("csv_separator", ";")
+    if separator == "\\t":
+        separator = "\t"
+    _hdr = supplier.get("csv_header_row", 1)
+    header_row = 1 if _hdr is None else int(_hdr)
+    column_mapping = supplier.get("column_mapping")
+
+    try:
+        connection_type = supplier.get("connection_type", "ftp")
+        if connection_type == "url":
+            content = await download_file_from_url(supplier["file_url"])
+        else:
+            content = await download_file_from_ftp(supplier)
+    except Exception as e:
+        return {"status": "error", "step": "download", "message": str(e)}
+
+    # Is it a ZIP?
+    is_zip = len(content) >= 2 and content[:2] == b'PK'
+    result = {
+        "status": "ok",
+        "file_size_bytes": len(content),
+        "is_zip": is_zip,
+        "header_row": header_row,
+        "separator": repr(separator),
+        "column_mapping": column_mapping,
+    }
+
+    if is_zip:
+        try:
+            extracted = extract_zip_files(content)
+        except Exception as e:
+            return {**result, "status": "error", "step": "unzip", "message": str(e)}
+
+        compatible_exts = ('.csv', '.txt', '.xlsx', '.xls', '.xml')
+        compatible = [
+            f for f in extracted
+            if f.lower().endswith(compatible_exts)
+            and not f.split('/')[-1].startswith('.')
+            and not f.split('/')[-1].startswith('__')
+        ]
+        role_keywords = {
+            'stock':    ['stock', 'inventory', 'disponibilidad', 'existencias', 'qty'],
+            'prices':   ['price', 'precio', 'tarif', 'coste', 'cost', 'pvp', 'pvd'],
+            'products': ['product', 'catalog', 'article', 'catalogo', 'articulo', 'master'],
+        }
+        files_info = []
+        role_assignments = {}
+        for fname in extracted:
+            fname_base = fname.split('/')[-1].lower()
+            ext = '.' + fname_base.rsplit('.', 1)[-1] if '.' in fname_base else '(sin extensión)'
+            is_compat = fname in compatible
+            detected_role = 'products'
+            for role, kws in role_keywords.items():
+                if any(kw in fname_base for kw in kws):
+                    detected_role = role
+                    break
+            file_entry = {
+                "name": fname,
+                "extension": ext,
+                "size_bytes": len(extracted[fname]),
+                "is_compatible": is_compat,
+                "detected_role": detected_role if is_compat else "skipped",
+            }
+            if is_compat:
+                try:
+                    rows = parse_text_file(extracted[fname], separator, header_row)
+                    file_entry["row_count"] = len(rows)
+                    file_entry["columns"] = list(rows[0].keys()) if rows else []
+                    file_entry["sample_row"] = {k: str(v)[:80] for k, v in list(rows[0].items())[:10]} if rows else {}
+                    # Check if this role already assigned (keep largest)
+                    if detected_role not in role_assignments or len(rows) > role_assignments[detected_role]["row_count"]:
+                        role_assignments[detected_role] = {"file": fname, "row_count": len(rows), "columns": file_entry["columns"]}
+                except Exception as pe:
+                    file_entry["parse_error"] = str(pe)
+            files_info.append(file_entry)
+
+        result["zip_files"] = files_info
+        result["zip_total_files"] = len(extracted)
+        result["compatible_files_count"] = len(compatible)
+        result["role_assignments"] = role_assignments
+
+        # Test column_mapping against a sample merged row
+        if column_mapping and "products" in role_assignments and "prices" in role_assignments:
+            prod_cols = role_assignments["products"]["columns"]
+            price_cols = role_assignments["prices"]["columns"]
+            # Simulate merged row (first product + prefixed prices)
+            sample_merged = {c: f"<{c}_value>" for c in prod_cols}
+            prices_merge_key = price_cols[0] if price_cols else None
+            for c in price_cols:
+                if header_row == 0 and c != prices_merge_key:
+                    sample_merged[f"prices_{c}"] = f"<prices_{c}_value>"
+                elif c not in sample_merged:
+                    sample_merged[c] = f"<{c}_value>"
+            mapping_test = {}
+            for field, col in column_mapping.items():
+                found = sample_merged.get(col)
+                mapping_test[field] = {"maps_to": col, "found_in_merged": found is not None}
+            result["mapping_test"] = mapping_test
+            missing = [f for f, v in mapping_test.items() if not v["found_in_merged"]]
+            result["mapping_missing_cols"] = missing
+            result["mapping_ok"] = len(missing) == 0
+    else:
+        # Single flat file
+        try:
+            decoded = content.decode('utf-8-sig', errors='replace')
+        except Exception:
+            decoded = content.decode('latin-1', errors='replace')
+        lines = decoded.split('\n')
+        if header_row == 0:
+            first_line = lines[0].rstrip('\r') if lines else ''
+            first_parsed = list(csv_mod.reader([first_line], delimiter=separator))
+            num_cols = len(first_parsed[0]) if first_parsed else 0
+            fieldnames = [f'col_{i}' for i in range(num_cols)]
+            reader = csv_mod.DictReader(lines, fieldnames=fieldnames, delimiter=separator)
+        else:
+            reader = csv_mod.DictReader(lines, delimiter=separator)
+        rows = list(reader)
+        result["row_count"] = len(rows)
+        result["columns"] = list(rows[0].keys()) if rows else []
+        result["sample_row"] = {k: str(v)[:80] for k, v in list(rows[0].items())[:10]} if rows else {}
+        if column_mapping and rows:
+            sample = rows[0]
+            mapping_test = {}
+            for field, col in column_mapping.items():
+                mapping_test[field] = {"maps_to": col, "found": col in sample}
+            result["mapping_test"] = mapping_test
+            missing = [f for f, v in mapping_test.items() if not v["found"]]
+            result["mapping_missing_cols"] = missing
+            result["mapping_ok"] = len(missing) == 0
+
+    return result
+
