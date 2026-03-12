@@ -1366,20 +1366,7 @@ async def sync_woocommerce_store_price_stock(config: dict):
                 if not product:
                     continue
                 base_price = item.get("custom_price") or product.get("price", 0)
-                final_price = base_price
-                for rule in margin_rules:
-                    if rule.get("applies_to") == "all":
-                        if rule.get("margin_type") == "percentage":
-                            final_price = base_price * (1 + rule.get("margin_value", 0) / 100)
-                        else:
-                            final_price = base_price + rule.get("margin_value", 0)
-                        break
-                    elif rule.get("applies_to") == "category" and rule.get("category") == product.get("category"):
-                        if rule.get("margin_type") == "percentage":
-                            final_price = base_price * (1 + rule.get("margin_value", 0) / 100)
-                        else:
-                            final_price = base_price + rule.get("margin_value", 0)
-                        break
+                final_price = calculate_final_price(base_price, product, margin_rules)
                 ean = product.get("ean", "")
                 sku = product.get("sku", "")
                 wc_product_id = wc_products_by_ean.get(ean) if ean else None
