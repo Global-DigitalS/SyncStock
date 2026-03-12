@@ -235,8 +235,8 @@ def apply_column_mapping(raw_data: dict, column_mapping: dict, strip_ean_quotes:
             if not col:
                 continue
             value = raw_original.get(col) or raw_lower.get(col.lower().strip())
-            if value is not None and value != '':
-                values.append(str(value))
+            if value is not None and str(value).strip() != '':
+                values.append(str(value).strip())
         if values:
             combined_value = ' > '.join(values) if system_field.startswith('category') else ' '.join(values)
             field_type = field_types.get(system_field, 'string')

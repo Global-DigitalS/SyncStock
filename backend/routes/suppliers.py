@@ -546,7 +546,7 @@ SUPPLIER_PRESETS = [
     {
         "id": "ingram_es",
         "name": "INGRAM MICRO (España)",
-        "description": "PRICE09.TXT — CSV coma, sin cabecera, Latin-1. Mapeo posicional automático.",
+        "description": "PRICE09.ZIP — ZIP con PRICE09.TXT (CSV coma, sin cabecera, 29 columnas). Ruta SFTP: /PRICE09.ZIP",
         "config": {
             "file_format": "csv",
             "csv_separator": ",",
@@ -555,14 +555,15 @@ SUPPLIER_PRESETS = [
             "csv_header_row": 0,
             "strip_ean_quotes": False,
             "column_mapping": {
-                "sku": "col_0",
-                "name": "col_2",
-                "ean": "col_3",
-                "weight": "col_4",
-                "brand": "col_5",
-                "category": "col_6",
-                "stock": "col_7",
-                "price": "col_8"
+                "sku": "col_1",
+                "name": "col_6",
+                "description": "col_7",
+                "ean": "col_4",
+                "weight": "col_8",
+                "brand": "col_2",
+                "category": "col_5",
+                "stock": "col_23",
+                "price": "col_24"
             }
         }
     },
