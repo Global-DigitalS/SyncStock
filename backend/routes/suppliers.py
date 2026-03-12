@@ -103,16 +103,30 @@ async def apply_preset_to_supplier(supplier_id: str, data: dict, user: dict = De
     if not preset:
         raise HTTPException(status_code=404, detail=f"Plantilla '{preset_id}' no encontrada")
     config = preset["config"]
+    new_separator = config.get("csv_separator")
+    new_header_row = config.get("csv_header_row")
     update_fields = {
         "file_format": config.get("file_format"),
-        "csv_separator": config.get("csv_separator"),
+        "csv_separator": new_separator,
         "csv_enclosure": config.get("csv_enclosure"),
         "csv_line_break": config.get("csv_line_break"),
-        "csv_header_row": config.get("csv_header_row"),
+        "csv_header_row": new_header_row,
         "strip_ean_quotes": config.get("strip_ean_quotes", False),
         "column_mapping": config.get("column_mapping"),
         "preset_id": preset_id,
     }
+    # Also propagate separator and header_row to ftp_paths entries so they stay consistent
+    existing_ftp_paths = supplier.get("ftp_paths") or []
+    if existing_ftp_paths:
+        updated_ftp_paths = []
+        for fp in existing_ftp_paths:
+            fp_copy = dict(fp)
+            if new_separator is not None:
+                fp_copy["separator"] = new_separator
+            if new_header_row is not None:
+                fp_copy["header_row"] = new_header_row
+            updated_ftp_paths.append(fp_copy)
+        update_fields["ftp_paths"] = updated_ftp_paths
     await db.suppliers.update_one({"id": supplier_id}, {"$set": update_fields})
     updated = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0, "ftp_password": 0, "user_id": 0})
     return {
@@ -618,8 +632,8 @@ def suggest_column_mapping(columns: list) -> dict:
 @router.post("/suppliers/{supplier_id}/preview-file")
 async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_current_user)):
     """Previsualiza el archivo del proveedor y muestra las columnas detectadas con sugerencias de mapeo"""
-    from services.sync import download_file_from_ftp, download_file_from_url
-    
+    from services.sync import download_file_from_ftp, download_file_from_url, extract_zip_files, parse_text_file
+
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
@@ -633,17 +647,53 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
                 raise HTTPException(status_code=400, detail="URL no configurada")
             content = await download_file_from_url(supplier['file_url'])
         else:
-            if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
+            # Support both ftp_path (single file) and ftp_paths (multi-file)
+            ftp_paths = supplier.get('ftp_paths') or []
+            single_path = supplier.get('ftp_path', '')
+            if not supplier.get('ftp_host'):
                 raise HTTPException(status_code=400, detail="FTP no configurado")
-            content = await download_file_from_ftp(supplier)
+            if single_path:
+                content = await download_file_from_ftp(supplier)
+            elif ftp_paths:
+                # Download the first products-role file for preview
+                preview_entry = next(
+                    (e for e in ftp_paths if e.get('role', 'products') == 'products'),
+                    ftp_paths[0]
+                )
+                from services.sync import resolve_latest_file
+                preview_path = await resolve_latest_file(supplier, preview_entry)
+                content = await download_file_from_ftp({**supplier, 'ftp_path': preview_path})
+            else:
+                raise HTTPException(status_code=400, detail="FTP no configurado")
         
-        # Parse as CSV
-        separator = supplier.get('csv_separator', ';')
+        # Parse as CSV (with ZIP support)
+        separator = supplier.get('csv_separator', ';') or ';'
         if separator == '\\t':
             separator = '\t'
         _header_row_raw = supplier.get('csv_header_row', 1)
         header_row = 1 if _header_row_raw is None else int(_header_row_raw)
 
+        # If it's a ZIP, extract the products file first
+        if len(content) >= 2 and content[:2] == b'PK':
+            extracted = extract_zip_files(content)
+            role_kws = ['product', 'catalog', 'article', 'catalogo', 'articulo', 'master', 'price', 'precio']
+            # Prefer products/catalog files; fall back to any compatible file
+            compatible_exts = ('.csv', '.txt', '.xlsx', '.xls')
+            best = None
+            best_rows = 0
+            for fname, fcontent in extracted.items():
+                if not fname.lower().endswith(compatible_exts):
+                    continue
+                fname_lower = fname.split('/')[-1].lower()
+                rows = parse_text_file(fcontent, separator, header_row)
+                if len(rows) > best_rows:
+                    best_rows = len(rows)
+                    best = fcontent
+            content = best or content
+            if best is None:
+                return {"status": "error", "message": f"El ZIP no contiene archivos CSV/TXT compatibles", "columns": []}
+
+        import csv
         try:
             decoded = content.decode('utf-8-sig')
         except Exception:
@@ -656,7 +706,6 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
         if header_row > 1:
             lines = lines[header_row-1:]
 
-        import csv
         if header_row == 0:
             first_line = lines[0].rstrip('\r') if lines else ''
             first_row_parsed = list(csv.reader([first_line], delimiter=separator))

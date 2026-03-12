@@ -1000,11 +1000,18 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     all_file_data = {}
     all_detected_columns = {}
 
+    # Use supplier-level csv_header_row and csv_separator (set by preset) for all
+    # file parsing. Per-file values in ftp_paths are UI defaults and may not
+    # reflect the actual file format; the preset sets the authoritative values.
+    _sup_hdr_raw = supplier.get('csv_header_row', 1)
+    supplier_hdr = 1 if _sup_hdr_raw is None else int(_sup_hdr_raw)
+    _sup_sep = supplier.get('csv_separator') or ';'
+    supplier_sep = '\t' if _sup_sep == '\\t' else _sup_sep
+
     for file_config in ftp_paths:
         file_path = await resolve_latest_file(supplier, file_config)
         role = file_config.get('role', 'products')
-        sep = file_config.get('separator', ';')
-        hdr = file_config.get('header_row', 1) or 1
+        sep = supplier_sep
         label = file_config.get('label', file_path)
 
         if not file_path:
@@ -1016,13 +1023,9 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
 
             if file_path.lower().endswith('.zip') or (len(content) >= 2 and content[:2] == b'PK'):
                 extracted = extract_zip_files(content)
-                # Files inside a ZIP must use the supplier-level csv_header_row (set by preset),
-                # NOT the ftp_paths entry header_row (which describes the outer file).
-                _zip_hdr_raw = supplier.get('csv_header_row', 1)
-                zip_hdr = 1 if _zip_hdr_raw is None else int(_zip_hdr_raw)
-                logger.info(f"  ZIP contains {len(extracted)} files: {list(extracted.keys())}, inner header_row={zip_hdr}")
+                logger.info(f"  ZIP contains {len(extracted)} files: {list(extracted.keys())}, header_row={supplier_hdr}")
                 for fname, fcontent in extracted.items():
-                    rows = parse_text_file(fcontent, sep, zip_hdr)
+                    rows = parse_text_file(fcontent, sep, supplier_hdr)
                     sub_role = role
                     fname_lower = fname.lower()
                     if 'stock' in fname_lower:
@@ -1045,7 +1048,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
                             all_detected_columns[sub_role] = list(rows[0].keys())
                     logger.info(f"    {fname}: {len(rows)} rows, role={sub_role}")
             else:
-                rows = parse_text_file(content, sep, hdr)
+                rows = parse_text_file(content, sep, supplier_hdr)
                 all_file_data[role] = rows
                 if rows:
                     all_detected_columns[role] = list(rows[0].keys())
@@ -1073,10 +1076,8 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     product_keys = list(first_row.keys())
     merge_key = product_keys[0] if product_keys else None
 
-    # For the merge prefix strategy, use the supplier-level csv_header_row.
-    # This matches what the preset sets (0 = positional col_0,col_1,...).
-    _mfhdr_raw = supplier.get('csv_header_row', 1)
-    multifile_header_row = 1 if _mfhdr_raw is None else int(_mfhdr_raw)
+    # For the merge prefix strategy, reuse the already-computed supplier_hdr.
+    multifile_header_row = supplier_hdr
 
     # Build lookup dictionaries
     prices_lookup = {}
