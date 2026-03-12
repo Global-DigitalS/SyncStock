@@ -1014,11 +1014,15 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
             logger.info(f"  Downloading: {file_path} (role: {role})")
             content = await download_file_from_ftp({**supplier, 'ftp_path': file_path})
 
-            if file_path.lower().endswith('.zip'):
+            if file_path.lower().endswith('.zip') or (len(content) >= 2 and content[:2] == b'PK'):
                 extracted = extract_zip_files(content)
-                logger.info(f"  ZIP contains {len(extracted)} files: {list(extracted.keys())}")
+                # Files inside a ZIP must use the supplier-level csv_header_row (set by preset),
+                # NOT the ftp_paths entry header_row (which describes the outer file).
+                _zip_hdr_raw = supplier.get('csv_header_row', 1)
+                zip_hdr = 1 if _zip_hdr_raw is None else int(_zip_hdr_raw)
+                logger.info(f"  ZIP contains {len(extracted)} files: {list(extracted.keys())}, inner header_row={zip_hdr}")
                 for fname, fcontent in extracted.items():
-                    rows = parse_text_file(fcontent, sep, hdr)
+                    rows = parse_text_file(fcontent, sep, zip_hdr)
                     sub_role = role
                     fname_lower = fname.lower()
                     if 'stock' in fname_lower:
@@ -1034,15 +1038,17 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
                     elif 'minqty' in fname_lower:
                         sub_role = 'min_qty'
 
-                    all_file_data[sub_role] = rows
-                    if rows:
-                        all_detected_columns[f"{fname} ({sub_role})"] = list(rows[0].keys())
+                    # Keep the file with most rows for each role
+                    if sub_role not in all_file_data or len(rows) > len(all_file_data[sub_role]):
+                        all_file_data[sub_role] = rows
+                        if rows:
+                            all_detected_columns[sub_role] = list(rows[0].keys())
                     logger.info(f"    {fname}: {len(rows)} rows, role={sub_role}")
             else:
                 rows = parse_text_file(content, sep, hdr)
                 all_file_data[role] = rows
                 if rows:
-                    all_detected_columns[f"{label} ({role})"] = list(rows[0].keys())
+                    all_detected_columns[role] = list(rows[0].keys())
                 logger.info(f"  {label}: {len(rows)} rows")
 
         except Exception as e:
@@ -1067,8 +1073,10 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     product_keys = list(first_row.keys())
     merge_key = product_keys[0] if product_keys else None
 
-    # Detect if files are headerless (positional col_0, col_1, ...) to apply prefix strategy
-    multifile_header_row = int(ftp_paths[0].get('header_row', 1) or 1) if ftp_paths else 1
+    # For the merge prefix strategy, use the supplier-level csv_header_row.
+    # This matches what the preset sets (0 = positional col_0,col_1,...).
+    _mfhdr_raw = supplier.get('csv_header_row', 1)
+    multifile_header_row = 1 if _mfhdr_raw is None else int(_mfhdr_raw)
 
     # Build lookup dictionaries
     prices_lookup = {}
@@ -1202,9 +1210,27 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
 
     duration = (datetime.now(timezone.utc) - start_time).total_seconds()
     product_count = await db.products.count_documents({"supplier_id": supplier['id']})
+
+    # Build flat detected_columns list (products + prefixed prices/stock) for the mapping UI
+    flat_detected = []
+    prod_cols = all_detected_columns.get('products', [])
+    flat_detected.extend(prod_cols)
+    price_cols = all_detected_columns.get('prices', [])
+    if price_cols and multifile_header_row == 0:
+        price_key = price_cols[0] if price_cols else None
+        flat_detected.extend([f"prices_{c}" for c in price_cols if c != price_key])
+    elif price_cols:
+        flat_detected.extend([c for c in price_cols if c not in flat_detected])
+    stock_cols = all_detected_columns.get('stock', [])
+    if stock_cols and multifile_header_row == 0:
+        stock_key = stock_cols[0] if stock_cols else None
+        flat_detected.extend([f"stock_{c}" for c in stock_cols if c != stock_key])
+    elif stock_cols:
+        flat_detected.extend([c for c in stock_cols if c not in flat_detected])
+
     await db.suppliers.update_one({"id": supplier['id']}, {"$set": {
         "product_count": product_count, "last_sync": now,
-        "detected_columns": all_detected_columns
+        "detected_columns": flat_detected if flat_detected else list(all_detected_columns.keys())
     }})
 
     await db.notifications.insert_one({
@@ -1217,7 +1243,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     final_result = {
         "status": "success", "imported": imported, "updated": updated,
         "errors": errors, "files_processed": len(all_file_data),
-        "detected_columns": all_detected_columns
+        "detected_columns": flat_detected
     }
     await record_sync_history(supplier, final_result, sync_type, duration)
     
