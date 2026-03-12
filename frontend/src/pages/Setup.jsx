@@ -50,7 +50,7 @@ const Setup = () => {
   const [formData, setFormData] = useState({
     // Paso 1: Configuración de la aplicación
     mongo_url: "",
-    db_name: "supplier_sync_db",
+    db_name: "syncstock_db",
     jwt_secret: "",
     cors_origins: "*",
     // Paso 2: SuperAdmin
@@ -65,7 +65,7 @@ const Setup = () => {
     smtp_user: "",
     smtp_password: "",
     smtp_from_email: "",
-    smtp_from_name: "SupplierSync Pro",
+    smtp_from_name: "SyncStock",
     smtp_use_tls: true,
     smtp_use_ssl: false
   });
@@ -319,7 +319,7 @@ const Setup = () => {
             <Zap className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-3xl font-bold text-white mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
-            SupplierSync Pro
+            SyncStock
           </h1>
           <p className="text-slate-400">Configuración inicial de la aplicación</p>
         </div>
@@ -417,7 +417,7 @@ const Setup = () => {
                         type="text"
                         value={formData.db_name}
                         onChange={(e) => setFormData({ ...formData, db_name: e.target.value })}
-                        placeholder="supplier_sync_db"
+                        placeholder="syncstock_db"
                         className="pl-10 bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
                         data-testid="db-name-input"
                       />
@@ -801,7 +801,7 @@ const Setup = () => {
                             type="text"
                             value={formData.smtp_from_name}
                             onChange={(e) => setFormData({ ...formData, smtp_from_name: e.target.value })}
-                            placeholder="SupplierSync Pro"
+                            placeholder="SyncStock"
                             className="bg-slate-900/50 border-slate-600 text-white placeholder:text-slate-500"
                             data-testid="smtp-from-name-input"
                           />
@@ -941,7 +941,7 @@ const Setup = () => {
 
         {/* Footer */}
         <p className="text-center text-slate-500 text-sm mt-6">
-          SupplierSync Pro © 2026 - Gestión inteligente de proveedores
+          SyncStock © 2026 - Gestión inteligente de proveedores
         </p>
       </div>
     </div>

@@ -7,7 +7,7 @@ const SAMPLE_POSTS = [
   {
     slug: "sincronizacion-inventario-woocommerce",
     title: "Cómo sincronizar tu inventario con WooCommerce automáticamente",
-    excerpt: "Aprende a conectar tus proveedores FTP con WooCommerce en menos de 10 minutos usando StockHUB. Sin código, sin complicaciones.",
+    excerpt: "Aprende a conectar tus proveedores FTP con WooCommerce en menos de 10 minutos usando SyncStock. Sin código, sin complicaciones.",
     category: "Guías",
     readTime: "5 min",
     date: "2025-02-15",
@@ -23,8 +23,8 @@ const SAMPLE_POSTS = [
   },
   {
     slug: "integracion-dolibarr-stockhub",
-    title: "Integración StockHUB con Dolibarr: sincronización en tiempo real",
-    excerpt: "Tutorial paso a paso para conectar tu ERP Dolibarr con StockHUB y mantener productos, clientes y pedidos siempre sincronizados.",
+    title: "Integración SyncStock con Dolibarr: sincronización en tiempo real",
+    excerpt: "Tutorial paso a paso para conectar tu ERP Dolibarr con SyncStock y mantener productos, clientes y pedidos siempre sincronizados.",
     category: "Integraciones",
     readTime: "6 min",
     date: "2025-01-10",
@@ -48,7 +48,7 @@ const SAMPLE_POSTS = [
   {
     slug: "historial-precios-analisis",
     title: "Cómo usar el historial de precios para tomar mejores decisiones",
-    excerpt: "El historial de precios de StockHUB te permite detectar tendencias, negociar mejor con proveedores y optimizar tu política de precios.",
+    excerpt: "El historial de precios de SyncStock te permite detectar tendencias, negociar mejor con proveedores y optimizar tu política de precios.",
     category: "Estrategia",
     readTime: "5 min",
     date: "2024-11-18",

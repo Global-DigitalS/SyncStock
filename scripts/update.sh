@@ -20,7 +20,7 @@ NC='\033[0m' # No Color
 # Configuración - AJUSTA ESTOS VALORES
 APP_DIR="${APP_DIR:-/var/www/vhosts/app.sync-stock.com/app}"
 BACKUP_DIR="/var/backups/syncstock"
-SERVICE_NAME="suppliersync-backend"
+SERVICE_NAME="syncstock-backend"
 DOMAIN="app.sync-stock.com"
 
 # Verificar que existe el directorio

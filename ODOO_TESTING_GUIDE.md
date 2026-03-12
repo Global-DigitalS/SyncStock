@@ -1,4 +1,4 @@
-# Guía de Testing - Integración Odoo en StockHUB3
+# Guía de Testing - Integración Odoo en SyncStock
 
 ## Estado del Proyecto
 
@@ -20,7 +20,7 @@ Para probar la integración de Odoo, necesitarás:
    - Ir a Settings → Users → Tu Usuario
    - Copiar el "Access Token"
 
-3. **StockHUB3 ejecutándose** localmente o en servidor
+3. **SyncStock ejecutándose** localmente o en servidor
 
 ---
 
@@ -37,7 +37,7 @@ Para probar la integración de Odoo, necesitarás:
 3. Validar respuesta
 
 ### Fase 3: Testing de Productos
-1. Sincronizar productos desde StockHUB3
+1. Sincronizar productos desde SyncStock
 2. Verificar creación en Odoo
 3. Actualizar producto
 4. Verificar cambios en Odoo
@@ -477,10 +477,10 @@ echo -e "${GREEN}=== Test completado exitosamente ===${NC}"
 
 ```bash
 # Ver logs del backend
-sudo journalctl -u suppliersync-backend -f
+sudo journalctl -u syncstock-backend -f
 
 # Buscar errores de Odoo
-sudo journalctl -u suppliersync-backend -f | grep -i "odoo"
+sudo journalctl -u syncstock-backend -f | grep -i "odoo"
 
 # Ver logs completos de un sync
 curl -X GET http://localhost:8001/api/crm/sync-jobs/JOB_ID

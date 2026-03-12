@@ -88,7 +88,7 @@ const ForgotPassword = () => {
                 <Package className="w-7 h-7 text-white" strokeWidth={1.5} />
               </div>
               <span className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'Manrope, sans-serif' }}>
-                SupplierSync
+                SyncStock
               </span>
             </Link>
           </div>
@@ -173,7 +173,7 @@ const ForgotPassword = () => {
               <Package className="w-7 h-7 text-white" strokeWidth={1.5} />
             </div>
             <span className="text-2xl font-bold text-slate-900" style={{ fontFamily: 'Manrope, sans-serif' }}>
-              SupplierSync
+              SyncStock
             </span>
           </Link>
         </div>

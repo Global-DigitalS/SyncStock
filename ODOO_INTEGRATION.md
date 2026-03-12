@@ -1,8 +1,8 @@
-# Integración de Odoo 17 en StockHUB3
+# Integración de Odoo 17 en SyncStock
 
 ## Descripción General
 
-Se ha implementado una integración completa de Odoo 17 en StockHUB3, siguiendo el mismo patrón arquitectónico que la integración existente con Dolibarr.
+Se ha implementado una integración completa de Odoo 17 en SyncStock, siguiendo el mismo patrón arquitectónico que la integración existente con Dolibarr.
 
 ## Características Implementadas
 
@@ -88,7 +88,7 @@ Sincronizar con Odoo:
 ### 3. Funciones de Sincronización
 
 #### `async def sync_products_to_odoo()`
-- Sincroniza productos desde StockHUB3 a Odoo
+- Sincroniza productos desde SyncStock a Odoo
 - Soporta creación y actualización
 - Sincroniza imágenes, precios y stock
 - Usa margin rules para cálculo de precios si aplica
@@ -111,7 +111,7 @@ Sincronizar con Odoo:
    - Ir a Settings > Users > Your User
    - Copiar el Access Token
 
-### En StockHUB3:
+### En SyncStock:
 1. Crear una conexión CRM desde la interfaz
 2. Ingresar:
    - URL base de Odoo (ej: https://odoo.example.com)

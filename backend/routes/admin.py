@@ -25,7 +25,7 @@ try:
     os.makedirs(UPLOAD_DIR, exist_ok=True)
 except PermissionError:
     # Fallback to /tmp if we can't create the uploads directory
-    UPLOAD_DIR = "/tmp/suppliersync_uploads"
+    UPLOAD_DIR = "/tmp/syncstock_uploads"
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     logger.warning(f"Using fallback upload directory: {UPLOAD_DIR}")
 

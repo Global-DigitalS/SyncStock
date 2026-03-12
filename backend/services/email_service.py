@@ -23,7 +23,7 @@ class EmailService:
         self.smtp_user = self.config.get('smtp_user', '')
         self.smtp_password = self.config.get('smtp_password', '')
         self.smtp_from_email = self.config.get('smtp_from_email', '')
-        self.smtp_from_name = self.config.get('smtp_from_name', 'SupplierSync Pro')
+        self.smtp_from_name = self.config.get('smtp_from_name', 'SyncStock')
         self.smtp_use_tls = self.config.get('smtp_use_tls', True)
         self.smtp_use_ssl = self.config.get('smtp_use_ssl', False)
     
@@ -141,7 +141,7 @@ def get_welcome_email_template(user_name: str, app_url: str) -> Dict[str, str]:
                         <!-- Header -->
                         <tr>
                             <td style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 40px 40px 30px; text-align: center;">
-                                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">SupplierSync Pro</h1>
+                                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">SyncStock</h1>
                                 <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 14px;">Gestión inteligente de catálogos</p>
                             </td>
                         </tr>
@@ -177,7 +177,7 @@ def get_welcome_email_template(user_name: str, app_url: str) -> Dict[str, str]:
                         <tr>
                             <td style="background-color: #f8fafc; padding: 30px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
                                 <p style="color: #64748b; font-size: 13px; margin: 0;">
-                                    © {datetime.now().year} SupplierSync Pro. Todos los derechos reservados.
+                                    © {datetime.now().year} SyncStock. Todos los derechos reservados.
                                 </p>
                             </td>
                         </tr>
@@ -190,16 +190,16 @@ def get_welcome_email_template(user_name: str, app_url: str) -> Dict[str, str]:
     """
     
     text = f"""
-    ¡Bienvenido a SupplierSync Pro, {user_name}!
+    ¡Bienvenido a SyncStock, {user_name}!
     
     Tu cuenta ha sido creada exitosamente.
     
     Accede a tu cuenta en: {app_url}
     
-    © {datetime.now().year} SupplierSync Pro
+    © {datetime.now().year} SyncStock
     """
     
-    return {"html": html, "text": text, "subject": f"¡Bienvenido a SupplierSync Pro, {user_name}!"}
+    return {"html": html, "text": text, "subject": f"¡Bienvenido a SyncStock, {user_name}!"}
 
 
 def get_password_reset_email_template(user_name: str, reset_link: str, app_url: str) -> Dict[str, str]:
@@ -219,7 +219,7 @@ def get_password_reset_email_template(user_name: str, reset_link: str, app_url: 
                         <!-- Header -->
                         <tr>
                             <td style="background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%); padding: 40px 40px 30px; text-align: center;">
-                                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">SupplierSync Pro</h1>
+                                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">SyncStock</h1>
                             </td>
                         </tr>
                         <!-- Content -->
@@ -258,7 +258,7 @@ def get_password_reset_email_template(user_name: str, reset_link: str, app_url: 
                         <tr>
                             <td style="background-color: #f8fafc; padding: 30px 40px; text-align: center; border-top: 1px solid #e2e8f0;">
                                 <p style="color: #64748b; font-size: 13px; margin: 0;">
-                                    © {datetime.now().year} SupplierSync Pro. Todos los derechos reservados.
+                                    © {datetime.now().year} SyncStock. Todos los derechos reservados.
                                 </p>
                             </td>
                         </tr>
@@ -271,7 +271,7 @@ def get_password_reset_email_template(user_name: str, reset_link: str, app_url: 
     """
     
     text = f"""
-    Restablecer contraseña - SupplierSync Pro
+    Restablecer contraseña - SyncStock
     
     Hola {user_name},
     
@@ -283,10 +283,10 @@ def get_password_reset_email_template(user_name: str, reset_link: str, app_url: 
     
     Si no solicitaste esto, ignora este correo.
     
-    © {datetime.now().year} SupplierSync Pro
+    © {datetime.now().year} SyncStock
     """
     
-    return {"html": html, "text": text, "subject": "Restablecer contraseña - SupplierSync Pro"}
+    return {"html": html, "text": text, "subject": "Restablecer contraseña - SyncStock"}
 
 
 def get_subscription_change_email_template(
@@ -315,7 +315,7 @@ def get_subscription_change_email_template(
                         <!-- Header -->
                         <tr>
                             <td style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); padding: 40px 40px 30px; text-align: center;">
-                                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">SupplierSync Pro</h1>
+                                <h1 style="color: #ffffff; margin: 0; font-size: 28px; font-weight: 700;">SyncStock</h1>
                                 <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 14px;">Cambio de suscripción</p>
                             </td>
                         </tr>
@@ -368,7 +368,7 @@ def get_subscription_change_email_template(
                                     ¿Tienes preguntas sobre tu nuevo plan? Contacta con nosotros.
                                 </p>
                                 <p style="color: #64748b; font-size: 13px; margin: 0;">
-                                    © {datetime.now().year} SupplierSync Pro. Todos los derechos reservados.
+                                    © {datetime.now().year} SyncStock. Todos los derechos reservados.
                                 </p>
                             </td>
                         </tr>
@@ -381,7 +381,7 @@ def get_subscription_change_email_template(
     """
     
     text = f"""
-    Cambio de plan - SupplierSync Pro
+    Cambio de plan - SyncStock
     
     Hola {user_name},
     
@@ -394,10 +394,10 @@ def get_subscription_change_email_template(
     
     Accede a tu cuenta en: {app_url}
     
-    © {datetime.now().year} SupplierSync Pro
+    © {datetime.now().year} SyncStock
     """
     
-    return {"html": html, "text": text, "subject": f"Tu plan ha sido {action_text} - SupplierSync Pro"}
+    return {"html": html, "text": text, "subject": f"Tu plan ha sido {action_text} - SyncStock"}
 
 
 # ==================== EMAIL SERVICE INSTANCE ====================
@@ -435,7 +435,7 @@ def get_email_service(account_type: str = "transactional") -> EmailService:
                     'smtp_user': getattr(legacy_config, 'smtp_user', ''),
                     'smtp_password': getattr(legacy_config, 'smtp_password', ''),
                     'smtp_from_email': getattr(legacy_config, 'smtp_from_email', ''),
-                    'smtp_from_name': getattr(legacy_config, 'smtp_from_name', 'SupplierSync Pro'),
+                    'smtp_from_name': getattr(legacy_config, 'smtp_from_name', 'SyncStock'),
                     'smtp_use_tls': getattr(legacy_config, 'smtp_use_tls', True),
                     'smtp_use_ssl': getattr(legacy_config, 'smtp_use_ssl', False),
                 }
@@ -446,7 +446,7 @@ def get_email_service(account_type: str = "transactional") -> EmailService:
                 'smtp_user': config.get('smtp_user', ''),
                 'smtp_password': config.get('smtp_password', ''),
                 'smtp_from_email': config.get('smtp_from_email', '') or config.get('smtp_user', ''),
-                'smtp_from_name': config.get('smtp_from_name', 'SupplierSync Pro'),
+                'smtp_from_name': config.get('smtp_from_name', 'SyncStock'),
                 'smtp_use_tls': config.get('smtp_use_tls', True),
                 'smtp_use_ssl': config.get('smtp_use_ssl', False),
             }
@@ -479,7 +479,7 @@ def get_email_service(account_type: str = "transactional") -> EmailService:
                 'smtp_user': getattr(config, 'smtp_user', ''),
                 'smtp_password': getattr(config, 'smtp_password', ''),
                 'smtp_from_email': getattr(config, 'smtp_from_email', ''),
-                'smtp_from_name': getattr(config, 'smtp_from_name', 'SupplierSync Pro'),
+                'smtp_from_name': getattr(config, 'smtp_from_name', 'SyncStock'),
                 'smtp_use_tls': getattr(config, 'smtp_use_tls', True),
                 'smtp_use_ssl': getattr(config, 'smtp_use_ssl', False),
             }
@@ -514,7 +514,7 @@ async def get_email_service_async(account_type: str = "transactional") -> EmailS
                 'smtp_user': getattr(legacy_config, 'smtp_user', ''),
                 'smtp_password': getattr(legacy_config, 'smtp_password', ''),
                 'smtp_from_email': getattr(legacy_config, 'smtp_from_email', ''),
-                'smtp_from_name': getattr(legacy_config, 'smtp_from_name', 'SupplierSync Pro'),
+                'smtp_from_name': getattr(legacy_config, 'smtp_from_name', 'SyncStock'),
                 'smtp_use_tls': getattr(legacy_config, 'smtp_use_tls', True),
                 'smtp_use_ssl': getattr(legacy_config, 'smtp_use_ssl', False),
             }
@@ -526,7 +526,7 @@ async def get_email_service_async(account_type: str = "transactional") -> EmailS
             'smtp_user': config.get('smtp_user', ''),
             'smtp_password': config.get('smtp_password', ''),
             'smtp_from_email': config.get('smtp_from_email', '') or config.get('smtp_user', ''),
-            'smtp_from_name': config.get('smtp_from_name', 'SupplierSync Pro'),
+            'smtp_from_name': config.get('smtp_from_name', 'SyncStock'),
             'smtp_use_tls': config.get('smtp_use_tls', True),
             'smtp_use_ssl': config.get('smtp_use_ssl', False),
         }

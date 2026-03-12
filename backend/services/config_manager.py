@@ -5,8 +5,8 @@ La configuración se guarda en un archivo JSON FUERA del directorio de la aplica
 para que persista entre actualizaciones.
 
 Ubicaciones de configuración (en orden de prioridad):
-1. /etc/suppliersync/config.json (producción - persistente entre actualizaciones)
-2. ~/.suppliersync/config.json (desarrollo local)
+1. /etc/syncstock/config.json (producción - persistente entre actualizaciones)
+2. ~/.syncstock/config.json (desarrollo local)
 3. [APP_DIR]/backend/config.json (fallback, sobrescrito en actualizaciones)
 """
 import os
@@ -20,8 +20,8 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 
 # Rutas de configuración en orden de prioridad
-SYSTEM_CONFIG_DIR = Path("/etc/suppliersync")
-USER_CONFIG_DIR = Path.home() / ".suppliersync"
+SYSTEM_CONFIG_DIR = Path("/etc/syncstock")
+USER_CONFIG_DIR = Path.home() / ".syncstock"
 APP_CONFIG_DIR = Path(__file__).parent.parent
 
 # Determinar la ruta del archivo de configuración
@@ -64,7 +64,7 @@ CONFIG_FILE = get_config_path()
 class AppConfig(BaseModel):
     """Modelo de configuración de la aplicación"""
     mongo_url: str = ""
-    db_name: str = "supplier_sync_db"
+    db_name: str = "syncstock_db"
     jwt_secret: str = ""
     cors_origins: str = "*"
     is_configured: bool = False
@@ -74,7 +74,7 @@ class AppConfig(BaseModel):
     smtp_user: str = ""
     smtp_password: str = ""
     smtp_from_email: str = ""
-    smtp_from_name: str = "SupplierSync Pro"
+    smtp_from_name: str = "SyncStock"
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
     smtp_configured: bool = False
@@ -135,7 +135,7 @@ def load_config() -> AppConfig:
     if not config.mongo_url:
         config.mongo_url = os.environ.get('MONGO_URL', '')
     if not config.db_name:
-        config.db_name = os.environ.get('DB_NAME', 'supplier_sync_db')
+        config.db_name = os.environ.get('DB_NAME', 'syncstock_db')
     if not config.jwt_secret:
         config.jwt_secret = os.environ.get('JWT_SECRET', '')
     if config.cors_origins == "*":
@@ -149,7 +149,7 @@ def load_config() -> AppConfig:
 def save_config(config: AppConfig) -> bool:
     """
     Guarda la configuración en el archivo JSON y actualiza el .env
-    Intenta guardar en ubicación persistente (/etc/suppliersync) primero.
+    Intenta guardar en ubicación persistente (/etc/syncstock) primero.
     """
     global CONFIG_FILE
     
@@ -291,14 +291,14 @@ def get_config_info() -> dict:
     
     return {
         "config_path": str(CONFIG_FILE),
-        "is_persistent": str(CONFIG_FILE).startswith("/etc/suppliersync"),
+        "is_persistent": str(CONFIG_FILE).startswith("/etc/syncstock"),
         "is_configured": config.is_configured,
         "locations_checked": [
             {"path": str(SYSTEM_CONFIG_DIR / "config.json"), "exists": (SYSTEM_CONFIG_DIR / "config.json").exists(), "type": "system"},
             {"path": str(USER_CONFIG_DIR / "config.json"), "exists": (USER_CONFIG_DIR / "config.json").exists(), "type": "user"},
             {"path": str(APP_CONFIG_DIR / "config.json"), "exists": (APP_CONFIG_DIR / "config.json").exists(), "type": "app"}
         ],
-        "recommendation": "La configuración se guarda en /etc/suppliersync/ para persistir entre actualizaciones." if str(CONFIG_FILE).startswith("/etc/suppliersync") else "Considera mover la configuración a /etc/suppliersync/ para que persista entre actualizaciones."
+        "recommendation": "La configuración se guarda en /etc/syncstock/ para persistir entre actualizaciones." if str(CONFIG_FILE).startswith("/etc/syncstock") else "Considera mover la configuración a /etc/syncstock/ para que persista entre actualizaciones."
     }
 
 

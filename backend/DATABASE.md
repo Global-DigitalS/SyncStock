@@ -1,5 +1,5 @@
 # ============================================================================
-# CONFIGURACIÓN DE BASE DE DATOS - SupplierSync Pro
+# CONFIGURACIÓN DE BASE DE DATOS - SyncStock
 # ============================================================================
 #
 # Este archivo documenta la estructura completa de MongoDB para la aplicación.

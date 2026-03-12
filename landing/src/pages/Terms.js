@@ -123,7 +123,7 @@ Para usuarios consumidores (si aplica), se respetarán los derechos reconocidos 
 export default function Terms() {
   const { branding, theme } = useApp();
   const dark = theme === "dark";
-  const appName = branding.app_name || "StockHUB";
+  const appName = branding.app_name || "SyncStock";
   const today = new Date().toLocaleDateString("es-ES", { year: "numeric", month: "long", day: "numeric" });
 
   const render = (text) => text.replace(/{app_name}/g, appName);

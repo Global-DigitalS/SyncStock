@@ -32,7 +32,7 @@ MONGO_URL = os.environ.get('MONGO_URL', 'mongodb://localhost:27017')
 
 # Nombre de la base de datos
 # Esta es la base de datos donde se almacenarán todas las colecciones
-DB_NAME = os.environ.get('DB_NAME', 'supplier_sync_db')
+DB_NAME = os.environ.get('DB_NAME', 'syncstock_db')
 
 # =============================================================================
 # OPCIONES DE CONEXIÓN (Opcionales - para ajustes avanzados)

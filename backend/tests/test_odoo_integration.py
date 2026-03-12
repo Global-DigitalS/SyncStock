@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Test suite for Odoo 17 CRM integration in StockHUB3
+Test suite for Odoo 17 CRM integration in SyncStock
 
 This test suite validates the OdooClient class and its integration
 with the CRM endpoints for product, supplier, and order management.

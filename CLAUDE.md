@@ -1,12 +1,12 @@
-# CLAUDE.md — Guía para Asistentes IA en StockHUB3
+# CLAUDE.md — Guía para Asistentes IA en SyncStock
 
-Este archivo proporciona contexto para asistentes IA (Claude Code, etc.) que trabajen en el código de StockHUB3.
+Este archivo proporciona contexto para asistentes IA (Claude Code, etc.) que trabajen en el código de SyncStock.
 
 ---
 
 ## Descripción General del Proyecto
 
-**StockHUB3** (también llamado "SupplierSync Pro") es una plataforma SaaS B2B para gestión y sincronización de catálogos de proveedores. Permite a las empresas:
+**SyncStock** (también llamado "SyncStock") es una plataforma SaaS B2B para gestión y sincronización de catálogos de proveedores. Permite a las empresas:
 
 - Agregar catálogos de productos de múltiples proveedores (FTP, SFTP, URL, CSV, XLSX, XML)
 - Gestionar sincronización multi-tienda (WooCommerce, Shopify, PrestaShop)
@@ -22,7 +22,7 @@ Este archivo proporciona contexto para asistentes IA (Claude Code, etc.) que tra
 ## Estructura del Repositorio
 
 ```
-StockHUB3/
+SyncStock/
 ├── backend/                    # API REST con FastAPI (Python)
 │   ├── routes/                 # 14 módulos de rutas API
 │   ├── services/               # Lógica de negocio e integraciones
@@ -139,7 +139,7 @@ MongoDB
 | `database.py` | Pool de conexiones MongoDB, creación de índices |
 | `sync.py` | Descargas FTP/URL, parseo CSV/XLSX/XML, upsert de productos, disparadores de notificaciones |
 | `email_service.py` | Integración SMTP, plantillas de email con Jinja2 |
-| `config_manager.py` | Config persistente en `/etc/suppliersync/config.json` |
+| `config_manager.py` | Config persistente en `/etc/syncstock/config.json` |
 | `platforms.py` | Integraciones con APIs de plataformas e-commerce |
 | `crm_scheduler.py` | Jobs programados de sincronización CRM (Dolibarr, Odoo) |
 | `unified_sync.py` | Planificación de sincronización de proveedores configurada por el usuario |
@@ -208,7 +208,7 @@ Ver `backend/DATABASE.md` para detalles completos del esquema.
 ### Backend
 ```env
 MONGO_URL=mongodb://localhost:27017
-DB_NAME=supplier_sync_db
+DB_NAME=syncstock_db
 JWT_SECRET=<cadena hex de 128 caracteres>
 JWT_EXPIRATION_HOURS=168
 CORS_ORIGINS=*
@@ -227,7 +227,7 @@ REACT_APP_BACKEND_URL=https://tudominio.com
 ```
 
 ### Configuración Persistente
-Almacenada en `/etc/suppliersync/config.json` (fuera del directorio de la app, sobrevive a actualizaciones).
+Almacenada en `/etc/syncstock/config.json` (fuera del directorio de la app, sobrevive a actualizaciones).
 Contiene: `mongo_url`, `db_name`, `jwt_secret`, `cors_origins`, credenciales SMTP.
 
 ---
@@ -273,13 +273,13 @@ yarn test      # o: npm test
 
 ```bash
 # Gestión del servicio
-sudo systemctl start suppliersync-backend
-sudo systemctl stop suppliersync-backend
-sudo systemctl restart suppliersync-backend
-sudo systemctl status suppliersync-backend
+sudo systemctl start syncstock-backend
+sudo systemctl stop syncstock-backend
+sudo systemctl restart syncstock-backend
+sudo systemctl status syncstock-backend
 
 # Ver logs
-sudo journalctl -u suppliersync-backend -f
+sudo journalctl -u syncstock-backend -f
 
 # Health checks
 curl http://localhost:8001/health
@@ -402,7 +402,7 @@ sudo bash install.sh   # Configuración automática completa
 
 ### Actualizaciones (sin tiempo de inactividad)
 ```bash
-sudo bash update.sh    # Preserva /etc/suppliersync/config.json
+sudo bash update.sh    # Preserva /etc/syncstock/config.json
 ```
 
 ### Configuración Nginx
@@ -455,7 +455,7 @@ Ver `design_guidelines.json` para la especificación completa. Puntos clave:
 4. **Texto de UI en español** — todos los strings visibles al usuario deben estar en español
 5. **Verificar límites de suscripción** antes de crear recursos (proveedores, catálogos, tiendas WooCommerce)
 6. **Usar async/await** consistentemente en rutas Python — nunca usar llamadas síncronas bloqueantes con Motor
-7. **No modificar la ruta `/etc/suppliersync/config.json`** — es la ubicación de configuración persistente
+7. **No modificar la ruta `/etc/syncstock/config.json`** — es la ubicación de configuración persistente
 8. **Ejecutar `item.pop("_id", None)`** en cada documento MongoDB devuelto al cliente API
 9. **Rate limiting** — tener en cuenta los decoradores SlowAPI al hacer pruebas con endpoints rápidamente
 10. **El build del frontend no está en el repo** — ejecutar `yarn build` antes del despliegue
