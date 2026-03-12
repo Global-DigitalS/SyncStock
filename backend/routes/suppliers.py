@@ -230,14 +230,22 @@ async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_use
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     has_ftp = bool(supplier.get('ftp_host') and (supplier.get('ftp_path') or supplier.get('ftp_paths')))
+
+    def _to_str(v):
+        if v is None:
+            return None
+        if hasattr(v, 'isoformat'):
+            return v.isoformat()
+        return str(v)
+
     return {
-        "last_sync": supplier.get('last_sync'),
+        "last_sync": _to_str(supplier.get('last_sync')),
         "ftp_configured": has_ftp,
-        "product_count": supplier.get('product_count', 0),
-        "ftp_paths_count": len(supplier.get('ftp_paths', [])),
-        "sync_status": supplier.get('sync_status', 'idle'),
-        "sync_started_at": supplier.get('sync_started_at'),
-        "sync_last_result": supplier.get('sync_last_result', ''),
+        "product_count": int(supplier.get('product_count') or 0),
+        "ftp_paths_count": len(supplier.get('ftp_paths') or []),
+        "sync_status": supplier.get('sync_status') or 'idle',
+        "sync_started_at": _to_str(supplier.get('sync_started_at')),
+        "sync_last_result": str(supplier.get('sync_last_result') or ''),
     }
 
 
