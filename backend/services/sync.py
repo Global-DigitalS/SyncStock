@@ -49,7 +49,9 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
         port = port or 22
         transport = paramiko.Transport((host, port))
         transport.connect(username=user, password=password)
+        transport.set_keepalive(30)
         sftp = paramiko.SFTPClient.from_transport(transport)
+        sftp.get_channel().settimeout(120)
         try:
             sftp.getfo(file_path, content)
             logger.info(f"SFTP download completed: {content.tell()} bytes")
@@ -519,9 +521,11 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 lines = lines[header_row-1:]
             if separator == '\\t':
                 separator = '\t'
+            first_line_raw = lines[0].rstrip('\r') if lines else ''
+            separator = _detect_best_separator(first_line_raw, separator)
             if header_row == 0:
                 # Headerless file: generate positional column names (col_0, col_1, ...)
-                first_line = lines[0].rstrip('\r') if lines else ''
+                first_line = first_line_raw
                 first_row_parsed = list(csv.reader([first_line], delimiter=separator, quotechar=enclosure if enclosure else '"'))
                 num_cols = len(first_row_parsed[0]) if first_row_parsed else 0
                 fieldnames = [f'col_{i}' for i in range(num_cols)]
@@ -908,8 +912,31 @@ async def browse_ftp_directory(config: dict, path: str = "/") -> dict:
 
 # ==================== MULTI-FILE SYNC ====================
 
+def _detect_best_separator(first_line: str, preferred: str) -> str:
+    """Return the separator that produces the most columns in first_line.
+    Falls back to preferred if no alternative wins by a clear margin."""
+    candidates = [preferred, ';', ',', '\t', '|']
+    # deduplicate while preserving order
+    seen = set()
+    candidates = [c for c in candidates if not (c in seen or seen.add(c))]
+    best_sep = preferred
+    best_count = len(list(csv.reader([first_line], delimiter=preferred, quotechar='"'))[0]) if first_line else 1
+    for sep in candidates[1:]:
+        try:
+            count = len(list(csv.reader([first_line], delimiter=sep, quotechar='"'))[0])
+        except Exception:
+            continue
+        if count > best_count:
+            best_count = count
+            best_sep = sep
+    if best_sep != preferred:
+        logger.info(f"Auto-detected separator {repr(best_sep)} ({best_count} cols) instead of {repr(preferred)}")
+    return best_sep
+
+
 def parse_text_file(content: bytes, separator: str = ";", header_row: int = 1) -> list:
-    """Parse a semicolon-delimited text file. header_row=0 means no header (positional col names)."""
+    """Parse a text file (CSV/TXT). header_row=0 means no header (positional col names).
+    If the configured separator produces only 1 column, auto-detects the best separator."""
     try:
         decoded = content.decode('utf-8-sig', errors='replace')
     except Exception:
@@ -924,8 +951,10 @@ def parse_text_file(content: bytes, separator: str = ";", header_row: int = 1) -
         return []
     if separator == '\\t':
         separator = '\t'
+    first_line = lines[0].rstrip('\r') if lines else ''
+    # Auto-detect separator when configured one yields only 1 column
+    separator = _detect_best_separator(first_line, separator)
     if header_row == 0:
-        first_line = lines[0].rstrip('\r') if lines else ''
         first_row_parsed = list(csv.reader([first_line], delimiter=separator, quotechar='"'))
         num_cols = len(first_row_parsed[0]) if first_row_parsed else 0
         fieldnames = [f'col_{i}' for i in range(num_cols)]
