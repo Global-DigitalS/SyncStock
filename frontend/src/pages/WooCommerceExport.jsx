@@ -330,28 +330,39 @@ const StoresPage = () => {
       toast.error("Selecciona un catálogo para exportar");
       return;
     }
-    
+
     setExporting(true);
     setExportResult(null);
-    
+
     try {
       const payload = {
         config_id: selectedConfig.id,
         update_existing: exportOptions.update_existing,
         catalog_id: exportOptions.catalog_id
       };
-      
+
       const res = await api.post("/stores/export", payload);
-      setExportResult(res.data);
-      
-      if (res.data.status === "success") {
-        toast.success(`Exportación completada: ${res.data.created} creados, ${res.data.updated} actualizados`);
-      } else if (res.data.status === "partial") {
-        toast.warning(`Exportación parcial: ${res.data.failed} errores`);
+
+      if (res.data.status === "started") {
+        // Background export started — close dialog and notify user
+        toast.info(res.data.message || "Exportación iniciada en segundo plano. Recibirás una notificación al finalizar.");
+        setTimeout(() => {
+          setShowExportDialog(false);
+          fetchData();
+        }, 2500);
       } else {
-        toast.error("Error en la exportación");
+        setExportResult(res.data);
+        if (res.data.status === "success") {
+          toast.success(`Exportación completada: ${res.data.created} creados, ${res.data.updated} actualizados`);
+        } else if (res.data.status === "partial") {
+          toast.warning(`Exportación parcial: ${res.data.failed} errores`);
+        } else if (res.data.status === "warning") {
+          toast.warning(res.data.errors?.[0] || "Sin productos para exportar");
+        } else {
+          toast.error("Error en la exportación");
+        }
+        fetchData();
       }
-      fetchData();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al exportar");
     } finally {
@@ -837,7 +848,7 @@ const StoresPage = () => {
                 {exporting ? (
                   <>
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                    Exportando...
+                    Iniciando...
                   </>
                 ) : (
                   <>
