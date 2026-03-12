@@ -101,7 +101,10 @@ ws_manager = ConnectionManager()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
-    await ensure_indexes()
+    try:
+        await ensure_indexes()
+    except Exception as e:
+        logger.warning(f"No se pudieron crear los índices de MongoDB (continuando sin ellos): {e}")
     # Legacy scheduled syncs (fallback for users without unified config)
     scheduler.add_job(sync_all_suppliers, 'interval', hours=6, id='sync_suppliers_legacy', replace_existing=True)
     scheduler.add_job(sync_all_woocommerce_stores, 'interval', hours=12, id='sync_woocommerce_legacy', replace_existing=True)

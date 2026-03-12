@@ -176,46 +176,50 @@ async def ensure_indexes():
     Crea los índices necesarios para un rendimiento óptimo.
     Se llama una vez al arranque del servidor.
     Todos los índices son idempotentes (create_index no falla si ya existen).
+    Si MongoDB requiere autenticación o no está disponible, se registra el error sin crashear.
     """
     _db = _db_manager.db
-    # --- products ---
-    await _db.products.create_index([("user_id", 1), ("id", 1)], unique=True, background=True)
-    await _db.products.create_index([("user_id", 1), ("supplier_id", 1)], background=True)
-    await _db.products.create_index([("user_id", 1), ("ean", 1)], background=True)
-    await _db.products.create_index([("user_id", 1), ("category", 1)], background=True)
-    await _db.products.create_index([("user_id", 1), ("stock", 1)], background=True)
-    await _db.products.create_index([("user_id", 1), ("price", 1)], background=True)
-    await _db.products.create_index([("sku", 1), ("supplier_id", 1)], background=True)
-    # text index para búsqueda full-text
-    await _db.products.create_index(
-        [("name", "text"), ("sku", "text"), ("ean", "text")],
-        name="products_text_search",
-        background=True,
-    )
-    # --- suppliers ---
-    await _db.suppliers.create_index([("user_id", 1), ("id", 1)], unique=True, background=True)
-    # --- catalogs ---
-    await _db.catalogs.create_index([("user_id", 1), ("id", 1)], unique=True, background=True)
-    # --- catalog_items ---
-    await _db.catalog_items.create_index([("catalog_id", 1), ("product_id", 1)], unique=True, background=True)
-    await _db.catalog_items.create_index([("catalog_id", 1), ("active", 1)], background=True)
-    await _db.catalog_items.create_index([("user_id", 1)], background=True)
-    # --- catalog_categories ---
-    await _db.catalog_categories.create_index([("catalog_id", 1), ("id", 1)], unique=True, background=True)
-    await _db.catalog_categories.create_index([("catalog_id", 1), ("parent_id", 1)], background=True)
-    # --- price_history ---
-    await _db.price_history.create_index([("user_id", 1), ("created_at", -1)], background=True)
-    await _db.price_history.create_index([("product_id", 1), ("created_at", -1)], background=True)
-    # --- notifications ---
-    await _db.notifications.create_index([("user_id", 1), ("read", 1), ("created_at", -1)], background=True)
-    # --- sync_history ---
-    await _db.sync_history.create_index([("user_id", 1), ("started_at", -1)], background=True)
-    # --- users ---
-    await _db.users.create_index([("email", 1)], unique=True, background=True)
-    await _db.users.create_index([("id", 1)], unique=True, background=True)
-    # --- woocommerce_configs ---
-    await _db.woocommerce_configs.create_index([("user_id", 1)], background=True)
-    logger.info("MongoDB indexes ensured")
+    try:
+        # --- products ---
+        await _db.products.create_index([("user_id", 1), ("id", 1)], unique=True, background=True)
+        await _db.products.create_index([("user_id", 1), ("supplier_id", 1)], background=True)
+        await _db.products.create_index([("user_id", 1), ("ean", 1)], background=True)
+        await _db.products.create_index([("user_id", 1), ("category", 1)], background=True)
+        await _db.products.create_index([("user_id", 1), ("stock", 1)], background=True)
+        await _db.products.create_index([("user_id", 1), ("price", 1)], background=True)
+        await _db.products.create_index([("sku", 1), ("supplier_id", 1)], background=True)
+        # text index para búsqueda full-text
+        await _db.products.create_index(
+            [("name", "text"), ("sku", "text"), ("ean", "text")],
+            name="products_text_search",
+            background=True,
+        )
+        # --- suppliers ---
+        await _db.suppliers.create_index([("user_id", 1), ("id", 1)], unique=True, background=True)
+        # --- catalogs ---
+        await _db.catalogs.create_index([("user_id", 1), ("id", 1)], unique=True, background=True)
+        # --- catalog_items ---
+        await _db.catalog_items.create_index([("catalog_id", 1), ("product_id", 1)], unique=True, background=True)
+        await _db.catalog_items.create_index([("catalog_id", 1), ("active", 1)], background=True)
+        await _db.catalog_items.create_index([("user_id", 1)], background=True)
+        # --- catalog_categories ---
+        await _db.catalog_categories.create_index([("catalog_id", 1), ("id", 1)], unique=True, background=True)
+        await _db.catalog_categories.create_index([("catalog_id", 1), ("parent_id", 1)], background=True)
+        # --- price_history ---
+        await _db.price_history.create_index([("user_id", 1), ("created_at", -1)], background=True)
+        await _db.price_history.create_index([("product_id", 1), ("created_at", -1)], background=True)
+        # --- notifications ---
+        await _db.notifications.create_index([("user_id", 1), ("read", 1), ("created_at", -1)], background=True)
+        # --- sync_history ---
+        await _db.sync_history.create_index([("user_id", 1), ("started_at", -1)], background=True)
+        # --- users ---
+        await _db.users.create_index([("email", 1)], unique=True, background=True)
+        await _db.users.create_index([("id", 1)], unique=True, background=True)
+        # --- woocommerce_configs ---
+        await _db.woocommerce_configs.create_index([("user_id", 1)], background=True)
+        logger.info("MongoDB indexes ensured")
+    except Exception as e:
+        logger.warning(f"No se pudieron crear los índices de MongoDB: {e}. Comprueba la URL de conexión y las credenciales.")
 
 
 def get_db():
