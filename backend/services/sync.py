@@ -1058,8 +1058,12 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     product_keys = list(first_row.keys())
     merge_key = product_keys[0] if product_keys else None
 
+    # Detect if files are headerless (positional col_0, col_1, ...) to apply prefix strategy
+    multifile_header_row = int(ftp_paths[0].get('header_row', 1) or 1) if ftp_paths else 1
+
     # Build lookup dictionaries
     prices_lookup = {}
+    price_merge_key = None
     if prices_data:
         price_keys = list(prices_data[0].keys()) if prices_data else []
         price_merge_key = price_keys[0] if price_keys else None
@@ -1070,6 +1074,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
                     prices_lookup[key] = row
 
     stock_lookup = {}
+    stock_merge_key = None
     if stock_data:
         stock_keys = list(stock_data[0].keys()) if stock_data else []
         stock_merge_key = stock_keys[0] if stock_keys else None
@@ -1096,11 +1101,17 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
             merged = dict(raw_product)
             if prod_id in prices_lookup:
                 for k, v in prices_lookup[prod_id].items():
-                    if k not in merged or not merged[k]:
+                    if multifile_header_row == 0:
+                        if k != price_merge_key:
+                            merged[f"prices_{k}"] = v
+                    elif k not in merged or not merged[k]:
                         merged[k] = v
             if prod_id in stock_lookup:
                 for k, v in stock_lookup[prod_id].items():
-                    if k not in merged or not merged[k]:
+                    if multifile_header_row == 0:
+                        if k != stock_merge_key:
+                            merged[f"stock_{k}"] = v
+                    elif k not in merged or not merged[k]:
                         merged[k] = v
 
             column_mapping = supplier.get('column_mapping')
