@@ -401,6 +401,32 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
 
             logger.info(f"ZIP merge: {len(products_data)} productos, {len(prices_lookup)} precios, {len(stock_lookup)} stock")
 
+            # Build detected_columns from a sample merged row (product + prefixed prices/stock)
+            # so the ColumnMappingDialog shows the real available columns
+            zip_detected_cols = []
+            if products_data:
+                sample = dict(products_data[0])
+                sample_id = str(sample.get(list(sample.keys())[0], '')).strip()
+                if prices_merge_key and sample_id in prices_lookup:
+                    for k in prices_lookup[sample_id]:
+                        if header_row == 0:
+                            if k != prices_merge_key:
+                                sample[f"prices_{k}"] = prices_lookup[sample_id][k]
+                        elif k not in sample:
+                            sample[k] = prices_lookup[sample_id][k]
+                if stock_merge_key and sample_id in stock_lookup:
+                    for k in stock_lookup[sample_id]:
+                        if header_row == 0:
+                            if k != stock_merge_key:
+                                sample[f"stock_{k}"] = stock_lookup[sample_id][k]
+                        elif k not in sample:
+                            sample[k] = stock_lookup[sample_id][k]
+                zip_detected_cols = list(sample.keys())
+                await db.suppliers.update_one(
+                    {"id": supplier['id']},
+                    {"$set": {"detected_columns": zip_detected_cols}}
+                )
+
             # Merge and upsert products
             now = datetime.now(timezone.utc).isoformat()
             imported = 0
@@ -469,9 +495,16 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                     errors += 1
 
             msg = f"ZIP procesado: {imported} importados, {updated} actualizados"
-            if needs_mapping:
-                msg += ". Configura el mapeo de columnas para mejorar la detección."
-            return {"imported": imported, "updated": updated, "errors": errors, "message": msg, "needs_mapping": needs_mapping}
+            result = {"imported": imported, "updated": updated, "errors": errors, "message": msg,
+                      "needs_mapping": needs_mapping, "detected_columns": zip_detected_cols}
+            if needs_mapping and imported + updated == 0:
+                result["status"] = "needs_mapping"
+                result["message"] = (
+                    f"El ZIP se procesó pero no se importaron productos. "
+                    f"Columnas disponibles: {', '.join(zip_detected_cols[:8])}... "
+                    f"Configura el mapeo de columnas o re-aplica la plantilla del proveedor."
+                )
+            return result
 
         elif file_format == 'csv':
             try:
