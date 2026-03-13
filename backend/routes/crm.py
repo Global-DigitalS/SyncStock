@@ -359,7 +359,8 @@ class DolibarrClient:
             
             logger.info(f"Creating stock movement for product {product_id}: {current_stock} -> {stock} (diff: {diff})")
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/stockmovements",
                 json=payload,
                 timeout=30
@@ -379,7 +380,8 @@ class DolibarrClient:
     def get_warehouses(self) -> List[Dict]:
         """Get all warehouses from Dolibarr"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/warehouses",
                 timeout=30
             )
@@ -398,7 +400,8 @@ class DolibarrClient:
                 "lieu": location,
                 "statut": 1  # Active
             }
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/warehouses",
                 json=payload,
                 timeout=30
@@ -427,7 +430,8 @@ class DolibarrClient:
     def get_product_by_id(self, product_id: int) -> Optional[Dict]:
         """Get product by ID"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/products/{product_id}",
                 timeout=30
             )
@@ -451,7 +455,8 @@ class DolibarrClient:
             elif thirdparty_type == 'customer':
                 params['mode'] = 1  # Customers only
             
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/thirdparties",
                 params=params,
                 timeout=60
@@ -486,12 +491,13 @@ class DolibarrClient:
                 "status": 1  # Active
             }
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/thirdparties",
                 json=payload,
                 timeout=30
             )
-            
+
             if response.status_code in [200, 201]:
                 supplier_id = response.json()
                 return {"status": "success", "supplier_id": supplier_id, "message": "Proveedor creado"}
@@ -513,7 +519,8 @@ class DolibarrClient:
             if "address" in supplier_data:
                 payload["address"] = supplier_data["address"]
             
-            response = requests.put(
+            response = self._rate_limited_request(
+                'PUT',
                 f"{self.base_url}/thirdparties/{supplier_id}",
                 json=payload,
                 timeout=30
@@ -537,7 +544,8 @@ class DolibarrClient:
             
             # If not found in list, try direct search with SQL filter
             try:
-                response = requests.get(
+                response = self._rate_limited_request(
+                    'GET',
                     f"{self.base_url}/thirdparties",
                     params={'sqlfilters': f"(t.nom:=:'{name}')"},
                     timeout=30
@@ -579,7 +587,8 @@ class DolibarrClient:
             
             logger.info(f"Linking product {product_id} to supplier {supplier_id} with price {purchase_price}")
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/products/{product_id}/purchase_prices",
                 json=payload,
                 timeout=30
@@ -604,7 +613,8 @@ class DolibarrClient:
     def get_orders(self, limit: int = 100) -> List[Dict]:
         """Get customer orders from Dolibarr"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/orders",
                 params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
                 timeout=60
@@ -619,7 +629,8 @@ class DolibarrClient:
     def get_supplier_orders(self, limit: int = 100) -> List[Dict]:
         """Get supplier orders from Dolibarr"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/supplierorders",
                 params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
                 timeout=60
@@ -652,7 +663,8 @@ class DolibarrClient:
                     "desc": line.get("description", "")
                 })
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/orders",
                 json=payload,
                 timeout=30
@@ -685,7 +697,8 @@ class DolibarrClient:
                     "tva_tx": line.get("tax_rate", 21)
                 })
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/supplierorders",
                 json=payload,
                 timeout=30
