@@ -411,6 +411,57 @@ GENERATE_SOURCEMAP=false"
 }
 
 #-------------------------------------------------------------------------------
+# Actualizar Landing
+#-------------------------------------------------------------------------------
+update_landing() {
+    print_step "Actualizando Landing"
+
+    if [ ! -d "$APP_DIR/landing" ]; then
+        print_info "Directorio landing no encontrado, omitiendo..."
+        return
+    fi
+
+    cd "$APP_DIR/landing"
+
+    # Preservar .env si existe, si no, crearlo con el dominio
+    if [ -f ".env" ]; then
+        LANDING_ENV=$(cat .env)
+    else
+        if [ -n "$DOMAIN" ]; then
+            LANDING_ENV="REACT_APP_API_URL=https://$DOMAIN
+REACT_APP_APP_URL=https://$DOMAIN
+GENERATE_SOURCEMAP=false"
+        fi
+    fi
+
+    # Instalar dependencias
+    print_info "Actualizando dependencias del landing..."
+    yarn install --silent 2>/dev/null || yarn install
+
+    # Restaurar .env
+    if [ -n "$LANDING_ENV" ]; then
+        echo "$LANDING_ENV" > .env
+    fi
+
+    # Compilar
+    print_info "Compilando landing (esto puede tardar unos minutos)..."
+    GENERATE_SOURCEMAP=false yarn build
+
+    if [ -d "build" ]; then
+        print_success "Landing compilado correctamente"
+    else
+        print_error "Error al compilar el landing"
+        exit 1
+    fi
+
+    # Establecer permisos
+    if [ "$IS_PLESK" == "yes" ] && [ -n "$PLESK_USER" ]; then
+        chown -R "$PLESK_USER:psacln" "$APP_DIR"
+        chmod -R 755 "$APP_DIR"
+    fi
+}
+
+#-------------------------------------------------------------------------------
 # Verificar configuración de Nginx en Plesk
 #-------------------------------------------------------------------------------
 verify_nginx_plesk() {
@@ -596,6 +647,7 @@ main() {
     update_code
     update_backend
     update_frontend
+    update_landing
     verify_nginx_plesk
     verify_update
     print_summary
