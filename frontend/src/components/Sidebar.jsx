@@ -32,7 +32,8 @@ import {
   Link2,
   Building2,
   RefreshCw,
-  Layout
+  Layout,
+  BarChart3
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -65,6 +66,7 @@ const adminItems = [
   { path: "/admin/landing", label: "Landing Page", icon: Layout },
   { path: "/admin/email-config", label: "Config. Email", icon: Mail },
   { path: "/admin/email-templates", label: "Plantillas Email", icon: FileText },
+  { path: "/admin/google-services", label: "Google Services", icon: BarChart3 },
 ];
 
 const Sidebar = ({ open, onToggle }) => {
