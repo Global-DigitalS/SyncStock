@@ -159,6 +159,73 @@ const defaultContent = {
   },
 };
 
+/**
+ * Inyecta dinámicamente los scripts de Google (Analytics, Tag Manager, Ads, Search Console)
+ * según la configuración del admin.
+ */
+function injectGoogleScripts(config) {
+  if (!config) return;
+
+  // Google Tag Manager (se recomienda cargar primero)
+  if (config.tag_manager_enabled && config.tag_manager_container_id) {
+    const gtmId = config.tag_manager_container_id;
+    // GTM script en <head>
+    const gtmScript = document.createElement("script");
+    gtmScript.textContent = `(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+      new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+      j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+      'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+    })(window,document,'script','dataLayer','${gtmId}');`;
+    document.head.appendChild(gtmScript);
+    // GTM noscript en <body>
+    const gtmNoscript = document.createElement("noscript");
+    gtmNoscript.innerHTML = `<iframe src="https://www.googletagmanager.com/ns.html?id=${gtmId}" height="0" width="0" style="display:none;visibility:hidden"></iframe>`;
+    document.body.insertBefore(gtmNoscript, document.body.firstChild);
+  }
+
+  // Google Analytics (GA4) — solo si GTM no está activo (para evitar duplicados)
+  if (config.analytics_enabled && config.analytics_measurement_id && !config.tag_manager_enabled) {
+    const gaId = config.analytics_measurement_id;
+    const gaScript = document.createElement("script");
+    gaScript.async = true;
+    gaScript.src = `https://www.googletagmanager.com/gtag/js?id=${gaId}`;
+    document.head.appendChild(gaScript);
+    const gaInline = document.createElement("script");
+    gaInline.textContent = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaId}');`;
+    document.head.appendChild(gaInline);
+  }
+
+  // Google Ads — solo si GTM no está activo
+  if (config.google_ads_enabled && config.google_ads_conversion_id && !config.tag_manager_enabled) {
+    const awId = config.google_ads_conversion_id;
+    // Reutiliza gtag si ya existe (Analytics), si no, lo crea
+    if (!config.analytics_enabled || !config.analytics_measurement_id) {
+      const adsScript = document.createElement("script");
+      adsScript.async = true;
+      adsScript.src = `https://www.googletagmanager.com/gtag/js?id=${awId}`;
+      document.head.appendChild(adsScript);
+      const adsInline = document.createElement("script");
+      adsInline.textContent = `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${awId}');`;
+      document.head.appendChild(adsInline);
+    } else {
+      const adsConfig = document.createElement("script");
+      adsConfig.textContent = `gtag('config','${awId}');`;
+      document.head.appendChild(adsConfig);
+    }
+  }
+
+  // Google Search Console — meta tag de verificación
+  if (config.search_console_enabled && config.search_console_verification_code) {
+    const code = config.search_console_verification_code;
+    // Extraer solo el valor si viene como meta tag completo
+    const content = code.includes("content=") ? code.match(/content="?([^">\s]+)"?/)?.[1] || code : code;
+    const meta = document.createElement("meta");
+    meta.name = "google-site-verification";
+    meta.content = content;
+    document.head.appendChild(meta);
+  }
+}
+
 const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
@@ -179,10 +246,11 @@ export function AppProvider({ children }) {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [brandingRes, plansRes, contentRes] = await Promise.allSettled([
+        const [brandingRes, plansRes, contentRes, googleRes] = await Promise.allSettled([
           axios.get(`${API_URL}/api/branding/public`),
           axios.get(`${API_URL}/api/subscriptions/plans/public`),
           axios.get(`${API_URL}/api/landing/content`),
+          axios.get(`${API_URL}/api/google-services/public`),
         ]);
 
         if (brandingRes.status === "fulfilled" && brandingRes.value.data) {
@@ -200,6 +268,9 @@ export function AppProvider({ children }) {
             });
             return merged;
           });
+        }
+        if (googleRes.status === "fulfilled" && googleRes.value.data) {
+          injectGoogleScripts(googleRes.value.data);
         }
       } catch (_) {
         // use defaults

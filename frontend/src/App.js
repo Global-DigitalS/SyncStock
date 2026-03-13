@@ -37,9 +37,13 @@ import AdminEmailTemplates from "./pages/AdminEmailTemplates";
 import AdminStripe from "./pages/AdminStripe";
 import AdminEmailAccounts from "./pages/AdminEmailAccounts";
 import AdminLanding from "./pages/AdminLanding";
+import AdminGoogleServices from "./pages/AdminGoogleServices";
 
 // Components
 import Sidebar from "./components/Sidebar";
+
+// Hooks
+import useGoogleScripts from "./hooks/useGoogleScripts";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
@@ -245,6 +249,8 @@ const AuthProvider = ({ children }) => {
 };
 
 function App() {
+  useGoogleScripts();
+
   return (
     <HashRouter>
       <AuthProvider>
@@ -535,6 +541,16 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <AdminLanding />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/google-services"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AdminGoogleServices />
                 </MainLayout>
               </ProtectedRoute>
             }

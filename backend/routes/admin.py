@@ -832,6 +832,106 @@ async def apply_theme_preset(preset_key: str, user: dict = Depends(get_superadmi
     return {"success": True, "branding": config}
 
 
+# ==================== GOOGLE SERVICES MODELS ====================
+
+class GoogleServicesConfig(BaseModel):
+    # Google Analytics (GA4)
+    analytics_enabled: bool = False
+    analytics_measurement_id: str = ""  # G-XXXXXXXXXX
+    analytics_api_secret: str = ""
+    # Google Search Console
+    search_console_enabled: bool = False
+    search_console_property_url: str = ""
+    search_console_verification_code: str = ""
+    # Google Tag Manager
+    tag_manager_enabled: bool = False
+    tag_manager_container_id: str = ""  # GTM-XXXXXXX
+    # Google Ads
+    google_ads_enabled: bool = False
+    google_ads_conversion_id: str = ""  # AW-XXXXXXXXX
+    google_ads_conversion_label: str = ""
+
+class GoogleServicesConfigUpdate(BaseModel):
+    # Google Analytics (GA4)
+    analytics_enabled: Optional[bool] = None
+    analytics_measurement_id: Optional[str] = None
+    analytics_api_secret: Optional[str] = None
+    # Google Search Console
+    search_console_enabled: Optional[bool] = None
+    search_console_property_url: Optional[str] = None
+    search_console_verification_code: Optional[str] = None
+    # Google Tag Manager
+    tag_manager_enabled: Optional[bool] = None
+    tag_manager_container_id: Optional[str] = None
+    # Google Ads
+    google_ads_enabled: Optional[bool] = None
+    google_ads_conversion_id: Optional[str] = None
+    google_ads_conversion_label: Optional[str] = None
+
+
+# ==================== GOOGLE SERVICES ENDPOINTS ====================
+
+@router.get("/admin/google-services")
+async def get_google_services(user: dict = Depends(get_superadmin_user)):
+    """Get Google services configuration"""
+    config = await db.app_config.find_one({"type": "google_services"})
+    if not config:
+        return GoogleServicesConfig().model_dump()
+    config.pop("_id", None)
+    config.pop("type", None)
+    config.pop("updated_at", None)
+    config.pop("updated_by", None)
+    return config
+
+
+@router.put("/admin/google-services")
+async def update_google_services(data: GoogleServicesConfigUpdate, user: dict = Depends(get_superadmin_user)):
+    """Update Google services configuration"""
+    update_data = {k: v for k, v in data.model_dump().items() if v is not None}
+
+    # Sanitize string fields
+    for key in list(update_data.keys()):
+        if isinstance(update_data[key], str):
+            update_data[key] = sanitize_string(update_data[key])
+
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_by"] = user["id"]
+
+    await db.app_config.update_one(
+        {"type": "google_services"},
+        {"$set": update_data},
+        upsert=True
+    )
+
+    config = await db.app_config.find_one({"type": "google_services"})
+    config.pop("_id", None)
+    config.pop("type", None)
+
+    logger.info(f"Google services config updated by {user.get('email')}")
+    return {"success": True, "config": config}
+
+
+@router.get("/google-services/public")
+async def get_public_google_services():
+    """Get public Google services configuration (no auth required).
+    Returns only the IDs/codes needed for frontend tracking scripts."""
+    config = await db.app_config.find_one({"type": "google_services"})
+    if not config:
+        return GoogleServicesConfig().model_dump()
+
+    return {
+        "analytics_enabled": config.get("analytics_enabled", False),
+        "analytics_measurement_id": config.get("analytics_measurement_id", ""),
+        "search_console_enabled": config.get("search_console_enabled", False),
+        "search_console_verification_code": config.get("search_console_verification_code", ""),
+        "tag_manager_enabled": config.get("tag_manager_enabled", False),
+        "tag_manager_container_id": config.get("tag_manager_container_id", ""),
+        "google_ads_enabled": config.get("google_ads_enabled", False),
+        "google_ads_conversion_id": config.get("google_ads_conversion_id", ""),
+        "google_ads_conversion_label": config.get("google_ads_conversion_label", ""),
+    }
+
+
 # ==================== SYSTEM RESET ====================
 
 class ResetConfirmation(BaseModel):
