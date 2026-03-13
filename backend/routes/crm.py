@@ -359,7 +359,8 @@ class DolibarrClient:
             
             logger.info(f"Creating stock movement for product {product_id}: {current_stock} -> {stock} (diff: {diff})")
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/stockmovements",
                 json=payload,
                 timeout=30
@@ -379,7 +380,8 @@ class DolibarrClient:
     def get_warehouses(self) -> List[Dict]:
         """Get all warehouses from Dolibarr"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/warehouses",
                 timeout=30
             )
@@ -398,7 +400,8 @@ class DolibarrClient:
                 "lieu": location,
                 "statut": 1  # Active
             }
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/warehouses",
                 json=payload,
                 timeout=30
@@ -427,7 +430,8 @@ class DolibarrClient:
     def get_product_by_id(self, product_id: int) -> Optional[Dict]:
         """Get product by ID"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/products/{product_id}",
                 timeout=30
             )
@@ -451,13 +455,15 @@ class DolibarrClient:
             elif thirdparty_type == 'customer':
                 params['mode'] = 1  # Customers only
             
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/thirdparties",
                 params=params,
                 timeout=60
             )
             if response.status_code == 200:
                 return response.json()
+            logger.warning(f"Dolibarr get_thirdparties returned {response.status_code}: {response.text[:200]}")
             return []
         except Exception as e:
             logger.error(f"Dolibarr get_thirdparties error: {e}")
@@ -470,8 +476,12 @@ class DolibarrClient:
     def create_supplier(self, supplier_data: Dict) -> Dict:
         """Create a supplier in Dolibarr"""
         try:
+            name = supplier_data.get("name", "").strip()
+            if not name:
+                return {"status": "error", "message": "Nombre de proveedor vacío"}
+
             payload = {
-                "name": supplier_data.get("name", ""),
+                "name": name,
                 "name_alias": supplier_data.get("alias", ""),
                 "email": supplier_data.get("email", ""),
                 "phone": supplier_data.get("phone", ""),
@@ -481,25 +491,32 @@ class DolibarrClient:
                 "country_code": supplier_data.get("country_code", "ES"),
                 "fournisseur": 1,  # Mark as supplier
                 "client": 0,  # Not a client
-                "code_fournisseur": supplier_data.get("supplier_code", ""),
                 "note_public": supplier_data.get("notes", ""),
                 "status": 1  # Active
             }
+            # Only include supplier_code if explicitly provided and non-empty
+            supplier_code = supplier_data.get("supplier_code", "")
+            if supplier_code:
+                payload["code_fournisseur"] = supplier_code
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/thirdparties",
                 json=payload,
                 timeout=30
             )
-            
+
             if response.status_code in [200, 201]:
                 supplier_id = response.json()
                 return {"status": "success", "supplier_id": supplier_id, "message": "Proveedor creado"}
             else:
-                return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+                error_detail = response.text[:300]
+                logger.error(f"Dolibarr create_supplier failed for '{name}': {response.status_code} - {error_detail}")
+                return {"status": "error", "message": f"Error: {response.status_code} - {error_detail}"}
         except Exception as e:
+            logger.error(f"Dolibarr create_supplier exception for '{supplier_data.get('name', '')}': {e}")
             return {"status": "error", "message": str(e)}
-    
+
     def update_supplier(self, supplier_id: int, supplier_data: Dict) -> Dict:
         """Update a supplier in Dolibarr"""
         try:
@@ -513,7 +530,8 @@ class DolibarrClient:
             if "address" in supplier_data:
                 payload["address"] = supplier_data["address"]
             
-            response = requests.put(
+            response = self._rate_limited_request(
+                'PUT',
                 f"{self.base_url}/thirdparties/{supplier_id}",
                 json=payload,
                 timeout=30
@@ -528,16 +546,19 @@ class DolibarrClient:
     
     def get_supplier_by_name(self, name: str) -> Optional[Dict]:
         """Find supplier by name using direct API search"""
+        if not name or not name.strip():
+            return None
         try:
             # First try to get suppliers and search
             suppliers = self.get_suppliers(limit=500)
             for s in suppliers:
-                if s.get("name", "").lower() == name.lower():
+                if s.get("name", "").lower() == name.strip().lower():
                     return s
             
             # If not found in list, try direct search with SQL filter
             try:
-                response = requests.get(
+                response = self._rate_limited_request(
+                    'GET',
                     f"{self.base_url}/thirdparties",
                     params={'sqlfilters': f"(t.nom:=:'{name}')"},
                     timeout=30
@@ -579,7 +600,8 @@ class DolibarrClient:
             
             logger.info(f"Linking product {product_id} to supplier {supplier_id} with price {purchase_price}")
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/products/{product_id}/purchase_prices",
                 json=payload,
                 timeout=30
@@ -604,7 +626,8 @@ class DolibarrClient:
     def get_orders(self, limit: int = 100) -> List[Dict]:
         """Get customer orders from Dolibarr"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/orders",
                 params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
                 timeout=60
@@ -619,7 +642,8 @@ class DolibarrClient:
     def get_supplier_orders(self, limit: int = 100) -> List[Dict]:
         """Get supplier orders from Dolibarr"""
         try:
-            response = requests.get(
+            response = self._rate_limited_request(
+                'GET',
                 f"{self.base_url}/supplierorders",
                 params={'limit': limit, 'sortfield': 'rowid', 'sortorder': 'DESC'},
                 timeout=60
@@ -652,7 +676,8 @@ class DolibarrClient:
                     "desc": line.get("description", "")
                 })
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/orders",
                 json=payload,
                 timeout=30
@@ -685,7 +710,8 @@ class DolibarrClient:
                     "tva_tx": line.get("tax_rate", 21)
                 })
             
-            response = requests.post(
+            response = self._rate_limited_request(
+                'POST',
                 f"{self.base_url}/supplierorders",
                 json=payload,
                 timeout=30
@@ -1862,8 +1888,7 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
                 "city": supplier.get("city", ""),
                 "zip": supplier.get("zip", ""),
                 "country_code": supplier.get("country_code", "ES"),
-                "notes": f"Tipo conexión: {supplier.get('connection_type', 'N/A')}. Productos: {supplier.get('product_count', 0)}",
-                "supplier_code": supplier.get("id", "")[:10]
+                "notes": f"Tipo conexión: {supplier.get('connection_type', 'N/A')}. Productos: {supplier.get('product_count', 0)}"
             }
             
             if existing:
@@ -1873,6 +1898,7 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
                     updated += 1
                     supplier_mapping[supplier["id"]] = dolibarr_id
                 else:
+                    logger.warning(f"Failed to update supplier '{supplier.get('name', '')}' in Dolibarr: {result.get('message', '')}")
                     errors += 1
             else:
                 result = client.create_supplier(supplier_data)
@@ -1886,6 +1912,7 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
                         {"$set": {"dolibarr_id": dolibarr_id}}
                     )
                 else:
+                    logger.warning(f"Failed to create supplier '{supplier.get('name', '')}' in Dolibarr: {result.get('message', '')}")
                     errors += 1
         except Exception as e:
             logger.error(f"Error syncing supplier {supplier.get('name', 'unknown')} to Dolibarr: {e}")
