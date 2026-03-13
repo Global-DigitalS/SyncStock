@@ -306,9 +306,9 @@ const AdminBranding = () => {
                   {branding.logo_url ? (
                     <div className="space-y-4">
                       <div className="bg-slate-100 p-4 rounded-lg inline-block">
-                        <img 
-                          src={branding.logo_url} 
-                          alt="Logo" 
+                        <img
+                          src={branding.logo_url.startsWith('/') ? `${process.env.REACT_APP_BACKEND_URL}${branding.logo_url}` : branding.logo_url}
+                          alt="Logo"
                           className="max-h-16 max-w-full object-contain"
                         />
                       </div>
@@ -374,9 +374,9 @@ const AdminBranding = () => {
                   {branding.favicon_url ? (
                     <div className="space-y-4">
                       <div className="bg-slate-100 p-4 rounded-lg inline-block">
-                        <img 
-                          src={branding.favicon_url} 
-                          alt="Favicon" 
+                        <img
+                          src={branding.favicon_url.startsWith('/') ? `${process.env.REACT_APP_BACKEND_URL}${branding.favicon_url}` : branding.favicon_url}
+                          alt="Favicon"
                           className="w-8 h-8 object-contain"
                         />
                       </div>
@@ -713,7 +713,7 @@ const AdminBranding = () => {
                   style={{ backgroundColor: branding.primary_color }}
                 >
                   {branding.logo_url ? (
-                    <img src={branding.logo_url} alt="Logo" className="h-8" />
+                    <img src={branding.logo_url.startsWith('/') ? `${process.env.REACT_APP_BACKEND_URL}${branding.logo_url}` : branding.logo_url} alt="Logo" className="h-8" />
                   ) : (
                     <div className="w-10 h-10 bg-white/20 rounded flex items-center justify-center">
                       <span className="text-white font-bold">{branding.app_name?.charAt(0) || "S"}</span>

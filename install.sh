@@ -525,6 +525,42 @@ EOF
 }
 
 #-------------------------------------------------------------------------------
+# Configuración del Landing
+#-------------------------------------------------------------------------------
+setup_landing() {
+    print_step "Configurando Landing (React)"
+
+    if [ ! -d "$APP_DIR/landing" ]; then
+        print_info "Directorio landing no encontrado, omitiendo..."
+        return
+    fi
+
+    cd "$APP_DIR/landing"
+
+    # Crear archivo .env con la URL del dominio
+    cat > .env << EOF
+REACT_APP_API_URL=https://$DOMAIN
+REACT_APP_APP_URL=https://$DOMAIN
+GENERATE_SOURCEMAP=false
+EOF
+
+    # Instalar dependencias
+    print_info "Instalando dependencias del landing..."
+    yarn install --silent 2>/dev/null || yarn install
+
+    # Compilar para producción
+    print_info "Compilando landing (esto puede tardar unos minutos)..."
+    GENERATE_SOURCEMAP=false yarn build
+
+    if [ ! -d "build" ]; then
+        print_error "Error al compilar el landing"
+        exit 1
+    fi
+
+    print_success "Landing compilado correctamente"
+}
+
+#-------------------------------------------------------------------------------
 # Configuración de Nginx para Plesk
 #-------------------------------------------------------------------------------
 setup_nginx_plesk() {
@@ -1035,7 +1071,8 @@ main() {
     setup_application
     setup_backend
     setup_frontend
-    
+    setup_landing
+
     # Configurar Nginx según el entorno
     if [ "$IS_PLESK" == "yes" ]; then
         setup_nginx_plesk
