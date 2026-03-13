@@ -1,8 +1,8 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import axios from "axios";
 
-const API_URL = process.env.REACT_APP_API_URL || "https://api.sync-stock.com";
-const APP_URL = process.env.REACT_APP_APP_URL || "https://app.sync-stock.com";
+const API_URL = (process.env.REACT_APP_API_URL || "https://api.sync-stock.com").replace(/\/$/, "");
+const APP_URL = (process.env.REACT_APP_APP_URL || "https://app.sync-stock.com").replace(/\/$/, "");
 
 const defaultBranding = {
   app_name: "SyncStock",

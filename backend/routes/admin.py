@@ -33,8 +33,8 @@ except PermissionError:
 # ==================== BRANDING MODELS ====================
 
 class BrandingConfig(BaseModel):
-    app_name: str = "StockHub"
-    app_slogan: str = "Gestión de Catálogos"
+    app_name: str = "SyncStock"
+    app_slogan: str = "Sincronización de Inventario B2B"
     logo_url: Optional[str] = None
     favicon_url: Optional[str] = None
     primary_color: str = "#4f46e5"  # indigo-600
@@ -47,7 +47,7 @@ class BrandingConfig(BaseModel):
     hero_title: str = "Gestiona tu inventario de forma inteligente"
     hero_subtitle: str = "Sincroniza proveedores, configura márgenes y exporta a tu tienda online en minutos."
     # Page title (browser tab)
-    page_title: str = "StockHub - Gestión de Catálogos"
+    page_title: str = "SyncStock — Sincronización de Inventario B2B Automatizada"
 
 class BrandingConfigUpdate(BaseModel):
     app_name: Optional[str] = None
@@ -161,6 +161,7 @@ async def update_branding(data: BrandingConfigUpdate, user: dict = Depends(get_s
     
     config = await db.app_config.find_one({"type": "branding"})
     config.pop("_id", None)
+    config.pop("type", None)
     return {"success": True, "branding": config}
 
 
@@ -250,8 +251,8 @@ async def get_public_branding():
     
     # Return only public fields
     return {
-        "app_name": config.get("app_name", "StockHub"),
-        "app_slogan": config.get("app_slogan", "Gestión de Catálogos"),
+        "app_name": config.get("app_name", "SyncStock"),
+        "app_slogan": config.get("app_slogan", "Sincronización de Inventario B2B"),
         "logo_url": config.get("logo_url"),
         "favicon_url": config.get("favicon_url"),
         "primary_color": config.get("primary_color", "#4f46e5"),
@@ -264,7 +265,7 @@ async def get_public_branding():
         "hero_title": config.get("hero_title", "Gestiona tu inventario de forma inteligente"),
         "hero_subtitle": config.get("hero_subtitle", "Sincroniza proveedores, configura márgenes y exporta a tu tienda online en minutos."),
         # Page title
-        "page_title": config.get("page_title", "StockHub - Gestión de Catálogos")
+        "page_title": config.get("page_title", "SyncStock — Sincronización de Inventario B2B Automatizada")
     }
 
 
@@ -827,6 +828,7 @@ async def apply_theme_preset(preset_key: str, user: dict = Depends(get_superadmi
     
     config = await db.app_config.find_one({"type": "branding"})
     config.pop("_id", None)
+    config.pop("type", None)
     return {"success": True, "branding": config}
 
 
