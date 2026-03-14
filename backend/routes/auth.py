@@ -239,7 +239,7 @@ class ChangePasswordRequest(BaseModel):
 
 @router.post("/auth/change-password")
 @limiter.limit("5/minute")
-async def change_password(http_request: Request, body: ChangePasswordRequest, user: dict = Depends(get_current_user)):
+async def change_password(request: Request, body: ChangePasswordRequest, user: dict = Depends(get_current_user)):
     """Change user's password"""
     current_password = body.current_password
     new_password = body.new_password
@@ -556,18 +556,18 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest):
 
 @router.post("/auth/reset-password")
 @limiter.limit("5/minute")
-async def reset_password(http_request: Request, request: ResetPasswordRequest):
+async def reset_password(request: Request, body: ResetPasswordRequest):
     """
     Reset password using token from email.
     """
     try:
-        validate_password_strength(request.new_password)
+        validate_password_strength(body.new_password)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    
+
     # Find valid reset token
     reset_record = await db.password_resets.find_one({
-        "token": request.token,
+        "token": body.token,
         "used": False
     })
     
@@ -580,7 +580,7 @@ async def reset_password(http_request: Request, request: ResetPasswordRequest):
         raise HTTPException(status_code=400, detail="El token ha expirado. Solicita un nuevo enlace.")
     
     # Update password
-    hashed_password = hash_password(request.new_password)
+    hashed_password = hash_password(body.new_password)
     result = await db.users.update_one(
         {"id": reset_record["user_id"]},
         {"$set": {
@@ -588,13 +588,13 @@ async def reset_password(http_request: Request, request: ResetPasswordRequest):
             "updated_at": datetime.now(timezone.utc).isoformat()
         }}
     )
-    
+
     if result.modified_count == 0:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
     # Mark token as used
     await db.password_resets.update_one(
-        {"token": request.token},
+        {"token": body.token},
         {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}}
     )
     
