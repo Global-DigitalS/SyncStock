@@ -720,9 +720,12 @@ async def preview_email_template(template_id: str, user: dict = Depends(get_supe
     html = template.get("html_content", "")
     subject = template.get("subject", "")
     
+    from html import escape as _html_escape
     for key, value in sample_data.items():
-        html = html.replace(f"{{{key}}}", str(value))
-        subject = subject.replace(f"{{{key}}}", str(value))
+        # Escape HTML in values injected into templates to prevent stored XSS (OWASP A03)
+        safe_value = _html_escape(str(value))
+        html = html.replace(f"{{{key}}}", safe_value)
+        subject = subject.replace(f"{{{key}}}", safe_value)
     
     return {
         "subject": subject,

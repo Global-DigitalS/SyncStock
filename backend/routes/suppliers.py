@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
 import logging
 import asyncio
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from services.database import db
 from services.auth import get_current_user, check_user_limit
@@ -19,6 +21,7 @@ from services.encryption import encrypt_password, decrypt_password
 from models.schemas import SupplierCreate, SupplierUpdate, SupplierResponse, ProductResponse
 
 router = APIRouter()
+_limiter = Limiter(key_func=get_remote_address)
 logger = logging.getLogger(__name__)
 
 
@@ -177,7 +180,8 @@ async def delete_supplier(supplier_id: str, user: dict = Depends(get_current_use
 
 
 @router.post("/suppliers/{supplier_id}/sync")
-async def sync_supplier_manual(supplier_id: str, user: dict = Depends(get_current_user)):
+@_limiter.limit("10/minute")
+async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = Depends(get_current_user)):
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")

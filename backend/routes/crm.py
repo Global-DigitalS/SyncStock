@@ -281,13 +281,22 @@ class DolibarrClient:
                 logger.info(f"Skipping local image URL: {image_url[:50]}...")
                 return {"status": "skip", "message": "Local image URL - skipped"}
             
-            # Validate it's a proper HTTP/HTTPS URL
+            # Validate it's a proper HTTP/HTTPS URL and not pointing to internal network (SSRF)
             if not image_url.startswith(('http://', 'https://')):
                 return {"status": "skip", "message": "Invalid image URL format"}
-            
-            # Download image with user agent
+            try:
+                _validate_crm_url(image_url)  # Reuse SSRF guard: blocks private IPs
+            except ValueError as _ve:
+                logger.warning(f"SSRF blocked for image_url: {image_url[:80]!r} — {_ve}")
+                return {"status": "skip", "message": "Image URL no permitida (SSRF)"}
+
+            # Download image with user agent and strict size limit (10 MB)
             headers = {"User-Agent": "Mozilla/5.0 (compatible; CatalogSync/1.0)"}
-            img_response = requests.get(image_url, timeout=30, headers=headers)
+            img_response = requests.get(image_url, timeout=15, headers=headers, stream=True)
+            content_length = int(img_response.headers.get("Content-Length", 0))
+            if content_length > 10 * 1024 * 1024:
+                return {"status": "skip", "message": "Imagen demasiado grande (>10 MB)"}
+            img_response = requests.get(image_url, timeout=15, headers=headers)
             if img_response.status_code != 200:
                 logger.warning(f"Failed to download image: {img_response.status_code}")
                 return {"status": "error", "message": f"No se pudo descargar la imagen: {img_response.status_code}"}

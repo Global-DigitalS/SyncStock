@@ -63,6 +63,12 @@ if not JWT_SECRET:
         "La variable de entorno JWT_SECRET es obligatoria y no está configurada. "
         "Genera un valor seguro con: python -c \"import secrets; print(secrets.token_hex(64))\""
     )
+# Enforce minimum entropy: HS256 key should be at least 256 bits (64 hex chars / 32 bytes)
+if len(JWT_SECRET) < 64:
+    raise RuntimeError(
+        f"JWT_SECRET tiene solo {len(JWT_SECRET)} caracteres — mínimo requerido: 64 "
+        "(256 bits). Genera uno seguro con: python -c \"import secrets; print(secrets.token_hex(64))\""
+    )
 
 # Algoritmo de encriptación para JWT
 JWT_ALGORITHM = "HS256"

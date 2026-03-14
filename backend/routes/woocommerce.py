@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
+import re
 import uuid
 import logging
 import asyncio
@@ -18,6 +19,24 @@ from models.schemas import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+# SSRF guard for WooCommerce store URLs (OWASP A10)
+_WC_PRIVATE_IP_RE = re.compile(
+    r'^https?://(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)',
+    re.IGNORECASE,
+)
+_WC_VALID_URL_RE = re.compile(r'^https?://[a-zA-Z0-9._-]+(:\d+)?(/.*)?$')
+
+
+def _validate_store_url(url: str) -> str:
+    """Validate WooCommerce store URL to prevent SSRF."""
+    url = url.strip().rstrip('/')
+    if not _WC_VALID_URL_RE.match(url):
+        raise HTTPException(status_code=400, detail="URL de tienda inválida")
+    if _WC_PRIVATE_IP_RE.match(url):
+        raise HTTPException(status_code=400, detail="La URL de tienda no puede apuntar a direcciones IP privadas")
+    return url
 
 
 @router.post("/woocommerce/configs", response_model=WooCommerceConfigResponse)
@@ -40,7 +59,7 @@ async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depe
     config_doc = {
         "id": config_id, "user_id": user["id"],
         "name": config.name or "Mi Tienda WooCommerce",
-        "store_url": config.store_url.rstrip('/'),
+        "store_url": _validate_store_url(config.store_url),
         "consumer_key": config.consumer_key, "consumer_secret": config.consumer_secret,
         "catalog_id": config.catalog_id, "auto_sync_enabled": config.auto_sync_enabled,
         "is_connected": False, "last_sync": None, "products_synced": 0, "created_at": now
@@ -118,7 +137,7 @@ async def update_woocommerce_config(config_id: str, update: WooCommerceConfigUpd
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
     update_data = {k: v for k, v in update.model_dump().items() if v is not None}
     if "store_url" in update_data:
-        update_data["store_url"] = update_data["store_url"].rstrip('/')
+        update_data["store_url"] = _validate_store_url(update_data["store_url"])
     if update_data:
         await db.woocommerce_configs.update_one({"id": config_id}, {"$set": update_data})
     updated = await db.woocommerce_configs.find_one({"id": config_id}, {"_id": 0, "consumer_secret": 0})

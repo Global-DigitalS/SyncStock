@@ -136,7 +136,20 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="SyncStock", lifespan=lifespan)
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+async def _logged_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """Log rate-limit violations before delegating to the default SlowAPI handler (OWASP A09)."""
+    logger.warning(
+        "Rate limit exceeded | ip=%s path=%s limit=%s",
+        getattr(request.client, "host", "?"),
+        request.url.path,
+        exc.detail,
+    )
+    return await _rate_limit_exceeded_handler(request, exc)
+
+
+app.add_exception_handler(RateLimitExceeded, _logged_rate_limit_handler)
 
 # Main API router with /api prefix
 api_router = APIRouter(prefix="/api")
