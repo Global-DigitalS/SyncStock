@@ -8,6 +8,8 @@ from typing import Dict, Set
 from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from dotenv import load_dotenv
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -176,6 +178,38 @@ app.include_router(api_router)
 # Mount static files for uploads (logos, favicons, hero images)
 # Using /api/uploads to ensure proper routing through ingress
 app.mount("/api/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Adds security-related HTTP headers to every response."""
+
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=31536000; includeSubDomains"
+        )
+        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Permissions-Policy"] = (
+            "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
+            "magnetometer=(), microphone=(), payment=(), usb=()"
+        )
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+            "font-src 'self' https://fonts.gstatic.com; "
+            "img-src 'self' data: blob: https:; "
+            "connect-src 'self' wss: https://api.stripe.com; "
+            "frame-src https://js.stripe.com https://hooks.stripe.com; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self';"
+        )
+        return response
+
+
+app.add_middleware(SecurityHeadersMiddleware)
 
 _cors_origins_env = os.environ.get('CORS_ORIGINS', '')
 if not _cors_origins_env or _cors_origins_env.strip() == '*':
