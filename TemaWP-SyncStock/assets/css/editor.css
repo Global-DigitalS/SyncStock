@@ -1,0 +1,51 @@
+/**
+ * SyncStock - Estilos del editor de bloques
+ *
+ * @package SyncStock
+ * @since 1.0.0
+ */
+
+/* Aplicar fuentes en el editor */
+.editor-styles-wrapper {
+	font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+.editor-styles-wrapper h1,
+.editor-styles-wrapper h2,
+.editor-styles-wrapper h3,
+.editor-styles-wrapper h4,
+.editor-styles-wrapper h5,
+.editor-styles-wrapper h6 {
+	font-family: 'Manrope', 'Inter', sans-serif;
+}
+
+/* Cards en el editor */
+.editor-styles-wrapper .syncstock-card {
+	border: 1px solid #e2e8f0;
+	border-radius: 0.75rem;
+	overflow: hidden;
+}
+
+.editor-styles-wrapper .syncstock-card-featured {
+	border: 2px solid #6366f1;
+}
+
+/* Badge en el editor */
+.editor-styles-wrapper .syncstock-badge {
+	display: inline-flex;
+	align-items: center;
+	padding: 0.25rem 0.75rem;
+	border-radius: 9999px;
+	font-size: 0.75rem;
+	font-weight: 600;
+}
+
+/* Icon box en el editor */
+.editor-styles-wrapper .syncstock-icon-box {
+	width: 48px;
+	height: 48px;
+	border-radius: 0.75rem;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}

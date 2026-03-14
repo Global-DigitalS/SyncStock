@@ -1,0 +1,53 @@
+<!-- wp:template-part {"slug":"header","area":"header"} /-->
+
+<!-- wp:group {"tagName":"main","layout":{"type":"constrained","contentSize":"1200px"}} -->
+<main class="wp-block-group">
+
+	<!-- wp:query {"queryId":1,"query":{"perPage":10,"pages":0,"offset":0,"postType":"post","order":"desc","orderBy":"date","inherit":true}} -->
+	<div class="wp-block-query">
+		<!-- wp:group {"style":{"spacing":{"padding":{"top":"var:preset|spacing|80","bottom":"var:preset|spacing|60"}}},"layout":{"type":"constrained"}} -->
+		<div class="wp-block-group" style="padding-top:var(--wp--preset--spacing--80);padding-bottom:var(--wp--preset--spacing--60)">
+			<!-- wp:heading {"level":1,"fontSize":"4x-large"} -->
+			<h1 class="wp-block-heading has-4-x-large-font-size">Blog</h1>
+			<!-- /wp:heading -->
+
+			<!-- wp:paragraph {"textColor":"slate-500","fontSize":"large"} -->
+			<p class="has-slate-500-color has-text-color has-large-font-size">Novedades, guías y recursos sobre sincronización de inventario y e-commerce.</p>
+			<!-- /wp:paragraph -->
+		</div>
+		<!-- /wp:group -->
+
+		<!-- wp:post-template {"layout":{"type":"grid","columnCount":3}} -->
+			<!-- wp:group {"className":"syncstock-card","style":{"spacing":{"padding":{"top":"0","bottom":"var:preset|spacing|50","left":"0","right":"0"}}},"layout":{"type":"constrained"}} -->
+			<div class="wp-block-group syncstock-card" style="padding-top:0;padding-right:0;padding-bottom:var(--wp--preset--spacing--50);padding-left:0">
+				<!-- wp:post-featured-image {"isLink":true,"aspectRatio":"16/9","style":{"border":{"radius":{"topLeft":"0.75rem","topRight":"0.75rem","bottomLeft":"0","bottomRight":"0"}}}} /-->
+
+				<!-- wp:group {"style":{"spacing":{"padding":{"left":"var:preset|spacing|50","right":"var:preset|spacing|50","top":"var:preset|spacing|40"}}},"layout":{"type":"constrained"}} -->
+				<div class="wp-block-group" style="padding-top:var(--wp--preset--spacing--40);padding-left:var(--wp--preset--spacing--50);padding-right:var(--wp--preset--spacing--50)">
+					<!-- wp:post-date {"textColor":"slate-400","fontSize":"xs"} /-->
+					<!-- wp:post-title {"level":3,"isLink":true,"fontSize":"large"} /-->
+					<!-- wp:post-excerpt {"moreText":"Leer más →","excerptLength":20,"fontSize":"small","textColor":"slate-600"} /-->
+				</div>
+				<!-- /wp:group -->
+			</div>
+			<!-- /wp:group -->
+		<!-- /wp:post-template -->
+
+		<!-- wp:query-pagination {"layout":{"type":"flex","justifyContent":"center"},"style":{"spacing":{"margin":{"top":"var:preset|spacing|70"}}}} -->
+			<!-- wp:query-pagination-previous {"label":"← Anterior"} /-->
+			<!-- wp:query-pagination-numbers /-->
+			<!-- wp:query-pagination-next {"label":"Siguiente →"} /-->
+		<!-- /wp:query-pagination -->
+
+		<!-- wp:query-no-results -->
+			<!-- wp:paragraph {"align":"center","textColor":"slate-500"} -->
+			<p class="has-text-align-center has-slate-500-color has-text-color">No se encontraron publicaciones.</p>
+			<!-- /wp:paragraph -->
+		<!-- /wp:query-no-results -->
+	</div>
+	<!-- /wp:query -->
+
+</main>
+<!-- /wp:group -->
+
+<!-- wp:template-part {"slug":"footer","area":"footer"} /-->
