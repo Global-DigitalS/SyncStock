@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone
 import uuid
+import re
 import logging
 import requests
 import base64
@@ -18,6 +19,22 @@ from services.sync import calculate_final_price
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+_PRIVATE_IP_RE = re.compile(
+    r'^https?://(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)',
+    re.IGNORECASE,
+)
+_VALID_URL_RE = re.compile(r'^https?://[a-zA-Z0-9._-]+(:\d+)?(/.*)?$')
+
+
+def _validate_crm_url(url: str) -> str:
+    """Validate a CRM API URL to prevent SSRF attacks."""
+    url = url.strip()
+    if not _VALID_URL_RE.match(url):
+        raise ValueError(f"URL de CRM inválida: {url!r}")
+    if _PRIVATE_IP_RE.match(url):
+        raise ValueError("La URL de CRM no puede apuntar a direcciones IP privadas o localhost")
+    return url
+
 
 # ==================== DOLIBARR CLIENT ====================
 
@@ -25,7 +42,7 @@ class DolibarrClient:
     """Dolibarr ERP/CRM API Client - Optimized with connection pooling and rate limiting"""
     
     def __init__(self, api_url: str, api_key: str):
-        self.base_url = api_url.rstrip('/')
+        self.base_url = _validate_crm_url(api_url).rstrip('/')
         self.api_key = api_key
         self.headers = {
             'DOLAPIKEY': api_key,
@@ -760,7 +777,7 @@ class OdooClient:
             api_url: Base URL of Odoo instance (e.g., https://odoo.example.com)
             api_token: API token for authentication
         """
-        self.base_url = api_url.rstrip('/')
+        self.base_url = _validate_crm_url(api_url).rstrip('/')
         self.api_token = api_token
         self.headers = {
             'Authorization': f'Bearer {api_token}',

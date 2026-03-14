@@ -100,6 +100,19 @@ class ConnectionManager:
 ws_manager = ConnectionManager()
 
 
+async def _purge_expired_security_records():
+    """Scheduled job: remove expired password-reset tokens and stale login-attempt records."""
+    from datetime import datetime, timezone
+    from services.database import db as _db
+    now = datetime.now(timezone.utc).isoformat()
+    result_tokens = await _db.password_resets.delete_many({"expires_at": {"$lt": now}})
+    result_attempts = await _db.login_attempts.delete_many({"last_attempt": {"$lt": now}})
+    logger.info(
+        f"Security purge: eliminados {result_tokens.deleted_count} tokens expirados, "
+        f"{result_attempts.deleted_count} registros de intentos caducados"
+    )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -112,8 +125,10 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(sync_all_woocommerce_stores, 'interval', hours=12, id='sync_woocommerce_legacy', replace_existing=True)
     # Unified sync scheduler - runs every hour to check user-configured syncs
     scheduler.add_job(run_scheduled_syncs, 'interval', hours=1, id='unified_sync', replace_existing=True)
+    # Security maintenance: purge expired password-reset tokens and old login-attempt records
+    scheduler.add_job(_purge_expired_security_records, 'interval', hours=6, id='security_purge', replace_existing=True)
     scheduler.start()
-    logger.info("Scheduler started - Unified sync check every 1h, Legacy: Suppliers 6h, WooCommerce 12h")
+    logger.info("Scheduler started - Unified sync check every 1h, Legacy: Suppliers 6h, WooCommerce 12h, Security purge 6h")
     yield
     # Shutdown
     scheduler.shutdown()
@@ -159,6 +174,29 @@ async def health_check():
 # WebSocket endpoint for real-time notifications
 @app.websocket("/ws/notifications/{user_id}")
 async def websocket_notifications(websocket: WebSocket, user_id: str):
+    # Authenticate before accepting the connection.
+    # The JWT token is expected as a query parameter: ?token=<jwt>
+    # (browsers cannot set custom headers on WebSocket connections).
+    from services.auth import JWT_SECRET, JWT_ALGORITHM
+    import jwt as _jwt
+
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=4001)
+        return
+
+    try:
+        payload = _jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        token_user_id = payload.get("user_id")
+    except _jwt.InvalidTokenError:
+        await websocket.close(code=4001)
+        return
+
+    # Prevent a user from subscribing to another user's notification stream
+    if token_user_id != user_id:
+        await websocket.close(code=4003)
+        return
+
     await ws_manager.connect(websocket, user_id)
     try:
         while True:

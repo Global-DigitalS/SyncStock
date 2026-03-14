@@ -8,6 +8,8 @@ from datetime import datetime, timezone
 import uuid
 import secrets
 import logging
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 import hmac
 import hashlib
 
@@ -15,6 +17,7 @@ from services.database import db
 from services.auth import get_current_user
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
 logger = logging.getLogger(__name__)
 
 
@@ -327,6 +330,7 @@ async def process_product_update(user_id: str, store_id: str, platform: str, dat
 
 
 @router.post("/webhooks/receive/{config_id}")
+@limiter.limit("60/minute")
 async def receive_webhook(config_id: str, request: Request, background_tasks: BackgroundTasks):
     """Receive webhook from external store"""
     # Get webhook config (no auth required for webhook endpoints)
