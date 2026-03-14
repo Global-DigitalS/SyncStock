@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useAuth, api } from "../App";
-import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -8,15 +7,15 @@ import { Label } from "../components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Badge } from "../components/ui/badge";
+import Support from "./Support";
 import {
   User, Mail, Building2, Phone, Save, Edit2, X, Lock,
   FileText, MapPin, Globe, CreditCard, Crown, Sparkles, Calendar,
-  LifeBuoy, ChevronRight, TicketCheck
+  LifeBuoy
 } from "lucide-react";
 
 const Profile = () => {
   const { user, refreshUser } = useAuth();
-  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [editingPersonal, setEditingPersonal] = useState(false);
@@ -237,27 +236,8 @@ const Profile = () => {
         </Card>
       )}
 
-      {/* Support quick access */}
-      <Card
-        className="cursor-pointer hover:border-indigo-300 hover:shadow-sm transition-all group"
-        onClick={() => navigate("/support")}
-      >
-        <CardContent className="p-5">
-          <div className="flex items-center gap-4">
-            <div className="w-10 h-10 bg-indigo-50 rounded-lg flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-              <LifeBuoy className="w-5 h-5 text-indigo-600" />
-            </div>
-            <div className="flex-1">
-              <p className="font-semibold text-slate-800">Soporte y Contacto</p>
-              <p className="text-sm text-slate-500">Abre un ticket, consulta el estado de tus incidencias o envíanos tu feedback</p>
-            </div>
-            <ChevronRight className="w-5 h-5 text-slate-400 group-hover:text-indigo-500 transition-colors" />
-          </div>
-        </CardContent>
-      </Card>
-
       <Tabs defaultValue="personal" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-3 lg:w-[400px]">
+        <TabsList className="grid w-full grid-cols-4 lg:w-[560px]">
           <TabsTrigger value="personal" data-testid="tab-personal">
             <User className="w-4 h-4 mr-2" />
             Personal
@@ -269,6 +249,10 @@ const Profile = () => {
           <TabsTrigger value="security" data-testid="tab-security">
             <Lock className="w-4 h-4 mr-2" />
             Seguridad
+          </TabsTrigger>
+          <TabsTrigger value="support" data-testid="tab-support">
+            <LifeBuoy className="w-4 h-4 mr-2" />
+            Soporte
           </TabsTrigger>
         </TabsList>
 
@@ -653,6 +637,11 @@ const Profile = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        {/* Soporte Tab */}
+        <TabsContent value="support">
+          <Support embedded={true} />
         </TabsContent>
       </Tabs>
     </div>
