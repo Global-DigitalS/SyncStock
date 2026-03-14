@@ -88,30 +88,47 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
 async def get_superadmin_dashboard_stats(superadmin: dict = Depends(get_superadmin_user)):
     """Dashboard estadísticas globales para SuperAdmin"""
     import asyncio
-    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    now = datetime.now(timezone.utc)
+    week_ago = (now - timedelta(days=7)).isoformat()
+    month_ago = (now - timedelta(days=30)).isoformat()
 
     # Todos los conteos en paralelo con asyncio.gather
     (
         total_users,
+        active_users,
+        new_users_week,
+        new_users_month,
         total_suppliers,
         total_products,
         total_catalogs,
         total_wc_stores,
         syncs_this_week,
         sync_errors_this_week,
+        syncs_total,
+        sync_success_week,
         wc_connected,
         wc_auto_sync,
+        price_changes_week,
     ) = await asyncio.gather(
         db.users.count_documents({}),
+        db.users.count_documents({"is_active": {"$ne": False}}),
+        db.users.count_documents({"created_at": {"$gte": week_ago}}),
+        db.users.count_documents({"created_at": {"$gte": month_ago}}),
         db.suppliers.count_documents({}),
         db.products.count_documents({}),
         db.catalogs.count_documents({}),
         db.woocommerce_configs.count_documents({}),
         db.sync_history.count_documents({"created_at": {"$gte": week_ago}}),
         db.sync_history.count_documents({"created_at": {"$gte": week_ago}, "status": "error"}),
+        db.sync_history.count_documents({}),
+        db.sync_history.count_documents({"created_at": {"$gte": week_ago}, "status": "success"}),
         db.woocommerce_configs.count_documents({"is_connected": True}),
         db.woocommerce_configs.count_documents({"auto_sync_enabled": True}),
+        db.price_history.count_documents({"created_at": {"$gte": week_ago}}),
     )
+
+    # Sync success rate this week
+    sync_success_rate = round((sync_success_week / syncs_this_week * 100) if syncs_this_week > 0 else 0, 1)
 
     # Conteo de usuarios por rol con $facet en una sola query
     roles_facet = await db.users.aggregate([
@@ -119,59 +136,122 @@ async def get_superadmin_dashboard_stats(superadmin: dict = Depends(get_superadm
     ]).to_list(1)
     rf = roles_facet[0] if roles_facet else {}
     users_by_role = {r: (rf.get(r) or [{}])[0].get("n", 0) for r in ["superadmin", "admin", "user", "viewer"]}
-    
-    # Top users by resources
-    pipeline = [
+
+    # Plan distribution
+    plan_pipeline = [
+        {"$group": {"_id": "$plan_name", "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 10}
+    ]
+    plan_dist_raw = await db.users.aggregate(plan_pipeline).to_list(10)
+    plan_distribution = [{"plan": (d["_id"] or "Sin plan"), "count": d["count"]} for d in plan_dist_raw]
+
+    # Daily registrations for the last 14 days
+    reg_pipeline = [
+        {"$match": {"created_at": {"$gte": (now - timedelta(days=14)).isoformat()}}},
+        {"$addFields": {"date_str": {"$substr": ["$created_at", 0, 10]}}},
+        {"$group": {"_id": "$date_str", "count": {"$sum": 1}}},
+        {"$sort": {"_id": 1}},
+    ]
+    daily_registrations = await db.users.aggregate(reg_pipeline).to_list(14)
+    daily_reg_data = [{"date": d["_id"], "count": d["count"]} for d in daily_registrations]
+
+    # Daily syncs for the last 14 days
+    daily_sync_pipeline = [
+        {"$match": {"created_at": {"$gte": (now - timedelta(days=14)).isoformat()}}},
+        {"$addFields": {"date_str": {"$substr": ["$created_at", 0, 10]}}},
         {"$group": {
-            "_id": "$user_id",
-            "count": {"$sum": 1}
+            "_id": "$date_str",
+            "total": {"$sum": 1},
+            "success": {"$sum": {"$cond": [{"$eq": ["$status", "success"]}, 1, 0]}},
+            "errors": {"$sum": {"$cond": [{"$eq": ["$status", "error"]}, 1, 0]}},
         }},
+        {"$sort": {"_id": 1}},
+    ]
+    daily_syncs_raw = await db.sync_history.aggregate(daily_sync_pipeline).to_list(14)
+    daily_syncs = [{"date": d["_id"], "total": d["total"], "success": d["success"], "errors": d["errors"]} for d in daily_syncs_raw]
+
+    # Top users by resources
+    top_pipeline = [
+        {"$group": {"_id": "$user_id", "count": {"$sum": 1}}},
         {"$sort": {"count": -1}},
         {"$limit": 5}
     ]
-    top_users_suppliers = await db.suppliers.aggregate(pipeline).to_list(5)
-    top_users_products = await db.products.aggregate(pipeline).to_list(5)
-    
+    top_users_suppliers = await db.suppliers.aggregate(top_pipeline).to_list(5)
+    top_users_products = await db.products.aggregate(top_pipeline).to_list(5)
+
     # Get user names for top users
     all_user_ids = list(set([u["_id"] for u in top_users_suppliers] + [u["_id"] for u in top_users_products]))
     users_map = {}
     if all_user_ids:
-        users_list = await db.users.find({"id": {"$in": all_user_ids}}, {"_id": 0, "id": 1, "name": 1, "email": 1}).to_list(100)
+        users_list = await db.users.find(
+            {"id": {"$in": all_user_ids}},
+            {"_id": 0, "id": 1, "name": 1, "email": 1}
+        ).to_list(100)
         users_map = {u["id"]: u for u in users_list}
-    
+
     top_suppliers = [{"user_id": u["_id"], "name": users_map.get(u["_id"], {}).get("name", "Unknown"), "email": users_map.get(u["_id"], {}).get("email", ""), "count": u["count"]} for u in top_users_suppliers]
-    top_products = [{"user_id": u["_id"], "name": users_map.get(u["_id"], {}).get("name", "Unknown"), "email": users_map.get(u["_id"], {}).get("email", ""), "count": u["count"]} for u in top_users_products]
-    
-    # Recent user registrations - solo campos necesarios
+    top_products_list = [{"user_id": u["_id"], "name": users_map.get(u["_id"], {}).get("name", "Unknown"), "email": users_map.get(u["_id"], {}).get("email", ""), "count": u["count"]} for u in top_users_products]
+
+    # Recent user registrations
     recent_users = await db.users.find(
         {}, {"_id": 0, "password": 0, "max_suppliers": 0, "max_catalogs": 0, "max_woocommerce_stores": 0}
+    ).sort("created_at", -1).limit(8).to_list(8)
+
+    # Recent sync errors
+    recent_errors = await db.sync_history.find(
+        {"status": "error"},
+        {"_id": 0, "user_id": 1, "supplier_name": 1, "error_message": 1, "created_at": 1, "status": 1}
     ).sort("created_at", -1).limit(5).to_list(5)
-    
+
+    # System health checks
+    email_configured = bool(await db.email_accounts.find_one({"enabled": True}))
+    stripe_config = await db.app_config.find_one({"type": "stripe_config"})
+    stripe_configured = bool(stripe_config and stripe_config.get("secret_key"))
+
     return {
         "users": {
             "total": total_users,
+            "active": active_users,
+            "inactive": total_users - active_users,
+            "new_this_week": new_users_week,
+            "new_this_month": new_users_month,
             "by_role": users_by_role,
-            "recent": recent_users
+            "recent": recent_users,
+            "daily_registrations": daily_reg_data,
         },
         "resources": {
             "suppliers": total_suppliers,
             "products": total_products,
             "catalogs": total_catalogs,
-            "woocommerce_stores": total_wc_stores
+            "woocommerce_stores": total_wc_stores,
         },
         "sync": {
             "this_week": syncs_this_week,
-            "errors_this_week": sync_errors_this_week
+            "errors_this_week": sync_errors_this_week,
+            "success_this_week": sync_success_week,
+            "success_rate": sync_success_rate,
+            "total": syncs_total,
+            "daily": daily_syncs,
+            "recent_errors": recent_errors,
         },
         "woocommerce": {
             "total": total_wc_stores,
             "connected": wc_connected,
-            "auto_sync": wc_auto_sync
+            "auto_sync": wc_auto_sync,
         },
+        "pricing": {
+            "changes_this_week": price_changes_week,
+        },
+        "plans": plan_distribution,
         "top_users": {
             "by_suppliers": top_suppliers,
-            "by_products": top_products
-        }
+            "by_products": top_products_list,
+        },
+        "system": {
+            "email_configured": email_configured,
+            "stripe_configured": stripe_configured,
+        },
     }
 
 
