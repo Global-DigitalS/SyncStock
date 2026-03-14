@@ -33,7 +33,8 @@ import {
   Building2,
   RefreshCw,
   Layout,
-  BarChart3
+  BarChart3,
+  LifeBuoy
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -298,6 +299,19 @@ const Sidebar = ({ open, onToggle }) => {
 
       {/* User Section */}
       <div className="p-4 border-t border-slate-200">
+        <Link
+          to="/support"
+          data-testid="nav-support"
+          className={`flex items-center gap-3 px-3 py-2 mb-1 rounded-sm transition-all duration-200 ${
+            location.pathname === "/support"
+              ? "bg-indigo-50 text-indigo-700"
+              : "text-slate-600 hover:bg-slate-50"
+          }`}
+          onClick={() => setMobileOpen(false)}
+        >
+          <LifeBuoy className="w-4 h-4" strokeWidth={1.5} />
+          <span className="text-sm">Soporte</span>
+        </Link>
         <Link
           to="/profile"
           data-testid="nav-profile"

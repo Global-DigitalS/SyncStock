@@ -28,6 +28,7 @@ import EmailConfig from "./pages/EmailConfig";
 import CRMPage from "./pages/CRM";
 import SyncSettings from "./pages/SyncSettings";
 import Profile from "./pages/Profile";
+import Support from "./pages/Support";
 import Landing from "./pages/Landing";
 
 // Admin Pages
@@ -458,6 +459,16 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <EmailConfig />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/support"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Support />
                 </MainLayout>
               </ProtectedRoute>
             }
