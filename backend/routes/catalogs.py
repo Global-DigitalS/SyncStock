@@ -205,7 +205,9 @@ async def get_catalog_products(
     if category_id:
         query["category_ids"] = category_id
     items = await db.catalog_items.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
-    margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
+    margin_rules = await db.catalog_margin_rules.find(
+        {"catalog_id": catalog_id, "user_id": user["id"]}, {"_id": 0}
+    ).sort("priority", -1).to_list(100)
 
     # Batch: cargar todos los productos en una sola query
     product_ids_page = [item["product_id"] for item in items]

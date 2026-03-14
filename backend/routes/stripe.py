@@ -13,6 +13,7 @@ import stripe
 
 from services.auth import get_superadmin_user, get_current_user
 from services.database import db
+from services.encryption import encrypt_password, decrypt_password
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -50,20 +51,27 @@ class CheckoutResponse(BaseModel):
 # ==================== HELPER FUNCTIONS ====================
 
 async def fetch_stripe_config():
-    """Get Stripe configuration from database"""
+    """Get Stripe configuration from database, decrypting sensitive fields."""
     config = await db.app_config.find_one({"type": "stripe"})
+    if config:
+        config = dict(config)
+        # Decrypt sensitive fields transparently before returning
+        if config.get("stripe_secret_key"):
+            config["stripe_secret_key"] = decrypt_password(config["stripe_secret_key"])
+        if config.get("stripe_webhook_secret"):
+            config["stripe_webhook_secret"] = decrypt_password(config["stripe_webhook_secret"])
     return config
 
 
 async def get_configured_stripe():
-    """Configure stripe SDK with API key from database"""
+    """Configure stripe SDK with decrypted API key from database."""
     config = await fetch_stripe_config()
     if not config or not config.get("enabled"):
         raise HTTPException(status_code=503, detail="Pagos con Stripe no están habilitados")
-    
+
     if not config.get("stripe_secret_key"):
         raise HTTPException(status_code=503, detail="Stripe no está configurado correctamente")
-    
+
     stripe.api_key = config.get("stripe_secret_key")
     return config
 
@@ -77,10 +85,17 @@ async def get_stripe_config(user: dict = Depends(get_superadmin_user)):
     if not config:
         return StripeConfig().model_dump()
     
+    def _mask(val: str) -> str:
+        """Return last 4 chars masked — never expose full keys via API."""
+        if not val:
+            return ""
+        decrypted = decrypt_password(val)
+        return "••••" + decrypted[-4:] if len(decrypted) > 4 else "••••"
+
     config_data = {
         "stripe_public_key": config.get("stripe_public_key", ""),
-        "stripe_secret_key": config.get("stripe_secret_key", ""),
-        "stripe_webhook_secret": config.get("stripe_webhook_secret", ""),
+        "stripe_secret_key": _mask(config.get("stripe_secret_key", "")),
+        "stripe_webhook_secret": _mask(config.get("stripe_webhook_secret", "")),
         "is_live_mode": config.get("is_live_mode", False),
         "enabled": config.get("enabled", False)
     }
@@ -91,9 +106,14 @@ async def get_stripe_config(user: dict = Depends(get_superadmin_user)):
 async def update_stripe_config(config: StripeConfigUpdate, user: dict = Depends(get_superadmin_user)):
     """Update Stripe configuration (SuperAdmin only)"""
     update_data = {k: v for k, v in config.model_dump().items() if v is not None}
+    # Encrypt sensitive keys before persisting to DB (A02)
+    if update_data.get("stripe_secret_key"):
+        update_data["stripe_secret_key"] = encrypt_password(update_data["stripe_secret_key"])
+    if update_data.get("stripe_webhook_secret"):
+        update_data["stripe_webhook_secret"] = encrypt_password(update_data["stripe_webhook_secret"])
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     update_data["updated_by"] = user.get("email")
-    
+
     await db.app_config.update_one(
         {"type": "stripe"},
         {"$set": {**update_data, "type": "stripe"}},

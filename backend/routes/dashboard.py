@@ -9,6 +9,20 @@ import csv
 from services.database import db
 from services.auth import get_current_user, get_superadmin_user
 from services.sync import calculate_final_price
+
+
+def _csv_safe(value) -> str:
+    """
+    Prevent CSV/spreadsheet formula injection (OWASP A03).
+    Excel, LibreOffice and Google Sheets interpret cells starting with
+    =, +, -, @ or TAB as formulas.  Prefix them with a single quote so
+    they are treated as literal text.
+    """
+    if not isinstance(value, str):
+        return value
+    if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + value
+    return value
 from models.schemas import (
     DashboardStats, NotificationResponse, PriceHistoryResponse, ExportRequest, SyncHistoryResponse
 )
@@ -444,35 +458,35 @@ async def export_catalog(request: ExportRequest, user: dict = Depends(get_curren
             continue
         base_price = item.get("custom_price") or product.get("price", 0)
         final_price = calculate_final_price(base_price, product, margin_rules)
-        name = item.get("custom_name") or product.get("name", "")
+        name = _csv_safe(item.get("custom_name") or product.get("name", ""))
         if request.platform == "prestashop":
             rows.append({
                 "ID": product.get("id"), "Active (0/1)": "1", "Name*": name,
-                "Categories (x,y,z...)": product.get("category", ""),
+                "Categories (x,y,z...)": _csv_safe(product.get("category", "")),
                 "Price tax excl.": round(final_price, 2), "Tax rules ID": "1",
                 "Wholesale price": product.get("price", 0),
-                "Reference #": product.get("sku", ""), "EAN13": product.get("ean", ""),
+                "Reference #": _csv_safe(product.get("sku", "")), "EAN13": _csv_safe(product.get("ean", "")),
                 "Weight": product.get("weight", ""), "Quantity": product.get("stock", 0),
-                "Description": product.get("description", ""),
+                "Description": _csv_safe(product.get("description", "")),
                 "Image URLs (x,y,z...)": product.get("image_url", ""),
             })
         elif request.platform == "woocommerce":
             rows.append({
-                "Type": "simple", "SKU": product.get("sku", ""), "Name": name,
+                "Type": "simple", "SKU": _csv_safe(product.get("sku", "")), "Name": name,
                 "Published": "1", "Regular price": round(final_price, 2),
-                "Stock": product.get("stock", 0), "Categories": product.get("category", ""),
-                "Images": product.get("image_url", ""), "Brands": product.get("brand", ""),
+                "Stock": product.get("stock", 0), "Categories": _csv_safe(product.get("category", "")),
+                "Images": product.get("image_url", ""), "Brands": _csv_safe(product.get("brand", "")),
                 "Weight (kg)": product.get("weight", ""),
             })
         elif request.platform == "shopify":
             rows.append({
-                "Handle": product.get("sku", "").lower().replace(" ", "-"),
-                "Title": name, "Vendor": product.get("brand", ""),
-                "Type": product.get("category", ""), "Published": "TRUE",
-                "Variant SKU": product.get("sku", ""),
+                "Handle": _csv_safe(product.get("sku", "").lower().replace(" ", "-")),
+                "Title": name, "Vendor": _csv_safe(product.get("brand", "")),
+                "Type": _csv_safe(product.get("category", "")), "Published": "TRUE",
+                "Variant SKU": _csv_safe(product.get("sku", "")),
                 "Variant Inventory Qty": product.get("stock", 0),
                 "Variant Price": round(final_price, 2),
-                "Variant Barcode": product.get("ean", ""),
+                "Variant Barcode": _csv_safe(product.get("ean", "")),
                 "Image Src": product.get("image_url", ""),
             })
     if not rows:

@@ -12,6 +12,7 @@ import logging
 from services.auth import get_current_user, get_superadmin_user, hash_password
 from services.database import db
 from services.config_manager import get_config, update_config
+from services.encryption import encrypt_password, decrypt_password
 from services.email_service import (
     EmailService,
     get_email_service,
@@ -148,9 +149,9 @@ async def update_email_account(
         "updated_by": user.get("email")
     }
     
-    # Only update password if provided (not empty)
+    # Only update password if provided; encrypt before storing (A02)
     if config.smtp_password:
-        update_data["smtp_password"] = config.smtp_password
+        update_data["smtp_password"] = encrypt_password(config.smtp_password)
     
     await db.email_accounts.update_one(
         {"type": account_type},
@@ -181,7 +182,7 @@ async def test_email_account_connection(
         smtp_host = config.get("smtp_host")
         smtp_port = config.get("smtp_port", 587)
         smtp_user = config.get("smtp_user")
-        smtp_password = config.get("smtp_password")
+        smtp_password = decrypt_password(config.get("smtp_password", ""))
         use_tls = config.get("smtp_use_tls", True)
         use_ssl = config.get("smtp_use_ssl", False)
         
@@ -221,7 +222,7 @@ async def send_test_email_from_account(
             "smtp_host": config.get("smtp_host"),
             "smtp_port": config.get("smtp_port", 587),
             "smtp_user": config.get("smtp_user"),
-            "smtp_password": config.get("smtp_password"),
+            "smtp_password": decrypt_password(config.get("smtp_password", "")),
             "smtp_from_email": config.get("smtp_from_email") or config.get("smtp_user"),
             "smtp_from_name": config.get("smtp_from_name", "SyncStock"),
             "smtp_use_tls": config.get("smtp_use_tls", True),
