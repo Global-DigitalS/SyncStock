@@ -136,6 +136,14 @@ async def register(request: Request, response: Response, user: UserCreate):
         # Don't fail registration if email fails
         import logging
         logging.getLogger(__name__).warning(f"Failed to send welcome email: {e}")
+
+    # Notify superadmins about the new registration (only for non-superadmin users)
+    if role != "superadmin":
+        try:
+            from routes.email import notify_superadmins_new_registration
+            await notify_superadmins_new_registration(name, email, company)
+        except Exception as e:
+            logger.warning(f"Failed to notify superadmins of new registration: {e}")
     
     return {
         "token": token,
@@ -420,7 +428,20 @@ async def update_user_full(user_id: str, update: UserFullUpdate, superadmin: dic
     update_data["updated_by"] = superadmin.get("email")
     
     await db.users.update_one({"id": user_id}, {"$set": update_data})
-    
+
+    # Notify superadmins if is_active changed
+    if "is_active" in update_data:
+        try:
+            from routes.email import notify_superadmins_status_change
+            await notify_superadmins_status_change(
+                user_name=user.get("name", user.get("email", user_id)),
+                user_email=user.get("email", ""),
+                new_status=bool(update_data["is_active"]),
+                changed_by=superadmin.get("email", superadmin.get("id", "superadmin")),
+            )
+        except Exception as e:
+            logger.warning(f"Failed to notify superadmins of status change: {e}")
+
     return {"success": True, "message": "Usuario actualizado correctamente"}
 
 
