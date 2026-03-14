@@ -744,7 +744,7 @@ const TicketList = ({ tickets, onSelect, loading }) => {
 
 // ==================== MAIN PAGE ====================
 
-const Support = () => {
+const Support = ({ embedded = false }) => {
   const { user } = useAuth();
   const [tickets, setTickets] = useState([]);
   const [selectedTicket, setSelectedTicket] = useState(null);
@@ -795,19 +795,29 @@ const Support = () => {
   if (selectedTicket) {
     const fresh = tickets.find((t) => t.id === selectedTicket.id) || selectedTicket;
     return (
-      <div className="max-w-3xl mx-auto space-y-6" data-testid="support-ticket-detail">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: "Manrope, sans-serif" }}>
-              Soporte
-            </h1>
-            <p className="text-slate-500 mt-1 text-sm">Detalle del ticket</p>
+      <div className="space-y-4" data-testid="support-ticket-detail">
+        {!embedded && (
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: "Manrope, sans-serif" }}>
+                Soporte
+              </h1>
+              <p className="text-slate-500 mt-1 text-sm">Detalle del ticket</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRefreshTicket}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Actualizar
+            </Button>
           </div>
-          <Button variant="outline" size="sm" onClick={handleRefreshTicket}>
-            <RefreshCw className="w-4 h-4 mr-2" />
-            Actualizar
-          </Button>
-        </div>
+        )}
+        {embedded && (
+          <div className="flex justify-end">
+            <Button variant="outline" size="sm" onClick={handleRefreshTicket}>
+              <RefreshCw className="w-4 h-4 mr-2" />
+              Actualizar
+            </Button>
+          </div>
+        )}
         <TicketDetail
           ticket={fresh}
           onBack={() => setSelectedTicket(null)}
@@ -820,15 +830,15 @@ const Support = () => {
   // ---- Create ticket ----
   if (showCreate) {
     return (
-      <div className="max-w-2xl mx-auto space-y-6" data-testid="support-create-ticket">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: "Manrope, sans-serif" }}>
-            Nuevo ticket de soporte
-          </h1>
-          <p className="text-slate-500 mt-1 text-sm">
-            Te responderemos lo antes posible
-          </p>
-        </div>
+      <div className="space-y-4" data-testid="support-create-ticket">
+        {!embedded && (
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: "Manrope, sans-serif" }}>
+              Nuevo ticket de soporte
+            </h1>
+            <p className="text-slate-500 mt-1 text-sm">Te responderemos lo antes posible</p>
+          </div>
+        )}
         <Card>
           <CardContent className="pt-6">
             <CreateTicketForm
@@ -845,19 +855,29 @@ const Support = () => {
   // ---- Tickets list ----
   return (
     <div className="space-y-6" data-testid="support-page">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: "Manrope, sans-serif" }}>
-            Soporte
-          </h1>
-          <p className="text-slate-500 mt-1">Gestiona tus consultas y tickets de ayuda</p>
+      {/* Header — only when not embedded */}
+      {!embedded && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900" style={{ fontFamily: "Manrope, sans-serif" }}>
+              Soporte
+            </h1>
+            <p className="text-slate-500 mt-1">Gestiona tus consultas y tickets de ayuda</p>
+          </div>
+          <Button className="btn-primary" onClick={() => setShowCreate(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nuevo ticket
+          </Button>
         </div>
-        <Button className="btn-primary" onClick={() => setShowCreate(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          Nuevo ticket
-        </Button>
-      </div>
+      )}
+      {embedded && (
+        <div className="flex justify-end">
+          <Button className="btn-primary" size="sm" onClick={() => setShowCreate(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Nuevo ticket
+          </Button>
+        </div>
+      )}
 
       {/* Status info cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
