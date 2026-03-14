@@ -217,33 +217,97 @@ app.include_router(api_router)
 # Using /api/uploads to ensure proper routing through ingress
 app.mount("/api/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
+
+# ==================== CSP VIOLATION REPORTING ====================
+
+@app.post("/api/csp-report")
+async def csp_report(request: Request):
+    """
+    Receive Content-Security-Policy violation reports from browsers.
+    Browsers POST a JSON body with a 'csp-report' key (CSP Level 2)
+    or a flat object (Reporting API / report-to).
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    report = body.get("csp-report", body)
+    logger.warning(
+        "CSP violation | blocked-uri=%s | violated-directive=%s | document-uri=%s",
+        report.get("blocked-uri", "?"),
+        report.get("violated-directive", "?"),
+        report.get("document-uri", "?"),
+    )
+    return Response(status_code=204)
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """Adds security-related HTTP headers to every response."""
+    """
+    Adds security HTTP headers to every API response.
+
+    CSP note (MDN):
+    - This middleware protects API (JSON) responses.  The React SPA is served
+      by Nginx which applies its own, richer CSP for HTML/JS/CSS (see
+      scripts/nginx_config_plesk.conf).
+    - API endpoints don't render HTML, so `default-src 'none'` is the correct
+      baseline per MDN's "start with the most restrictive policy" guidance.
+    - `frame-ancestors 'none'` supersedes the deprecated X-Frame-Options header
+      (kept for older user agents that don't support CSP Level 2).
+    - `upgrade-insecure-requests` instructs the browser to upgrade any HTTP
+      sub-resource requests to HTTPS before fetching.
+    - `report-uri` / `report-to`: violation reports are sent to the dedicated
+      endpoint POST /api/csp-report which logs them server-side.
+    """
+
+    # Build the Reporting-Endpoints / Report-To header value once at class level.
+    _REPORT_URI = "/api/csp-report"
 
     async def dispatch(self, request: Request, call_next):
         response: Response = await call_next(request)
+
+        # --- Transport Security ---
         response.headers["Strict-Transport-Security"] = (
-            "max-age=31536000; includeSubDomains"
+            "max-age=63072000; includeSubDomains; preload"
         )
-        response.headers["X-Frame-Options"] = "SAMEORIGIN"
+
+        # --- Framing (CSP frame-ancestors + legacy X-Frame-Options) ---
+        # X-Frame-Options kept for browsers without CSP Level 2 support
+        response.headers["X-Frame-Options"] = "DENY"
+
+        # --- Sniffing / Content ---
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
         response.headers["Permissions-Policy"] = (
             "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
             "magnetometer=(), microphone=(), payment=(), usb=()"
         )
+
+        # --- Content Security Policy (API responses) ---
+        # Per MDN: for resources that do not serve HTML, use 'none' as the
+        # default and only open what is strictly necessary.
         response.headers["Content-Security-Policy"] = (
-            "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://js.stripe.com; "
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
-            "font-src 'self' https://fonts.gstatic.com; "
-            "img-src 'self' data: blob: https:; "
-            "connect-src 'self' wss: https://api.stripe.com; "
-            "frame-src https://js.stripe.com https://hooks.stripe.com; "
+            # Fetch directives
+            "default-src 'none'; "
+            # API responses serve images from /api/uploads — allow same-origin
+            "img-src 'self'; "
+            # No scripts, styles, fonts or frames needed on API JSON responses
             "object-src 'none'; "
-            "base-uri 'self'; "
-            "form-action 'self';"
+            # Navigation / document directives
+            "base-uri 'none'; "
+            "form-action 'none'; "
+            # Navigation directive: prevent embedding in any frame (MDN §frame-ancestors)
+            "frame-ancestors 'none'; "
+            # Instructs browsers to upgrade HTTP sub-resources to HTTPS (MDN §upgrade-insecure-requests)
+            "upgrade-insecure-requests; "
+            # Violation reporting — report-uri (CSP Level 2, broad support) +
+            # Reporting-Endpoints header (CSP Level 3, future-proof)
+            f"report-uri {self._REPORT_URI}"
         )
+
+        # Reporting API v1 endpoint declaration (CSP Level 3 / MDN §report-to)
+        response.headers["Reporting-Endpoints"] = (
+            f'csp-endpoint="{self._REPORT_URI}"'
+        )
+
         return response
 
 
