@@ -78,6 +78,15 @@ api.interceptors.response.use(
   }
 );
 
+// Home redirect: superadmin → /admin/dashboard, others → Dashboard
+const HomeRedirect = () => {
+  const { user } = useAuth();
+  if (user?.role === "superadmin") {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+  return <Dashboard />;
+};
+
 // Protected Route Component
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -280,7 +289,7 @@ function App() {
             element={
               <ProtectedRoute>
                 <MainLayout>
-                  <Dashboard />
+                  <HomeRedirect />
                 </MainLayout>
               </ProtectedRoute>
             }
