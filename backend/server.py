@@ -40,6 +40,7 @@ from routes.email import router as email_router
 from routes.admin import router as admin_router
 from routes.stripe import router as stripe_router
 from routes.crm import router as crm_router
+from routes.support import router as support_router
 
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
@@ -169,6 +170,7 @@ api_router.include_router(email_router)
 api_router.include_router(admin_router)
 api_router.include_router(stripe_router)
 api_router.include_router(crm_router)
+api_router.include_router(support_router)
 
 
 # Health check endpoint under /api
