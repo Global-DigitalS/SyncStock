@@ -400,6 +400,180 @@ def get_subscription_change_email_template(
     return {"html": html, "text": text, "subject": f"Tu plan ha sido {action_text} - SyncStock"}
 
 
+def get_superadmin_new_registration_email_template(
+    new_user_name: str,
+    new_user_email: str,
+    new_user_company: str,
+    app_url: str
+) -> Dict[str, str]:
+    """Template para notificar al SuperAdmin sobre un nuevo registro"""
+    company_line = f"<p style='color:#475569;font-size:15px;margin:0 0 8px;'><strong>Empresa:</strong> {new_user_company}</p>" if new_user_company else ""
+    company_text = f"\nEmpresa: {new_user_company}" if new_user_company else ""
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f4f7;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f7;padding:40px 20px;">
+            <tr>
+                <td align="center">
+                    <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                        <tr>
+                            <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:40px 40px 30px;text-align:center;">
+                                <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:700;">SyncStock</h1>
+                                <p style="color:rgba(255,255,255,0.9);margin:10px 0 0;font-size:14px;">Panel de Administración</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:40px;">
+                                <h2 style="color:#1e293b;margin:0 0 20px;font-size:22px;">Nuevo usuario registrado</h2>
+                                <p style="color:#475569;font-size:16px;line-height:1.6;margin:0 0 24px;">
+                                    Se ha registrado un nuevo usuario en la plataforma:
+                                </p>
+                                <div style="background:#f8fafc;border-left:4px solid #4f46e5;border-radius:4px;padding:20px;margin-bottom:30px;">
+                                    <p style="color:#475569;font-size:15px;margin:0 0 8px;"><strong>Nombre:</strong> {new_user_name}</p>
+                                    <p style="color:#475569;font-size:15px;margin:0 0 8px;"><strong>Email:</strong> {new_user_email}</p>
+                                    {company_line}
+                                    <p style="color:#475569;font-size:15px;margin:0;"><strong>Fecha:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')} UTC</p>
+                                </div>
+                                <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+                                    <tr>
+                                        <td style="background-color:#4f46e5;border-radius:6px;">
+                                            <a href="{app_url}" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;">
+                                                Ver panel de administración
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="background-color:#f8fafc;padding:30px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+                                <p style="color:#64748b;font-size:13px;margin:0;">
+                                    © {datetime.now().year} SyncStock. Notificación automática del sistema.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+
+    text = f"""
+    Nuevo usuario registrado - SyncStock
+
+    Se ha registrado un nuevo usuario en la plataforma:
+
+    Nombre: {new_user_name}
+    Email: {new_user_email}{company_text}
+    Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')} UTC
+
+    Accede al panel de administración en: {app_url}
+
+    © {datetime.now().year} SyncStock
+    """
+
+    return {"html": html, "text": text, "subject": f"Nuevo registro: {new_user_name} ({new_user_email})"}
+
+
+def get_superadmin_status_change_email_template(
+    user_name: str,
+    user_email: str,
+    new_status: bool,
+    changed_by: str,
+    app_url: str
+) -> Dict[str, str]:
+    """Template para notificar al SuperAdmin sobre un cambio de estado de usuario"""
+    status_label = "Activo" if new_status else "Desactivado"
+    status_color = "#10b981" if new_status else "#ef4444"
+    status_bg = "#ecfdf5" if new_status else "#fef2f2"
+    action_text = "activado" if new_status else "desactivado"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    </head>
+    <body style="margin:0;padding:0;font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;background-color:#f4f4f7;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f4f7;padding:40px 20px;">
+            <tr>
+                <td align="center">
+                    <table width="600" cellpadding="0" cellspacing="0" style="background-color:#ffffff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,0.05);">
+                        <tr>
+                            <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:40px 40px 30px;text-align:center;">
+                                <h1 style="color:#ffffff;margin:0;font-size:28px;font-weight:700;">SyncStock</h1>
+                                <p style="color:rgba(255,255,255,0.9);margin:10px 0 0;font-size:14px;">Panel de Administración</p>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="padding:40px;">
+                                <h2 style="color:#1e293b;margin:0 0 20px;font-size:22px;">Cambio de estado de usuario</h2>
+                                <p style="color:#475569;font-size:16px;line-height:1.6;margin:0 0 24px;">
+                                    El estado de un usuario ha sido <strong>{action_text}</strong>:
+                                </p>
+                                <div style="background:#f8fafc;border-left:4px solid #4f46e5;border-radius:4px;padding:20px;margin-bottom:24px;">
+                                    <p style="color:#475569;font-size:15px;margin:0 0 8px;"><strong>Usuario:</strong> {user_name}</p>
+                                    <p style="color:#475569;font-size:15px;margin:0 0 8px;"><strong>Email:</strong> {user_email}</p>
+                                    <p style="color:#475569;font-size:15px;margin:0 0 8px;"><strong>Modificado por:</strong> {changed_by}</p>
+                                    <p style="color:#475569;font-size:15px;margin:0;"><strong>Fecha:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M')} UTC</p>
+                                </div>
+                                <div style="background:{status_bg};border:1px solid {status_color};border-radius:6px;padding:16px;text-align:center;margin-bottom:30px;">
+                                    <span style="color:{status_color};font-size:18px;font-weight:700;">Estado: {status_label}</span>
+                                </div>
+                                <table cellpadding="0" cellspacing="0" style="margin:0 auto;">
+                                    <tr>
+                                        <td style="background-color:#4f46e5;border-radius:6px;">
+                                            <a href="{app_url}" style="display:inline-block;padding:14px 32px;color:#ffffff;text-decoration:none;font-weight:600;font-size:16px;">
+                                                Ver panel de administración
+                                            </a>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td style="background-color:#f8fafc;padding:30px 40px;text-align:center;border-top:1px solid #e2e8f0;">
+                                <p style="color:#64748b;font-size:13px;margin:0;">
+                                    © {datetime.now().year} SyncStock. Notificación automática del sistema.
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+    </body>
+    </html>
+    """
+
+    text = f"""
+    Cambio de estado de usuario - SyncStock
+
+    El estado del siguiente usuario ha sido {action_text}:
+
+    Usuario: {user_name}
+    Email: {user_email}
+    Estado: {status_label}
+    Modificado por: {changed_by}
+    Fecha: {datetime.now().strftime('%d/%m/%Y %H:%M')} UTC
+
+    Accede al panel de administración en: {app_url}
+
+    © {datetime.now().year} SyncStock
+    """
+
+    return {"html": html, "text": text, "subject": f"Usuario {action_text}: {user_name} ({user_email})"}
+
+
 # ==================== EMAIL SERVICE INSTANCE ====================
 
 def get_email_service(account_type: str = "transactional") -> EmailService:

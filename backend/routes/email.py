@@ -18,7 +18,9 @@ from services.email_service import (
     get_email_service,
     get_welcome_email_template,
     get_password_reset_email_template,
-    get_subscription_change_email_template
+    get_subscription_change_email_template,
+    get_superadmin_new_registration_email_template,
+    get_superadmin_status_change_email_template,
 )
 
 router = APIRouter()
@@ -516,6 +518,76 @@ async def send_welcome_email(user_email: str, user_name: str):
         )
     except Exception as e:
         logger.error(f"Error sending welcome email: {e}")
+
+
+async def notify_superadmins_new_registration(new_user_name: str, new_user_email: str, new_user_company: str = None):
+    """Envía notificación a todos los SuperAdmins cuando un usuario nuevo se registra"""
+    email_service = get_email_service()
+
+    if not email_service.is_configured():
+        logger.info("Email service not configured, skipping superadmin new-registration notification")
+        return
+
+    try:
+        superadmins = await db.users.find(
+            {"role": "superadmin"},
+            {"email": 1, "_id": 0}
+        ).to_list(100)
+
+        if not superadmins:
+            return
+
+        config = get_config()
+        app_url = config.cors_origins.split(',')[0] if config.cors_origins != '*' else ''
+
+        template = get_superadmin_new_registration_email_template(
+            new_user_name, new_user_email, new_user_company or "", app_url
+        )
+
+        for sa in superadmins:
+            email_service.send_email(
+                to_email=sa["email"],
+                subject=template["subject"],
+                html_content=template["html"],
+                text_content=template["text"],
+            )
+    except Exception as e:
+        logger.error(f"Error sending new-registration notification to superadmins: {e}")
+
+
+async def notify_superadmins_status_change(user_name: str, user_email: str, new_status: bool, changed_by: str):
+    """Envía notificación a todos los SuperAdmins cuando el estado de un usuario cambia"""
+    email_service = get_email_service()
+
+    if not email_service.is_configured():
+        logger.info("Email service not configured, skipping superadmin status-change notification")
+        return
+
+    try:
+        superadmins = await db.users.find(
+            {"role": "superadmin"},
+            {"email": 1, "_id": 0}
+        ).to_list(100)
+
+        if not superadmins:
+            return
+
+        config = get_config()
+        app_url = config.cors_origins.split(',')[0] if config.cors_origins != '*' else ''
+
+        template = get_superadmin_status_change_email_template(
+            user_name, user_email, new_status, changed_by, app_url
+        )
+
+        for sa in superadmins:
+            email_service.send_email(
+                to_email=sa["email"],
+                subject=template["subject"],
+                html_content=template["html"],
+                text_content=template["text"],
+            )
+    except Exception as e:
+        logger.error(f"Error sending status-change notification to superadmins: {e}")
 
 
 async def send_subscription_change_email(user_email: str, user_name: str, old_plan: str, new_plan: str):
