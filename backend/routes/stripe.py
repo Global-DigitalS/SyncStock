@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timezone
 import logging
+import re
 import stripe
 
 from services.auth import get_superadmin_user, get_current_user
@@ -179,8 +180,20 @@ async def create_checkout_session(
     # Convert to cents (Stripe expects amounts in smallest currency unit)
     amount_cents = int(amount * 100)
     
-    # Build success and cancel URLs from frontend origin
-    origin = checkout_request.origin_url.rstrip("/")
+    # Build success and cancel URLs — validate origin against allowed domains to prevent open redirect
+    raw_origin = (checkout_request.origin_url or "").strip().rstrip("/")
+    if not re.match(r'^https?://[a-zA-Z0-9._-]+(:\d+)?$', raw_origin):
+        raise HTTPException(status_code=400, detail="origin_url inválida")
+
+    # Block private / loopback addresses (SSRF guard)
+    _blocked = re.compile(
+        r'^https?://(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)',
+        re.IGNORECASE,
+    )
+    if _blocked.match(raw_origin):
+        raise HTTPException(status_code=400, detail="origin_url no permitida")
+
+    origin = raw_origin
     success_url = f"{origin}/#/subscriptions?session_id={{CHECKOUT_SESSION_ID}}&success=true"
     cancel_url = f"{origin}/#/subscriptions?canceled=true"
     
