@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
 from typing import List, Optional
 from datetime import datetime, timezone
 import uuid
+import secrets
 import logging
 import hmac
 import hashlib
@@ -54,8 +55,8 @@ async def create_webhook_config(config: dict, user: dict = Depends(get_current_u
     if not store:
         raise HTTPException(status_code=404, detail="Tienda no encontrada")
     
-    # Generate webhook secret
-    secret_key = str(uuid.uuid4()).replace("-", "") + str(uuid.uuid4()).replace("-", "")[:16]
+    # Generate webhook secret with cryptographically secure random bytes
+    secret_key = secrets.token_urlsafe(48)
     
     config_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
@@ -125,7 +126,7 @@ async def regenerate_webhook_secret(config_id: str, user: dict = Depends(get_cur
     if not existing:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
     
-    new_secret = str(uuid.uuid4()).replace("-", "") + str(uuid.uuid4()).replace("-", "")[:16]
+    new_secret = secrets.token_urlsafe(48)
     await db.webhook_configs.update_one({"id": config_id}, {"$set": {"secret_key": new_secret}})
     
     return {"secret_key": new_secret, "message": "Secret regenerado. Actualiza la configuración en tu tienda."}
@@ -134,36 +135,37 @@ async def regenerate_webhook_secret(config_id: str, user: dict = Depends(get_cur
 # ==================== WEBHOOK RECEIVER ====================
 
 def verify_webhook_signature(payload: bytes, signature: str, secret: str, platform: str) -> bool:
-    """Verify webhook signature based on platform"""
+    """Verify webhook signature based on platform using constant-time comparison."""
+    if not signature or not secret:
+        return False
     try:
-        if platform == "woocommerce":
-            # WooCommerce uses base64 HMAC-SHA256
+        if platform in ("woocommerce", "shopify"):
+            # WooCommerce and Shopify both use HMAC-SHA256 hex digest
             expected = hmac.new(
-                secret.encode(), 
-                payload, 
+                secret.encode(),
+                payload,
                 hashlib.sha256
             ).hexdigest()
             return hmac.compare_digest(signature, expected)
-        
-        elif platform == "shopify":
-            # Shopify uses HMAC-SHA256 with base64
-            expected = hmac.new(
-                secret.encode(), 
-                payload, 
-                hashlib.sha256
-            ).hexdigest()
-            return hmac.compare_digest(signature, expected)
-        
+
         elif platform == "prestashop":
-            # PrestaShop typically uses simple hash comparison
-            expected = hashlib.sha256((secret + payload.decode()).encode()).hexdigest()
+            # PrestaShop uses HMAC-SHA256 (not simple concatenation)
+            expected = hmac.new(
+                secret.encode(),
+                payload,
+                hashlib.sha256
+            ).hexdigest()
             return hmac.compare_digest(signature, expected)
-        
+
         else:
-            # For other platforms, accept if signature matches secret hash
-            expected = hashlib.sha256(secret.encode()).hexdigest()[:32]
-            return signature.startswith(expected[:8]) if signature else True
-            
+            # Unknown platform: use HMAC-SHA256 as default
+            expected = hmac.new(
+                secret.encode(),
+                payload,
+                hashlib.sha256
+            ).hexdigest()
+            return hmac.compare_digest(signature, expected)
+
     except Exception as e:
         logger.error(f"Signature verification error: {e}")
         return False
@@ -338,15 +340,20 @@ async def receive_webhook(config_id: str, request: Request, background_tasks: Ba
     # Get request body
     body = await request.body()
     
-    # Verify signature if provided
-    signature = request.headers.get("X-Webhook-Signature") or \
-                request.headers.get("X-WC-Webhook-Signature") or \
-                request.headers.get("X-Shopify-Hmac-SHA256")
-    
-    if signature and webhook_config.get("secret_key"):
-        if not verify_webhook_signature(body, signature, webhook_config["secret_key"], webhook_config.get("platform")):
-            logger.warning(f"Invalid webhook signature for config {config_id}")
-            # Don't reject - some platforms don't send signatures consistently
+    # Verify signature — reject if secret is configured but signature is missing or invalid
+    signature = (
+        request.headers.get("X-Webhook-Signature")
+        or request.headers.get("X-WC-Webhook-Signature")
+        or request.headers.get("X-Shopify-Hmac-SHA256")
+    )
+    secret_key = webhook_config.get("secret_key")
+    if secret_key:
+        if not signature:
+            logger.warning(f"Webhook {config_id}: cabecera de firma ausente")
+            raise HTTPException(status_code=401, detail="Firma de webhook requerida")
+        if not verify_webhook_signature(body, signature, secret_key, webhook_config.get("platform", "")):
+            logger.warning(f"Webhook {config_id}: firma inválida")
+            raise HTTPException(status_code=401, detail="Firma de webhook inválida")
     
     # Parse body
     try:

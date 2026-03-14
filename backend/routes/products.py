@@ -17,12 +17,27 @@ router = APIRouter()
 # Directory for product images - use path relative to this file's location
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads", "products")
-try:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-except PermissionError:
-    # Fallback to a writable location if primary fails
-    UPLOAD_DIR = os.path.join("/tmp", "product_uploads")
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Magic bytes (file signatures) for allowed image types
+_IMAGE_MAGIC: dict[bytes, str] = {
+    b"\xff\xd8\xff": "jpg",          # JPEG
+    b"\x89PNG\r\n\x1a\n": "png",     # PNG
+    b"GIF87a": "gif",                # GIF87
+    b"GIF89a": "gif",                # GIF89
+    b"RIFF": "webp",                 # WebP (needs extra check)
+}
+
+
+def _detect_image_type(data: bytes) -> str | None:
+    """Return image type from magic bytes, or None if not a recognised image."""
+    for magic, img_type in _IMAGE_MAGIC.items():
+        if data[:len(magic)] == magic:
+            # WebP: bytes 8-12 must be b"WEBP"
+            if img_type == "webp" and data[8:12] != b"WEBP":
+                return None
+            return img_type
+    return None
 
 
 @router.get("/products", response_model=List[ProductResponse])
@@ -671,8 +686,16 @@ async def upload_product_image(
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=400, detail="El archivo supera el tamaño máximo permitido de 5 MB")
 
-    # Generate unique filename with sanitized extension
-    filename = f"{product_id}_{image_type}_{uuid.uuid4().hex[:8]}.{raw_ext}"
+    # Validate magic bytes (content-based type detection — not spoofable by client)
+    detected_type = _detect_image_type(content)
+    if not detected_type:
+        raise HTTPException(status_code=400, detail="El contenido del archivo no corresponde a una imagen válida")
+
+    # Normalise extension to the canonical one from magic bytes
+    safe_ext = "jpg" if detected_type == "jpg" else detected_type
+
+    # Generate unique filename with sanitized extension (never trust client filename)
+    filename = f"{uuid.uuid4().hex}.{safe_ext}"
     filepath = os.path.join(UPLOAD_DIR, filename)
 
     # Save file

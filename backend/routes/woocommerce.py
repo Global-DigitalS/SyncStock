@@ -169,7 +169,7 @@ async def test_woocommerce_connection(config_id: str, user: dict = Depends(get_c
             return {"status": "error", "message": f"Error de conexión: {response.status_code}"}
     except Exception as e:
         await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": False}})
-        return {"status": "error", "message": f"Error de conexión: {str(e)}"}
+        return {"status": "error", "message": "Error de conexión a WooCommerce. Verifica la URL y las claves API."}
 
 
 @router.post("/woocommerce/configs/{config_id}/sync")
@@ -190,7 +190,7 @@ async def sync_woocommerce_price_stock(config_id: str, user: dict = Depends(get_
         }
     except Exception as e:
         logger.error(f"Error in manual WooCommerce sync: {e}")
-        return {"status": "error", "message": f"Error en la sincronización: {str(e)}"}
+        return {"status": "error", "message": "Error en la sincronización con WooCommerce"}
 
 
 @router.post("/woocommerce/export", response_model=WooCommerceExportResult)
@@ -541,4 +541,5 @@ async def get_woocommerce_products(config_id: str, page: int = 1, per_page: int 
         else:
             return {"status": "error", "message": f"Error: {response.status_code}"}
     except Exception as e:
-        return {"status": "error", "message": str(e)}
+        logger.error(f"WooCommerce operation error: {e}")
+        return {"status": "error", "message": "Error en la operación con WooCommerce"}

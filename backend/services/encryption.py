@@ -15,28 +15,26 @@ logger = logging.getLogger(__name__)
 _FERNET_KEY = os.environ.get("FERNET_KEY")
 
 if not _FERNET_KEY:
-    logger.warning(
-        "FERNET_KEY no configurada. Las contraseñas FTP se guardarán sin encriptar. "
+    raise RuntimeError(
+        "FERNET_KEY no está configurada. Las contraseñas FTP/SFTP no pueden guardarse de forma segura. "
         "Genera una clave con: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
     )
-    _fernet = None
-else:
-    try:
-        _fernet = Fernet(_FERNET_KEY.encode())
-    except Exception as e:
-        logger.error(f"FERNET_KEY inválida: {e}")
-        _fernet = None
+
+try:
+    _fernet = Fernet(_FERNET_KEY.encode())
+except Exception as e:
+    raise RuntimeError(f"FERNET_KEY inválida: {e}") from e
 
 
 def encrypt_password(password: str) -> str:
-    """Encripta una contraseña. Si Fernet no está configurado, devuelve el valor original."""
-    if not password or not _fernet:
+    """Encripta una contraseña con Fernet (AES-128-CBC + HMAC-SHA256)."""
+    if not password:
         return password
     try:
         return _fernet.encrypt(password.encode()).decode()
     except Exception as e:
         logger.error(f"Error encriptando contraseña: {e}")
-        return password
+        raise RuntimeError("No se pudo encriptar la contraseña") from e
 
 
 def decrypt_password(encrypted: str) -> str:

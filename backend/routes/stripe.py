@@ -334,18 +334,14 @@ async def stripe_webhook(request: Request):
     stripe.api_key = config.get("stripe_secret_key")
     webhook_secret = config.get("stripe_webhook_secret")
     
+    if not webhook_secret:
+        logger.error("Stripe webhook recibido pero STRIPE_WEBHOOK_SECRET no está configurado. Rechazando.")
+        raise HTTPException(status_code=400, detail="Webhook no verificable: configura stripe_webhook_secret")
+
     try:
-        # Verify webhook signature if secret is configured
-        if webhook_secret:
-            event = stripe.Webhook.construct_event(
-                payload, sig_header, webhook_secret
-            )
-        else:
-            # If no webhook secret, parse event without verification (not recommended for production)
-            import json
-            event = stripe.Event.construct_from(
-                json.loads(payload), stripe.api_key
-            )
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, webhook_secret
+        )
         
         event_type = event.type
         logger.info(f"Stripe webhook received: {event_type}")

@@ -1,6 +1,7 @@
 import jwt
 import bcrypt
 import os
+import re
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import Depends, HTTPException, Request
@@ -13,7 +14,14 @@ try:
     config = get_config()
     JWT_SECRET = config.jwt_secret if config.jwt_secret else ensure_jwt_secret()
 except ImportError:
-    JWT_SECRET = os.environ.get('JWT_SECRET', 'default-secret-change-in-production')
+    JWT_SECRET = os.environ.get('JWT_SECRET')
+
+if not JWT_SECRET:
+    raise RuntimeError(
+        "JWT_SECRET no está configurado. "
+        "Define la variable de entorno JWT_SECRET con un valor aleatorio seguro (mín. 64 chars). "
+        "Ejemplo: python -c \"import secrets; print(secrets.token_hex(64))\""
+    )
 
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = int(os.environ.get('JWT_EXPIRATION_HOURS', 168))  # 7 días por defecto
@@ -37,12 +45,46 @@ DEFAULT_LIMITS = {
 }
 
 
+# Pre-computed dummy hash used for constant-time comparison when a user is not found,
+# preventing timing-based email enumeration attacks.
+_DUMMY_HASH = bcrypt.hashpw(b"__dummy__", bcrypt.gensalt()).decode("utf-8")
+
+# ── Lockout configuration ──────────────────────────────────────────────────────
+_MAX_FAILED_ATTEMPTS = 5          # lock after this many consecutive failures
+_LOCKOUT_MINUTES = 15             # lock duration in minutes
+_ATTEMPT_WINDOW_MINUTES = 15      # rolling window for counting failures
+
+
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    try:
+        return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    except Exception:
+        return False
+
+
+def validate_password_strength(password: str) -> None:
+    """
+    Raise ValueError if the password does not meet complexity requirements:
+    - Minimum 12 characters
+    - At least one uppercase letter
+    - At least one lowercase letter
+    - At least one digit
+    - At least one special character
+    """
+    if len(password) < 12:
+        raise ValueError("La contraseña debe tener al menos 12 caracteres")
+    if not re.search(r"[A-Z]", password):
+        raise ValueError("La contraseña debe contener al menos una letra mayúscula")
+    if not re.search(r"[a-z]", password):
+        raise ValueError("La contraseña debe contener al menos una letra minúscula")
+    if not re.search(r"\d", password):
+        raise ValueError("La contraseña debe contener al menos un número")
+    if not re.search(r"[^A-Za-z0-9]", password):
+        raise ValueError("La contraseña debe contener al menos un carácter especial (!@#$%^&* …)")
 
 
 def create_token(user_id: str, role: str = "user") -> str:
@@ -162,3 +204,56 @@ async def get_superadmin_user(
     if user.get("role") != "superadmin":
         raise HTTPException(status_code=403, detail="Se requiere rol de SuperAdmin")
     return user
+
+
+# ── Account lockout helpers ────────────────────────────────────────────────────
+
+async def check_account_lockout(email: str) -> None:
+    """Raise 429 if the account is currently locked out."""
+    now = datetime.now(timezone.utc)
+    record = await db.login_attempts.find_one({"email": email})
+    if not record:
+        return
+    locked_until = record.get("locked_until")
+    if locked_until:
+        lu = datetime.fromisoformat(locked_until)
+        if lu.tzinfo is None:
+            lu = lu.replace(tzinfo=timezone.utc)
+        if now < lu:
+            remaining = int((lu - now).total_seconds() / 60) + 1
+            raise HTTPException(
+                status_code=429,
+                detail=f"Cuenta bloqueada por demasiados intentos fallidos. Inténtalo en {remaining} minutos."
+            )
+
+
+async def record_failed_login(email: str) -> None:
+    """Increment failed-attempt counter and lock if threshold reached."""
+    now = datetime.now(timezone.utc)
+    window_start = (now - timedelta(minutes=_ATTEMPT_WINDOW_MINUTES)).isoformat()
+
+    record = await db.login_attempts.find_one({"email": email})
+    attempts = 1
+    if record:
+        # Count attempts within the rolling window only
+        last = record.get("last_attempt", "")
+        if last and last >= window_start:
+            attempts = record.get("attempts", 0) + 1
+        # else window expired, reset
+
+    update: dict = {
+        "email": email,
+        "attempts": attempts,
+        "last_attempt": now.isoformat(),
+    }
+    if attempts >= _MAX_FAILED_ATTEMPTS:
+        update["locked_until"] = (now + timedelta(minutes=_LOCKOUT_MINUTES)).isoformat()
+
+    await db.login_attempts.update_one(
+        {"email": email}, {"$set": update}, upsert=True
+    )
+
+
+async def reset_failed_logins(email: str) -> None:
+    """Clear failed-attempt counter after a successful login."""
+    await db.login_attempts.delete_one({"email": email})

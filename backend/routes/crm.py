@@ -86,7 +86,8 @@ class DolibarrClient:
         except requests.exceptions.Timeout:
             return {"status": "error", "message": "Tiempo de espera agotado"}
         except requests.exceptions.RequestException as e:
-            return {"status": "error", "message": f"Error de conexión: {str(e)}"}
+            logger.error(f"CRM connection error: {e}")
+            return {"status": "error", "message": "Error de conexión al servidor CRM. Verifica la URL y las credenciales."}
     
     # ==================== PRODUCTS ====================
     
@@ -189,7 +190,7 @@ class DolibarrClient:
             else:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
         except Exception as e:
-            return {"status": "error", "message": f"Error: {str(e)}"}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def update_product(self, product_id: int, product_data: Dict) -> Dict:
         """Update an existing product with full data including purchase price"""
@@ -242,7 +243,7 @@ class DolibarrClient:
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
         except Exception as e:
-            return {"status": "error", "message": f"Error: {str(e)}"}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def upload_product_image(self, product_id: int, image_url: str, base_url: str = None) -> Dict:
         """Upload image to a Dolibarr product
@@ -321,7 +322,7 @@ class DolibarrClient:
             return {"status": "error", "message": "Timeout descargando imagen"}
         except Exception as e:
             logger.error(f"Dolibarr upload_product_image error: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> Dict:
         """Update product stock in Dolibarr"""
@@ -375,7 +376,7 @@ class DolibarrClient:
                 return {"status": "warning", "message": f"No se pudo crear movimiento: {response.text[:100]}"}
         except Exception as e:
             logger.error(f"update_stock error: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def get_warehouses(self) -> List[Dict]:
         """Get all warehouses from Dolibarr"""
@@ -515,7 +516,7 @@ class DolibarrClient:
                 return {"status": "error", "message": f"Error: {response.status_code} - {error_detail}"}
         except Exception as e:
             logger.error(f"Dolibarr create_supplier exception for '{supplier_data.get('name', '')}': {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
     def update_supplier(self, supplier_id: int, supplier_data: Dict) -> Dict:
         """Update a supplier in Dolibarr"""
@@ -542,7 +543,7 @@ class DolibarrClient:
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def get_supplier_by_name(self, name: str) -> Optional[Dict]:
         """Find supplier by name using direct API search"""
@@ -619,7 +620,7 @@ class DolibarrClient:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:100]}"}
         except Exception as e:
             logger.error(f"Dolibarr link_product_to_supplier error: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     # ==================== ORDERS ====================
     
@@ -689,7 +690,7 @@ class DolibarrClient:
             else:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def create_supplier_order(self, order_data: Dict) -> Dict:
         """Create a supplier order in Dolibarr"""
@@ -723,7 +724,7 @@ class DolibarrClient:
             else:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
         except Exception as e:
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     # ==================== STATS ====================
     
@@ -823,7 +824,8 @@ class OdooClient:
         except requests.exceptions.Timeout:
             return {"status": "error", "message": "Tiempo de espera agotado"}
         except requests.exceptions.RequestException as e:
-            return {"status": "error", "message": f"Error de conexión: {str(e)}"}
+            logger.error(f"CRM connection error: {e}")
+            return {"status": "error", "message": "Error de conexión al servidor CRM. Verifica la URL y las credenciales."}
     
     # ==================== PRODUCTS ====================
     
@@ -919,7 +921,7 @@ class OdooClient:
                 }
         except Exception as e:
             logger.error(f"Odoo create_product error: {e}")
-            return {"status": "error", "message": f"Error: {str(e)}"}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def update_product(self, product_id: int, product_data: Dict) -> Dict:
         """Update an existing product in Odoo"""
@@ -952,7 +954,7 @@ class OdooClient:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
         except Exception as e:
             logger.error(f"Odoo update_product error: {e}")
-            return {"status": "error", "message": f"Error: {str(e)}"}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> Dict:
         """Update product stock in Odoo"""
@@ -998,7 +1000,7 @@ class OdooClient:
                 return {"status": "warning", "message": f"No se pudo actualizar stock: {response.text[:100]}"}
         except Exception as e:
             logger.error(f"Odoo update_stock error: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def get_or_create_default_warehouse(self) -> Optional[int]:
         """Get the first warehouse or create a default one"""
@@ -1116,7 +1118,7 @@ class OdooClient:
                 }
         except Exception as e:
             logger.error(f"Odoo create_supplier error: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def update_supplier(self, supplier_id: int, supplier_data: Dict) -> Dict:
         """Update a supplier in Odoo"""
@@ -1146,7 +1148,7 @@ class OdooClient:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
         except Exception as e:
             logger.error(f"Odoo update_supplier error: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     def link_product_to_supplier(self, product_sku: str, supplier_id: int, purchase_price: float, supplier_sku: str = None) -> Dict:
         """Link a product to a supplier with purchase price in Odoo"""
@@ -1186,7 +1188,7 @@ class OdooClient:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
         except Exception as e:
             logger.error(f"Odoo link_product_to_supplier error: {e}")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
     
     # ==================== ORDERS ====================
     
