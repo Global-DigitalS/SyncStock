@@ -268,19 +268,31 @@ async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_use
     }
 
 
+def _sanitize_ftp_path(path: str) -> str:
+    """Normalise an FTP path and reject path-traversal sequences."""
+    import posixpath
+    # Resolve '..' segments without touching the filesystem
+    clean = posixpath.normpath("/" + path.replace("\\", "/"))
+    # After normpath a safe path always starts with '/'
+    if not clean.startswith("/"):
+        clean = "/"
+    return clean
+
+
 @router.post("/suppliers/ftp-browse")
 async def ftp_browse(req: FtpBrowseRequest, user: dict = Depends(get_current_user)):
     """Navega por el servidor FTP y lista archivos/carpetas"""
+    safe_path = _sanitize_ftp_path(req.path or "/")
     try:
         result = await browse_ftp_directory({
             "ftp_schema": req.ftp_schema, "ftp_host": req.ftp_host,
             "ftp_user": req.ftp_user, "ftp_password": req.ftp_password,
             "ftp_port": req.ftp_port, "ftp_mode": req.ftp_mode,
-        }, req.path)
+        }, safe_path)
         return result
     except Exception as e:
         logger.error(f"FTP browse error: {e}")
-        return {"status": "error", "message": str(e), "files": [], "path": req.path}
+        return {"status": "error", "message": "Error al navegar el directorio FTP", "files": [], "path": safe_path}
 
 
 class FtpTestRequest(BaseModel):
@@ -365,28 +377,28 @@ async def ftp_test_connection(req: FtpTestRequest, user: dict = Depends(get_curr
     except ftplib.error_perm as e:
         return {
             "status": "error",
-            "message": f"Error de autenticación: {str(e)}",
+            "message": "Error de autenticación FTP. Verifica las credenciales.",
             "connected": False,
             "suggestion": "Verifica el usuario y contraseña"
         }
     except paramiko.AuthenticationException as e:
         return {
             "status": "error", 
-            "message": f"Error de autenticación SFTP: {str(e)}",
+            "message": "Error de autenticación SFTP. Verifica las credenciales.",
             "connected": False,
             "suggestion": "Verifica el usuario y contraseña"
         }
     except (ConnectionRefusedError, OSError) as e:
         return {
             "status": "error",
-            "message": f"No se puede conectar al servidor: {str(e)}",
+            "message": "No se puede conectar al servidor FTP/SFTP. Verifica el host y el puerto.",
             "connected": False,
             "suggestion": f"Verifica que el host {host} y puerto {port} sean correctos"
         }
     except Exception as e:
         return {
             "status": "error",
-            "message": f"Error de conexión: {str(e)}",
+            "message": "Error de conexión. Verifica los parámetros del servidor.",
             "connected": False
         }
 
@@ -405,7 +417,7 @@ async def ftp_browse_supplier(supplier_id: str, data: dict, user: dict = Depends
         return result
     except Exception as e:
         logger.error(f"FTP browse error: {e}")
-        return {"status": "error", "message": str(e), "files": [], "path": path}
+        return {"status": "error", "message": "Error al listar el directorio FTP", "files": [], "path": path}
 
 
 @router.post("/suppliers/{supplier_id}/ftp-list-all")
@@ -463,7 +475,7 @@ async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(
         
     except Exception as e:
         logger.error(f"FTP list all error: {e}")
-        return {"status": "error", "message": str(e), "files": []}
+        return {"status": "error", "message": "Error al listar el directorio FTP", "files": []}
 
 
 @router.post("/products/import/{supplier_id}")
@@ -796,7 +808,7 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
         }
     except Exception as e:
         logger.error(f"Error previewing file: {e}")
-        return {"status": "error", "message": str(e), "columns": []}
+        return {"status": "error", "message": "Error al leer las columnas del archivo", "columns": []}
 
 
 @router.post("/suppliers/{supplier_id}/diagnose")
@@ -831,7 +843,7 @@ async def diagnose_supplier_zip(supplier_id: str, user: dict = Depends(get_curre
         else:
             content = await download_file_from_ftp(supplier)
     except Exception as e:
-        return {"status": "error", "step": "download", "message": str(e)}
+        return {"status": "error", "step": "download", "message": "Error al descargar el archivo del proveedor"}
 
     # Is it a ZIP?
     is_zip = len(content) >= 2 and content[:2] == b'PK'
@@ -848,7 +860,7 @@ async def diagnose_supplier_zip(supplier_id: str, user: dict = Depends(get_curre
         try:
             extracted = extract_zip_files(content)
         except Exception as e:
-            return {**result, "status": "error", "step": "unzip", "message": str(e)}
+            return {**result, "status": "error", "step": "unzip", "message": "Error al descomprimir el archivo"}
 
         compatible_exts = ('.csv', '.txt', '.xlsx', '.xls', '.xml')
         compatible = [

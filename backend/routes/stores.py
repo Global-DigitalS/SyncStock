@@ -403,7 +403,7 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
             
     except Exception as e:
         await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": False}})
-        return {"status": "error", "message": f"Error de conexión: {str(e)}"}
+        return {"status": "error", "message": "Error de conexión a la tienda. Verifica la URL y las credenciales."}
 
 
 @router.post("/stores/configs/{config_id}/sync")
@@ -443,7 +443,7 @@ async def sync_store_price_stock(config_id: str, user: dict = Depends(get_curren
             }
     except Exception as e:
         logger.error(f"Error in store sync: {e}")
-        return {"status": "error", "message": f"Error en la sincronización: {str(e)}"}
+        return {"status": "error", "message": "Error en la sincronización con la tienda"}
 
 
 async def _run_export_background(config: dict, catalog_items: list, catalog_id: str,

@@ -1,7 +1,7 @@
 {
   "mongo_url": "mongodb://localhost:27017",
-  "db_name": "test_database",
-  "jwt_secret": "ns2OoPAnFxkgz0cU2idsdw84tciayMK2XIfXsWUrVQ0lMFv2miKL_qQxjKw4pd7TNCdDouPP1FyE5AodCmSTJg",
-  "cors_origins": "*",
-  "is_configured": true
+  "db_name": "syncstock_db",
+  "jwt_secret": "",
+  "cors_origins": "",
+  "is_configured": false
 }

@@ -9,7 +9,9 @@ from services.database import db
 from services.auth import (
     hash_password, verify_password, create_token, get_current_user,
     get_admin_user, get_superadmin_user, ROLE_PERMISSIONS, DEFAULT_LIMITS,
-    get_user_resource_usage
+    get_user_resource_usage, validate_password_strength,
+    check_account_lockout, record_failed_login, reset_failed_logins,
+    _DUMMY_HASH,
 )
 from services.sanitizer import sanitize_string, sanitize_email, sanitize_password, sanitize_dict
 from models.schemas import UserCreate, UserLogin, UserResponse, UserUpdate, UserLimits, UserFullUpdate
@@ -55,7 +57,12 @@ async def register(request: Request, response: Response, user: UserCreate):
     name = sanitize_string(user.name, max_length=100)
     company = sanitize_string(user.company, max_length=200) if user.company else None
     password = sanitize_password(user.password)
-    
+
+    try:
+        validate_password_strength(password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     existing = await db.users.find_one({"email": email})
     if existing:
         raise HTTPException(status_code=400, detail="El email ya está registrado")
@@ -151,15 +158,27 @@ async def login(request: Request, response: Response, credentials: UserLogin):
     # Sanitize inputs
     email = sanitize_email(credentials.email)
     password = sanitize_password(credentials.password)
-    
+
+    # Check lockout before any DB lookup (still constant-time after this)
+    await check_account_lockout(email)
+
     user = await db.users.find_one({"email": email})
-    if not user or not verify_password(password, user.get("password", "")):
+
+    # Always run bcrypt to prevent timing-based email enumeration
+    stored_hash = user.get("password", _DUMMY_HASH) if user else _DUMMY_HASH
+    password_ok = verify_password(password, stored_hash)
+
+    if not user or not password_ok:
+        await record_failed_login(email)
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    
+
     # Check if user is active
     if user.get("is_active") is False:
         raise HTTPException(status_code=403, detail="ACCOUNT_DISABLED")
-    
+
+    # Successful login — clear lockout counter
+    await reset_failed_logins(email)
+
     role = user.get("role", "user")
     token = create_token(user["id"], role)
     _set_auth_cookie(response, token)
@@ -213,18 +232,26 @@ async def update_profile(request: dict, user: dict = Depends(get_current_user)):
     return {"message": "Perfil actualizado correctamente", "updated": list(update_data.keys())}
 
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
 @router.post("/auth/change-password")
-async def change_password(request: dict, user: dict = Depends(get_current_user)):
+@limiter.limit("5/minute")
+async def change_password(http_request: Request, body: ChangePasswordRequest, user: dict = Depends(get_current_user)):
     """Change user's password"""
-    current_password = request.get("current_password")
-    new_password = request.get("new_password")
+    current_password = body.current_password
+    new_password = body.new_password
     
     if not current_password or not new_password:
         raise HTTPException(status_code=400, detail="Contraseña actual y nueva son requeridas")
     
-    if len(new_password) < 6:
-        raise HTTPException(status_code=400, detail="La nueva contraseña debe tener al menos 6 caracteres")
-    
+    try:
+        validate_password_strength(new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     # Get user with password from database
     db_user = await db.users.find_one({"id": user["id"]})
     if not db_user:
@@ -528,12 +555,15 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest):
 
 
 @router.post("/auth/reset-password")
-async def reset_password(request: ResetPasswordRequest):
+@limiter.limit("5/minute")
+async def reset_password(http_request: Request, request: ResetPasswordRequest):
     """
     Reset password using token from email.
     """
-    if len(request.new_password) < 6:
-        raise HTTPException(status_code=400, detail="La contraseña debe tener al menos 6 caracteres")
+    try:
+        validate_password_strength(request.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     
     # Find valid reset token
     reset_record = await db.password_resets.find_one({
