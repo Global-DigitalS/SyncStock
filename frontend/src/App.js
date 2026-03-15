@@ -39,6 +39,7 @@ import AdminStripe from "./pages/AdminStripe";
 import AdminEmailAccounts from "./pages/AdminEmailAccounts";
 import AdminLanding from "./pages/AdminLanding";
 import AdminGoogleServices from "./pages/AdminGoogleServices";
+import AdminSupport from "./pages/AdminSupport";
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -571,6 +572,17 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <AdminGoogleServices />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/admin/support"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <AdminSupport />
                 </MainLayout>
               </ProtectedRoute>
             }
