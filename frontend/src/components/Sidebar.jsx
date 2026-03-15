@@ -33,7 +33,8 @@ import {
   Building2,
   RefreshCw,
   Layout,
-  BarChart3
+  BarChart3,
+  LifeBuoy
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -67,6 +68,7 @@ const adminItems = [
   { path: "/admin/email-config", label: "Config. Email", icon: Mail },
   { path: "/admin/email-templates", label: "Plantillas Email", icon: FileText },
   { path: "/admin/google-services", label: "Google Services", icon: BarChart3 },
+  { path: "/admin/support", label: "Soporte / Tickets", icon: LifeBuoy },
 ];
 
 const Sidebar = ({ open, onToggle }) => {

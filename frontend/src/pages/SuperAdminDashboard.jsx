@@ -256,6 +256,8 @@ const SuperAdminDashboard = () => {
             href="/admin/email-templates" color="text-slate-600" bg="bg-slate-100" />
           <QuickActionCard icon={Settings} label="Google Services" desc="Analytics, GTM, Ads"
             href="/admin/google-services" color="text-orange-600" bg="bg-orange-100" />
+          <QuickActionCard icon={Bell} label="Soporte / Tickets" desc="Ver y responder tickets de usuarios"
+            href="/admin/support" color="text-cyan-600" bg="bg-cyan-100" />
         </div>
       </div>
 
