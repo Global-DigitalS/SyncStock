@@ -77,8 +77,9 @@ const Sidebar = ({ open, onToggle }) => {
   const { user, logout } = useAuth();
   const [unreadCount, setUnreadCount] = useState(0);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [adminExpanded, setAdminExpanded] = useState(false);
+  const [adminExpanded, setAdminExpanded] = useState(true);
   const [connectionsExpanded, setConnectionsExpanded] = useState(false);
+  const [generalExpanded, setGeneralExpanded] = useState(false);
   const [branding, setBranding] = useState({
     app_name: "StockHub",
     app_slogan: "Gestión de Catálogos",
@@ -120,14 +121,19 @@ const Sidebar = ({ open, onToggle }) => {
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-expand admin section if on admin route
+  // Auto-expand sections based on current route
   useEffect(() => {
     if (location.pathname.startsWith("/admin")) {
       setAdminExpanded(true);
     }
-    // Auto-expand connections section if on connections route
     if (location.pathname === "/stores" || location.pathname === "/crm") {
       setConnectionsExpanded(true);
+      setGeneralExpanded(true);
+    }
+    // If superadmin navigates to a general route, expand the general menu
+    const generalPaths = navItems.map((i) => i.path);
+    if (generalPaths.some((p) => p !== "/" ? location.pathname.startsWith(p) : location.pathname === "/")) {
+      setGeneralExpanded(true);
     }
   }, [location.pathname]);
 
@@ -173,82 +179,10 @@ const Sidebar = ({ open, onToggle }) => {
 
       {/* Navigation */}
       <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const active = isActive(item.path);
-          const showBadge = item.path === "/notifications" && unreadCount > 0;
 
-          return (
-            <Link
-              key={item.path}
-              to={item.path}
-              data-testid={`nav-${item.path.replace("/", "") || "dashboard"}`}
-              className={active ? "sidebar-item-active" : "sidebar-item"}
-              onClick={() => setMobileOpen(false)}
-            >
-              <div className="relative">
-                <Icon className="w-5 h-5" strokeWidth={1.5} />
-                {showBadge && (
-                  <span className="notification-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
-                )}
-              </div>
-              <span>{item.label}</span>
-            </Link>
-          );
-        })}
-
-        {/* Conexiones Section */}
-        <div className="pt-2 mt-2">
-          <button
-            onClick={() => setConnectionsExpanded(!connectionsExpanded)}
-            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm transition-all duration-200 font-medium ${
-              (location.pathname === "/stores" || location.pathname === "/crm")
-                ? "bg-blue-100 text-blue-700"
-                : "text-slate-600 hover:bg-slate-50"
-            }`}
-            data-testid="connections-section-toggle"
-          >
-            <div className="flex items-center gap-3">
-              <Link2 className="w-5 h-5 text-blue-600" strokeWidth={1.5} />
-              <span className="text-blue-700 font-semibold">Conexiones</span>
-            </div>
-            {connectionsExpanded ? (
-              <ChevronDown className="w-4 h-4 text-blue-500" />
-            ) : (
-              <ChevronRight className="w-4 h-4 text-blue-500" />
-            )}
-          </button>
-
-          {connectionsExpanded && (
-            <div className="mt-1 ml-2 space-y-1">
-              {connectionItems.map((item) => {
-                const Icon = item.icon;
-                const active = isActive(item.path);
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    data-testid={`nav-${item.path.replace("/", "")}`}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-sm text-sm transition-all duration-200 ${
-                      active 
-                        ? "bg-blue-100 text-blue-700 font-medium" 
-                        : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
-                    }`}
-                    onClick={() => setMobileOpen(false)}
-                  >
-                    <Icon className="w-4 h-4" strokeWidth={1.5} />
-                    <span>{item.label}</span>
-                  </Link>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Admin Section - Only visible for SuperAdmin */}
+        {/* ── SuperAdmin: Administración primero ── */}
         {isSuperAdmin && (
-          <div className="pt-4 mt-4 border-t border-slate-200">
-            {/* Administración - Link directo al Dashboard */}
+          <div className="mb-2">
             <Link
               to="/admin/dashboard"
               onClick={() => setAdminExpanded(!adminExpanded)}
@@ -281,8 +215,8 @@ const Sidebar = ({ open, onToggle }) => {
                       to={item.path}
                       data-testid={`nav-${item.path.replace("/admin/", "admin-")}`}
                       className={`flex items-center gap-3 px-3 py-2 rounded-sm text-sm transition-all duration-200 ${
-                        active 
-                          ? "bg-purple-100 text-purple-700 font-medium" 
+                        active
+                          ? "bg-purple-100 text-purple-700 font-medium"
                           : "text-slate-600 hover:bg-purple-50 hover:text-purple-700"
                       }`}
                       onClick={() => setMobileOpen(false)}
@@ -295,6 +229,176 @@ const Sidebar = ({ open, onToggle }) => {
               </div>
             )}
           </div>
+        )}
+
+        {/* ── Menú general: siempre visible para no-superadmin, colapsable para superadmin ── */}
+        {isSuperAdmin ? (
+          <div className="pt-2 border-t border-slate-200">
+            <button
+              onClick={() => setGeneralExpanded(!generalExpanded)}
+              className="w-full flex items-center justify-between px-3 py-2.5 rounded-sm transition-all duration-200 font-medium text-slate-600 hover:bg-slate-50"
+              data-testid="general-section-toggle"
+            >
+              <div className="flex items-center gap-3">
+                <LayoutDashboard className="w-5 h-5 text-slate-500" strokeWidth={1.5} />
+                <span className="text-slate-600 font-semibold">Menú general</span>
+              </div>
+              {generalExpanded ? (
+                <ChevronDown className="w-4 h-4 text-slate-400" />
+              ) : (
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              )}
+            </button>
+
+            {generalExpanded && (
+              <div className="mt-1 space-y-1">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  const active = isActive(item.path);
+                  const showBadge = item.path === "/notifications" && unreadCount > 0;
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      data-testid={`nav-${item.path.replace("/", "") || "dashboard"}`}
+                      className={active ? "sidebar-item-active" : "sidebar-item"}
+                      onClick={() => setMobileOpen(false)}
+                    >
+                      <div className="relative">
+                        <Icon className="w-5 h-5" strokeWidth={1.5} />
+                        {showBadge && (
+                          <span className="notification-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                        )}
+                      </div>
+                      <span>{item.label}</span>
+                    </Link>
+                  );
+                })}
+
+                {/* Conexiones dentro del menú general colapsado */}
+                <div className="pt-1">
+                  <button
+                    onClick={() => setConnectionsExpanded(!connectionsExpanded)}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm transition-all duration-200 font-medium ${
+                      (location.pathname === "/stores" || location.pathname === "/crm")
+                        ? "bg-blue-100 text-blue-700"
+                        : "text-slate-600 hover:bg-slate-50"
+                    }`}
+                    data-testid="connections-section-toggle"
+                  >
+                    <div className="flex items-center gap-3">
+                      <Link2 className="w-5 h-5 text-blue-600" strokeWidth={1.5} />
+                      <span className="text-blue-700 font-semibold">Conexiones</span>
+                    </div>
+                    {connectionsExpanded ? (
+                      <ChevronDown className="w-4 h-4 text-blue-500" />
+                    ) : (
+                      <ChevronRight className="w-4 h-4 text-blue-500" />
+                    )}
+                  </button>
+
+                  {connectionsExpanded && (
+                    <div className="mt-1 ml-2 space-y-1">
+                      {connectionItems.map((item) => {
+                        const Icon = item.icon;
+                        const active = isActive(item.path);
+                        return (
+                          <Link
+                            key={item.path}
+                            to={item.path}
+                            data-testid={`nav-${item.path.replace("/", "")}`}
+                            className={`flex items-center gap-3 px-3 py-2 rounded-sm text-sm transition-all duration-200 ${
+                              active
+                                ? "bg-blue-100 text-blue-700 font-medium"
+                                : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+                            }`}
+                            onClick={() => setMobileOpen(false)}
+                          >
+                            <Icon className="w-4 h-4" strokeWidth={1.5} />
+                            <span>{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Menú normal para no-superadmin */
+          <>
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = isActive(item.path);
+              const showBadge = item.path === "/notifications" && unreadCount > 0;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  data-testid={`nav-${item.path.replace("/", "") || "dashboard"}`}
+                  className={active ? "sidebar-item-active" : "sidebar-item"}
+                  onClick={() => setMobileOpen(false)}
+                >
+                  <div className="relative">
+                    <Icon className="w-5 h-5" strokeWidth={1.5} />
+                    {showBadge && (
+                      <span className="notification-badge">{unreadCount > 99 ? "99+" : unreadCount}</span>
+                    )}
+                  </div>
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+
+            {/* Conexiones Section */}
+            <div className="pt-2 mt-2">
+              <button
+                onClick={() => setConnectionsExpanded(!connectionsExpanded)}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm transition-all duration-200 font-medium ${
+                  (location.pathname === "/stores" || location.pathname === "/crm")
+                    ? "bg-blue-100 text-blue-700"
+                    : "text-slate-600 hover:bg-slate-50"
+                }`}
+                data-testid="connections-section-toggle"
+              >
+                <div className="flex items-center gap-3">
+                  <Link2 className="w-5 h-5 text-blue-600" strokeWidth={1.5} />
+                  <span className="text-blue-700 font-semibold">Conexiones</span>
+                </div>
+                {connectionsExpanded ? (
+                  <ChevronDown className="w-4 h-4 text-blue-500" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 text-blue-500" />
+                )}
+              </button>
+
+              {connectionsExpanded && (
+                <div className="mt-1 ml-2 space-y-1">
+                  {connectionItems.map((item) => {
+                    const Icon = item.icon;
+                    const active = isActive(item.path);
+                    return (
+                      <Link
+                        key={item.path}
+                        to={item.path}
+                        data-testid={`nav-${item.path.replace("/", "")}`}
+                        className={`flex items-center gap-3 px-3 py-2 rounded-sm text-sm transition-all duration-200 ${
+                          active
+                            ? "bg-blue-100 text-blue-700 font-medium"
+                            : "text-slate-600 hover:bg-blue-50 hover:text-blue-700"
+                        }`}
+                        onClick={() => setMobileOpen(false)}
+                      >
+                        <Icon className="w-4 h-4" strokeWidth={1.5} />
+                        <span>{item.label}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </>
         )}
       </nav>
 
