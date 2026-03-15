@@ -19,9 +19,9 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "../components/ui/table";
 import {
-  CreditCard, Plus, Pencil, Trash2, RefreshCw, CheckCircle, 
+  CreditCard, Plus, Pencil, Trash2, RefreshCw, CheckCircle,
   Truck, BookOpen, Package, Store, Star, Users, Clock, Building2,
-  GripVertical, Database, CalendarDays
+  GripVertical, Database, CalendarDays, ShoppingCart
 } from "lucide-react";
 import { Checkbox } from "../components/ui/checkbox";
 
@@ -43,6 +43,7 @@ const AdminPlans = () => {
     max_products: 1000,
     max_stores: 1,
     max_crm_connections: 1,
+    max_marketplace_connections: 1,
     price_monthly: 0,
     price_yearly: 0,
     trial_days: 0,
@@ -90,6 +91,7 @@ const AdminPlans = () => {
       max_products: 1000,
       max_stores: 1,
       max_crm_connections: 1,
+      max_marketplace_connections: 1,
       price_monthly: 0,
       price_yearly: 0,
       trial_days: 0,
@@ -119,6 +121,7 @@ const AdminPlans = () => {
       max_products: plan.max_products || 1000,
       max_stores: plan.max_stores || 1,
       max_crm_connections: plan.max_crm_connections || 1,
+      max_marketplace_connections: plan.max_marketplace_connections || 1,
       price_monthly: plan.price_monthly || 0,
       price_yearly: plan.price_yearly || 0,
       trial_days: plan.trial_days || 0,
@@ -321,6 +324,10 @@ const AdminPlans = () => {
                   <Database className="w-4 h-4 text-slate-400" />
                   <span>{plan.max_crm_connections || 1} conexiones CRM</span>
                 </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <ShoppingCart className="w-4 h-4 text-slate-400" />
+                  <span>{plan.max_marketplace_connections === 999999 ? "Ilimitadas" : (plan.max_marketplace_connections || 1)} conexiones marketplace</span>
+                </div>
                 {(plan.auto_sync_enabled || plan.crm_sync_enabled) && (
                   <div className="flex items-center gap-2 text-sm">
                     <Clock className="w-4 h-4 text-blue-500" />
@@ -515,6 +522,19 @@ const AdminPlans = () => {
                     onChange={(e) => setFormData({ ...formData, max_crm_connections: parseInt(e.target.value) || 0 })}
                     className="input-base"
                     data-testid="max-crm-input"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="max_marketplace_connections" className="text-sm flex items-center gap-2">
+                    <ShoppingCart className="w-4 h-4" /> Conexiones Marketplace
+                  </Label>
+                  <Input
+                    id="max_marketplace_connections"
+                    type="number"
+                    value={formData.max_marketplace_connections}
+                    onChange={(e) => setFormData({ ...formData, max_marketplace_connections: parseInt(e.target.value) || 0 })}
+                    className="input-base"
+                    data-testid="max-marketplace-input"
                   />
                 </div>
               </div>

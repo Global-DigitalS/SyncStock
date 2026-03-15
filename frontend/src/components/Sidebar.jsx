@@ -34,7 +34,8 @@ import {
   RefreshCw,
   Layout,
   BarChart3,
-  LifeBuoy
+  LifeBuoy,
+  ShoppingCart
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -57,6 +58,7 @@ const navItems = [
 const connectionItems = [
   { path: "/stores", label: "Tiendas", icon: Store },
   { path: "/crm", label: "CRM", icon: Building2 },
+  { path: "/marketplaces", label: "Marketplaces", icon: ShoppingCart },
 ];
 
 const adminItems = [
@@ -126,7 +128,7 @@ const Sidebar = ({ open, onToggle }) => {
     if (location.pathname.startsWith("/admin")) {
       setAdminExpanded(true);
     }
-    if (location.pathname === "/stores" || location.pathname === "/crm") {
+    if (location.pathname === "/stores" || location.pathname === "/crm" || location.pathname === "/marketplaces") {
       setConnectionsExpanded(true);
       setGeneralExpanded(true);
     }
@@ -280,7 +282,7 @@ const Sidebar = ({ open, onToggle }) => {
                   <button
                     onClick={() => setConnectionsExpanded(!connectionsExpanded)}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-sm transition-all duration-200 font-medium ${
-                      (location.pathname === "/stores" || location.pathname === "/crm")
+                      (location.pathname === "/stores" || location.pathname === "/crm" || location.pathname === "/marketplaces")
                         ? "bg-blue-100 text-blue-700"
                         : "text-slate-600 hover:bg-slate-50"
                     }`}
