@@ -38,10 +38,10 @@ ROLE_PERMISSIONS = {
 
 # Default limits for new users
 DEFAULT_LIMITS = {
-    "superadmin": {"max_suppliers": 999999, "max_catalogs": 999999, "max_woocommerce_stores": 999999},
-    "admin": {"max_suppliers": 50, "max_catalogs": 20, "max_woocommerce_stores": 10},
-    "user": {"max_suppliers": 10, "max_catalogs": 5, "max_woocommerce_stores": 2},
-    "viewer": {"max_suppliers": 0, "max_catalogs": 0, "max_woocommerce_stores": 0}
+    "superadmin": {"max_suppliers": 999999, "max_catalogs": 999999, "max_woocommerce_stores": 999999, "max_marketplace_connections": 999999},
+    "admin": {"max_suppliers": 50, "max_catalogs": 20, "max_woocommerce_stores": 10, "max_marketplace_connections": 5},
+    "user": {"max_suppliers": 10, "max_catalogs": 5, "max_woocommerce_stores": 2, "max_marketplace_connections": 1},
+    "viewer": {"max_suppliers": 0, "max_catalogs": 0, "max_woocommerce_stores": 0, "max_marketplace_connections": 0}
 }
 
 

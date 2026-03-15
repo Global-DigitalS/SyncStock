@@ -25,6 +25,7 @@ class UserResponse(BaseModel):
     max_suppliers: int = 10
     max_catalogs: int = 5
     max_woocommerce_stores: int = 2
+    max_marketplace_connections: int = 1
     created_at: str
 
 class UserUpdate(BaseModel):
@@ -34,11 +35,13 @@ class UserUpdate(BaseModel):
     max_suppliers: Optional[int] = None
     max_catalogs: Optional[int] = None
     max_woocommerce_stores: Optional[int] = None
+    max_marketplace_connections: Optional[int] = None
 
 class UserLimits(BaseModel):
     max_suppliers: int = 10
     max_catalogs: int = 5
     max_woocommerce_stores: int = 2
+    max_marketplace_connections: int = 1
     max_products: Optional[int] = 1000
 
 
@@ -51,6 +54,7 @@ class UserFullUpdate(BaseModel):
     max_suppliers: Optional[int] = None
     max_catalogs: Optional[int] = None
     max_woocommerce_stores: Optional[int] = None
+    max_marketplace_connections: Optional[int] = None
     max_products: Optional[int] = None
     subscription_plan_id: Optional[str] = None
     subscription_plan_name: Optional[str] = None
@@ -487,6 +491,7 @@ class SubscriptionPlan(BaseModel):
     max_catalogs: int
     max_woocommerce_stores: int
     max_crm_connections: int = 1
+    max_marketplace_connections: int = 1
     price_monthly: float
     price_yearly: float
     trial_days: int = 0  # Días de prueba gratuita
@@ -554,3 +559,52 @@ class UnifiedProductResponse(BaseModel):
     supplier_count: int
     suppliers: List[SupplierOffer]
     weight: Optional[float] = None
+
+
+# ==================== MARKETPLACE MODELS ====================
+
+class MarketplaceConnectionCreate(BaseModel):
+    platform_id: str
+    name: str
+    catalog_id: str
+    store_url: Optional[str] = ""
+    currency: Optional[str] = "EUR"
+    condition: Optional[str] = "new"
+    shipping_cost: Optional[str] = ""
+    delivery_time: Optional[str] = ""
+    field_mapping: Optional[Dict[str, str]] = {}
+    include_out_of_stock: bool = False
+
+class MarketplaceConnectionUpdate(BaseModel):
+    name: Optional[str] = None
+    catalog_id: Optional[str] = None
+    store_url: Optional[str] = None
+    currency: Optional[str] = None
+    condition: Optional[str] = None
+    shipping_cost: Optional[str] = None
+    delivery_time: Optional[str] = None
+    field_mapping: Optional[Dict[str, str]] = None
+    include_out_of_stock: Optional[bool] = None
+    is_active: Optional[bool] = None
+
+class MarketplaceConnectionResponse(BaseModel):
+    id: str
+    user_id: str
+    platform_id: str
+    platform_name: str
+    name: str
+    catalog_id: str
+    catalog_name: str
+    store_url: str = ""
+    currency: str = "EUR"
+    condition: str = "new"
+    shipping_cost: str = ""
+    delivery_time: str = ""
+    field_mapping: Dict[str, str] = {}
+    include_out_of_stock: bool = False
+    is_active: bool = True
+    feed_format: str = "xml"
+    last_generated: Optional[str] = None
+    products_count: int = 0
+    created_at: str
+    updated_at: str

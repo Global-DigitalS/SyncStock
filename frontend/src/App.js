@@ -26,6 +26,7 @@ import Subscriptions from "./pages/Subscriptions";
 import Webhooks from "./pages/Webhooks";
 import EmailConfig from "./pages/EmailConfig";
 import CRMPage from "./pages/CRM";
+import Marketplaces from "./pages/Marketplaces";
 import SyncSettings from "./pages/SyncSettings";
 import Profile from "./pages/Profile";
 import Support from "./pages/Support";
@@ -370,6 +371,16 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <WooCommerceExport />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/marketplaces"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Marketplaces />
                 </MainLayout>
               </ProtectedRoute>
             }
