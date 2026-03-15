@@ -597,7 +597,7 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 if not normalized.get('sku') or not normalized.get('name'):
                     errors += 1
                     continue
-                existing = await db.products.find_one({"sku": normalized['sku'], "supplier_id": supplier['id']})
+                existing = await db.products.find_one({"user_id": supplier["user_id"], "supplier_id": supplier['id'], "sku": normalized['sku']})
                 product_doc = {
                     "sku": normalized.get('sku'), "name": normalized.get('name'),
                     "description": normalized.get('description'), "price": normalized.get('price', 0),

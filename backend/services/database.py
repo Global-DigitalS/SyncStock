@@ -187,7 +187,15 @@ async def ensure_indexes():
         await _db.products.create_index([("user_id", 1), ("category", 1)], background=True)
         await _db.products.create_index([("user_id", 1), ("stock", 1)], background=True)
         await _db.products.create_index([("user_id", 1), ("price", 1)], background=True)
-        await _db.products.create_index([("sku", 1), ("supplier_id", 1)], background=True)
+        # Índice compuesto para upsert por SKU + proveedor (incluye user_id para multi-tenancy)
+        await _db.products.create_index([("user_id", 1), ("supplier_id", 1), ("sku", 1)], unique=True, background=True)
+        # Índices para filtrado por subcategorías
+        await _db.products.create_index([("user_id", 1), ("supplier_id", 1), ("category", 1), ("subcategory", 1)], background=True)
+        await _db.products.create_index([("user_id", 1), ("supplier_id", 1), ("subcategory", 1)], background=True)
+        await _db.products.create_index([("user_id", 1), ("supplier_id", 1), ("subcategory2", 1)], background=True)
+        # Índice para filtrado por selección de productos
+        await _db.products.create_index([("user_id", 1), ("supplier_id", 1), ("is_selected", 1)], background=True)
+        await _db.products.create_index([("user_id", 1), ("is_selected", 1)], background=True)
         # text index para búsqueda full-text
         await _db.products.create_index(
             [("name", "text"), ("sku", "text"), ("ean", "text")],
