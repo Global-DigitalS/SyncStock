@@ -3,7 +3,8 @@ import {
   Zap, Database, Store, Calculator, RefreshCw, Shield, BarChart3,
   Clock, Globe, Package, TrendingUp, Truck, FileSpreadsheet, Webhook,
   Cpu, Lock, Headphones, Layers, Check, ArrowRight, Building2,
-  ShoppingCart, Bell, Settings, CheckCircle2
+  ShoppingCart, Bell, Settings, CheckCircle2, MessageCircle, LifeBuoy,
+  BookOpen, GraduationCap, ShoppingBag, Tag, BadgeDollarSign, Boxes
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
@@ -11,7 +12,8 @@ import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/u
 const iconMap = {
   Zap, Database, Store, Calculator, RefreshCw, Shield, BarChart3, Clock,
   Globe, Package, TrendingUp, Truck, FileSpreadsheet, Webhook, Cpu, Lock,
-  Headphones, Layers, Building2, ShoppingCart, Bell, Settings
+  Headphones, Layers, Building2, ShoppingCart, Bell, Settings, MessageCircle,
+  LifeBuoy, BookOpen, GraduationCap, ShoppingBag, Tag, BadgeDollarSign, Boxes
 };
 
 function Icon({ name, ...props }) {
@@ -78,6 +80,26 @@ const FEATURE_CATEGORIES = [
       { icon: "Lock", title: "Autenticación segura", description: "JWT con expiración configurable, hashing bcrypt y control de acceso por roles (RBAC)." },
       { icon: "Database", title: "Backups automáticos", description: "Copias de seguridad diarias automáticas con retención configurable. Restauración en un clic." },
       { icon: "Headphones", title: "Soporte dedicado", description: "Soporte por email en todos los planes. Soporte prioritario 24/7 en planes Professional y Enterprise." },
+    ]
+  },
+  {
+    title: "Soporte técnico",
+    description: "Acompañamiento experto en cada paso para que tu negocio nunca se detenga.",
+    features: [
+      { icon: "LifeBuoy", title: "Centro de ayuda", description: "Base de conocimiento completa con guías paso a paso, tutoriales en vídeo y documentación actualizada para resolver cualquier duda." },
+      { icon: "MessageCircle", title: "Chat y email", description: "Contacta con nuestro equipo de soporte por chat en vivo o email. Respuesta garantizada en menos de 2 horas en días laborables." },
+      { icon: "GraduationCap", title: "Onboarding personalizado", description: "Sesiones de configuración guiada con un especialista para que tu equipo esté operativo desde el primer día." },
+      { icon: "BookOpen", title: "Formación continua", description: "Webinars mensuales, novedades de producto y mejores prácticas para sacar el máximo partido a la plataforma." },
+    ]
+  },
+  {
+    title: "Conexión con Marketplaces",
+    description: "Publica y sincroniza tu catálogo en los principales marketplaces del mercado.",
+    features: [
+      { icon: "ShoppingBag", title: "Amazon", description: "Sincroniza productos, precios y stock con Amazon Seller Central. Gestión automática de listados y actualización en tiempo real." },
+      { icon: "Tag", title: "eBay", description: "Publica y actualiza tu catálogo en eBay con sincronización bidireccional de stock, precios y pedidos." },
+      { icon: "BadgeDollarSign", title: "Miravia", description: "Conecta con Miravia para gestionar tu catálogo en uno de los marketplaces de mayor crecimiento en Europa." },
+      { icon: "Boxes", title: "Multi-marketplace", description: "Gestiona todos tus marketplaces desde un único panel. Reglas de precio y stock independientes por canal de venta." },
     ]
   },
 ];

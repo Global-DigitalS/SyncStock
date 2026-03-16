@@ -103,6 +103,8 @@ const defaultContent = {
     { icon: "BarChart3", title: "Analíticas Avanzadas", description: "Dashboard con métricas en tiempo real: historial de precios, evolución de stock y más." },
     { icon: "Webhook", title: "API & Webhooks", description: "Conecta con cualquier sistema externo mediante nuestra API REST y webhooks configurables." },
     { icon: "Clock", title: "Historial de Precios", description: "Rastrea cada cambio de precio y stock con registro histórico completo y alertas automáticas." },
+    { icon: "Headphones", title: "Soporte Técnico", description: "Equipo de soporte dedicado con chat, email y onboarding personalizado para tu negocio." },
+    { icon: "ShoppingBag", title: "Marketplaces", description: "Publica y sincroniza tu catálogo en Amazon, eBay, Miravia y más marketplaces." },
   ],
   integrations: [
     { name: "WooCommerce", icon: "ShoppingCart", category: "E-commerce" },
@@ -114,6 +116,9 @@ const defaultContent = {
     { name: "CSV/XLSX", icon: "FileSpreadsheet", category: "Formatos" },
     { name: "XML/API", icon: "Webhook", category: "Formatos" },
     { name: "Stripe", icon: "Lock", category: "Pagos" },
+    { name: "Amazon", icon: "ShoppingBag", category: "Marketplaces" },
+    { name: "eBay", icon: "Tag", category: "Marketplaces" },
+    { name: "Miravia", icon: "BadgeDollarSign", category: "Marketplaces" },
   ],
   how_it_works: [
     { step: 1, title: "Conecta tus proveedores", description: "Añade fuentes de datos FTP, SFTP, URL, CSV o Excel. SyncStock importa y mapea automáticamente los campos del catálogo." },
