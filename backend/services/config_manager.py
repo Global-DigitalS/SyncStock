@@ -85,6 +85,7 @@ class AppConfig(BaseModel):
     mongo_url: str = ""
     db_name: str = "syncstock_db"
     jwt_secret: str = ""
+    fernet_key: str = ""
     cors_origins: str = "*"
     is_configured: bool = False
     # SMTP Email Configuration
@@ -174,6 +175,8 @@ def load_config() -> AppConfig:
         config.db_name = os.environ.get('DB_NAME', 'syncstock_db')
     if not config.jwt_secret:
         config.jwt_secret = os.environ.get('JWT_SECRET', '')
+    if not config.fernet_key:
+        config.fernet_key = os.environ.get('FERNET_KEY', '')
     if config.cors_origins == "*":
         env_cors = os.environ.get('CORS_ORIGINS', '*')
         if env_cors:
@@ -215,10 +218,16 @@ def save_config(config: AppConfig) -> bool:
         
         # También actualizar el archivo .env para compatibilidad
         env_file = APP_CONFIG_DIR / ".env"
-        env_content = f"""MONGO_URL={config.mongo_url}
-DB_NAME={config.db_name}
-CORS_ORIGINS={config.cors_origins}
-"""
+        env_lines = [
+            f"MONGO_URL={config.mongo_url}",
+            f"DB_NAME={config.db_name}",
+            f"CORS_ORIGINS={config.cors_origins}",
+        ]
+        if config.jwt_secret:
+            env_lines.append(f"JWT_SECRET={config.jwt_secret}")
+        if config.fernet_key:
+            env_lines.append(f"FERNET_KEY={config.fernet_key}")
+        env_content = "\n".join(env_lines) + "\n"
         try:
             with open(env_file, 'w') as f:
                 f.write(env_content)
