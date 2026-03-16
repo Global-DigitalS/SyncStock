@@ -11,11 +11,17 @@ from datetime import datetime, timezone
 from openpyxl import load_workbook
 import xlrd
 import xmltodict
+from pymongo import UpdateOne, InsertOne
 from woocommerce import API as WooCommerceAPI
 from services.database import db
 from config import PRICE_CHANGE_THRESHOLD_PERCENT, LOW_STOCK_THRESHOLD
 
 logger = logging.getLogger(__name__)
+
+# Batch size for bulk DB operations
+BULK_BATCH_SIZE = 500
+# How often to send progress updates (every N products)
+PROGRESS_REPORT_INTERVAL = 2000
 
 
 def sanitize_ean_quotes(value) -> str:
@@ -38,6 +44,171 @@ async def send_realtime_notification(user_id: str, notification: dict):
         })
     except Exception as e:
         logger.debug(f"Could not send realtime notification: {e}")
+
+
+async def send_sync_progress(user_id: str, supplier_name: str, processed: int, total: int):
+    """Send sync progress update via WebSocket"""
+    pct = int((processed / total) * 100) if total > 0 else 0
+    await send_realtime_notification(user_id, {
+        "id": str(uuid.uuid4()),
+        "type": "sync_progress",
+        "message": f"Sincronizando '{supplier_name}': {processed:,}/{total:,} productos ({pct}%)",
+        "progress": pct,
+        "processed": processed,
+        "total": total,
+    })
+
+
+async def bulk_upsert_products(supplier: dict, normalized_products: list, existing_map: dict, now: str) -> dict:
+    """
+    Bulk upsert products using batched bulk_write operations.
+
+    Args:
+        supplier: supplier dict with id, name, user_id
+        normalized_products: list of dicts with keys: sku, name, description, price, stock, etc.
+        existing_map: dict mapping (sku) -> existing product doc
+        now: ISO timestamp string
+
+    Returns:
+        dict with imported, updated, errors counts and price_changes/stock_changes for notifications
+    """
+    imported = 0
+    updated = 0
+    errors = 0
+
+    product_ops = []        # bulk_write operations for products collection
+    price_history_docs = [] # docs to insert_many into price_history
+    notification_docs = []  # docs to insert_many into notifications
+
+    supplier_id = supplier['id']
+    supplier_name = supplier['name']
+    user_id = supplier['user_id']
+    total = len(normalized_products)
+
+    for i, normalized in enumerate(normalized_products):
+        try:
+            sku = normalized.get('sku')
+            name = normalized.get('name', '')
+            if not sku or not name:
+                errors += 1
+                continue
+
+            product_doc = {
+                "sku": sku, "name": name,
+                "description": normalized.get('description'),
+                "price": normalized.get('price', 0),
+                "stock": normalized.get('stock', 0),
+                "category": normalized.get('category'),
+                "brand": normalized.get('brand'),
+                "ean": normalized.get('ean'),
+                "weight": normalized.get('weight'),
+                "image_url": normalized.get('image_url'),
+                "supplier_id": supplier_id,
+                "supplier_name": supplier_name,
+                "user_id": user_id,
+                "updated_at": now
+            }
+
+            existing = existing_map.get(sku)
+            if existing:
+                # Track price changes
+                old_price = existing.get('price', 0)
+                new_price = product_doc['price']
+                if old_price != new_price and old_price > 0:
+                    change_pct = ((new_price - old_price) / old_price) * 100
+                    price_history_docs.append({
+                        "id": str(uuid.uuid4()), "product_id": existing["id"],
+                        "product_name": name, "old_price": old_price,
+                        "new_price": new_price, "change_percentage": change_pct,
+                        "user_id": user_id, "created_at": now
+                    })
+                    if abs(change_pct) >= PRICE_CHANGE_THRESHOLD_PERCENT:
+                        direction = "subido" if change_pct > 0 else "bajado"
+                        notification_docs.append({
+                            "id": str(uuid.uuid4()), "type": "price_change",
+                            "message": f"Precio de '{name[:40]}' ha {direction} {abs(change_pct):.1f}% ({old_price:.2f}€ → {new_price:.2f}€)",
+                            "product_id": existing["id"], "product_name": name,
+                            "user_id": user_id, "read": False, "created_at": now
+                        })
+
+                # Track stock changes
+                old_stock = existing.get('stock', 0)
+                new_stock = product_doc['stock']
+                if old_stock > 0 and new_stock == 0:
+                    notification_docs.append({
+                        "id": str(uuid.uuid4()), "type": "stock_out",
+                        "message": f"Producto '{name[:40]}' sin stock",
+                        "product_id": existing["id"], "product_name": name,
+                        "user_id": user_id, "read": False, "created_at": now
+                    })
+                elif old_stock > LOW_STOCK_THRESHOLD and 0 < new_stock <= LOW_STOCK_THRESHOLD:
+                    notification_docs.append({
+                        "id": str(uuid.uuid4()), "type": "stock_low",
+                        "message": f"Producto '{name[:40]}' con stock bajo ({new_stock} uds)",
+                        "product_id": existing["id"], "product_name": name,
+                        "user_id": user_id, "read": False, "created_at": now
+                    })
+
+                product_ops.append(UpdateOne(
+                    {"id": existing["id"]},
+                    {"$set": product_doc}
+                ))
+                updated += 1
+            else:
+                product_doc["id"] = str(uuid.uuid4())
+                product_doc["created_at"] = now
+                product_ops.append(InsertOne(product_doc))
+                imported += 1
+
+            # Flush product ops in batches
+            if len(product_ops) >= BULK_BATCH_SIZE:
+                await db.products.bulk_write(product_ops, ordered=False)
+                product_ops = []
+
+            # Flush price_history in batches
+            if len(price_history_docs) >= BULK_BATCH_SIZE:
+                await db.price_history.insert_many(price_history_docs, ordered=False)
+                price_history_docs = []
+
+            # Flush notifications in batches
+            if len(notification_docs) >= BULK_BATCH_SIZE:
+                await db.notifications.insert_many(notification_docs, ordered=False)
+                notification_docs = []
+
+            # Send progress updates
+            if (i + 1) % PROGRESS_REPORT_INTERVAL == 0:
+                await send_sync_progress(user_id, supplier_name, i + 1, total)
+
+        except Exception as e:
+            logger.error(f"Error processing product: {e}")
+            errors += 1
+
+    # Flush remaining operations
+    if product_ops:
+        await db.products.bulk_write(product_ops, ordered=False)
+    if price_history_docs:
+        await db.price_history.insert_many(price_history_docs, ordered=False)
+    if notification_docs:
+        await db.notifications.insert_many(notification_docs, ordered=False)
+
+    return {"imported": imported, "updated": updated, "errors": errors}
+
+
+async def prefetch_existing_products(supplier_id: str, user_id: str) -> dict:
+    """
+    Pre-fetch all existing products for a supplier into a dict keyed by SKU.
+    This replaces individual find_one calls during sync.
+    """
+    existing_map = {}
+    cursor = db.products.find(
+        {"supplier_id": supplier_id, "user_id": user_id},
+        {"id": 1, "sku": 1, "price": 1, "stock": 1, "_id": 0}
+    )
+    async for doc in cursor:
+        sku = doc.get("sku")
+        if sku:
+            existing_map[sku] = doc
+    return existing_map
 
 
 # ==================== FILE DOWNLOAD ====================
@@ -438,15 +609,14 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                     {"$set": {"detected_columns": zip_detected_cols}}
                 )
 
-            # Merge and upsert products
+            # Merge and normalize products
             now = datetime.now(timezone.utc).isoformat()
-            imported = 0
-            updated = 0
-            errors = 0
             needs_mapping = False
+            errors = 0
             merge_key = list(products_data[0].keys())[0] if products_data else None
             column_mapping = supplier.get('column_mapping')
 
+            normalized_products = []
             for raw in products_data:
                 try:
                     prod_id = str(raw.get(merge_key, '')).strip() if merge_key else ''
@@ -454,8 +624,6 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                     if prod_id and prod_id in prices_lookup:
                         for k, v in prices_lookup[prod_id].items():
                             if header_row == 0:
-                                # Headerless files: all files use col_0, col_1, ... so we
-                                # prefix prices columns to avoid overwriting product fields
                                 if k != prices_merge_key:
                                     merged[f"prices_{k}"] = v
                             elif k not in merged or not merged[k]:
@@ -463,7 +631,6 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                     if prod_id and prod_id in stock_lookup:
                         for k, v in stock_lookup[prod_id].items():
                             if header_row == 0:
-                                # Same prefix strategy for stock columns
                                 if k != stock_merge_key:
                                     merged[f"stock_{k}"] = v
                             elif k not in merged or not merged[k]:
@@ -476,34 +643,17 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                         errors += 1
                         needs_mapping = True
                         continue
-
-                    existing = await db.products.find_one({"sku": sku, "supplier_id": supplier['id']})
-                    product_doc = {
-                        "sku": sku, "name": name,
-                        "description": normalized.get('description'),
-                        "price": normalized.get('price', 0),
-                        "stock": normalized.get('stock', 0),
-                        "category": normalized.get('category'),
-                        "brand": normalized.get('brand'),
-                        "ean": normalized.get('ean'),
-                        "weight": normalized.get('weight'),
-                        "image_url": normalized.get('image_url'),
-                        "supplier_id": supplier['id'],
-                        "supplier_name": supplier["name"],
-                        "user_id": supplier["user_id"],
-                        "updated_at": now
-                    }
-                    if existing:
-                        await db.products.update_one({"id": existing['id']}, {"$set": {**product_doc, "updated_at": now}})
-                        updated += 1
-                    else:
-                        product_doc["id"] = str(uuid.uuid4())
-                        product_doc["created_at"] = now
-                        await db.products.insert_one(product_doc)
-                        imported += 1
+                    normalized_products.append(normalized)
                 except Exception as e:
                     logger.error(f"Error procesando producto ZIP: {e}")
                     errors += 1
+
+            # Bulk upsert with pre-fetched existing products
+            existing_map = await prefetch_existing_products(supplier['id'], supplier['user_id'])
+            bulk_result = await bulk_upsert_products(supplier, normalized_products, existing_map, now)
+            imported = bulk_result["imported"]
+            updated = bulk_result["updated"]
+            errors += bulk_result["errors"]
 
             msg = f"ZIP procesado: {imported} importados, {updated} actualizados"
             result = {"imported": imported, "updated": updated, "errors": errors, "message": msg,
@@ -591,72 +741,29 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 logger.warning(f"Supplier {supplier.get('name')}: needs_mapping=True. Columns detected: {detected_columns[:10]}. has_sku={has_sku}, has_name={has_name}")
             if not has_sku or not has_name:
                 needs_mapping = True
+
+        # Normalize all products first
+        normalized_products = []
         for raw in raw_products:
             try:
                 normalized = apply_column_mapping(raw, column_mapping, strip_ean_quotes) if column_mapping else normalize_product_data(raw, strip_ean_quotes)
                 if not normalized.get('sku') or not normalized.get('name'):
                     errors += 1
                     continue
-                existing = await db.products.find_one({"user_id": supplier["user_id"], "supplier_id": supplier['id'], "sku": normalized['sku']})
-                product_doc = {
-                    "sku": normalized.get('sku'), "name": normalized.get('name'),
-                    "description": normalized.get('description'), "price": normalized.get('price', 0),
-                    "stock": normalized.get('stock', 0), "category": normalized.get('category'),
-                    "brand": normalized.get('brand'), "ean": normalized.get('ean'),
-                    "weight": normalized.get('weight'), "image_url": normalized.get('image_url'),
-                    "supplier_id": supplier['id'], "supplier_name": supplier["name"],
-                    "user_id": supplier["user_id"], "updated_at": now
-                }
-                if existing:
-                    old_price = existing.get('price', 0)
-                    new_price = product_doc['price']
-                    # Registrar historial de precios si hay cambio
-                    if old_price != new_price and old_price > 0:
-                        change_pct = ((new_price - old_price) / old_price) * 100
-                        await db.price_history.insert_one({
-                            "id": str(uuid.uuid4()), "product_id": existing["id"],
-                            "product_name": product_doc["name"], "old_price": old_price,
-                            "new_price": new_price, "change_percentage": change_pct,
-                            "user_id": supplier["user_id"], "created_at": now
-                        })
-                        # Notificar si el cambio de precio supera el umbral configurado
-                        if abs(change_pct) >= PRICE_CHANGE_THRESHOLD_PERCENT:
-                            direction = "subido" if change_pct > 0 else "bajado"
-                            await db.notifications.insert_one({
-                                "id": str(uuid.uuid4()), "type": "price_change",
-                                "message": f"Precio de '{product_doc['name'][:40]}' ha {direction} {abs(change_pct):.1f}% ({old_price:.2f}€ → {new_price:.2f}€)",
-                                "product_id": existing["id"], "product_name": product_doc["name"],
-                                "user_id": supplier["user_id"], "read": False, "created_at": now
-                            })
-                    # Notificar cambios de stock
-                    old_stock = existing.get('stock', 0)
-                    new_stock = product_doc['stock']
-                    if old_stock > 0 and new_stock == 0:
-                        await db.notifications.insert_one({
-                            "id": str(uuid.uuid4()), "type": "stock_out",
-                            "message": f"Producto '{product_doc['name'][:40]}' sin stock",
-                            "product_id": existing["id"], "product_name": product_doc["name"],
-                            "user_id": supplier["user_id"], "read": False, "created_at": now
-                        })
-                    elif old_stock > LOW_STOCK_THRESHOLD and new_stock <= LOW_STOCK_THRESHOLD and new_stock > 0:
-                        await db.notifications.insert_one({
-                            "id": str(uuid.uuid4()), "type": "stock_low",
-                            "message": f"Producto '{product_doc['name'][:40]}' con stock bajo ({new_stock} uds)",
-                            "product_id": existing["id"], "product_name": product_doc["name"],
-                            "user_id": supplier["user_id"], "read": False, "created_at": now
-                        })
-                    await db.products.update_one({"id": existing["id"]}, {"$set": product_doc})
-                    updated += 1
-                else:
-                    product_doc["id"] = str(uuid.uuid4())
-                    product_doc["created_at"] = now
-                    await db.products.insert_one(product_doc)
-                    imported += 1
+                normalized_products.append(normalized)
             except Exception as e:
                 logger.error(f"Error processing product: {e}")
                 errors += 1
+
+        # Bulk upsert with pre-fetched existing products
+        existing_map = await prefetch_existing_products(supplier['id'], supplier['user_id'])
+        bulk_result = await bulk_upsert_products(supplier, normalized_products, existing_map, now)
+        imported = bulk_result["imported"]
+        updated = bulk_result["updated"]
+        errors += bulk_result["errors"]
+
         result = {"imported": imported, "updated": updated, "errors": errors, "detected_columns": detected_columns}
-        
+
         # Provide better feedback about mapping needs
         if needs_mapping:
             result["needs_mapping"] = True
@@ -668,7 +775,7 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
         elif errors > 0 and (imported + updated) == 0:
             result["message"] = f"No se pudieron importar productos. Verifica el formato del archivo y las columnas: {', '.join(detected_columns[:5])}"
             result["status"] = "error"
-        
+
         return result
     except Exception as e:
         logger.error(f"Error processing file: {e}")
@@ -1135,10 +1242,11 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     logger.info(f"Merging: {len(products_data)} products, {len(prices_lookup)} prices, {len(stock_lookup)} stock entries")
 
     now = datetime.now(timezone.utc).isoformat()
-    imported = 0
-    updated = 0
     errors = 0
 
+    # Normalize all products first (merge + mapping)
+    normalized_products = []
+    column_mapping = supplier.get('column_mapping')
     for raw_product in products_data:
         try:
             prod_id = str(raw_product.get(merge_key, '')).strip()
@@ -1162,7 +1270,6 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
                     elif k not in merged or not merged[k]:
                         merged[k] = v
 
-            column_mapping = supplier.get('column_mapping')
             if column_mapping:
                 normalized = apply_column_mapping(merged, column_mapping, strip_ean_quotes)
             else:
@@ -1173,71 +1280,18 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
             if not name:
                 errors += 1
                 continue
-
-            existing = await db.products.find_one({"sku": sku, "supplier_id": supplier['id']})
-            product_doc = {
-                "sku": sku, "name": name,
-                "description": normalized.get('description'),
-                "price": normalized.get('price', 0),
-                "stock": normalized.get('stock', 0),
-                "category": normalized.get('category'),
-                "brand": normalized.get('brand'),
-                "ean": normalized.get('ean'),
-                "weight": normalized.get('weight'),
-                "image_url": normalized.get('image_url'),
-                "supplier_id": supplier['id'],
-                "supplier_name": supplier["name"],
-                "user_id": supplier["user_id"],
-                "updated_at": now
-            }
-
-            if existing:
-                old_price = existing.get('price', 0)
-                new_price = product_doc['price']
-                if old_price != new_price and old_price > 0:
-                    change_pct = ((new_price - old_price) / old_price) * 100
-                    await db.price_history.insert_one({
-                        "id": str(uuid.uuid4()), "product_id": existing["id"],
-                        "product_name": name, "old_price": old_price,
-                        "new_price": new_price, "change_percentage": change_pct,
-                        "user_id": supplier["user_id"], "created_at": now
-                    })
-                    # Notificar si el cambio de precio supera el umbral configurado
-                    if abs(change_pct) >= PRICE_CHANGE_THRESHOLD_PERCENT:
-                        direction = "subido" if change_pct > 0 else "bajado"
-                        await db.notifications.insert_one({
-                            "id": str(uuid.uuid4()), "type": "price_change",
-                            "message": f"Precio de '{name[:40]}' ha {direction} {abs(change_pct):.1f}% ({old_price:.2f}€ → {new_price:.2f}€)",
-                            "product_id": existing["id"], "product_name": name,
-                            "user_id": supplier["user_id"], "read": False, "created_at": now
-                        })
-                old_stock = existing.get('stock', 0)
-                new_stock = product_doc['stock']
-                if old_stock > 0 and new_stock == 0:
-                    await db.notifications.insert_one({
-                        "id": str(uuid.uuid4()), "type": "stock_out",
-                        "message": f"Producto '{name[:40]}' sin stock",
-                        "product_id": existing["id"], "product_name": name,
-                        "user_id": supplier["user_id"], "read": False, "created_at": now
-                    })
-                elif old_stock > LOW_STOCK_THRESHOLD and 0 < new_stock <= LOW_STOCK_THRESHOLD:
-                    await db.notifications.insert_one({
-                        "id": str(uuid.uuid4()), "type": "stock_low",
-                        "message": f"Producto '{name[:40]}' con stock bajo ({new_stock} uds)",
-                        "product_id": existing["id"], "product_name": name,
-                        "user_id": supplier["user_id"], "read": False, "created_at": now
-                    })
-                await db.products.update_one({"id": existing["id"]}, {"$set": product_doc})
-                updated += 1
-            else:
-                product_doc["id"] = str(uuid.uuid4())
-                product_doc["created_at"] = now
-                await db.products.insert_one(product_doc)
-                imported += 1
+            normalized_products.append(normalized)
 
         except Exception as e:
             logger.error(f"Error processing multi-file product: {e}")
             errors += 1
+
+    # Bulk upsert with pre-fetched existing products
+    existing_map = await prefetch_existing_products(supplier['id'], supplier['user_id'])
+    bulk_result = await bulk_upsert_products(supplier, normalized_products, existing_map, now)
+    imported = bulk_result["imported"]
+    updated = bulk_result["updated"]
+    errors += bulk_result["errors"]
 
     duration = (datetime.now(timezone.utc) - start_time).total_seconds()
     product_count = await db.products.count_documents({"supplier_id": supplier['id']})

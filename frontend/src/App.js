@@ -158,9 +158,13 @@ const AuthProvider = ({ children }) => {
           if (data.type === "notification") {
             // Show toast for real-time notification
             const notif = data.data;
-            if (notif.type === "sync_complete") {
+            if (notif.type === "sync_progress") {
+              toast.loading(notif.message, { id: "sync-progress", duration: 30000 });
+            } else if (notif.type === "sync_complete") {
+              toast.dismiss("sync-progress");
               toast.success(notif.message, { duration: 5000 });
             } else if (notif.type === "sync_error") {
+              toast.dismiss("sync-progress");
               toast.error(notif.message, { duration: 8000 });
             } else if (notif.type === "price_change") {
               toast.info(notif.message, { duration: 5000 });
