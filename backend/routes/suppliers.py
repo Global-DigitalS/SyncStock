@@ -14,7 +14,7 @@ from services.sync import (
     sync_supplier, sync_supplier_multifile,
     parse_csv_content, parse_xlsx_content,
     parse_xls_content, parse_xml_content, normalize_product_data,
-    browse_ftp_directory
+    browse_ftp_directory, prefetch_existing_products, bulk_upsert_products
 )
 from services.sanitizer import sanitize_string, sanitize_dict, sanitize_path
 from services.encryption import encrypt_password, decrypt_password
@@ -505,52 +505,21 @@ async def import_products(supplier_id: str, file: UploadFile = File(...), user: 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error procesando archivo: {str(e)}")
     now = datetime.now(timezone.utc).isoformat()
-    imported = 0
-    updated = 0
+    # Normalize all products
+    normalized_products = []
     for raw in raw_products:
         normalized = normalize_product_data(raw)
         if not normalized.get('sku') or not normalized.get('name'):
             continue
-        existing = await db.products.find_one({"sku": normalized['sku'], "supplier_id": supplier_id})
-        product_doc = {
-            "sku": normalized.get('sku'), "name": normalized.get('name'),
-            "description": normalized.get('description'), "price": normalized.get('price', 0),
-            "stock": normalized.get('stock', 0), "category": normalized.get('category'),
-            "brand": normalized.get('brand'), "ean": normalized.get('ean'),
-            "weight": normalized.get('weight'), "image_url": normalized.get('image_url'),
-            "supplier_id": supplier_id, "supplier_name": supplier["name"],
-            "user_id": user["id"], "updated_at": now
-        }
-        if existing:
-            if existing.get('price') != product_doc['price']:
-                await db.price_history.insert_one({
-                    "id": str(uuid.uuid4()), "product_id": existing["id"],
-                    "product_name": product_doc["name"],
-                    "old_price": existing.get('price', 0), "new_price": product_doc['price'],
-                    "change_percentage": ((product_doc['price'] - existing.get('price', 0)) / existing.get('price', 1)) * 100 if existing.get('price', 0) > 0 else 0,
-                    "user_id": user["id"], "created_at": now
-                })
-            if existing.get('stock', 0) > 0 and product_doc['stock'] == 0:
-                await db.notifications.insert_one({
-                    "id": str(uuid.uuid4()), "type": "stock_out",
-                    "message": f"Producto '{product_doc['name']}' sin stock",
-                    "product_id": existing["id"], "product_name": product_doc["name"],
-                    "user_id": user["id"], "read": False, "created_at": now
-                })
-            elif existing.get('stock', 0) > 5 and product_doc['stock'] <= 5 and product_doc['stock'] > 0:
-                await db.notifications.insert_one({
-                    "id": str(uuid.uuid4()), "type": "stock_low",
-                    "message": f"Producto '{product_doc['name']}' con stock bajo ({product_doc['stock']} uds)",
-                    "product_id": existing["id"], "product_name": product_doc["name"],
-                    "user_id": user["id"], "read": False, "created_at": now
-                })
-            await db.products.update_one({"id": existing["id"]}, {"$set": product_doc})
-            updated += 1
-        else:
-            product_doc["id"] = str(uuid.uuid4())
-            product_doc["created_at"] = now
-            await db.products.insert_one(product_doc)
-            imported += 1
+        normalized_products.append(normalized)
+
+    # Bulk upsert with pre-fetched existing products
+    supplier_doc = {"id": supplier_id, "name": supplier["name"], "user_id": user["id"]}
+    existing_map = await prefetch_existing_products(supplier_id, user["id"])
+    bulk_result = await bulk_upsert_products(supplier_doc, normalized_products, existing_map, now)
+    imported = bulk_result["imported"]
+    updated = bulk_result["updated"]
+
     product_count = await db.products.count_documents({"supplier_id": supplier_id})
     await db.suppliers.update_one({"id": supplier_id}, {"$set": {"product_count": product_count, "last_sync": now}})
     return {"imported": imported, "updated": updated, "total": imported + updated}
