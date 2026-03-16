@@ -5,7 +5,8 @@ import {
   ChevronRight, Star, ArrowRight, ChevronDown, Layers, BarChart3,
   Clock, Users, Globe, Package, TrendingUp, Truck, FileSpreadsheet,
   Webhook, CheckCircle2, Building2, ShoppingCart, Settings, Bell,
-  ArrowUpRight, Cpu, Lock, Headphones, Play
+  ArrowUpRight, Cpu, Lock, Headphones, Play, ShoppingBag, Tag,
+  BadgeDollarSign, MessageCircle, LifeBuoy
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, Button, Badge, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
@@ -15,6 +16,7 @@ const iconMap = {
   Layers, BarChart3, Clock, Users, Star, Globe, Package,
   TrendingUp, Truck, FileSpreadsheet, Webhook, Cpu, Lock,
   Headphones, Building2, ShoppingCart, Settings, Bell,
+  ShoppingBag, Tag, BadgeDollarSign, MessageCircle, LifeBuoy,
 };
 
 function Icon({ name, ...props }) {
@@ -268,7 +270,7 @@ export default function Home() {
               </SectionSubtitle>
             </div>
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-              {features.slice(0, 6).map((feat, i) => (
+              {features.map((feat, i) => (
                 <div
                   key={i}
                   className={cn(
@@ -316,7 +318,7 @@ export default function Home() {
                 Compatibilidad nativa con los principales sistemas de eCommerce, CRM y fuentes de datos.
               </SectionSubtitle>
             </div>
-            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-4">
               {integrations.map((intg, i) => (
                 <div
                   key={i}
