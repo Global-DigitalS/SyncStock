@@ -316,7 +316,9 @@ update_backend() {
             MONGO_URL=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('mongo_url',''))" 2>/dev/null || echo "")
             DB_NAME=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('db_name','syncstock_db'))" 2>/dev/null || echo "syncstock_db")
             CORS=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('cors_origins','*'))" 2>/dev/null || echo "*")
-            
+            JWT_SECRET_VAL=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('jwt_secret',''))" 2>/dev/null || echo "")
+            FERNET_KEY_VAL=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('fernet_key',''))" 2>/dev/null || echo "")
+
             if [ -n "$MONGO_URL" ]; then
                 # Actualizar .env con los valores de la configuración persistente
                 cat > .env << EOF
@@ -325,6 +327,14 @@ DB_NAME=$DB_NAME
 CORS_ORIGINS=$CORS
 CONFIG_PATH=$PERSISTENT_CONFIG
 EOF
+                # Añadir JWT_SECRET si existe en la configuración
+                if [ -n "$JWT_SECRET_VAL" ]; then
+                    echo "JWT_SECRET=$JWT_SECRET_VAL" >> .env
+                fi
+                # Añadir FERNET_KEY si existe en la configuración
+                if [ -n "$FERNET_KEY_VAL" ]; then
+                    echo "FERNET_KEY=$FERNET_KEY_VAL" >> .env
+                fi
                 print_success "Archivo .env actualizado desde configuración persistente"
             fi
         fi

@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 _FERNET_KEY = os.environ.get("FERNET_KEY")
 
 if not _FERNET_KEY:
+    # Fallback: intentar obtener de config.json persistente
+    try:
+        from services.config_manager import get_config as _get_config
+        _app_cfg = _get_config()
+        if _app_cfg.fernet_key:
+            _FERNET_KEY = _app_cfg.fernet_key
+    except Exception:
+        pass
+
+if not _FERNET_KEY:
     raise RuntimeError(
         "FERNET_KEY no está configurada. Las contraseñas FTP/SFTP no pueden guardarse de forma segura. "
         "Genera una clave con: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""

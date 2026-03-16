@@ -56,8 +56,18 @@ MONGO_MIN_POOL_SIZE = int(os.environ.get('MONGO_MIN_POOL_SIZE', 10))
 
 # Clave secreta para firmar tokens JWT
 # IMPORTANTE: Debe configurarse obligatoriamente como variable de entorno JWT_SECRET
+# o estar presente en el archivo de configuración persistente (config.json).
 # Generar con: python -c "import secrets; print(secrets.token_hex(64))"
 JWT_SECRET = os.environ.get('JWT_SECRET')
+if not JWT_SECRET:
+    # Fallback: intentar obtener de config.json persistente
+    try:
+        from services.config_manager import get_config as _get_config
+        _app_cfg = _get_config()
+        if _app_cfg.jwt_secret:
+            JWT_SECRET = _app_cfg.jwt_secret
+    except Exception:
+        pass
 if not JWT_SECRET:
     raise RuntimeError(
         "La variable de entorno JWT_SECRET es obligatoria y no está configurada. "

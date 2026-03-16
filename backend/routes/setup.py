@@ -173,12 +173,17 @@ async def configure_app(setup: SetupRequest):
         
         # Generar JWT secret si no se proporcionó
         jwt_secret = setup.jwt_secret if setup.jwt_secret else generate_jwt_secret()
-        
+
+        # Generar FERNET_KEY para encriptación de contraseñas FTP/SFTP
+        from cryptography.fernet import Fernet
+        fernet_key = Fernet.generate_key().decode()
+
         # Guardar la configuración (incluyendo SMTP si se proporciona)
         new_config = AppConfig(
             mongo_url=setup.mongo_url,
             db_name=setup.db_name,
             jwt_secret=jwt_secret,
+            fernet_key=fernet_key,
             cors_origins=setup.cors_origins,
             is_configured=True,
             # SMTP Configuration
