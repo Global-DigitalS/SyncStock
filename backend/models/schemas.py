@@ -205,6 +205,26 @@ class ProductResponse(ProductBase):
     permite_actualizar_coste: bool = True
     permite_actualizar_stock: bool = True
     tipo_cheque_regalo: bool = False
+    # PIM fields - SEO
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    meta_keywords: Optional[str] = None
+    slug: Optional[str] = None
+    # PIM fields - Additional pricing
+    cost_price: Optional[float] = None
+    compare_at_price: Optional[float] = None
+    tax_class: Optional[str] = None
+    currency: Optional[str] = "EUR"
+    # PIM fields - Tags and custom attributes
+    tags: Optional[List[str]] = None
+    custom_attributes: Optional[List[Dict[str, str]]] = None
+    # PIM fields - Additional info
+    manufacturer: Optional[str] = None
+    mpn: Optional[str] = None
+    video_url: Optional[str] = None
+    country_of_origin: Optional[str] = None
+    warranty: Optional[str] = None
+    notas_internas: Optional[str] = None
 
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
@@ -255,6 +275,26 @@ class ProductUpdate(BaseModel):
     permite_actualizar_coste: Optional[bool] = None
     permite_actualizar_stock: Optional[bool] = None
     tipo_cheque_regalo: Optional[bool] = None
+    # PIM fields - SEO
+    meta_title: Optional[str] = None
+    meta_description: Optional[str] = None
+    meta_keywords: Optional[str] = None
+    slug: Optional[str] = None
+    # PIM fields - Additional pricing
+    cost_price: Optional[float] = None
+    compare_at_price: Optional[float] = None
+    tax_class: Optional[str] = None
+    currency: Optional[str] = None
+    # PIM fields - Tags and custom attributes
+    tags: Optional[List[str]] = None
+    custom_attributes: Optional[List[Dict[str, str]]] = None
+    # PIM fields - Additional info
+    manufacturer: Optional[str] = None
+    mpn: Optional[str] = None
+    video_url: Optional[str] = None
+    country_of_origin: Optional[str] = None
+    warranty: Optional[str] = None
+    notas_internas: Optional[str] = None
 
 
 # ==================== CATALOG MODELS ====================
