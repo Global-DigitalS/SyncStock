@@ -46,6 +46,7 @@ import {
   ChevronDown,
   ChevronUp
 } from "lucide-react";
+import { useCustomIcons } from "../hooks/useCustomIcons";
 
 // CRM Platform configurations
 const CRM_PLATFORMS = {
@@ -94,6 +95,7 @@ const CRM_PLATFORMS = {
 };
 
 const CRMPage = () => {
+  const { getIconUrl } = useCustomIcons();
   const [connections, setConnections] = useState([]);
   const [catalogs, setCatalogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -433,16 +435,21 @@ const CRMPage = () => {
           {connections.map((connection) => {
             const platform = CRM_PLATFORMS[connection.platform];
             const isExpanded = expandedCard === connection.id;
+            const crmIconUrl = getIconUrl(`crm_${connection.platform}`);
             return (
               <Card key={connection.id} className="hover:shadow-md transition-shadow">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div 
+                      <div
                         className="w-10 h-10 rounded-lg flex items-center justify-center"
                         style={{ backgroundColor: platform?.color || "#4f46e5" }}
                       >
-                        <Building2 className="w-5 h-5 text-white" />
+                        {crmIconUrl ? (
+                          <img src={crmIconUrl} alt={platform?.name || connection.platform} className="w-7 h-7 object-contain" />
+                        ) : (
+                          <Building2 className="w-5 h-5 text-white" />
+                        )}
                       </div>
                       <div>
                         <CardTitle className="text-base">{connection.name}</CardTitle>
@@ -580,18 +587,24 @@ const CRMPage = () => {
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-3 py-4">
-            {Object.values(CRM_PLATFORMS).map((platform) => (
+            {Object.values(CRM_PLATFORMS).map((platform) => {
+              const platformIconUrl = getIconUrl(`crm_${platform.id}`);
+              return (
               <button
                 key={platform.id}
                 onClick={() => handleAddConnection(platform)}
                 className="flex items-start gap-4 p-4 border border-slate-200 rounded-lg hover:border-blue-300 hover:bg-blue-50 transition-colors text-left"
                 data-testid={`select-crm-${platform.id}`}
               >
-                <div 
+                <div
                   className="w-12 h-12 rounded-lg flex items-center justify-center shrink-0"
                   style={{ backgroundColor: platform.color }}
                 >
-                  <Building2 className="w-6 h-6 text-white" />
+                  {platformIconUrl ? (
+                    <img src={platformIconUrl} alt={platform.name} className="w-9 h-9 object-contain" />
+                  ) : (
+                    <Building2 className="w-6 h-6 text-white" />
+                  )}
                 </div>
                 <div className="flex-1">
                   <h4 className="font-semibold text-slate-900">{platform.name}</h4>
@@ -606,7 +619,7 @@ const CRMPage = () => {
                 </div>
                 <ExternalLink className="w-4 h-4 text-slate-400 shrink-0" />
               </button>
-            ))}
+            );})}
           </div>
         </DialogContent>
       </Dialog>

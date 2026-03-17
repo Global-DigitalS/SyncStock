@@ -242,6 +242,126 @@ async def upload_hero_image(file: UploadFile = File(...), user: dict = Depends(g
 
 # ==================== PUBLIC BRANDING ENDPOINT (NO AUTH) ====================
 
+# ==================== ICONS MANAGEMENT ====================
+
+ICONS_DIR = os.path.join(UPLOAD_DIR, "icons")
+try:
+    os.makedirs(ICONS_DIR, exist_ok=True)
+except PermissionError:
+    ICONS_DIR = "/tmp/syncstock_uploads/icons"
+    os.makedirs(ICONS_DIR, exist_ok=True)
+
+VALID_ICON_KEYS = {
+    # Suppliers
+    "supplier_url", "supplier_ftp",
+    # Stores
+    "store_woocommerce", "store_prestashop", "store_shopify", "store_wix", "store_magento",
+    # Marketplaces
+    "marketplace_google_merchant", "marketplace_facebook_shops", "marketplace_amazon",
+    "marketplace_el_corte_ingles", "marketplace_miravia", "marketplace_idealo",
+    "marketplace_kelkoo", "marketplace_trovaprezzi", "marketplace_ebay",
+    "marketplace_zalando", "marketplace_pricerunner", "marketplace_bing_shopping",
+    # CRM
+    "crm_dolibarr", "crm_odoo",
+}
+
+
+@router.get("/admin/icons")
+async def get_icons(user: dict = Depends(get_superadmin_user)):
+    """Get all custom icons configuration"""
+    config = await db.app_config.find_one({"type": "icons"})
+    if not config:
+        return {"icons": {}}
+    config.pop("_id", None)
+    config.pop("type", None)
+    return config
+
+
+@router.post("/admin/icons/upload/{icon_key}")
+async def upload_icon(
+    icon_key: str,
+    file: UploadFile = File(...),
+    user: dict = Depends(get_superadmin_user)
+):
+    """Upload a custom icon for a specific element"""
+    if icon_key not in VALID_ICON_KEYS:
+        raise HTTPException(status_code=400, detail=f"Clave de icono no válida: {icon_key}")
+
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
+
+    content = await file.read()
+    if len(content) > 500 * 1024:  # 500KB limit
+        raise HTTPException(status_code=400, detail="El archivo no puede superar 500KB")
+
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "png"
+    if ext not in ("png", "svg", "webp", "jpg", "jpeg", "ico"):
+        ext = "png"
+
+    filename = f"{icon_key}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(ICONS_DIR, filename)
+
+    with open(filepath, "wb") as f:
+        f.write(content)
+
+    icon_url = f"/api/uploads/icons/{filename}"
+
+    # Remove old icon file if it exists
+    current = await db.app_config.find_one({"type": "icons"})
+    if current and current.get("icons", {}).get(icon_key):
+        old_url = current["icons"][icon_key]
+        old_filename = old_url.split("/")[-1]
+        old_filepath = os.path.join(ICONS_DIR, old_filename)
+        if os.path.exists(old_filepath):
+            try:
+                os.remove(old_filepath)
+            except OSError:
+                pass
+
+    await db.app_config.update_one(
+        {"type": "icons"},
+        {"$set": {f"icons.{icon_key}": icon_url, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+
+    return {"success": True, "icon_url": icon_url, "icon_key": icon_key}
+
+
+@router.delete("/admin/icons/{icon_key}")
+async def delete_icon(icon_key: str, user: dict = Depends(get_superadmin_user)):
+    """Remove a custom icon and restore default"""
+    if icon_key not in VALID_ICON_KEYS:
+        raise HTTPException(status_code=400, detail=f"Clave de icono no válida: {icon_key}")
+
+    current = await db.app_config.find_one({"type": "icons"})
+    if current and current.get("icons", {}).get(icon_key):
+        old_url = current["icons"][icon_key]
+        old_filename = old_url.split("/")[-1]
+        old_filepath = os.path.join(ICONS_DIR, old_filename)
+        if os.path.exists(old_filepath):
+            try:
+                os.remove(old_filepath)
+            except OSError:
+                pass
+
+    await db.app_config.update_one(
+        {"type": "icons"},
+        {"$unset": {f"icons.{icon_key}": ""}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+        upsert=True
+    )
+
+    return {"success": True, "icon_key": icon_key}
+
+
+@router.get("/icons/public")
+async def get_public_icons():
+    """Get all custom icons (no auth required)"""
+    config = await db.app_config.find_one({"type": "icons"})
+    if not config:
+        return {"icons": {}}
+    return {"icons": config.get("icons", {})}
+
+
 @router.get("/branding/public")
 async def get_public_branding():
     """Get public branding configuration (no auth required)"""

@@ -1,10 +1,11 @@
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
-import { 
-  Truck, RefreshCw, Settings, Trash2, Package, 
+import {
+  Truck, RefreshCw, Settings, Trash2, Package,
   Globe, Server, CheckCircle, XCircle, AlertCircle, Clock
 } from "lucide-react";
+import IconDisplay from "../shared/IconDisplay";
 
 const SyncStatusBadge = ({ supplier }) => {
   const lastSync = supplier.last_sync ? new Date(supplier.last_sync) : null;
@@ -58,11 +59,13 @@ const SupplierCard = ({
             <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
               isUrl ? "bg-blue-100" : "bg-indigo-100"
             }`}>
-              {isUrl ? (
-                <Globe className="w-6 h-6 text-blue-600" />
-              ) : (
-                <Server className="w-6 h-6 text-indigo-600" />
-              )}
+              <IconDisplay
+                iconKey={isUrl ? "supplier_url" : "supplier_ftp"}
+                FallbackIcon={isUrl ? Globe : Server}
+                iconClass={`w-6 h-6 ${isUrl ? "text-blue-600" : "text-indigo-600"}`}
+                imgClass="w-8 h-8 object-contain"
+                alt={isUrl ? "URL" : "FTP"}
+              />
             </div>
             <div>
               <h3 className="font-semibold text-slate-900" style={{ fontFamily: 'Manrope, sans-serif' }}>
