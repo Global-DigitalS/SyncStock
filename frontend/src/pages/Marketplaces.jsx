@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useCustomIcons } from "../hooks/useCustomIcons";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 
 // Platform icon map using emoji/color as fallback
 const PLATFORM_COLORS = {
@@ -55,8 +55,6 @@ const PLATFORM_INITIALS = {
   pricerunner: "PR",
   bing_shopping: "BING",
 };
-
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 
 const Marketplaces = () => {
   const { user } = useContext(AuthContext);
