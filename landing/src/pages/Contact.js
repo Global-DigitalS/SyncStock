@@ -23,9 +23,7 @@ export default function Contact() {
       setStatus("success");
       setForm({ name: "", email: "", subject: "", message: "" });
     } catch {
-      // Even if backend doesn't have /api/contact, show success (mailto fallback below)
-      setStatus("success");
-      setForm({ name: "", email: "", subject: "", message: "" });
+      setStatus("error");
     }
   };
 

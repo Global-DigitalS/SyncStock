@@ -574,6 +574,66 @@ def get_superadmin_status_change_email_template(
     return {"html": html, "text": text, "subject": f"Usuario {action_text}: {user_name} ({user_email})"}
 
 
+def get_contact_form_email_template(name: str, email: str, subject: str, message: str) -> dict:
+    """Template para notificación de formulario de contacto de la landing page"""
+    subject_line = subject if subject else "Sin asunto"
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px;">
+      <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <div style="background-color: #4f46e5; padding: 30px 40px;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 22px;">Nuevo mensaje de contacto</h1>
+          <p style="color: #c7d2fe; margin: 8px 0 0; font-size: 14px;">Formulario de la landing page</p>
+        </div>
+        <div style="padding: 32px 40px;">
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; width: 120px; color: #6b7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Nombre</td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #111827; font-size: 15px;">{name}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #6b7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Email</td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #111827; font-size: 15px;"><a href="mailto:{email}" style="color: #4f46e5;">{email}</a></td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #6b7280; font-size: 13px; font-weight: 600; text-transform: uppercase;">Asunto</td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #111827; font-size: 15px;">{subject_line}</td>
+            </tr>
+          </table>
+          <div style="margin-top: 24px;">
+            <p style="color: #6b7280; font-size: 13px; font-weight: 600; text-transform: uppercase; margin-bottom: 10px;">Mensaje</p>
+            <div style="background-color: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; padding: 16px; color: #111827; font-size: 15px; line-height: 1.6; white-space: pre-wrap;">{message}</div>
+          </div>
+          <div style="margin-top: 28px; padding-top: 20px; border-top: 1px solid #e5e7eb;">
+            <p style="color: #6b7280; font-size: 12px; margin: 0;">Para responder, haz reply a este email o escribe directamente a <a href="mailto:{email}" style="color: #4f46e5;">{email}</a>.</p>
+          </div>
+        </div>
+        <div style="background-color: #f9fafb; padding: 16px 40px; text-align: center;">
+          <p style="color: #9ca3af; font-size: 12px; margin: 0;">© {datetime.now().year} SyncStock · Este mensaje fue enviado desde el formulario de contacto</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    text = f"""Nuevo mensaje de contacto
+
+Nombre: {name}
+Email: {email}
+Asunto: {subject_line}
+
+Mensaje:
+{message}
+
+---
+Para responder, escribe a: {email}
+"""
+
+    return {"html": html, "text": text, "subject": f"[Contacto] {subject_line} – {name}"}
+
+
 # ==================== EMAIL SERVICE INSTANCE ====================
 
 def get_email_service(account_type: str = "transactional") -> EmailService:
