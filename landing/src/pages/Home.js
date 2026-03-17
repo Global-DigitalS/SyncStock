@@ -6,7 +6,8 @@ import {
   Clock, Users, Globe, Package, TrendingUp, Truck, FileSpreadsheet,
   Webhook, CheckCircle2, Building2, ShoppingCart, Settings, Bell,
   ArrowUpRight, Cpu, Lock, Headphones, Play, ShoppingBag, Tag,
-  BadgeDollarSign, MessageCircle, LifeBuoy
+  BadgeDollarSign, MessageCircle, LifeBuoy, Cloud, Sparkles, Boxes,
+  Search, Monitor
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, Button, Badge, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
@@ -17,6 +18,7 @@ const iconMap = {
   TrendingUp, Truck, FileSpreadsheet, Webhook, Cpu, Lock,
   Headphones, Building2, ShoppingCart, Settings, Bell,
   ShoppingBag, Tag, BadgeDollarSign, MessageCircle, LifeBuoy,
+  Cloud, Sparkles, Boxes, Search, Monitor,
 };
 
 function Icon({ name, ...props }) {
