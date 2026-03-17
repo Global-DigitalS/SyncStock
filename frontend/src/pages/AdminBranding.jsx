@@ -66,6 +66,12 @@ const ICON_GROUPS = [
     items: [
       { key: "crm_dolibarr", label: "Dolibarr", defaultIcon: Building2, defaultBg: "bg-cyan-100", defaultColor: "text-cyan-700" },
       { key: "crm_odoo", label: "Odoo", defaultIcon: Building2, defaultBg: "bg-purple-100", defaultColor: "text-purple-700" },
+      { key: "crm_hubspot", label: "HubSpot", defaultIcon: Building2, defaultBg: "bg-orange-100", defaultColor: "text-orange-600" },
+      { key: "crm_salesforce", label: "Salesforce", defaultIcon: Building2, defaultBg: "bg-blue-100", defaultColor: "text-blue-600" },
+      { key: "crm_zoho", label: "Zoho CRM", defaultIcon: Building2, defaultBg: "bg-red-100", defaultColor: "text-red-600" },
+      { key: "crm_pipedrive", label: "Pipedrive", defaultIcon: Building2, defaultBg: "bg-green-100", defaultColor: "text-green-700" },
+      { key: "crm_monday", label: "Monday CRM", defaultIcon: Building2, defaultBg: "bg-indigo-100", defaultColor: "text-indigo-600" },
+      { key: "crm_freshsales", label: "Freshsales", defaultIcon: Building2, defaultBg: "bg-orange-100", defaultColor: "text-orange-700" },
     ]
   },
 ];
