@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import axios from "axios";
-import { 
-  Zap, Database, Store, Calculator, RefreshCw, Shield, Check, 
+import {
+  Zap, Database, Store, Calculator, RefreshCw, Shield, Check,
   ChevronRight, Star, ArrowRight, Menu, X, Play, ChevronDown,
-  Layers, BarChart3, Clock, Users
+  Layers, BarChart3, Clock, Users, ShoppingCart, ShoppingBag,
+  Boxes, Sparkles, Globe, Server, Building2
 } from "lucide-react";
 import { Button } from "../components/ui/button";
 
@@ -13,14 +14,38 @@ const APP_URL = "https://app.sync-stock.com"; // URL de la aplicación
 
 // Icon mapping
 const iconMap = {
-  Zap, Database, Store, Calculator, RefreshCw, Shield, 
+  Zap, Database, Store, Calculator, RefreshCw, Shield,
   Layers, BarChart3, Clock, Users, Star
 };
+
+// Platform definitions for the integrations showcase
+const INTEGRATION_PLATFORMS = [
+  // Tiendas
+  { key: "store_woocommerce",       label: "WooCommerce",     FallbackIcon: ShoppingCart, bg: "bg-purple-500/20",  color: "text-purple-300" },
+  { key: "store_prestashop",        label: "PrestaShop",      FallbackIcon: ShoppingBag,  bg: "bg-pink-500/20",    color: "text-pink-300"   },
+  { key: "store_shopify",           label: "Shopify",         FallbackIcon: Boxes,        bg: "bg-green-500/20",   color: "text-green-300"  },
+  { key: "store_wix",               label: "Wix",             FallbackIcon: Sparkles,     bg: "bg-blue-500/20",    color: "text-blue-300"   },
+  { key: "store_magento",           label: "Magento",         FallbackIcon: Globe,        bg: "bg-orange-500/20",  color: "text-orange-300" },
+  // Marketplaces
+  { key: "marketplace_amazon",          label: "Amazon",          initials: "AMZ",  bg: "bg-orange-500/30" },
+  { key: "marketplace_google_merchant", label: "Google Merchant", initials: "GM",   bg: "bg-blue-500/30"   },
+  { key: "marketplace_ebay",            label: "eBay",            initials: "eBay", bg: "bg-sky-500/30"    },
+  { key: "marketplace_facebook_shops",  label: "Meta Shops",      initials: "FB",   bg: "bg-indigo-500/30" },
+  { key: "marketplace_zalando",         label: "Zalando",         initials: "ZAL",  bg: "bg-orange-700/30" },
+  { key: "marketplace_miravia",         label: "Miravia",         initials: "MIR",  bg: "bg-pink-500/30"   },
+  // CRM
+  { key: "crm_dolibarr", label: "Dolibarr", FallbackIcon: Building2, bg: "bg-cyan-500/20",   color: "text-cyan-300"   },
+  { key: "crm_odoo",     label: "Odoo",     FallbackIcon: Building2, bg: "bg-purple-500/20", color: "text-purple-300" },
+  // Proveedores
+  { key: "supplier_url", label: "Proveedor URL",      FallbackIcon: Globe,   bg: "bg-blue-500/20",   color: "text-blue-300"   },
+  { key: "supplier_ftp", label: "Proveedor FTP/SFTP", FallbackIcon: Server,  bg: "bg-indigo-500/20", color: "text-indigo-300" },
+];
 
 const Landing = () => {
   const [content, setContent] = useState(null);
   const [plans, setPlans] = useState([]);
   const [branding, setBranding] = useState({});
+  const [icons, setIcons] = useState({});
   const [loading, setLoading] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [billingCycle, setBillingCycle] = useState("monthly");
@@ -32,20 +57,28 @@ const Landing = () => {
 
   const loadData = async () => {
     try {
-      const [contentRes, plansRes, brandingRes] = await Promise.all([
+      const [contentRes, plansRes, brandingRes, iconsRes] = await Promise.all([
         axios.get(`${BACKEND_URL}/api/landing/content`),
         axios.get(`${BACKEND_URL}/api/subscriptions/plans/public`),
-        axios.get(`${BACKEND_URL}/api/branding/public`)
+        axios.get(`${BACKEND_URL}/api/branding/public`),
+        axios.get(`${BACKEND_URL}/api/icons/public`).catch(() => ({ data: { icons: {} } }))
       ]);
-      
+
       setContent(contentRes.data);
       setPlans(plansRes.data || []);
       setBranding(brandingRes.data || {});
+      setIcons(iconsRes.data.icons || {});
     } catch (error) {
       console.error("Error loading landing data:", error);
     } finally {
       setLoading(false);
     }
+  };
+
+  const getCustomIconUrl = (key) => {
+    const url = icons[key];
+    if (!url) return null;
+    return url.startsWith("/") ? `${BACKEND_URL}${url}` : url;
   };
 
   if (loading) {
@@ -59,6 +92,13 @@ const Landing = () => {
   const getIcon = (iconName) => {
     const Icon = iconMap[iconName] || Zap;
     return Icon;
+  };
+
+  // Map CMS feature icon names to managed icon keys (first match wins)
+  const FEATURE_ICON_KEY_MAP = {
+    Store:     "store_woocommerce",
+    Database:  "supplier_url",
+    RefreshCw: "supplier_ftp",
   };
 
   return (
@@ -235,6 +275,43 @@ const Landing = () => {
         </div>
       </section>
 
+      {/* Integrations Showcase */}
+      <section className="py-14 border-b border-white/5">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <p className="text-center text-xs uppercase tracking-widest text-slate-500 mb-10 font-medium">
+            Compatible con las principales plataformas
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-4 md:gap-6">
+            {INTEGRATION_PLATFORMS.map((platform) => {
+              const customUrl = getCustomIconUrl(platform.key);
+              const FallbackIcon = platform.FallbackIcon;
+              return (
+                <div
+                  key={platform.key}
+                  className="flex flex-col items-center gap-2 group"
+                  title={platform.label}
+                >
+                  <div className={`w-12 h-12 rounded-xl ${platform.bg} border border-white/10 flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                    {customUrl ? (
+                      <img src={customUrl} alt={platform.label} className="w-8 h-8 object-contain" />
+                    ) : FallbackIcon ? (
+                      <FallbackIcon className={`w-6 h-6 ${platform.color}`} />
+                    ) : (
+                      <span className="text-white/70 text-xs font-bold leading-none text-center px-1">
+                        {platform.initials}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-slate-500 text-xs text-center max-w-[60px] leading-tight group-hover:text-slate-400 transition-colors">
+                    {platform.label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
       {/* Features Section */}
       <section id="features" className="py-20 lg:py-32">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -253,13 +330,19 @@ const Landing = () => {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
             {(content?.features || []).map((feature, idx) => {
               const Icon = getIcon(feature.icon);
+              const managedKey = FEATURE_ICON_KEY_MAP[feature.icon];
+              const customUrl = managedKey ? getCustomIconUrl(managedKey) : null;
               return (
-                <div 
+                <div
                   key={idx}
                   className="group p-6 lg:p-8 rounded-2xl bg-gradient-to-b from-white/[0.05] to-transparent border border-white/5 hover:border-indigo-500/30 transition-all duration-300 hover:shadow-xl hover:shadow-indigo-500/5"
                 >
                   <div className="w-12 h-12 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl flex items-center justify-center mb-5 group-hover:scale-110 transition-transform">
-                    <Icon className="w-6 h-6 text-indigo-400" />
+                    {customUrl ? (
+                      <img src={customUrl} alt={feature.title} className="w-8 h-8 object-contain" />
+                    ) : (
+                      <Icon className="w-6 h-6 text-indigo-400" />
+                    )}
                   </div>
                   <h3 className="text-xl font-semibold mb-3 text-white">{feature.title}</h3>
                   <p className="text-slate-400 leading-relaxed">{feature.description}</p>
