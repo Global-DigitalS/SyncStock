@@ -223,6 +223,12 @@ def save_config(config: AppConfig) -> bool:
             f"DB_NAME={config.db_name}",
             f"CORS_ORIGINS={config.cors_origins}",
         ]
+        # Preservar CONFIG_PATH si ya estaba definido en el entorno
+        existing_config_path = os.environ.get('CONFIG_PATH', '').strip()
+        if existing_config_path:
+            env_lines.append(f"CONFIG_PATH={existing_config_path}")
+        elif str(config_path) != str(APP_CONFIG_DIR / "config.json"):
+            env_lines.append(f"CONFIG_PATH={config_path}")
         if config.jwt_secret:
             env_lines.append(f"JWT_SECRET={config.jwt_secret}")
         if config.fernet_key:
