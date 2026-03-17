@@ -307,37 +307,90 @@ update_backend() {
     pip install --upgrade pip -q
     pip install -r requirements.txt -q
     
+    # Leer valores existentes del .env actual como fallback
+    EXISTING_MONGO_URL=""
+    EXISTING_DB_NAME=""
+    EXISTING_CORS=""
+    EXISTING_JWT_SECRET=""
+    EXISTING_FERNET_KEY=""
+    EXISTING_CONFIG_PATH=""
+    if [ -f ".env" ]; then
+        EXISTING_MONGO_URL=$(grep -oP '^MONGO_URL=\K.*' .env 2>/dev/null || echo "")
+        EXISTING_DB_NAME=$(grep -oP '^DB_NAME=\K.*' .env 2>/dev/null || echo "")
+        EXISTING_CORS=$(grep -oP '^CORS_ORIGINS=\K.*' .env 2>/dev/null || echo "")
+        EXISTING_JWT_SECRET=$(grep -oP '^JWT_SECRET=\K.*' .env 2>/dev/null || echo "")
+        EXISTING_FERNET_KEY=$(grep -oP '^FERNET_KEY=\K.*' .env 2>/dev/null || echo "")
+        EXISTING_CONFIG_PATH=$(grep -oP '^CONFIG_PATH=\K.*' .env 2>/dev/null || echo "")
+        print_info "Valores existentes del .env leídos como fallback"
+    fi
+
     # Restaurar configuración persistente si existe
     if [ -f "$PERSISTENT_CONFIG" ]; then
         print_success "Configuración persistente detectada: $PERSISTENT_CONFIG"
-        
+
         # Extraer valores para actualizar .env
         if command -v python3 &> /dev/null; then
             MONGO_URL=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('mongo_url',''))" 2>/dev/null || echo "")
-            DB_NAME=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('db_name','syncstock_db'))" 2>/dev/null || echo "syncstock_db")
-            CORS=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('cors_origins','*'))" 2>/dev/null || echo "*")
+            DB_NAME=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('db_name',''))" 2>/dev/null || echo "")
+            CORS=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('cors_origins',''))" 2>/dev/null || echo "")
             JWT_SECRET_VAL=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('jwt_secret',''))" 2>/dev/null || echo "")
             FERNET_KEY_VAL=$(python3 -c "import json; c=json.load(open('$PERSISTENT_CONFIG')); print(c.get('fernet_key',''))" 2>/dev/null || echo "")
 
+            # Usar valores del config persistente, con fallback al .env existente
+            MONGO_URL="${MONGO_URL:-$EXISTING_MONGO_URL}"
+            DB_NAME="${DB_NAME:-$EXISTING_DB_NAME}"
+            DB_NAME="${DB_NAME:-syncstock_db}"
+            CORS="${CORS:-$EXISTING_CORS}"
+            CORS="${CORS:-*}"
+            JWT_SECRET_VAL="${JWT_SECRET_VAL:-$EXISTING_JWT_SECRET}"
+            FERNET_KEY_VAL="${FERNET_KEY_VAL:-$EXISTING_FERNET_KEY}"
+
             if [ -n "$MONGO_URL" ]; then
-                # Actualizar .env con los valores de la configuración persistente
+                # Actualizar .env con los valores fusionados
                 cat > .env << EOF
 MONGO_URL=$MONGO_URL
 DB_NAME=$DB_NAME
 CORS_ORIGINS=$CORS
 CONFIG_PATH=$PERSISTENT_CONFIG
 EOF
-                # Añadir JWT_SECRET si existe en la configuración
+                # Añadir JWT_SECRET si existe
                 if [ -n "$JWT_SECRET_VAL" ]; then
                     echo "JWT_SECRET=$JWT_SECRET_VAL" >> .env
                 fi
-                # Añadir FERNET_KEY si existe en la configuración
+                # Añadir FERNET_KEY si existe
                 if [ -n "$FERNET_KEY_VAL" ]; then
                     echo "FERNET_KEY=$FERNET_KEY_VAL" >> .env
                 fi
-                print_success "Archivo .env actualizado desde configuración persistente"
+                print_success "Archivo .env actualizado (config persistente + valores existentes)"
+
+                # Sincronizar valores faltantes de vuelta al config.json persistente
+                python3 -c "
+import json, sys
+try:
+    with open('$PERSISTENT_CONFIG', 'r') as f:
+        cfg = json.load(f)
+    updated = False
+    if not cfg.get('db_name') and '$DB_NAME':
+        cfg['db_name'] = '$DB_NAME'
+        updated = True
+    if not cfg.get('jwt_secret') and '$JWT_SECRET_VAL':
+        cfg['jwt_secret'] = '$JWT_SECRET_VAL'
+        updated = True
+    if not cfg.get('fernet_key') and '$FERNET_KEY_VAL':
+        cfg['fernet_key'] = '$FERNET_KEY_VAL'
+        updated = True
+    if updated:
+        with open('$PERSISTENT_CONFIG', 'w') as f:
+            json.dump(cfg, f, indent=2)
+        print('Config persistente actualizado con valores faltantes')
+except Exception as e:
+    print(f'Aviso: no se pudo sincronizar config persistente: {e}', file=sys.stderr)
+" 2>/dev/null && print_info "Config persistente sincronizado" || true
             fi
         fi
+    elif [ -f ".env" ]; then
+        # No hay config persistente, pero sí hay .env — preservarlo
+        print_info "No hay configuración persistente, preservando .env existente"
     fi
     
     # Reiniciar servicio usando el nombre correcto
@@ -573,10 +626,10 @@ verify_update() {
     print_step "Verificando actualización"
     
     # Verificar backend
-    if systemctl is-active --quiet ${APP_NAME}-backend 2>/dev/null; then
-        print_success "Backend: Corriendo"
+    if systemctl is-active --quiet ${SERVICE_NAME} 2>/dev/null; then
+        print_success "Backend: Corriendo (${SERVICE_NAME})"
     else
-        print_warning "Backend: Verificar manualmente"
+        print_warning "Backend: Verificar manualmente (${SERVICE_NAME})"
     fi
     
     # Verificar configuración
