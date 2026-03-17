@@ -21,6 +21,7 @@ import {
   ShoppingCart, Plus, Pencil, Trash2, Copy, ExternalLink, RefreshCw,
   CheckCircle, Globe, Package, Zap, Link2, Eye, FileText, AlertCircle
 } from "lucide-react";
+import { useCustomIcons } from "../hooks/useCustomIcons";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 
@@ -55,8 +56,11 @@ const PLATFORM_INITIALS = {
   bing_shopping: "BING",
 };
 
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
+
 const Marketplaces = () => {
   const { user } = useContext(AuthContext);
+  const { getIconUrl } = useCustomIcons();
   const [platforms, setPlatforms] = useState([]);
   const [connections, setConnections] = useState([]);
   const [catalogs, setCatalogs] = useState([]);
@@ -279,6 +283,7 @@ const Marketplaces = () => {
             const platform = platforms.find((p) => p.id === connection.platform_id);
             const bgColor = PLATFORM_COLORS[connection.platform_id] || "bg-slate-500";
             const initials = PLATFORM_INITIALS[connection.platform_id] || connection.platform_id.substring(0, 3).toUpperCase();
+            const customIconUrl = getIconUrl(`marketplace_${connection.platform_id}`);
 
             return (
               <Card key={connection.id} className={`relative transition-all ${!connection.is_active ? "opacity-60" : ""}`}>
@@ -286,7 +291,9 @@ const Marketplaces = () => {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-3">
                       <div className={`w-10 h-10 ${bgColor} rounded-lg flex items-center justify-center text-white text-xs font-bold flex-shrink-0`}>
-                        {initials}
+                        {customIconUrl ? (
+                          <img src={customIconUrl} alt={connection.platform_id} className="w-7 h-7 object-contain" />
+                        ) : initials}
                       </div>
                       <div className="min-w-0">
                         <CardTitle className="text-base truncate">{connection.name}</CardTitle>
@@ -393,6 +400,7 @@ const Marketplaces = () => {
               {platforms.map((platform) => {
                 const bgColor = PLATFORM_COLORS[platform.id] || "bg-slate-500";
                 const initials = PLATFORM_INITIALS[platform.id] || platform.id.substring(0, 3).toUpperCase();
+                const customIconUrl = getIconUrl(`marketplace_${platform.id}`);
                 return (
                   <button
                     key={platform.id}
@@ -400,7 +408,9 @@ const Marketplaces = () => {
                     className="flex flex-col items-center gap-3 p-4 border-2 border-slate-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all text-center group"
                   >
                     <div className={`w-12 h-12 ${bgColor} rounded-xl flex items-center justify-center text-white text-sm font-bold`}>
-                      {initials}
+                      {customIconUrl ? (
+                        <img src={customIconUrl} alt={platform.name} className="w-9 h-9 object-contain" />
+                      ) : initials}
                     </div>
                     <div>
                       <p className="text-sm font-medium text-slate-800 group-hover:text-blue-700">{platform.name}</p>

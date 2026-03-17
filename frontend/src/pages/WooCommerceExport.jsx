@@ -24,10 +24,11 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
 import {
-  Store, Plus, MoreVertical, Trash2, RefreshCw, ExternalLink, Upload, 
+  Store, Plus, MoreVertical, Trash2, RefreshCw, ExternalLink, Upload,
   Wifi, WifiOff, Package, Key, Link2, BookOpen, Settings,
   ShoppingCart, ShoppingBag, Globe, Boxes, Sparkles
 } from "lucide-react";
+import IconDisplay from "../components/shared/IconDisplay";
 
 // Platform configurations
 const PLATFORMS = {
@@ -416,7 +417,6 @@ const StoresPage = () => {
       {/* Platform Stats */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         {Object.values(PLATFORMS).map(platform => {
-          const Icon = platform.icon;
           const count = configs.filter(c => c.platform === platform.id).length;
           return (
             <Card key={platform.id} className={`border-slate-200 ${count > 0 ? platform.borderColor : ""}`}>
@@ -427,7 +427,13 @@ const StoresPage = () => {
                     <p className="text-2xl font-bold text-slate-900">{count}</p>
                   </div>
                   <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${platform.color}`}>
-                    <Icon className="w-5 h-5" strokeWidth={1.5} />
+                    <IconDisplay
+                      iconKey={`store_${platform.id}`}
+                      FallbackIcon={platform.icon}
+                      iconClass="w-5 h-5"
+                      imgClass="w-7 h-7 object-contain"
+                      alt={platform.name}
+                    />
                   </div>
                 </div>
               </CardContent>
@@ -470,16 +476,21 @@ const StoresPage = () => {
               </TableHeader>
               <TableBody>
                 {configs.map((config) => {
-                  const PlatformIcon = getPlatformIcon(config.platform);
                   const platformColor = getPlatformColor(config.platform);
                   const platform = PLATFORMS[config.platform];
-                  
+
                   return (
                     <TableRow key={config.id} className="table-row" data-testid={`store-config-${config.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-3">
                           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${platformColor}`}>
-                            <PlatformIcon className="w-5 h-5" strokeWidth={1.5} />
+                            <IconDisplay
+                              iconKey={`store_${config.platform}`}
+                              FallbackIcon={getPlatformIcon(config.platform)}
+                              iconClass="w-5 h-5"
+                              imgClass="w-7 h-7 object-contain"
+                              alt={platform?.name || config.platform}
+                            />
                           </div>
                           <div>
                             <p className="font-medium text-slate-900">{config.name}</p>
@@ -601,9 +612,7 @@ const StoresPage = () => {
           </DialogHeader>
           
           <div className="grid grid-cols-2 md:grid-cols-3 gap-4 py-4">
-            {Object.values(PLATFORMS).map(platform => {
-              const Icon = platform.icon;
-              return (
+            {Object.values(PLATFORMS).map(platform => (
                 <button
                   key={platform.id}
                   onClick={() => selectPlatform(platform.id)}
@@ -611,13 +620,18 @@ const StoresPage = () => {
                   data-testid={`select-platform-${platform.id}`}
                 >
                   <div className={`w-12 h-12 rounded-lg ${platform.color} flex items-center justify-center mb-3 group-hover:scale-110 transition-transform`}>
-                    <Icon className="w-6 h-6" strokeWidth={1.5} />
+                    <IconDisplay
+                      iconKey={`store_${platform.id}`}
+                      FallbackIcon={platform.icon}
+                      iconClass="w-6 h-6"
+                      imgClass="w-9 h-9 object-contain"
+                      alt={platform.name}
+                    />
                   </div>
                   <h3 className="font-semibold text-slate-900 mb-1">{platform.name}</h3>
                   <p className="text-xs text-slate-500">{platform.helpText?.slice(0, 50)}...</p>
                 </button>
-              );
-            })}
+            ))}
           </div>
         </DialogContent>
       </Dialog>
