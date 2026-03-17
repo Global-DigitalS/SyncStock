@@ -16,11 +16,13 @@ from services.encryption import encrypt_password, decrypt_password
 from services.email_service import (
     EmailService,
     get_email_service,
+    get_email_service_async,
     get_welcome_email_template,
     get_password_reset_email_template,
     get_subscription_change_email_template,
     get_superadmin_new_registration_email_template,
     get_superadmin_status_change_email_template,
+    get_contact_form_email_template,
 )
 
 router = APIRouter()
@@ -612,3 +614,55 @@ async def send_subscription_change_email(user_email: str, user_name: str, old_pl
         )
     except Exception as e:
         logger.error(f"Error sending subscription change email: {e}")
+
+
+# ==================== FORMULARIO DE CONTACTO PÚBLICO ====================
+
+CONTACT_DESTINATION_EMAIL = "hola@sync-stock.com"
+
+
+class ContactFormRequest(BaseModel):
+    name: str
+    email: EmailStr
+    subject: Optional[str] = ""
+    message: str
+
+
+@router.post("/contact")
+async def submit_contact_form(request: ContactFormRequest):
+    """
+    Recibe las consultas del formulario de contacto de la landing page y las reenvía
+    a hola@sync-stock.com. Endpoint público (sin autenticación).
+    """
+    if not request.name.strip() or not request.message.strip():
+        raise HTTPException(status_code=422, detail="Nombre y mensaje son obligatorios")
+
+    try:
+        email_service = await get_email_service_async("transactional")
+
+        template = get_contact_form_email_template(
+            name=request.name.strip(),
+            email=str(request.email),
+            subject=request.subject.strip() if request.subject else "",
+            message=request.message.strip(),
+        )
+
+        result = email_service.send_email(
+            to_email=CONTACT_DESTINATION_EMAIL,
+            subject=template["subject"],
+            html_content=template["html"],
+            text_content=template["text"],
+        )
+
+        if not result.get("success"):
+            logger.error(f"Error enviando formulario de contacto: {result.get('message')}")
+            raise HTTPException(status_code=502, detail="No se pudo enviar el mensaje. Inténtalo más tarde.")
+
+        logger.info(f"Formulario de contacto recibido de {request.email} y reenviado a {CONTACT_DESTINATION_EMAIL}")
+        return {"success": True, "message": "Mensaje enviado correctamente"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado en formulario de contacto: {e}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Mail, MessageSquare, Clock, CheckCircle2, AlertCircle } from "lucide-react";
+import { CheckCircle2, AlertCircle } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
 import axios from "axios";
@@ -23,32 +23,9 @@ export default function Contact() {
       setStatus("success");
       setForm({ name: "", email: "", subject: "", message: "" });
     } catch {
-      // Even if backend doesn't have /api/contact, show success (mailto fallback below)
-      setStatus("success");
-      setForm({ name: "", email: "", subject: "", message: "" });
+      setStatus("error");
     }
   };
-
-  const INFO = [
-    {
-      icon: Mail,
-      title: "Email",
-      value: "hola@stockhub.pro",
-      description: "Te responderemos en menos de 24 horas laborables.",
-    },
-    {
-      icon: MessageSquare,
-      title: "Soporte técnico",
-      value: "soporte@stockhub.pro",
-      description: "Para incidencias y consultas técnicas de clientes activos.",
-    },
-    {
-      icon: Clock,
-      title: "Horario de atención",
-      value: "Lunes – Viernes, 9:00 – 18:00 CET",
-      description: "Soporte 24/7 disponible para planes Professional y Enterprise.",
-    },
-  ];
 
   return (
     <div className={cn("min-h-screen pt-20", dark ? "bg-slate-950" : "bg-white")}>
@@ -68,34 +45,10 @@ export default function Contact() {
 
       {/* Content */}
       <section className={cn("pb-20 lg:pb-28", dark ? "bg-slate-950" : "bg-white")}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid lg:grid-cols-5 gap-12">
-
-            {/* Info sidebar */}
-            <div className="lg:col-span-2 space-y-6">
-              {INFO.map((item, i) => {
-                const IconComp = item.icon;
-                return (
-                  <div
-                    key={i}
-                    className={cn(
-                      "p-6 rounded-2xl border",
-                      dark ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-100"
-                    )}
-                  >
-                    <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center mb-4", dark ? "bg-indigo-950" : "bg-indigo-100")}>
-                      <IconComp size={20} className="text-indigo-600" />
-                    </div>
-                    <h3 className={cn("font-semibold mb-1", dark ? "text-white" : "text-slate-900")}>{item.title}</h3>
-                    <p className={cn("text-sm font-medium mb-1", dark ? "text-indigo-400" : "text-indigo-600")}>{item.value}</p>
-                    <p className={cn("text-xs leading-relaxed", dark ? "text-slate-400" : "text-slate-500")}>{item.description}</p>
-                  </div>
-                );
-              })}
-            </div>
+        <div className="max-w-2xl mx-auto px-4 sm:px-6 lg:px-8">
 
             {/* Form */}
-            <div className="lg:col-span-3">
+            <div>
               <div className={cn(
                 "rounded-2xl border p-8",
                 dark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-100 shadow-sm"
@@ -234,7 +187,6 @@ export default function Contact() {
               </div>
             </div>
 
-          </div>
         </div>
       </section>
     </div>
