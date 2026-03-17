@@ -7,7 +7,8 @@ const DEFAULT_TIMELINE = [
   { year: "2022", title: "Fundación", description: "SyncStock nace de la frustración de gestionar proveedores con hojas de cálculo. El primer MVP conecta 3 proveedores con WooCommerce." },
   { year: "2023", title: "Primeros 100 clientes", description: "Lanzamos soporte para PrestaShop, Shopify y la integración con Dolibarr. La comunidad crece hasta 100 empresas activas." },
   { year: "2024", title: "CRM y Odoo", description: "Añadimos integración Odoo XML-RPC, sincronización automática programada y el panel de analíticas avanzadas." },
-  { year: "2025", title: "+500 empresas", description: "Superamos los 500 clientes activos. Lanzamos la API pública y los webhooks salientes para integraciones personalizadas." },
+  { year: "2025", title: "+500 empresas", description: "Superamos los 500 clientes activos. Lanzamos la API pública, webhooks salientes y soporte para Wix y Magento." },
+  { year: "2026", title: "8 CRMs y Marketplaces", description: "Lanzamos integración con HubSpot, Salesforce, Zoho, Pipedrive, Monday CRM y Freshsales. Además, soporte para +10 marketplaces europeos incluyendo El Corte Inglés, idealo y Google Shopping." },
 ];
 
 export default function About() {

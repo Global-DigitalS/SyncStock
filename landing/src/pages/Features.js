@@ -4,7 +4,8 @@ import {
   Clock, Globe, Package, TrendingUp, Truck, FileSpreadsheet, Webhook,
   Cpu, Lock, Headphones, Layers, Check, ArrowRight, Building2,
   ShoppingCart, Bell, Settings, CheckCircle2, MessageCircle, LifeBuoy,
-  BookOpen, GraduationCap, ShoppingBag, Tag, BadgeDollarSign, Boxes
+  BookOpen, GraduationCap, ShoppingBag, Tag, BadgeDollarSign, Boxes,
+  Cloud, Users, Sparkles, Search, Monitor
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
@@ -13,7 +14,8 @@ const iconMap = {
   Zap, Database, Store, Calculator, RefreshCw, Shield, BarChart3, Clock,
   Globe, Package, TrendingUp, Truck, FileSpreadsheet, Webhook, Cpu, Lock,
   Headphones, Layers, Building2, ShoppingCart, Bell, Settings, MessageCircle,
-  LifeBuoy, BookOpen, GraduationCap, ShoppingBag, Tag, BadgeDollarSign, Boxes
+  LifeBuoy, BookOpen, GraduationCap, ShoppingBag, Tag, BadgeDollarSign, Boxes,
+  Cloud, Users, Sparkles, Search, Monitor
 };
 
 function Icon({ name, ...props }) {
@@ -44,12 +46,14 @@ const FEATURE_CATEGORIES = [
   },
   {
     title: "Tiendas y canales de venta",
-    description: "Publica en todas tus plataformas de venta con un solo clic.",
+    description: "Publica en 5 plataformas de eCommerce con un solo clic.",
     features: [
-      { icon: "Store", title: "WooCommerce", description: "Integración profunda con WooCommerce: productos, variantes, precios, stock, imágenes y categorías." },
-      { icon: "ShoppingCart", title: "Shopify", description: "Publica y actualiza tu catálogo en Shopify incluyendo metafields, colecciones y variantes de producto." },
-      { icon: "Globe", title: "PrestaShop", description: "Compatibilidad completa con PrestaShop 1.7+ y 8.x con soporte para combinaciones y características." },
-      { icon: "Layers", title: "Multi-tienda", description: "Gestiona múltiples tiendas desde un único panel. Reglas de precio independientes por tienda." },
+      { icon: "ShoppingCart", title: "WooCommerce", description: "Integración profunda con WooCommerce: productos, variantes, precios, stock, imágenes y categorías." },
+      { icon: "Boxes", title: "Shopify", description: "Publica y actualiza tu catálogo en Shopify incluyendo metafields, colecciones y variantes de producto." },
+      { icon: "ShoppingBag", title: "PrestaShop", description: "Compatibilidad completa con PrestaShop 1.7+ y 8.x con soporte para combinaciones y características." },
+      { icon: "Sparkles", title: "Wix eCommerce", description: "Conecta tu tienda Wix para sincronizar productos, precios y stock automáticamente con tu catálogo." },
+      { icon: "Globe", title: "Magento", description: "Integración completa con Magento 2.x para gestionar productos, stock y precios en tu tienda." },
+      { icon: "Store", title: "Multi-tienda", description: "Gestiona múltiples tiendas de diferentes plataformas desde un único panel. Reglas de precio independientes por tienda." },
     ]
   },
   {
@@ -64,12 +68,26 @@ const FEATURE_CATEGORIES = [
   },
   {
     title: "CRM e integraciones ERP",
-    description: "Conecta tu plataforma con los sistemas de gestión empresarial.",
+    description: "Conecta tu plataforma con 8 sistemas CRM/ERP líderes del mercado.",
     features: [
       { icon: "Building2", title: "Dolibarr", description: "Sincronización completa con Dolibarr: productos, clientes, pedidos y facturas en tiempo real." },
-      { icon: "Cpu", title: "Odoo", description: "Integración XML-RPC con Odoo para sincronizar inventario, partners y facturas bidireccionalalmente." },
+      { icon: "Cpu", title: "Odoo", description: "Integración XML-RPC con Odoo para sincronizar inventario, partners y facturas bidireccionalmente." },
+      { icon: "Zap", title: "HubSpot", description: "Conecta con HubSpot para sincronizar productos, contactos y datos de ventas. CRM líder en marketing y ventas." },
+      { icon: "Cloud", title: "Salesforce", description: "Integración con Salesforce, el CRM empresarial líder mundial. Sincroniza productos, partners y oportunidades." },
+      { icon: "BarChart3", title: "Zoho CRM", description: "Conecta con Zoho CRM para gestionar productos, contactos y pedidos. CRM completo para pymes y empresas." },
+      { icon: "TrendingUp", title: "Pipedrive", description: "Sincroniza tu catálogo con Pipedrive, el CRM de ventas más intuitivo. Gestiona productos y deals automáticamente." },
+      { icon: "Layers", title: "Monday CRM", description: "Integración con Monday CRM para gestionar tu catálogo dentro del entorno flexible de Monday.com." },
+      { icon: "Users", title: "Freshsales", description: "Conecta con Freshsales de Freshworks. CRM inteligente con IA integrada para gestión de ventas y productos." },
+    ]
+  },
+  {
+    title: "API y automatizaciones",
+    description: "Extiende la plataforma con integraciones personalizadas y automatizaciones.",
+    features: [
       { icon: "Settings", title: "API REST propia", description: "Accede a todos tus datos mediante nuestra API REST documentada. Perfecta para integraciones personalizadas." },
       { icon: "Webhook", title: "Webhooks salientes", description: "Notifica a sistemas externos cuando ocurren eventos: nuevos productos, cambios de stock, sincronización completada." },
+      { icon: "Search", title: "Google Services", description: "Integración con Google Analytics, Search Console, Tag Manager y Google Ads para monitorizar tu rendimiento." },
+      { icon: "Monitor", title: "Dashboard avanzado", description: "Panel de control en tiempo real con métricas, alertas y KPIs para tomar decisiones basadas en datos." },
     ]
   },
   {
@@ -94,12 +112,14 @@ const FEATURE_CATEGORIES = [
   },
   {
     title: "Conexión con Marketplaces",
-    description: "Publica y sincroniza tu catálogo en los principales marketplaces del mercado.",
+    description: "Publica y sincroniza tu catálogo en más de 10 marketplaces europeos.",
     features: [
       { icon: "ShoppingBag", title: "Amazon", description: "Sincroniza productos, precios y stock con Amazon Seller Central. Gestión automática de listados y actualización en tiempo real." },
       { icon: "Tag", title: "eBay", description: "Publica y actualiza tu catálogo en eBay con sincronización bidireccional de stock, precios y pedidos." },
       { icon: "BadgeDollarSign", title: "Miravia", description: "Conecta con Miravia para gestionar tu catálogo en uno de los marketplaces de mayor crecimiento en Europa." },
-      { icon: "Boxes", title: "Multi-marketplace", description: "Gestiona todos tus marketplaces desde un único panel. Reglas de precio y stock independientes por canal de venta." },
+      { icon: "Building2", title: "El Corte Inglés", description: "Publica tu catálogo en el marketplace de El Corte Inglés, el gran almacén líder en España." },
+      { icon: "Search", title: "idealo y comparadores", description: "Genera feeds para idealo, Kelkoo, Trovaprezzi y PriceRunner. Comparadores de precio líderes en Europa." },
+      { icon: "Globe", title: "Google & Bing Shopping", description: "Publica automáticamente en Google Merchant Center y Bing Shopping para maximizar tu visibilidad." },
     ]
   },
 ];
