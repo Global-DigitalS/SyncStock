@@ -92,6 +92,135 @@ const CRM_PLATFORMS = {
     ],
     features: ["Sincronizar productos", "Stock y precios", "Proveedores", "Pedidos de tiendas"]
   },
+  hubspot: {
+    id: "hubspot",
+    name: "HubSpot",
+    description: "CRM líder en marketing y ventas",
+    logo: "/hubspot-logo.png",
+    color: "#ff7a59",
+    fields: [
+      { key: "api_token", label: "Token de acceso privado", placeholder: "pat-na1-xxxxxxxx-xxxx-xxxx", type: "password", required: true },
+    ],
+    syncOptions: [
+      { key: "products", label: "Productos", icon: Package, description: "Sincronizar productos como Line Items" },
+      { key: "stock", label: "Stock", icon: Layers, description: "Actualizar niveles de inventario" },
+      { key: "prices", label: "Precios", icon: DollarSign, description: "Sincronizar precios de productos" },
+      { key: "descriptions", label: "Descripciones", icon: FileText, description: "Incluir descripciones y marca" },
+      { key: "images", label: "Imágenes", icon: Image, description: "Subir imágenes de productos" },
+      { key: "suppliers", label: "Contactos", icon: Truck, description: "Sincronizar proveedores como contactos" },
+      { key: "orders", label: "Deals", icon: ShoppingCart, description: "Importar pedidos como deals" },
+    ],
+    features: ["Productos como Line Items", "Contactos y Deals", "Proveedores", "Precios y stock"]
+  },
+  salesforce: {
+    id: "salesforce",
+    name: "Salesforce",
+    description: "CRM empresarial líder mundial",
+    logo: "/salesforce-logo.png",
+    color: "#00a1e0",
+    fields: [
+      { key: "api_url", label: "URL de instancia", placeholder: "https://tu-empresa.my.salesforce.com", type: "text", required: true },
+      { key: "client_id", label: "Client ID (Consumer Key)", placeholder: "Tu Consumer Key de Connected App", type: "text", required: true },
+      { key: "client_secret", label: "Client Secret", placeholder: "Tu Consumer Secret", type: "password", required: true },
+      { key: "api_token", label: "Access Token", placeholder: "Token de acceso OAuth", type: "password", required: true },
+    ],
+    syncOptions: [
+      { key: "products", label: "Products", icon: Package, description: "Sincronizar como Products en Salesforce" },
+      { key: "stock", label: "Stock", icon: Layers, description: "Actualizar niveles de inventario" },
+      { key: "prices", label: "Precios", icon: DollarSign, description: "Sincronizar Pricebook Entries" },
+      { key: "descriptions", label: "Descripciones", icon: FileText, description: "Incluir descripciones y marca" },
+      { key: "images", label: "Imágenes", icon: Image, description: "Subir imágenes de productos" },
+      { key: "suppliers", label: "Accounts", icon: Truck, description: "Sincronizar proveedores como Accounts" },
+      { key: "orders", label: "Opportunities", icon: ShoppingCart, description: "Importar pedidos como Opportunities" },
+    ],
+    features: ["Products y Pricebooks", "Accounts y Opportunities", "Proveedores", "Stock y precios"]
+  },
+  zoho: {
+    id: "zoho",
+    name: "Zoho CRM",
+    description: "CRM completo para pymes y empresas",
+    logo: "/zoho-logo.png",
+    color: "#e42527",
+    fields: [
+      { key: "api_url", label: "URL del dominio API", placeholder: "https://www.zohoapis.eu", type: "text", required: true },
+      { key: "client_id", label: "Client ID", placeholder: "Tu Client ID de Zoho", type: "text", required: true },
+      { key: "client_secret", label: "Client Secret", placeholder: "Tu Client Secret de Zoho", type: "password", required: true },
+      { key: "api_token", label: "Refresh Token", placeholder: "Tu Refresh Token de Zoho", type: "password", required: true },
+    ],
+    syncOptions: [
+      { key: "products", label: "Productos", icon: Package, description: "Sincronizar como Products en Zoho" },
+      { key: "stock", label: "Stock", icon: Layers, description: "Actualizar niveles de inventario" },
+      { key: "prices", label: "Precios", icon: DollarSign, description: "Sincronizar precios de productos" },
+      { key: "descriptions", label: "Descripciones", icon: FileText, description: "Incluir descripciones y marca" },
+      { key: "images", label: "Imágenes", icon: Image, description: "Subir imágenes de productos" },
+      { key: "suppliers", label: "Vendors", icon: Truck, description: "Sincronizar proveedores como Vendors" },
+      { key: "orders", label: "Sales Orders", icon: ShoppingCart, description: "Importar pedidos como Sales Orders" },
+    ],
+    features: ["Products y Vendors", "Sales Orders", "Proveedores", "Stock y precios"]
+  },
+  pipedrive: {
+    id: "pipedrive",
+    name: "Pipedrive",
+    description: "CRM de ventas intuitivo y potente",
+    logo: "/pipedrive-logo.png",
+    color: "#017737",
+    fields: [
+      { key: "api_url", label: "URL de la empresa", placeholder: "https://tu-empresa.pipedrive.com", type: "text", required: true },
+      { key: "api_token", label: "API Token", placeholder: "Tu token API de Pipedrive", type: "password", required: true },
+    ],
+    syncOptions: [
+      { key: "products", label: "Productos", icon: Package, description: "Sincronizar catálogo de productos" },
+      { key: "stock", label: "Stock", icon: Layers, description: "Actualizar niveles de inventario" },
+      { key: "prices", label: "Precios", icon: DollarSign, description: "Sincronizar precios de productos" },
+      { key: "descriptions", label: "Descripciones", icon: FileText, description: "Incluir descripciones y marca" },
+      { key: "images", label: "Imágenes", icon: Image, description: "Subir imágenes de productos" },
+      { key: "suppliers", label: "Organizaciones", icon: Truck, description: "Sincronizar proveedores como organizaciones" },
+      { key: "orders", label: "Deals", icon: ShoppingCart, description: "Importar pedidos como deals" },
+    ],
+    features: ["Productos y Deals", "Organizaciones", "Proveedores", "Precios y stock"]
+  },
+  monday: {
+    id: "monday",
+    name: "Monday CRM",
+    description: "CRM flexible basado en work management",
+    logo: "/monday-logo.png",
+    color: "#6161ff",
+    fields: [
+      { key: "api_token", label: "API Token", placeholder: "Tu token API de Monday.com", type: "password", required: true },
+      { key: "board_id", label: "ID del Board", placeholder: "ID del board de productos", type: "text", required: true },
+    ],
+    syncOptions: [
+      { key: "products", label: "Productos", icon: Package, description: "Sincronizar productos como ítems del board" },
+      { key: "stock", label: "Stock", icon: Layers, description: "Actualizar columna de stock" },
+      { key: "prices", label: "Precios", icon: DollarSign, description: "Sincronizar precios de productos" },
+      { key: "descriptions", label: "Descripciones", icon: FileText, description: "Incluir descripciones y marca" },
+      { key: "images", label: "Imágenes", icon: Image, description: "Subir imágenes de productos" },
+      { key: "suppliers", label: "Proveedores", icon: Truck, description: "Sincronizar proveedores como ítems" },
+      { key: "orders", label: "Pedidos", icon: ShoppingCart, description: "Importar pedidos como ítems" },
+    ],
+    features: ["Productos en Boards", "Stock y precios", "Proveedores", "Pedidos"]
+  },
+  freshsales: {
+    id: "freshsales",
+    name: "Freshsales",
+    description: "CRM inteligente con IA integrada",
+    logo: "/freshsales-logo.png",
+    color: "#f26522",
+    fields: [
+      { key: "api_url", label: "URL del dominio", placeholder: "https://tu-empresa.myfreshworks.com/crm/sales", type: "text", required: true },
+      { key: "api_token", label: "API Key", placeholder: "Tu API Key de Freshsales", type: "password", required: true },
+    ],
+    syncOptions: [
+      { key: "products", label: "Productos", icon: Package, description: "Sincronizar catálogo de productos" },
+      { key: "stock", label: "Stock", icon: Layers, description: "Actualizar niveles de inventario" },
+      { key: "prices", label: "Precios", icon: DollarSign, description: "Sincronizar precios de productos" },
+      { key: "descriptions", label: "Descripciones", icon: FileText, description: "Incluir descripciones y marca" },
+      { key: "images", label: "Imágenes", icon: Image, description: "Subir imágenes de productos" },
+      { key: "suppliers", label: "Contactos", icon: Truck, description: "Sincronizar proveedores como contactos" },
+      { key: "orders", label: "Deals", icon: ShoppingCart, description: "Importar pedidos como deals" },
+    ],
+    features: ["Productos y Deals", "Contactos", "Proveedores", "Precios y stock"]
+  },
 };
 
 const CRMPage = () => {
@@ -579,14 +708,14 @@ const CRMPage = () => {
 
       {/* Add CRM Dialog */}
       <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle style={{ fontFamily: 'Manrope, sans-serif' }}>Seleccionar CRM</DialogTitle>
             <DialogDescription>
               Elige el sistema CRM que deseas conectar
             </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-3 py-4">
+          <div className="grid gap-3 py-4 max-h-[60vh] overflow-y-auto pr-1">
             {Object.values(CRM_PLATFORMS).map((platform) => {
               const platformIconUrl = getIconUrl(`crm_${platform.id}`);
               return (
@@ -730,6 +859,88 @@ const CRMPage = () => {
                   <li>Haz clic en "Manage Users" (Gestionar usuarios)</li>
                   <li>Selecciona tu usuario</li>
                   <li>Copia el "Access Token" o genera uno nuevo</li>
+                </ol>
+              </div>
+            )}
+
+            {/* HubSpot specific help */}
+            {selectedPlatform?.id === "hubspot" && (
+              <div className="bg-orange-50 p-3 rounded-lg text-sm">
+                <p className="font-medium text-orange-800 mb-1">¿Cómo obtener el Token de acceso?</p>
+                <ol className="text-orange-700 space-y-1 list-decimal list-inside">
+                  <li>Accede a tu cuenta de HubSpot</li>
+                  <li>Ve a Settings → Integrations → Private Apps</li>
+                  <li>Crea una nueva Private App o selecciona una existente</li>
+                  <li>Asigna los scopes: crm.objects.contacts, crm.objects.deals, crm.objects.line_items</li>
+                  <li>Copia el "Access Token" generado</li>
+                </ol>
+              </div>
+            )}
+
+            {/* Salesforce specific help */}
+            {selectedPlatform?.id === "salesforce" && (
+              <div className="bg-cyan-50 p-3 rounded-lg text-sm">
+                <p className="font-medium text-cyan-800 mb-1">¿Cómo configurar Salesforce?</p>
+                <ol className="text-cyan-700 space-y-1 list-decimal list-inside">
+                  <li>Accede a Salesforce Setup</li>
+                  <li>Busca "App Manager" y crea una Connected App</li>
+                  <li>Activa OAuth y selecciona los scopes necesarios</li>
+                  <li>Copia el Consumer Key (Client ID) y Consumer Secret</li>
+                  <li>Genera un Access Token con el flujo OAuth 2.0</li>
+                </ol>
+              </div>
+            )}
+
+            {/* Zoho CRM specific help */}
+            {selectedPlatform?.id === "zoho" && (
+              <div className="bg-red-50 p-3 rounded-lg text-sm">
+                <p className="font-medium text-red-800 mb-1">¿Cómo configurar Zoho CRM?</p>
+                <ol className="text-red-700 space-y-1 list-decimal list-inside">
+                  <li>Accede a Zoho API Console (api-console.zoho.eu)</li>
+                  <li>Crea un "Self Client" o "Server-based Application"</li>
+                  <li>Copia el Client ID y Client Secret</li>
+                  <li>Genera un Refresh Token con los scopes: ZohoCRM.modules.ALL</li>
+                  <li>Selecciona tu dominio API (zohoapis.eu para Europa)</li>
+                </ol>
+              </div>
+            )}
+
+            {/* Pipedrive specific help */}
+            {selectedPlatform?.id === "pipedrive" && (
+              <div className="bg-green-50 p-3 rounded-lg text-sm">
+                <p className="font-medium text-green-800 mb-1">¿Cómo obtener el API Token?</p>
+                <ol className="text-green-700 space-y-1 list-decimal list-inside">
+                  <li>Accede a tu cuenta de Pipedrive</li>
+                  <li>Ve a Settings → Personal preferences</li>
+                  <li>Selecciona la pestaña "API"</li>
+                  <li>Copia tu "Personal API Token"</li>
+                </ol>
+              </div>
+            )}
+
+            {/* Monday CRM specific help */}
+            {selectedPlatform?.id === "monday" && (
+              <div className="bg-indigo-50 p-3 rounded-lg text-sm">
+                <p className="font-medium text-indigo-800 mb-1">¿Cómo configurar Monday CRM?</p>
+                <ol className="text-indigo-700 space-y-1 list-decimal list-inside">
+                  <li>Accede a tu cuenta de Monday.com</li>
+                  <li>Ve a tu avatar → Administration → API</li>
+                  <li>Copia tu "API Token personal"</li>
+                  <li>Para el Board ID, abre el board y cópialo de la URL</li>
+                </ol>
+              </div>
+            )}
+
+            {/* Freshsales specific help */}
+            {selectedPlatform?.id === "freshsales" && (
+              <div className="bg-orange-50 p-3 rounded-lg text-sm">
+                <p className="font-medium text-orange-800 mb-1">¿Cómo obtener la API Key?</p>
+                <ol className="text-orange-700 space-y-1 list-decimal list-inside">
+                  <li>Accede a tu cuenta de Freshsales</li>
+                  <li>Haz clic en tu perfil → Settings</li>
+                  <li>Ve a "API Settings"</li>
+                  <li>Copia tu "API Key"</li>
+                  <li>Tu URL es: https://tu-empresa.myfreshworks.com/crm/sales</li>
                 </ol>
               </div>
             )}
