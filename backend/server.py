@@ -197,7 +197,8 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
     from services.auth import JWT_SECRET, JWT_ALGORITHM
     import jwt as _jwt
 
-    token = websocket.query_params.get("token")
+    # Accept token from query parameter or from the httpOnly auth_token cookie
+    token = websocket.query_params.get("token") or websocket.cookies.get("auth_token")
     if not token:
         await websocket.close(code=4001)
         return

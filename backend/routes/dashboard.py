@@ -441,7 +441,7 @@ async def get_top_price_change_products(days: int = 30, limit: int = 10, user: d
         "product_name": r["_id"],
         "changes": r["changes"],
         "last_price": r["last_new_price"],
-        "avg_change_percent": round(r["avg_change"], 1)
+        "avg_change_percent": round(r["avg_change"], 1) if r.get("avg_change") is not None else 0
     } for r in results]
 
 
