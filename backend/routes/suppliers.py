@@ -33,6 +33,7 @@ class FtpBrowseRequest(BaseModel):
     ftp_port: Optional[int] = 21
     ftp_mode: Optional[str] = "passive"
     path: Optional[str] = "/"
+    supplier_id: Optional[str] = None  # If set, use saved password from DB
 
 
 @router.post("/suppliers", response_model=SupplierResponse)
@@ -287,10 +288,16 @@ def _sanitize_ftp_path(path: str) -> str:
 async def ftp_browse(req: FtpBrowseRequest, user: dict = Depends(get_current_user)):
     """Navega por el servidor FTP y lista archivos/carpetas"""
     safe_path = _sanitize_ftp_path(req.path or "/")
+    # Resolve password: use saved DB password if supplier_id is provided and no new password given
+    password = req.ftp_password
+    if req.supplier_id and not password:
+        supplier = await db.suppliers.find_one({"id": req.supplier_id, "user_id": user["id"]})
+        if supplier and supplier.get("ftp_password"):
+            password = decrypt_password(supplier["ftp_password"])
     try:
         result = await browse_ftp_directory({
             "ftp_schema": req.ftp_schema, "ftp_host": req.ftp_host,
-            "ftp_user": req.ftp_user, "ftp_password": req.ftp_password,
+            "ftp_user": req.ftp_user, "ftp_password": password,
             "ftp_port": req.ftp_port, "ftp_mode": req.ftp_mode,
         }, safe_path)
         return result
@@ -306,22 +313,28 @@ class FtpTestRequest(BaseModel):
     ftp_password: Optional[str] = ""
     ftp_port: Optional[int] = 21
     ftp_mode: Optional[str] = "passive"
+    supplier_id: Optional[str] = None  # If set, use saved password from DB
 
 
 @router.post("/suppliers/ftp-test")
-async def ftp_test_connection(req: FtpTestRequest, user: dict = Depends(get_current_user)):
+async def ftp_test_connection(req: FtpTestRequest, current_user: dict = Depends(get_current_user)):
     """
     Prueba la conexión FTP sin descargar archivos.
     Útil para verificar credenciales antes de configurar el proveedor.
     """
     import ftplib
     import paramiko
-    
+
     schema = req.ftp_schema.lower()
     host = req.ftp_host
     port = req.ftp_port or (22 if schema == 'sftp' else 21)
     user = req.ftp_user or ''
+    # Resolve password: use saved DB password if supplier_id is provided and no new password given
     password = req.ftp_password or ''
+    if req.supplier_id and not password:
+        supplier = await db.suppliers.find_one({"id": req.supplier_id, "user_id": current_user["id"]})
+        if supplier and supplier.get("ftp_password"):
+            password = decrypt_password(supplier["ftp_password"])
     mode = req.ftp_mode or 'passive'
     
     if not host:

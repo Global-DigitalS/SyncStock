@@ -332,10 +332,11 @@ const Suppliers = () => {
         ftp_schema: formData.ftp_schema || "ftp",
         ftp_host: formData.ftp_host,
         ftp_user: formData.ftp_user,
-        ftp_password: formData.ftp_password || (selectedSupplier ? "__keep__" : ""),
+        ftp_password: formData.ftp_password || "",
         ftp_port: parseInt(formData.ftp_port) || 21,
         ftp_mode: formData.ftp_mode || "passive",
-        path
+        path,
+        supplier_id: selectedSupplier?.id || null
       });
       if (res.data.status === "ok") {
         setFtpFiles(res.data.files);
@@ -398,7 +399,8 @@ const Suppliers = () => {
         ftp_user: formData.ftp_user,
         ftp_password: formData.ftp_password || "",
         ftp_port: parseInt(formData.ftp_port) || 21,
-        ftp_mode: formData.ftp_mode || "passive"
+        ftp_mode: formData.ftp_mode || "passive",
+        supplier_id: selectedSupplier?.id || null
       });
       
       setFtpConnectionStatus(res.data);
@@ -725,7 +727,7 @@ const Suppliers = () => {
                           type="password"
                           value={formData.ftp_password}
                           onChange={(e) => setFormData({ ...formData, ftp_password: e.target.value })}
-                          placeholder="••••••••"
+                          placeholder={selectedSupplier ? "••••  (guardada — dejar vacío para mantener)" : "Contraseña FTP"}
                           className="input-base"
                           data-testid="supplier-ftp-password"
                         />
