@@ -305,7 +305,14 @@ async def get_my_limits(user: dict = Depends(get_current_user)):
 async def list_users(admin: dict = Depends(get_admin_user)):
     """List all users (admin/superadmin only)"""
     users = await db.users.find({}, {"_id": 0, "password": 0}).to_list(1000)
-    return [UserResponse(**u) for u in users]
+    result = []
+    for u in users:
+        try:
+            result.append(UserResponse(**u))
+        except Exception:
+            # Skip users with invalid/missing data to prevent 500 errors
+            logger.warning(f"Skipping user with invalid data: id={u.get('id', 'unknown')}")
+    return result
 
 
 @router.get("/users/{user_id}")
