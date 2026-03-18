@@ -209,9 +209,15 @@ async def logout(response: Response):
     return {"message": "Sesión cerrada correctamente"}
 
 
-@router.get("/auth/me", response_model=UserResponse)
+@router.get("/auth/me")
 async def get_me(user: dict = Depends(get_current_user)):
-    return UserResponse(**user)
+    try:
+        return UserResponse(**user)
+    except Exception:
+        # Fallback: return cleaned user dict if model validation fails
+        user.pop("_id", None)
+        user.pop("password", None)
+        return user
 
 
 @router.put("/auth/profile")

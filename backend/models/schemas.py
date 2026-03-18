@@ -1,5 +1,6 @@
-from pydantic import BaseModel, Field, EmailStr
+from pydantic import BaseModel, Field, EmailStr, field_validator
 from typing import List, Optional, Dict, Any
+from datetime import datetime
 
 
 # ==================== AUTH MODELS ====================
@@ -23,6 +24,7 @@ class UserResponse(BaseModel):
     email: str
     name: str = ""
     company: Optional[str] = None
+    phone: Optional[str] = None
     role: str = "user"
     max_suppliers: int = 10
     max_catalogs: int = 5
@@ -37,6 +39,13 @@ class UserResponse(BaseModel):
     subscription_status: Optional[str] = None
     trial_end: Optional[str] = None
     created_at: Optional[str] = None
+
+    @field_validator("created_at", "trial_end", mode="before")
+    @classmethod
+    def coerce_datetime_to_str(cls, v):
+        if isinstance(v, datetime):
+            return v.isoformat()
+        return v
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
