@@ -17,16 +17,26 @@ class UserLogin(BaseModel):
     password: str
 
 class UserResponse(BaseModel):
+    model_config = {"extra": "ignore"}
+
     id: str
     email: str
-    name: str
+    name: str = ""
     company: Optional[str] = None
     role: str = "user"
     max_suppliers: int = 10
     max_catalogs: int = 5
     max_woocommerce_stores: int = 2
     max_marketplace_connections: int = 1
-    created_at: str
+    max_products: Optional[int] = None
+    is_active: Optional[bool] = None
+    plan_id: Optional[str] = None
+    plan_name: Optional[str] = None
+    subscription_plan_id: Optional[str] = None
+    subscription_plan_name: Optional[str] = None
+    subscription_status: Optional[str] = None
+    trial_end: Optional[str] = None
+    created_at: Optional[str] = None
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
