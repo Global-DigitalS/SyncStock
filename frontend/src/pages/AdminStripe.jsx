@@ -27,6 +27,9 @@ const AdminStripe = () => {
     is_live_mode: false,
     enabled: false
   });
+  // Track whether secret fields already have a saved value in DB
+  const [hasSecretKey, setHasSecretKey] = useState(false);
+  const [hasWebhookSecret, setHasWebhookSecret] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
 
   useEffect(() => {
@@ -45,9 +48,18 @@ const AdminStripe = () => {
   const fetchConfig = async () => {
     try {
       const res = await api.get("/admin/stripe/config");
-      setConfig(res.data);
-      if (res.data.stripe_secret_key) {
-        testConnection(res.data.stripe_secret_key);
+      const data = res.data;
+      // Track if secret fields have saved values, but don't put masked values in inputs
+      setHasSecretKey(!!data.stripe_secret_key);
+      setHasWebhookSecret(!!data.stripe_webhook_secret);
+      setConfig({
+        ...data,
+        // Clear masked values so the user sees empty inputs with placeholder
+        stripe_secret_key: "",
+        stripe_webhook_secret: ""
+      });
+      if (data.stripe_secret_key) {
+        testConnection();
       }
     } catch (error) {
       if (error.response?.status !== 404) {
@@ -58,11 +70,7 @@ const AdminStripe = () => {
     }
   };
 
-  const testConnection = async (secretKey = config.stripe_secret_key) => {
-    if (!secretKey) {
-      setConnectionStatus({ success: false, message: "No hay clave secreta configurada" });
-      return;
-    }
+  const testConnection = async () => {
     setTesting(true);
     try {
       const res = await api.post("/admin/stripe/test-connection");
@@ -78,27 +86,31 @@ const AdminStripe = () => {
   };
 
   const handleSave = async () => {
-    if (!config.stripe_secret_key) {
+    if (!config.stripe_secret_key && !hasSecretKey) {
       toast.error("La clave secreta de Stripe es obligatoria");
       return;
     }
-    
+
     setSaving(true);
     try {
-      await api.put("/admin/stripe/config", config);
+      // Only send secret fields if user entered a new value
+      const payload = { ...config };
+      if (!payload.stripe_secret_key) delete payload.stripe_secret_key;
+      if (!payload.stripe_webhook_secret) delete payload.stripe_webhook_secret;
+
+      await api.put("/admin/stripe/config", payload);
       toast.success("Configuración de Stripe guardada");
-      testConnection(config.stripe_secret_key);
+      // Update saved-state flags if user provided new values
+      if (config.stripe_secret_key) setHasSecretKey(true);
+      if (config.stripe_webhook_secret) setHasWebhookSecret(true);
+      // Clear inputs again after save
+      setConfig(prev => ({ ...prev, stripe_secret_key: "", stripe_webhook_secret: "" }));
+      testConnection();
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al guardar");
     } finally {
       setSaving(false);
     }
-  };
-
-  const maskKey = (key) => {
-    if (!key) return "";
-    if (key.length <= 12) return key;
-    return key.substring(0, 8) + "..." + key.substring(key.length - 4);
   };
 
   // Show loading while auth is being verified
@@ -168,7 +180,7 @@ const AdminStripe = () => {
                     type={showSecretKey ? "text" : "password"}
                     value={config.stripe_secret_key}
                     onChange={(e) => setConfig({ ...config, stripe_secret_key: e.target.value })}
-                    placeholder="sk_test_..."
+                    placeholder={hasSecretKey ? "••••  (guardada — dejar vacío para mantener)" : "sk_test_..."}
                     className="input-base font-mono text-sm pr-10"
                     data-testid="stripe-secret-key"
                   />
@@ -191,7 +203,7 @@ const AdminStripe = () => {
                   type="password"
                   value={config.stripe_webhook_secret}
                   onChange={(e) => setConfig({ ...config, stripe_webhook_secret: e.target.value })}
-                  placeholder="whsec_..."
+                  placeholder={hasWebhookSecret ? "••••  (guardado — dejar vacío para mantener)" : "whsec_..."}
                   className="input-base font-mono text-sm"
                   data-testid="stripe-webhook-secret"
                 />
@@ -254,7 +266,7 @@ const AdminStripe = () => {
             <Button
               variant="outline"
               onClick={() => testConnection()}
-              disabled={testing || !config.stripe_secret_key}
+              disabled={testing || (!config.stripe_secret_key && !hasSecretKey)}
               className="btn-secondary"
             >
               {testing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}

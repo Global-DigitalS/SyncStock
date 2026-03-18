@@ -106,6 +106,12 @@ async def get_stripe_config(user: dict = Depends(get_superadmin_user)):
 async def update_stripe_config(config: StripeConfigUpdate, user: dict = Depends(get_superadmin_user)):
     """Update Stripe configuration (SuperAdmin only)"""
     update_data = {k: v for k, v in config.model_dump().items() if v is not None}
+    # Skip masked values — the GET endpoint returns "••••xxxx" for security;
+    # if the frontend sends that back unchanged, we must NOT overwrite the real key.
+    for secret_field in ("stripe_secret_key", "stripe_webhook_secret"):
+        val = update_data.get(secret_field, "")
+        if val and val.startswith("••••"):
+            del update_data[secret_field]
     # Encrypt sensitive keys before persisting to DB (A02)
     if update_data.get("stripe_secret_key"):
         update_data["stripe_secret_key"] = encrypt_password(update_data["stripe_secret_key"])
@@ -127,10 +133,10 @@ async def update_stripe_config(config: StripeConfigUpdate, user: dict = Depends(
 @router.post("/admin/stripe/test-connection")
 async def test_stripe_connection(user: dict = Depends(get_superadmin_user)):
     """Test Stripe API connection"""
-    config = await db.app_config.find_one({"type": "stripe"})
+    config = await fetch_stripe_config()
     if not config or not config.get("stripe_secret_key"):
         raise HTTPException(status_code=400, detail="No hay clave secreta configurada")
-    
+
     try:
         stripe.api_key = config.get("stripe_secret_key")
         account = stripe.Account.retrieve()
