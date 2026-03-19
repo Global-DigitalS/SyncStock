@@ -87,6 +87,8 @@ class SupplierCreate(BaseModel):
     description: Optional[str] = None
     connection_type: Optional[str] = "ftp"
     file_url: Optional[str] = None
+    url_username: Optional[str] = None
+    url_password: Optional[str] = None
     ftp_schema: Optional[str] = "ftp"
     ftp_host: Optional[str] = None
     ftp_user: Optional[str] = None
@@ -109,6 +111,8 @@ class SupplierUpdate(BaseModel):
     description: Optional[str] = None
     connection_type: Optional[str] = None
     file_url: Optional[str] = None
+    url_username: Optional[str] = None
+    url_password: Optional[str] = None
     ftp_schema: Optional[str] = None
     ftp_host: Optional[str] = None
     ftp_user: Optional[str] = None
@@ -132,6 +136,7 @@ class SupplierResponse(BaseModel):
     description: Optional[str] = None
     connection_type: Optional[str] = "ftp"
     file_url: Optional[str] = None
+    url_username: Optional[str] = None
     ftp_schema: Optional[str] = None
     ftp_host: Optional[str] = None
     ftp_user: Optional[str] = None

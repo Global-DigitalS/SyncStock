@@ -264,11 +264,16 @@ async def download_file_from_ftp(supplier: dict) -> bytes:
     return await loop.run_in_executor(None, download_file_from_ftp_sync, supplier)
 
 
-def download_file_from_url_sync(url: str) -> bytes:
+def download_file_from_url_sync(url: str, username: str = None, password: str = None) -> bytes:
     logger.info(f"Downloading from URL: {url}")
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+    }
+    auth = (username, password) if username and password else None
     try:
-        response = requests.get(url, headers=headers, timeout=60, stream=True)
+        response = requests.get(url, headers=headers, auth=auth, timeout=60, stream=True)
         response.raise_for_status()
         content = response.content
         logger.info(f"URL download completed: {len(content)} bytes")
@@ -278,9 +283,9 @@ def download_file_from_url_sync(url: str) -> bytes:
         raise Exception(f"Error descargando desde URL: {str(e)}")
 
 
-async def download_file_from_url(url: str) -> bytes:
+async def download_file_from_url(url: str, username: str = None, password: str = None) -> bytes:
     loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, download_file_from_url_sync, url)
+    return await loop.run_in_executor(None, download_file_from_url_sync, url, username, password)
 
 
 # ==================== FILE PARSING ====================
@@ -816,7 +821,15 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
     start_time = datetime.now(timezone.utc)
     try:
         logger.info(f"Syncing supplier: {supplier['name']} (via {connection_type})")
-        content = await download_file_from_url(supplier['file_url']) if connection_type == 'url' else await download_file_from_ftp(supplier)
+        if connection_type == 'url':
+            from services.encryption import decrypt_password
+            url_username = supplier.get('url_username')
+            url_password = supplier.get('url_password')
+            if url_password:
+                url_password = decrypt_password(url_password)
+            content = await download_file_from_url(supplier['file_url'], url_username, url_password)
+        else:
+            content = await download_file_from_ftp(supplier)
         result = await process_supplier_file(supplier, content)
         now = datetime.now(timezone.utc)
         duration = (now - start_time).total_seconds()

@@ -57,6 +57,8 @@ const defaultFormData = {
   description: "",
   connection_type: "ftp",
   file_url: "",
+  url_username: "",
+  url_password: "",
   ftp_schema: "ftp",
   ftp_host: "",
   ftp_user: "",
@@ -134,6 +136,8 @@ const Suppliers = () => {
       description: supplier.description || "",
       connection_type: supplier.connection_type || "ftp",
       file_url: supplier.file_url || "",
+      url_username: supplier.url_username || "",
+      url_password: "",
       ftp_schema: supplier.ftp_schema || "ftp",
       ftp_host: supplier.ftp_host || "",
       ftp_user: supplier.ftp_user || "",
@@ -628,17 +632,30 @@ const Suppliers = () => {
                         URL completa al archivo CSV, Excel o XML del proveedor
                       </p>
                     </div>
-                    
-                    <div className="p-3 bg-amber-50 rounded-sm border border-amber-200">
-                      <div className="flex items-start gap-2">
-                        <ExternalLink className="w-4 h-4 text-amber-600 mt-0.5" />
-                        <div className="text-sm text-amber-800">
-                          <p className="font-medium mb-1">Nota sobre URLs</p>
-                          <p className="text-xs">
-                            La URL debe ser accesible públicamente o no requerir autenticación. 
-                            Para URLs protegidas, usa la conexión FTP/SFTP.
-                          </p>
-                        </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="url_username">Usuario HTTP (opcional)</Label>
+                        <Input
+                          id="url_username"
+                          value={formData.url_username}
+                          onChange={(e) => setFormData({ ...formData, url_username: e.target.value })}
+                          placeholder="usuario"
+                          className="input-base"
+                          autoComplete="off"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="url_password">Contraseña HTTP (opcional)</Label>
+                        <Input
+                          id="url_password"
+                          type="password"
+                          value={formData.url_password}
+                          onChange={(e) => setFormData({ ...formData, url_password: e.target.value })}
+                          placeholder={selectedSupplier?.url_username ? "••••  (guardada — dejar vacío para mantener)" : "contraseña"}
+                          className="input-base"
+                          autoComplete="new-password"
+                        />
                       </div>
                     </div>
                   </div>
