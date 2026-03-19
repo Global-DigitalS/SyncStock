@@ -264,30 +264,51 @@ async def download_file_from_ftp(supplier: dict) -> bytes:
     return await loop.run_in_executor(None, download_file_from_ftp_sync, supplier)
 
 
+def _build_browser_session(url: str, auth=None) -> tuple:
+    """Build a requests Session with full browser-like headers to avoid 403 blocks."""
+    from urllib.parse import urlparse
+    parsed = urlparse(url)
+    origin = f"{parsed.scheme}://{parsed.netloc}"
+    session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Referer': origin,
+    })
+    if auth:
+        session.auth = auth
+    return session
+
+
 def download_file_from_url_sync(url: str, username: str = None, password: str = None) -> bytes:
     logger.info(f"Downloading from URL: {url}")
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
-    }
     auth = (username, password) if username and password else None
-    try:
-        response = requests.get(url, headers=headers, auth=auth, timeout=60, stream=True, verify=True)
+    session = _build_browser_session(url, auth)
+
+    def _do_request(verify_ssl: bool) -> bytes:
+        response = session.get(url, timeout=60, stream=True, verify=verify_ssl)
         response.raise_for_status()
         content = response.content
-        logger.info(f"URL download completed: {len(content)} bytes")
+        ssl_note = "" if verify_ssl else " (SSL verification skipped)"
+        logger.info(f"URL download completed{ssl_note}: {len(content)} bytes")
         return content
+
+    try:
+        return _do_request(verify_ssl=True)
     except requests.exceptions.SSLError as ssl_err:
         logger.warning(f"SSL verification failed for {url}, retrying without SSL verification: {ssl_err}")
         try:
             import urllib3
             urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            response = requests.get(url, headers=headers, auth=auth, timeout=60, stream=True, verify=False)
-            response.raise_for_status()
-            content = response.content
-            logger.info(f"URL download completed (SSL verification skipped): {len(content)} bytes")
-            return content
+            return _do_request(verify_ssl=False)
         except requests.exceptions.RequestException as e:
             logger.error(f"URL download failed after SSL retry: {e}")
             raise Exception(f"Error descargando desde URL: {str(e)}")
