@@ -308,17 +308,6 @@ const UserManagement = () => {
                             <FileUser className="w-4 h-4" />
                           </Button>
                         )}
-                        {canEditLimits && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0 text-indigo-500 hover:text-indigo-700 hover:bg-indigo-50"
-                            onClick={() => openLimitsDialog(user)}
-                            data-testid={`edit-limits-${user.id}`}
-                          >
-                            <Settings className="w-4 h-4" />
-                          </Button>
-                        )}
                         <Button
                           variant="ghost"
                           size="sm"
