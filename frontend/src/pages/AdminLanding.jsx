@@ -6,15 +6,37 @@ import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import { 
-  Save, Plus, Trash2, GripVertical, Eye, Layout, 
-  MessageSquare, HelpCircle, Megaphone, Star
+import { Badge } from "../components/ui/badge";
+import {
+  Save, Plus, Trash2, GripVertical, Eye, Layout,
+  MessageSquare, HelpCircle, Megaphone, Star,
+  Search, Copy, Check, ExternalLink, Globe, Share2, Twitter
 } from "lucide-react";
 import { api } from "../App";
+
+const DEFAULT_SEO = {
+  site_url: "https://sync-stock.com",
+  page_title: "SyncStock — Sincronización de Inventario B2B Automatizada",
+  meta_description: "SyncStock — Sincroniza catálogos de proveedores, gestiona márgenes y publica en WooCommerce, Shopify y PrestaShop automáticamente. Prueba gratuita 14 días.",
+  meta_keywords: "sincronización inventario, gestión catálogos, woocommerce, shopify, prestashop, dolibarr, odoo, proveedores ftp, stock automatico, b2b saas",
+  robots: "index, follow",
+  og_title: "SyncStock — Sincronización de Inventario B2B Automatizada",
+  og_description: "Conecta proveedores FTP/SFTP/URL, gestiona catálogos con márgenes personalizados y publica en tus tiendas online automáticamente.",
+  og_image: "",
+  og_locale: "es_ES",
+  og_site_name: "SyncStock",
+  twitter_card: "summary_large_image",
+  twitter_title: "SyncStock — Sincronización de Inventario B2B",
+  twitter_description: "Automatiza la gestión de stock entre proveedores y tiendas online. WooCommerce, Shopify, Dolibarr y más.",
+  twitter_image: ""
+};
 
 const AdminLanding = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingSeo, setSavingSeo] = useState(false);
+  const [copiedSitemap, setCopiedSitemap] = useState(false);
+  const [seo, setSeo] = useState(DEFAULT_SEO);
   const [content, setContent] = useState({
     hero: {
       title: "",
@@ -32,6 +54,7 @@ const AdminLanding = () => {
 
   useEffect(() => {
     loadContent();
+    loadSeo();
   }, []);
 
   const loadContent = async () => {
@@ -44,6 +67,46 @@ const AdminLanding = () => {
       console.error("Error loading content:", error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadSeo = async () => {
+    try {
+      const res = await api.get("/admin/seo");
+      if (res.data) {
+        setSeo(prev => ({ ...DEFAULT_SEO, ...res.data }));
+      }
+    } catch (error) {
+      console.error("Error loading SEO config:", error);
+    }
+  };
+
+  const saveSeo = async () => {
+    setSavingSeo(true);
+    try {
+      await api.put("/admin/seo", seo);
+      toast.success("Configuración SEO guardada correctamente");
+    } catch (error) {
+      toast.error("Error al guardar la configuración SEO");
+    } finally {
+      setSavingSeo(false);
+    }
+  };
+
+  const updateSeo = (field, value) => {
+    setSeo(prev => ({ ...prev, [field]: value }));
+  };
+
+  const sitemapUrl = `${process.env.REACT_APP_BACKEND_URL}/api/seo/sitemap.xml`;
+
+  const copySitemapUrl = async () => {
+    try {
+      await navigator.clipboard.writeText(sitemapUrl);
+      setCopiedSitemap(true);
+      toast.success("URL del sitemap copiada");
+      setTimeout(() => setCopiedSitemap(false), 2000);
+    } catch {
+      toast.error("No se pudo copiar la URL");
     }
   };
 
@@ -196,7 +259,7 @@ const AdminLanding = () => {
       </div>
 
       <Tabs defaultValue="hero" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-5 lg:w-[600px]">
+        <TabsList className="grid w-full grid-cols-6 lg:w-[720px]">
           <TabsTrigger value="hero">
             <Layout className="w-4 h-4 mr-2" />
             Hero
@@ -216,6 +279,10 @@ const AdminLanding = () => {
           <TabsTrigger value="cta">
             <Megaphone className="w-4 h-4 mr-2" />
             CTA
+          </TabsTrigger>
+          <TabsTrigger value="seo">
+            <Search className="w-4 h-4 mr-2" />
+            SEO
           </TabsTrigger>
         </TabsList>
 
@@ -519,6 +586,223 @@ const AdminLanding = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+        {/* SEO Section */}
+        <TabsContent value="seo" className="space-y-6">
+          {/* Sitemap URL */}
+          <Card className="border-emerald-200 bg-emerald-50">
+            <CardHeader className="pb-3">
+              <div className="flex items-center gap-2">
+                <Globe className="w-5 h-5 text-emerald-600" />
+                <CardTitle className="text-emerald-800">Sitemap XML</CardTitle>
+                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200">Público</Badge>
+              </div>
+              <CardDescription className="text-emerald-700">
+                URL pública del sitemap generado automáticamente. Úsala en Google Search Console y otros motores de búsqueda.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={sitemapUrl}
+                  readOnly
+                  className="bg-white font-mono text-sm text-slate-700"
+                />
+                <Button variant="outline" size="icon" onClick={copySitemapUrl} className="shrink-0">
+                  {copiedSitemap ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                </Button>
+                <a href={sitemapUrl} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" size="icon" className="shrink-0">
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </a>
+              </div>
+              <p className="text-xs text-emerald-600 mt-2">
+                El sitemap incluye automáticamente todas las páginas públicas de la landing page.
+              </p>
+            </CardContent>
+          </Card>
+
+          {/* Meta básico */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Search className="w-5 h-5 text-slate-600" />
+                <CardTitle>Meta Básico</CardTitle>
+              </div>
+              <CardDescription>Información principal para motores de búsqueda</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>URL Canónica del sitio</Label>
+                <Input
+                  value={seo.site_url}
+                  onChange={(e) => updateSeo("site_url", e.target.value)}
+                  placeholder="https://sync-stock.com"
+                />
+                <p className="text-xs text-slate-500">Se usa en la etiqueta canonical y en el sitemap</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Título de la página</Label>
+                <Input
+                  value={seo.page_title}
+                  onChange={(e) => updateSeo("page_title", e.target.value)}
+                  placeholder="SyncStock — Sincronización de Inventario B2B Automatizada"
+                />
+                <p className="text-xs text-slate-500">{seo.page_title.length}/60 caracteres recomendados</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Meta Description</Label>
+                <Textarea
+                  value={seo.meta_description}
+                  onChange={(e) => updateSeo("meta_description", e.target.value)}
+                  placeholder="Descripción breve de la página para buscadores..."
+                  rows={3}
+                />
+                <p className="text-xs text-slate-500">{seo.meta_description.length}/160 caracteres recomendados</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Palabras clave (keywords)</Label>
+                <Textarea
+                  value={seo.meta_keywords}
+                  onChange={(e) => updateSeo("meta_keywords", e.target.value)}
+                  placeholder="palabra1, palabra2, palabra3..."
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Robots</Label>
+                <select
+                  value={seo.robots}
+                  onChange={(e) => updateSeo("robots", e.target.value)}
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm"
+                >
+                  <option value="index, follow">index, follow (recomendado)</option>
+                  <option value="noindex, follow">noindex, follow</option>
+                  <option value="index, nofollow">index, nofollow</option>
+                  <option value="noindex, nofollow">noindex, nofollow</option>
+                </select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Open Graph */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Share2 className="w-5 h-5 text-slate-600" />
+                <CardTitle>Open Graph (Facebook / LinkedIn)</CardTitle>
+              </div>
+              <CardDescription>Cómo aparece el sitio al compartirse en redes sociales</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>OG Título</Label>
+                <Input
+                  value={seo.og_title}
+                  onChange={(e) => updateSeo("og_title", e.target.value)}
+                  placeholder="SyncStock — Sincronización de Inventario B2B"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>OG Descripción</Label>
+                <Textarea
+                  value={seo.og_description}
+                  onChange={(e) => updateSeo("og_description", e.target.value)}
+                  placeholder="Descripción para compartir en redes sociales..."
+                  rows={3}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>OG Imagen (URL)</Label>
+                <Input
+                  value={seo.og_image}
+                  onChange={(e) => updateSeo("og_image", e.target.value)}
+                  placeholder="https://sync-stock.com/og-image.png"
+                />
+                <p className="text-xs text-slate-500">Tamaño recomendado: 1200×630 px</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>OG Locale</Label>
+                  <Input
+                    value={seo.og_locale}
+                    onChange={(e) => updateSeo("og_locale", e.target.value)}
+                    placeholder="es_ES"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>OG Site Name</Label>
+                  <Input
+                    value={seo.og_site_name}
+                    onChange={(e) => updateSeo("og_site_name", e.target.value)}
+                    placeholder="SyncStock"
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Twitter Card */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center gap-2">
+                <Twitter className="w-5 h-5 text-slate-600" />
+                <CardTitle>Twitter Card</CardTitle>
+              </div>
+              <CardDescription>Vista previa al compartir en X (Twitter)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label>Tipo de Card</Label>
+                <select
+                  value={seo.twitter_card}
+                  onChange={(e) => updateSeo("twitter_card", e.target.value)}
+                  className="w-full h-10 px-3 rounded-md border border-slate-200 text-sm"
+                >
+                  <option value="summary_large_image">summary_large_image (imagen grande)</option>
+                  <option value="summary">summary (imagen pequeña)</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label>Twitter Título</Label>
+                <Input
+                  value={seo.twitter_title}
+                  onChange={(e) => updateSeo("twitter_title", e.target.value)}
+                  placeholder="SyncStock — Sincronización de Inventario B2B"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Twitter Descripción</Label>
+                <Textarea
+                  value={seo.twitter_description}
+                  onChange={(e) => updateSeo("twitter_description", e.target.value)}
+                  placeholder="Descripción para Twitter..."
+                  rows={2}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Twitter Imagen (URL)</Label>
+                <Input
+                  value={seo.twitter_image}
+                  onChange={(e) => updateSeo("twitter_image", e.target.value)}
+                  placeholder="https://sync-stock.com/og-image.png"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Save button for SEO tab */}
+          <div className="flex justify-end">
+            <Button onClick={saveSeo} disabled={savingSeo} className="btn-primary">
+              {savingSeo ? (
+                <div className="spinner w-4 h-4 border-2 border-white/30 border-t-white mr-2" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
+              Guardar SEO
+            </Button>
+          </div>
         </TabsContent>
       </Tabs>
 
