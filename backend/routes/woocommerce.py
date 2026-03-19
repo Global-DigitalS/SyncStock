@@ -233,8 +233,8 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             catalog_items = await db.catalog_items.find({"catalog_id": catalog["id"], "active": True}, {"_id": 0}).to_list(1000)
             margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog["id"]}, {"_id": 0}).sort("priority", -1).to_list(100)
         else:
-            catalog_items = await db.catalog.find({"user_id": user["id"], "active": True}, {"_id": 0}).to_list(1000)
-            margin_rules = await db.margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(100)
+            catalog_items = await db.catalog_items.find({"user_id": user["id"], "active": True}, {"_id": 0}).to_list(1000)
+            margin_rules = await db.catalog_margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(100)
     if not catalog_items:
         return WooCommerceExportResult(status="warning", errors=["No hay productos activos para exportar"])
     product_ids = [item["product_id"] for item in catalog_items]

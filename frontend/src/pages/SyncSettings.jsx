@@ -35,7 +35,7 @@ const SyncSettings = () => {
   const [lastSyncResult, setLastSyncResult] = useState(null);
   
   // Form state
-  const [interval, setInterval] = useState(null);
+  const [syncInterval, setSyncInterval] = useState(null);
   const [syncSuppliers, setSyncSuppliers] = useState(true);
   const [syncStores, setSyncStores] = useState(true);
   const [syncCrm, setSyncCrm] = useState(true);
@@ -48,7 +48,7 @@ const SyncSettings = () => {
     try {
       const res = await api.get("/sync/settings");
       setSettings(res.data);
-      setInterval(res.data.current_interval);
+      setSyncInterval(res.data.current_interval);
       setSyncSuppliers(res.data.sync_suppliers ?? true);
       setSyncStores(res.data.sync_stores ?? true);
       setSyncCrm(res.data.sync_crm ?? true);
@@ -64,7 +64,7 @@ const SyncSettings = () => {
     setSaving(true);
     try {
       await api.put("/sync/settings", {
-        interval,
+        interval: syncInterval,
         sync_suppliers: syncSuppliers,
         sync_stores: syncStores,
         sync_crm: syncCrm
@@ -102,7 +102,7 @@ const SyncSettings = () => {
   }
 
   const hasChanges = 
-    interval !== settings?.current_interval ||
+    syncInterval !== settings?.current_interval ||
     syncSuppliers !== (settings?.sync_suppliers ?? true) ||
     syncStores !== (settings?.sync_stores ?? true) ||
     syncCrm !== (settings?.sync_crm ?? true);
@@ -171,8 +171,8 @@ const SyncSettings = () => {
             
             {settings?.enabled ? (
               <Select 
-                value={interval ? String(interval) : "disabled"} 
-                onValueChange={(v) => setInterval(v === "disabled" ? null : Number(v))}
+                value={syncInterval ? String(syncInterval) : "disabled"} 
+                onValueChange={(v) => setSyncInterval(v === "disabled" ? null : Number(v))}
               >
                 <SelectTrigger className="w-full max-w-xs" data-testid="sync-interval-select">
                   <SelectValue placeholder="Selecciona un intervalo" />
@@ -221,7 +221,7 @@ const SyncSettings = () => {
                 <Switch
                   checked={syncSuppliers}
                   onCheckedChange={setSyncSuppliers}
-                  disabled={!settings?.enabled || !interval}
+                  disabled={!settings?.enabled || !syncInterval}
                   data-testid="sync-suppliers-switch"
                 />
               </div>
@@ -240,7 +240,7 @@ const SyncSettings = () => {
                 <Switch
                   checked={syncStores}
                   onCheckedChange={setSyncStores}
-                  disabled={!settings?.enabled || !interval}
+                  disabled={!settings?.enabled || !syncInterval}
                   data-testid="sync-stores-switch"
                 />
               </div>
@@ -259,7 +259,7 @@ const SyncSettings = () => {
                 <Switch
                   checked={syncCrm}
                   onCheckedChange={setSyncCrm}
-                  disabled={!settings?.enabled || !interval}
+                  disabled={!settings?.enabled || !syncInterval}
                   data-testid="sync-crm-switch"
                 />
               </div>
@@ -275,7 +275,7 @@ const SyncSettings = () => {
                     Última sincronización: {new Date(settings.last_sync).toLocaleString("es-ES")}
                   </p>
                 )}
-                {settings?.next_sync && interval && (
+                {settings?.next_sync && syncInterval && (
                   <p className="text-sm text-slate-500">
                     Próxima sincronización: {new Date(settings.next_sync).toLocaleString("es-ES")}
                   </p>

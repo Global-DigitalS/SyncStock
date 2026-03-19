@@ -337,13 +337,13 @@ async def get_user_stats(user_id: str, superadmin: dict = Depends(get_superadmin
     suppliers_count = await db.suppliers.count_documents({"user_id": user_id})
     catalogs_count = await db.catalogs.count_documents({"user_id": user_id})
     products_count = await db.products.count_documents({"user_id": user_id})
-    stores_count = await db.woocommerce_stores.count_documents({"user_id": user_id})
+    stores_count = await db.woocommerce_configs.count_documents({"user_id": user_id})
     marketplaces_count = await db.marketplace_connections.count_documents({"user_id": user_id})
     
     # Get recent activity
     recent_syncs = await db.sync_history.find(
         {"user_id": user_id}
-    ).sort("started_at", -1).limit(5).to_list(5)
+    ).sort("created_at", -1).limit(5).to_list(5)
     
     # Clean sync history for response
     for sync in recent_syncs:

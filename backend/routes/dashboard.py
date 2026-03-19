@@ -526,11 +526,22 @@ async def get_sync_history_stats(days: int = 30, user: dict = Depends(get_curren
 
 @router.post("/export")
 async def export_catalog(request: ExportRequest, user: dict = Depends(get_current_user)):
-    query = {"user_id": user["id"], "active": True}
     if request.catalog_ids:
-        query["id"] = {"$in": request.catalog_ids}
-    catalog_items = await db.catalog.find(query, {"_id": 0}).to_list(10000)
-    margin_rules = await db.margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(100)
+        catalog_items = await db.catalog_items.find(
+            {"catalog_id": {"$in": request.catalog_ids}, "active": True}, {"_id": 0}
+        ).to_list(10000)
+        margin_rules = await db.catalog_margin_rules.find(
+            {"catalog_id": {"$in": request.catalog_ids}}, {"_id": 0}
+        ).sort("priority", -1).to_list(100)
+    else:
+        user_catalogs = await db.catalogs.find({"user_id": user["id"]}, {"_id": 0, "id": 1}).to_list(100)
+        user_catalog_ids = [c["id"] for c in user_catalogs]
+        catalog_items = await db.catalog_items.find(
+            {"catalog_id": {"$in": user_catalog_ids}, "active": True}, {"_id": 0}
+        ).to_list(10000) if user_catalog_ids else []
+        margin_rules = await db.catalog_margin_rules.find(
+            {"catalog_id": {"$in": user_catalog_ids}}, {"_id": 0}
+        ).sort("priority", -1).to_list(100) if user_catalog_ids else []
     rows = []
     for item in catalog_items:
         product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0, "user_id": 0})
