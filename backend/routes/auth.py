@@ -338,6 +338,7 @@ async def get_user_stats(user_id: str, superadmin: dict = Depends(get_superadmin
     catalogs_count = await db.catalogs.count_documents({"user_id": user_id})
     products_count = await db.products.count_documents({"user_id": user_id})
     stores_count = await db.woocommerce_stores.count_documents({"user_id": user_id})
+    marketplaces_count = await db.marketplace_connections.count_documents({"user_id": user_id})
     
     # Get recent activity
     recent_syncs = await db.sync_history.find(
@@ -372,13 +373,15 @@ async def get_user_stats(user_id: str, superadmin: dict = Depends(get_superadmin
             "suppliers": suppliers_count,
             "catalogs": catalogs_count,
             "products": products_count,
-            "stores": stores_count
+            "stores": stores_count,
+            "marketplaces": marketplaces_count
         },
         "limits": {
             "max_suppliers": user.get("max_suppliers", 10),
             "max_catalogs": user.get("max_catalogs", 5),
             "max_products": user.get("max_products", 1000),
-            "max_stores": user.get("max_stores") or user.get("max_woocommerce_stores", 2)
+            "max_stores": user.get("max_stores") or user.get("max_woocommerce_stores", 2),
+            "max_marketplaces": user.get("max_marketplace_connections", 1)
         },
         "subscription": {
             "plan_id": user.get("subscription_plan_id"),
@@ -470,12 +473,13 @@ async def update_user_role(user_id: str, role: str, admin: dict = Depends(get_ad
     limits = DEFAULT_LIMITS.get(role, DEFAULT_LIMITS["user"])
     
     result = await db.users.update_one(
-        {"id": user_id}, 
+        {"id": user_id},
         {"$set": {
             "role": role,
             "max_suppliers": limits["max_suppliers"],
             "max_catalogs": limits["max_catalogs"],
-            "max_woocommerce_stores": limits["max_woocommerce_stores"]
+            "max_woocommerce_stores": limits["max_woocommerce_stores"],
+            "max_marketplace_connections": limits["max_marketplace_connections"]
         }}
     )
     if result.matched_count == 0:
@@ -492,12 +496,13 @@ async def update_user_limits(user_id: str, limits: UserLimits, superadmin: dict 
         {"$set": {
             "max_suppliers": limits.max_suppliers,
             "max_catalogs": limits.max_catalogs,
-            "max_woocommerce_stores": limits.max_woocommerce_stores
+            "max_woocommerce_stores": limits.max_woocommerce_stores,
+            "max_marketplace_connections": limits.max_marketplace_connections
         }}
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
     return {"message": "Límites actualizados correctamente"}
 
 

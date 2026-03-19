@@ -103,11 +103,13 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
     setSaving(true);
     try {
       // Sanitize form data before sending
+      const { max_marketplaces, ...rest } = formData;
       const sanitizedData = {
-        ...formData,
+        ...rest,
         name: sanitizeString(formData.name),
         email: sanitizeEmail(formData.email),
-        company: formData.company ? sanitizeString(formData.company) : ""
+        company: formData.company ? sanitizeString(formData.company) : "",
+        max_marketplace_connections: max_marketplaces
       };
       await api.put(`/users/${userId}/full`, sanitizedData);
       toast.success("Usuario actualizado correctamente");
@@ -132,7 +134,7 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
         max_catalogs: plan.max_catalogs,
         max_products: plan.max_products || 1000,
         max_woocommerce_stores: plan.max_stores || plan.max_woocommerce_stores || 2,
-        max_marketplaces: plan.max_marketplaces || 0
+        max_marketplaces: plan.max_marketplace_connections || plan.max_marketplaces || 0
       }));
     } else {
       setFormData(prev => ({
