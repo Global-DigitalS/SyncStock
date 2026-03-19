@@ -78,6 +78,7 @@ class SubscriptionPlanCreate(BaseModel):
     max_products: int = 1000
     max_stores: int = 1
     max_crm_connections: int = 1
+    max_marketplace_connections: int = 1
     price_monthly: float = 0
     price_yearly: float = 0
     trial_days: int = 0
@@ -99,6 +100,7 @@ class SubscriptionPlanUpdate(BaseModel):
     max_products: Optional[int] = None
     max_stores: Optional[int] = None
     max_crm_connections: Optional[int] = None
+    max_marketplace_connections: Optional[int] = None
     price_monthly: Optional[float] = None
     price_yearly: Optional[float] = None
     trial_days: Optional[int] = None
