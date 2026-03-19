@@ -81,7 +81,7 @@ async def create_ticket(
     # Get user subscription info
     plan_name = "Free"
     try:
-        sub = await db.subscriptions.find_one({"user_id": current_user["id"], "status": "active"})
+        sub = await db.user_subscriptions.find_one({"user_id": current_user["id"], "status": "active"})
         if sub:
             plan_name = sub.get("plan_name", "Free")
     except Exception:

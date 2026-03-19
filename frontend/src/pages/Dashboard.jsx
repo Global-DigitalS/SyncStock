@@ -186,7 +186,7 @@ const Dashboard = () => {
                     </div>
                   </div>
                 ))}
-                <Link to="/woocommerce" className="block text-center text-sm text-indigo-600 hover:text-indigo-700 font-medium py-2">
+                <Link to="/stores" className="block text-center text-sm text-indigo-600 hover:text-indigo-700 font-medium py-2">
                   Gestionar tiendas online <ArrowRight className="w-3 h-3 inline ml-1" />
                 </Link>
               </div>
@@ -195,7 +195,7 @@ const Dashboard = () => {
             {(!syncStatus?.woocommerce_stores || syncStatus.woocommerce_stores.length === 0) && (
               <div className="text-center py-4">
                 <p className="text-sm text-slate-500 mb-2">No hay tiendas online configuradas</p>
-                <Link to="/woocommerce">
+                <Link to="/stores">
                   <Button size="sm" className="btn-primary">
                     <ShoppingCart className="w-4 h-4 mr-2" />
                     Configurar Tienda
@@ -333,7 +333,7 @@ const Dashboard = () => {
                 Importar Productos
               </Button>
             </Link>
-            <Link to="/woocommerce">
+            <Link to="/stores">
               <Button variant="outline" className="btn-secondary" data-testid="quick-woocommerce">
                 <ShoppingCart className="w-4 h-4 mr-2" strokeWidth={1.5} />
                 Tiendas Online
