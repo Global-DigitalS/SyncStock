@@ -273,11 +273,24 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
     }
     auth = (username, password) if username and password else None
     try:
-        response = requests.get(url, headers=headers, auth=auth, timeout=60, stream=True)
+        response = requests.get(url, headers=headers, auth=auth, timeout=60, stream=True, verify=True)
         response.raise_for_status()
         content = response.content
         logger.info(f"URL download completed: {len(content)} bytes")
         return content
+    except requests.exceptions.SSLError as ssl_err:
+        logger.warning(f"SSL verification failed for {url}, retrying without SSL verification: {ssl_err}")
+        try:
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+            response = requests.get(url, headers=headers, auth=auth, timeout=60, stream=True, verify=False)
+            response.raise_for_status()
+            content = response.content
+            logger.info(f"URL download completed (SSL verification skipped): {len(content)} bytes")
+            return content
+        except requests.exceptions.RequestException as e:
+            logger.error(f"URL download failed after SSL retry: {e}")
+            raise Exception(f"Error descargando desde URL: {str(e)}")
     except requests.exceptions.RequestException as e:
         logger.error(f"URL download failed: {e}")
         raise Exception(f"Error descargando desde URL: {str(e)}")
