@@ -19,7 +19,7 @@ import {
   User, Mail, Building2, Shield, Crown, Edit3, Eye, Save,
   Truck, BookOpen, Package, ShoppingCart, CreditCard, History,
   TrendingUp, Calendar, RefreshCw, CheckCircle, XCircle, Clock,
-  DollarSign, AlertTriangle
+  DollarSign, AlertTriangle, Globe
 } from "lucide-react";
 
 const ROLE_CONFIG = {
@@ -47,6 +47,7 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
     max_catalogs: 5,
     max_products: 1000,
     max_woocommerce_stores: 2,
+    max_marketplaces: 0,
     subscription_plan_id: "",
     subscription_status: "none"
   });
@@ -77,6 +78,7 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
         max_catalogs: res.data.limits.max_catalogs,
         max_products: res.data.limits.max_products,
         max_woocommerce_stores: res.data.limits.max_stores,
+        max_marketplaces: res.data.limits.max_marketplaces || 0,
         subscription_plan_id: user.subscription_plan_id || "",
         subscription_status: user.subscription_status || "none"
       });
@@ -129,7 +131,8 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
         max_suppliers: plan.max_suppliers,
         max_catalogs: plan.max_catalogs,
         max_products: plan.max_products || 1000,
-        max_woocommerce_stores: plan.max_stores || plan.max_woocommerce_stores || 2
+        max_woocommerce_stores: plan.max_stores || plan.max_woocommerce_stores || 2,
+        max_marketplaces: plan.max_marketplaces || 0
       }));
     } else {
       setFormData(prev => ({
@@ -478,6 +481,25 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
                     </div>
                   </div>
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label className="flex items-center gap-2">
+                        <Globe className="w-4 h-4 text-slate-500" />
+                        Máx. Marketplaces
+                      </Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={formData.max_marketplaces}
+                        onChange={(e) => setFormData({ ...formData, max_marketplaces: parseInt(e.target.value) || 0 })}
+                        className="input-base"
+                      />
+                      <p className="text-xs text-slate-500">
+                        Usando: {userData?.usage?.marketplaces || 0} de {formData.max_marketplaces}
+                      </p>
+                    </div>
+                  </div>
+
                   {/* Usage Bar Charts */}
                   <div className="mt-6 space-y-3">
                     <h4 className="font-medium text-slate-900">Uso de Recursos</h4>
@@ -485,7 +507,8 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
                       { label: "Proveedores", used: userData?.usage?.suppliers || 0, max: formData.max_suppliers, icon: Truck },
                       { label: "Catálogos", used: userData?.usage?.catalogs || 0, max: formData.max_catalogs, icon: BookOpen },
                       { label: "Productos", used: userData?.usage?.products || 0, max: formData.max_products, icon: Package },
-                      { label: "Tiendas", used: userData?.usage?.stores || 0, max: formData.max_woocommerce_stores, icon: ShoppingCart }
+                      { label: "Tiendas", used: userData?.usage?.stores || 0, max: formData.max_woocommerce_stores, icon: ShoppingCart },
+                      { label: "Marketplaces", used: userData?.usage?.marketplaces || 0, max: formData.max_marketplaces, icon: Globe }
                     ].map((item, idx) => {
                       const percentage = item.max > 0 ? Math.min((item.used / item.max) * 100, 100) : 0;
                       const isOverLimit = item.used >= item.max;
