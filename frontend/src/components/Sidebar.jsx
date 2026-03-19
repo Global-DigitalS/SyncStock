@@ -111,7 +111,6 @@ const Sidebar = ({ open, onToggle }) => {
   useEffect(() => {
     const fetchUnread = async () => {
       try {
-        const res = await api.get("/notifications?unread_only=true&limit=1");
         const statsRes = await api.get("/dashboard/stats");
         setUnreadCount(statsRes.data.unread_notifications);
       } catch (error) {

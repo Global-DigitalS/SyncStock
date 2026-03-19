@@ -313,7 +313,13 @@ async def get_notifications(unread_only: bool = False, skip: int = 0, limit: int
     if unread_only:
         query["read"] = False
     notifications = await db.notifications.find(query, {"_id": 0, "user_id": 0}).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return [NotificationResponse(**n) for n in notifications]
+    result = []
+    for n in notifications:
+        try:
+            result.append(NotificationResponse(**n))
+        except Exception:
+            pass
+    return result
 
 
 @router.put("/notifications/{notification_id}/read")
