@@ -141,7 +141,7 @@ const AdminBranding = () => {
       const res = await api.get("/admin/theme-presets");
       setThemePresets(res.data);
     } catch (error) {
-      console.error("Error fetching presets:", error);
+      // handled silently
     }
   };
 
@@ -240,7 +240,7 @@ const AdminBranding = () => {
       const res = await api.get("/admin/icons");
       setIcons(res.data.icons || {});
     } catch (error) {
-      console.error("Error fetching icons:", error);
+      // handled silently
     }
   };
 

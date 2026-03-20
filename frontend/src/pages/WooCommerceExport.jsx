@@ -210,7 +210,6 @@ const StoresPage = () => {
         const res = await api.get(`/catalogs/${catalogIdToLoad}/products?active_only=true`);
         setSelectedCatalogProducts(res.data);
       } catch (error) {
-        console.error("Error loading catalog products:", error);
         setSelectedCatalogProducts([]);
       } finally {
         setLoadingCatalogProducts(false);
@@ -227,7 +226,7 @@ const StoresPage = () => {
       const res = await api.get(`/catalogs/${catalogId}/products?active_only=true`);
       setSelectedCatalogProducts(res.data);
     } catch (error) {
-      console.error("Error loading catalog products:", error);
+      // handled silently
     } finally {
       setLoadingCatalogProducts(false);
     }

@@ -97,10 +97,10 @@ const CatalogDetail = () => {
 
   const fetchProducts = useCallback(async () => {
     try {
-      const url = categoryFilter === "all" 
-        ? `/catalogs/${catalogId}/products?search=${search}`
-        : `/catalogs/${catalogId}/products?search=${search}&category_id=${categoryFilter}`;
-      const res = await api.get(url);
+      const params = new URLSearchParams();
+      if (search) params.append("search", search);
+      if (categoryFilter !== "all") params.append("category_id", categoryFilter);
+      const res = await api.get(`/catalogs/${catalogId}/products?${params.toString()}`);
       setProducts(res.data);
     } catch (error) {
       toast.error("Error al cargar productos");
@@ -112,7 +112,7 @@ const CatalogDetail = () => {
       const res = await api.get(`/catalogs/${catalogId}/categories?flat=true`);
       setCatalogCategories(res.data);
     } catch (error) {
-      console.error("Error fetching categories:", error);
+      // handled silently
     }
   }, [catalogId]);
 
@@ -125,7 +125,7 @@ const CatalogDetail = () => {
       setAllProducts(productsRes.data);
       setSuppliers(suppliersRes.data);
     } catch (error) {
-      console.error("Error fetching products:", error);
+      // handled silently
     }
   }, []);
 

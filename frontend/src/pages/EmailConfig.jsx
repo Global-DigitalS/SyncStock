@@ -73,7 +73,7 @@ const EmailConfig = () => {
         setConnectionStatus({ success: true, message: "Configuración guardada" });
       }
     } catch (error) {
-      console.error("Error fetching email config:", error);
+      // handled silently
     } finally {
       setLoading(false);
     }

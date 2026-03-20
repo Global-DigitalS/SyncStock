@@ -50,7 +50,7 @@ const Notifications = () => {
       const res = await api.get("/notifications/stats");
       setStats(res.data);
     } catch (error) {
-      console.error("Error loading stats:", error);
+      // handled silently
     }
   };
 

@@ -98,8 +98,7 @@ const Subscriptions = () => {
 
       // Continue polling
       setTimeout(() => pollPaymentStatus(sessionId, attempts + 1), pollInterval);
-    } catch (error) {
-      console.error("Error checking payment status:", error);
+    } catch (_error) {
       if (attempts < maxAttempts - 1) {
         setTimeout(() => pollPaymentStatus(sessionId, attempts + 1), pollInterval);
       } else {

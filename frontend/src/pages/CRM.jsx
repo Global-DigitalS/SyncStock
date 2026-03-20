@@ -261,7 +261,7 @@ const CRMPage = () => {
       const res = await api.get("/crm/connections");
       setConnections(res.data);
     } catch (error) {
-      console.error("Error fetching CRM connections:", error);
+      // handled silently
     } finally {
       setLoading(false);
     }
@@ -272,7 +272,7 @@ const CRMPage = () => {
       const res = await api.get("/catalogs");
       setCatalogs(res.data);
     } catch (error) {
-      console.error("Error fetching catalogs:", error);
+      // handled silently
     }
   };
 
@@ -475,7 +475,6 @@ const CRMPage = () => {
           setSyncing(prev => ({ ...prev, [selectedConnection?.id]: false }));
         }
       } catch (error) {
-        console.error("Error polling sync progress:", error);
         attempts++;
         if (attempts < maxAttempts) {
           setTimeout(poll, 2000); // Retry with delay

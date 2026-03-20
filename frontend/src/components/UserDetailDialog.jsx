@@ -84,7 +84,6 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
       });
     } catch (error) {
       toast.error("Error al cargar datos del usuario");
-      console.error(error);
     } finally {
       setLoading(false);
     }
@@ -95,7 +94,7 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
       const res = await api.get("/subscriptions/plans");
       setSubscriptionPlans(res.data);
     } catch (error) {
-      console.error("Error loading plans:", error);
+      // handled silently
     }
   };
 

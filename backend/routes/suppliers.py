@@ -18,6 +18,9 @@ from services.sync import (
 )
 from services.sanitizer import sanitize_string, sanitize_dict, sanitize_path
 from services.encryption import encrypt_password, decrypt_password
+
+# Registry to prevent background tasks from being garbage-collected
+_background_tasks: set = set()
 from models.schemas import SupplierCreate, SupplierUpdate, SupplierResponse, ProductResponse
 
 router = APIRouter()
@@ -230,7 +233,9 @@ async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = 
                 {"$set": {"sync_status": "error", "sync_last_result": str(exc)}}
             )
 
-    asyncio.create_task(_run_sync())
+    task = asyncio.create_task(_run_sync())
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     return {
         "status": "queued",
         "message": f"Sincronización de '{supplier.get('name', supplier_id)}' iniciada en segundo plano."

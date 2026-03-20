@@ -118,7 +118,7 @@ const Catalogs = () => {
       setCategories(categoriesRes.data);
       setStores(storesRes.data || []);
     } catch (error) {
-      console.error("Error fetching suppliers/categories/stores:", error);
+      // handled silently
     }
   }, []);
 

@@ -64,7 +64,7 @@ const AdminLanding = () => {
         setContent(prev => ({ ...prev, ...res.data }));
       }
     } catch (error) {
-      console.error("Error loading content:", error);
+      // handled silently
     } finally {
       setLoading(false);
     }
@@ -77,7 +77,7 @@ const AdminLanding = () => {
         setSeo(prev => ({ ...DEFAULT_SEO, ...res.data }));
       }
     } catch (error) {
-      console.error("Error loading SEO config:", error);
+      // handled silently
     }
   };
 

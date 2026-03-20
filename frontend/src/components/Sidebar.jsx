@@ -102,7 +102,7 @@ const Sidebar = ({ open, onToggle }) => {
           }
         }
       } catch (error) {
-        console.log("Using default branding");
+        // use default branding
       }
     };
     loadBranding();
@@ -114,7 +114,7 @@ const Sidebar = ({ open, onToggle }) => {
         const statsRes = await api.get("/dashboard/stats");
         setUnreadCount(statsRes.data.unread_notifications);
       } catch (error) {
-        console.error("Error fetching notifications:", error);
+        // handled silently
       }
     };
     fetchUnread();
@@ -150,7 +150,8 @@ const Sidebar = ({ open, onToggle }) => {
 
   const isSuperAdmin = user?.role === "superadmin";
 
-  const NavContent = () => (
+  // NavContent as a stable JSX block (not a component) to avoid remounting on each Sidebar render
+  const navContent = (
     <>
       {/* Logo */}
       <div className="p-6 border-b border-slate-200">
@@ -464,13 +465,13 @@ const Sidebar = ({ open, onToggle }) => {
         }`}
       >
         <div className="flex flex-col h-full">
-          <NavContent />
+          {navContent}
         </div>
       </aside>
 
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex fixed inset-y-0 left-0 w-64 bg-white border-r border-slate-200 flex-col z-30">
-        <NavContent />
+        {navContent}
       </aside>
     </>
   );

@@ -44,7 +44,7 @@ const Login = () => {
           }
         }
       } catch (error) {
-        console.log("Using default branding");
+        // use default branding
       } finally {
         setBrandingLoaded(true);
       }
@@ -53,8 +53,13 @@ const Login = () => {
   }, []);
 
   // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate("/");
+    }
+  }, [user, navigate]);
+
   if (user) {
-    navigate("/");
     return null;
   }
 

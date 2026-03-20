@@ -131,16 +131,17 @@ const AuthProvider = ({ children }) => {
   const wsRef = useRef(null);
   const [wsConnected, setWsConnected] = useState(false);
   const reconnectTimeoutRef = useRef(null);
+  const userIdRef = useRef(null);
 
   // WebSocket connection
   const connectWebSocket = useCallback((userId) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
-    
+    userIdRef.current = userId;
+
     try {
       const ws = new WebSocket(`${WS_URL}/ws/notifications/${userId}`);
-      
+
       ws.onopen = () => {
-        console.log("WebSocket connected");
         setWsConnected(true);
         // Send ping every 30 seconds to keep connection alive
         const pingInterval = setInterval(() => {
@@ -150,13 +151,12 @@ const AuthProvider = ({ children }) => {
         }, 30000);
         ws.pingInterval = pingInterval;
       };
-      
+
       ws.onmessage = (event) => {
         if (event.data === "pong") return;
         try {
           const data = JSON.parse(event.data);
           if (data.type === "notification") {
-            // Show toast for real-time notification
             const notif = data.data;
             if (notif.type === "sync_progress") {
               toast.loading(notif.message, { id: "sync-progress", duration: 30000 });
@@ -173,29 +173,26 @@ const AuthProvider = ({ children }) => {
             }
           }
         } catch (e) {
-          console.log("WS message:", event.data);
+          // ignore non-JSON messages
         }
       };
-      
+
       ws.onclose = () => {
-        console.log("WebSocket disconnected");
         setWsConnected(false);
         if (ws.pingInterval) clearInterval(ws.pingInterval);
-        // Reconnect after 5 seconds
-        if (user) {
-          reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(userId), 5000);
+        // Reconnect after 5 seconds using ref to avoid stale closure
+        if (userIdRef.current) {
+          reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(userIdRef.current), 5000);
         }
       };
-      
-      ws.onerror = (error) => {
-        console.log("WebSocket error:", error);
-      };
-      
+
+      ws.onerror = () => {};
+
       wsRef.current = ws;
     } catch (error) {
-      console.log("WebSocket connection failed:", error);
+      // WebSocket connection failed silently
     }
-  }, [user]);
+  }, []);
 
   const disconnectWebSocket = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -249,6 +246,7 @@ const AuthProvider = ({ children }) => {
   };
 
   const logout = async () => {
+    userIdRef.current = null;
     disconnectWebSocket();
     try { await api.post("/auth/logout"); } catch (_) {}
     localStorage.removeItem("user");
@@ -626,10 +624,6 @@ function App() {
               </ProtectedRoute>
             }
           />
-
-          {/* Legacy redirects */}
-          <Route path="/superadmin" element={<Navigate to="/admin/dashboard" replace />} />
-          <Route path="/users" element={<Navigate to="/admin/users" replace />} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />

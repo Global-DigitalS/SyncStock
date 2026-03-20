@@ -69,7 +69,7 @@ const Landing = () => {
       setBranding(brandingRes.data || {});
       setIcons(iconsRes.data.icons || {});
     } catch (error) {
-      console.error("Error loading landing data:", error);
+      // handled silently
     } finally {
       setLoading(false);
     }

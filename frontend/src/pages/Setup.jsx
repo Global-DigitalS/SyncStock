@@ -91,7 +91,7 @@ const Setup = () => {
         setFormData(prev => ({ ...prev, cors_origins: res.data.current_cors }));
       }
     } catch (error) {
-      console.log("Setup status check failed:", error);
+      // setup status check failed
     } finally {
       setLoading(false);
     }

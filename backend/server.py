@@ -178,14 +178,30 @@ api_router.include_router(marketplaces_router)
 # Health check endpoint under /api
 @api_router.get("/health")
 async def api_health_check():
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    from services.database import get_db
+    _health_db = get_db()
+    try:
+        await _health_db.command("ping")
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    status = "ok" if db_status == "connected" else "degraded"
+    return {"status": status, "database": db_status, "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 # Root-level health check for Kubernetes deployment
 @app.get("/health")
 async def health_check():
     """Health check endpoint at root level for Kubernetes liveness/readiness probes"""
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    from services.database import get_db
+    _health_db = get_db()
+    try:
+        await _health_db.command("ping")
+        db_status = "connected"
+    except Exception:
+        db_status = "disconnected"
+    status = "ok" if db_status == "connected" else "degraded"
+    return {"status": status, "database": db_status, "timestamp": datetime.now(timezone.utc).isoformat()}
 
 
 # WebSocket endpoint for real-time notifications
@@ -335,15 +351,18 @@ _cors_origins_env = os.environ.get('CORS_ORIGINS', '')
 if not _cors_origins_env or _cors_origins_env.strip() == '*':
     logger.warning(
         "CORS_ORIGINS no está configurado o usa '*'. "
-        "Define orígenes explícitos en producción (ej: CORS_ORIGINS=https://app.tudominio.com)"
+        "En producción DEBES definir orígenes explícitos (ej: CORS_ORIGINS=https://app.tudominio.com). "
+        "Con '*' las cookies (withCredentials) NO funcionarán y la autenticación fallará silenciosamente."
     )
     _cors_origins = ["*"]
+    _cors_credentials = False
 else:
     _cors_origins = [o.strip() for o in _cors_origins_env.split(',') if o.strip()]
+    _cors_credentials = True
 
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=_cors_origins != ["*"],
+    allow_credentials=_cors_credentials,
     allow_origins=_cors_origins,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["Authorization", "Content-Type", "Accept"],

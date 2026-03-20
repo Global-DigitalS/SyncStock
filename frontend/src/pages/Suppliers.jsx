@@ -173,7 +173,7 @@ const Suppliers = () => {
         toast.success(`${res.data.columns.length} columnas detectadas automáticamente`);
       }
     } catch (error) {
-      console.log("Could not load preview:", error.response?.data?.detail);
+      // preview load failed silently
     }
   };
 

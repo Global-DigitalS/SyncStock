@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../App";
 import { toast } from "sonner";
@@ -102,56 +102,51 @@ const Products = () => {
   const pageSize = 25;
   const totalPages = Math.ceil(totalProducts / pageSize);
 
+  // Build query params for current filters
+  const buildFilterParams = useCallback(() => {
+    const params = new URLSearchParams();
+    if (searchTerm) params.append("search", searchTerm);
+    if (categoryFilter) params.append("category", categoryFilter);
+    if (stockFilter === "available") params.append("min_stock", "1");
+    if (stockFilter === "out") params.append("max_stock", "0");
+    return params;
+  }, [searchTerm, categoryFilter, stockFilter]);
+
   // Fetch products from API
-  const fetchProducts = async () => {
+  const fetchProducts = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      const params = new URLSearchParams();
+      const params = buildFilterParams();
       params.append("skip", String((currentPage - 1) * pageSize));
       params.append("limit", String(pageSize));
-      
-      if (searchTerm) params.append("search", searchTerm);
-      if (categoryFilter) params.append("category", categoryFilter);
-      if (stockFilter === "available") params.append("min_stock", "1");
 
-      const url = `/products-unified?${params.toString()}`;
-      console.log("[Products] Fetching:", url);
-      
-      const response = await api.get(url);
-      console.log("[Products] Response:", response.data?.length || 0, "items");
-      
+      const response = await api.get(`/products-unified?${params.toString()}`);
+
       if (Array.isArray(response.data)) {
         setProducts(response.data);
       } else {
-        console.error("[Products] Response is not an array:", response.data);
         setProducts([]);
       }
     } catch (err) {
-      console.error("[Products] Fetch error:", err);
       setError(err.response?.data?.detail || err.message || "Error al cargar productos");
       setProducts([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentPage, buildFilterParams]);
 
   // Fetch count for pagination
-  const fetchCount = async () => {
+  const fetchCount = useCallback(async () => {
     try {
-      const params = new URLSearchParams();
-      if (searchTerm) params.append("search", searchTerm);
-      if (categoryFilter) params.append("category", categoryFilter);
-      if (stockFilter === "available") params.append("min_stock", "1");
-
+      const params = buildFilterParams();
       const response = await api.get(`/products-unified/count?${params.toString()}`);
       setTotalProducts(response.data?.total || 0);
     } catch (err) {
-      console.error("[Products] Count error:", err);
       setTotalProducts(0);
     }
-  };
+  }, [buildFilterParams]);
 
   // Fetch auxiliary data
   const fetchAuxiliaryData = async () => {
@@ -165,7 +160,7 @@ const Products = () => {
       setSuppliers(supRes.data || []);
       setCatalogs(catalogRes.data || []);
     } catch (err) {
-      console.error("[Products] Auxiliary data error:", err);
+      // silently handle auxiliary data errors
     }
   };
 
@@ -178,13 +173,11 @@ const Products = () => {
   useEffect(() => {
     fetchProducts();
     fetchCount();
-  }, [currentPage, searchTerm, categoryFilter, stockFilter]);
+  }, [fetchProducts, fetchCount]);
 
-  // Handle search
+  // Handle search — just reset page, the useEffect handles the fetch
   const handleSearch = () => {
     setCurrentPage(1);
-    fetchProducts();
-    fetchCount();
   };
 
   // Handle page change
@@ -269,7 +262,7 @@ const Products = () => {
       const res = await api.get(`/catalogs/${catalogId}/categories`);
       setCatalogCategories(res.data || []);
     } catch (err) {
-      console.error("Error loading categories:", err);
+      // silently handle category load errors
       setCatalogCategories([]);
     }
     setLoadingCategories(false);
@@ -312,7 +305,7 @@ const Products = () => {
       setShowDeleteDialog(false);
       fetchProducts();
     } catch (err) {
-      console.error("Error deleting products:", err);
+      // error handled via toast
       toast.error("Error al eliminar productos");
     }
     setDeletingProducts(false);
@@ -339,7 +332,7 @@ const Products = () => {
         const res = await api.post(`/catalogs/${catalogId}/products`, payload);
         totalAdded += res.data.added || 0;
       } catch (err) {
-        console.error("Error adding to catalog:", err);
+        // error handled via toast below
       }
     }
 
