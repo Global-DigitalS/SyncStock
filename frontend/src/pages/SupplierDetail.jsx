@@ -480,7 +480,7 @@ const SupplierDetail = () => {
         });
         totalAdded += res.data.added || 0;
       } catch (error) {
-        console.error("Error adding to catalog:", error);
+        // handled silently
       }
     }
 

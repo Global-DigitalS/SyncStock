@@ -53,7 +53,6 @@ const SyncSettings = () => {
       setSyncStores(res.data.sync_stores ?? true);
       setSyncCrm(res.data.sync_crm ?? true);
     } catch (error) {
-      console.error("Error fetching sync settings:", error);
       toast.error("Error al cargar configuración");
     } finally {
       setLoading(false);

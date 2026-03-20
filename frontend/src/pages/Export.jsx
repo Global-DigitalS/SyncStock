@@ -47,7 +47,7 @@ const Export = () => {
         const res = await api.get("/catalog?active_only=true");
         setCatalogCount(res.data.length);
       } catch (error) {
-        console.error("Error fetching catalog:", error);
+        // handled silently
       } finally {
         setLoading(false);
       }

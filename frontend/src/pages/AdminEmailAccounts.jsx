@@ -94,7 +94,7 @@ const AdminEmailAccounts = () => {
         }));
       }
     } catch (error) {
-      console.error("Error loading email configs:", error);
+      // handled silently
     } finally {
       setLoading(false);
     }

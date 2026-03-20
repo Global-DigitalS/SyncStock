@@ -91,7 +91,7 @@ const ProductDetailDialog = ({
           _product_id: bestOffer.product_id
         });
       } catch (error) {
-        console.error("Error loading product data:", error);
+        // handled silently
       }
     }
   };

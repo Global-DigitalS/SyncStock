@@ -60,7 +60,7 @@ const Register = () => {
           }
         }
       } catch (error) {
-        console.log("Using default branding");
+        // use default branding
       } finally {
         setBrandingLoaded(true);
       }
@@ -76,7 +76,7 @@ const Register = () => {
           setSelectedPlan(freePlan);
         }
       } catch (error) {
-        console.error("Error loading plans:", error);
+        // handled silently
       } finally {
         setLoadingPlans(false);
       }
@@ -87,7 +87,7 @@ const Register = () => {
         const res = await axios.get(`${BACKEND_URL}/api/stripe/config/status`);
         setStripeEnabled(res.data?.enabled && res.data?.configured);
       } catch (error) {
-        console.log("Stripe not configured");
+        // Stripe not configured
       }
     };
     
@@ -224,7 +224,6 @@ const Register = () => {
         throw new Error("No se pudo crear la sesión de pago");
       }
     } catch (error) {
-      console.error("Registration error:", error);
       toast.error(error.response?.data?.detail || "Error al procesar el registro");
     } finally {
       setLoading(false);

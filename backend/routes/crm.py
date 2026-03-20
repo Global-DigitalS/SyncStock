@@ -11,6 +11,7 @@ import re
 import logging
 import requests
 import base64
+import asyncio
 
 from services.database import db
 from services.auth import get_current_user
@@ -18,6 +19,9 @@ from services.sync import calculate_final_price
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+# Registry to prevent background tasks from being garbage-collected
+_background_tasks: set = set()
 
 _PRIVATE_IP_RE = re.compile(
     r'^https?://(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)',
@@ -2231,8 +2235,7 @@ async def test_crm_connection(request: dict, user: dict = Depends(get_current_us
 @router.post("/crm/connections/{connection_id}/sync")
 async def sync_crm_connection(connection_id: str, request: dict, user: dict = Depends(get_current_user)):
     """Sync data with a CRM - runs in background with progress tracking"""
-    import asyncio
-    
+
     connection = await db.crm_connections.find_one({
         "id": connection_id,
         "user_id": user["id"]
@@ -2266,8 +2269,8 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
     }
     await db.sync_jobs.insert_one(sync_job)
     
-    # Run sync in background task
-    asyncio.create_task(run_sync_in_background(
+    # Run sync in background task (stored in registry to prevent GC)
+    task = asyncio.create_task(run_sync_in_background(
         sync_job_id=sync_job_id,
         user_id=user["id"],
         connection_id=connection_id,
@@ -2277,6 +2280,8 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
         sync_type=sync_type,
         catalog_id=catalog_id
     ))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
     
     # Return immediately with job ID
     return {

@@ -91,7 +91,6 @@ const Profile = () => {
         // No subscription
       }
     } catch (error) {
-      console.error("Error loading profile:", error);
       toast.error("Error al cargar los datos del perfil");
     } finally {
       setLoading(false);
