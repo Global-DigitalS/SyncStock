@@ -345,6 +345,26 @@ update_backend() {
             JWT_SECRET_VAL="${JWT_SECRET_VAL:-$EXISTING_JWT_SECRET}"
             FERNET_KEY_VAL="${FERNET_KEY_VAL:-$EXISTING_FERNET_KEY}"
 
+            # CRÍTICO: Si no hay JWT_SECRET en ninguna fuente, generar uno nuevo
+            # Esto evita que el backend falle al arrancar por falta de JWT_SECRET
+            if [ -z "$JWT_SECRET_VAL" ]; then
+                print_warning "JWT_SECRET no encontrado en config persistente ni en .env"
+                JWT_SECRET_VAL=$(python3 -c "import secrets; print(secrets.token_hex(64))" 2>/dev/null)
+                if [ -n "$JWT_SECRET_VAL" ]; then
+                    print_success "JWT_SECRET generado automáticamente"
+                else
+                    print_error "No se pudo generar JWT_SECRET"
+                fi
+            fi
+
+            # Si no hay FERNET_KEY, generar una nueva
+            if [ -z "$FERNET_KEY_VAL" ]; then
+                FERNET_KEY_VAL=$(python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" 2>/dev/null || echo "")
+                if [ -n "$FERNET_KEY_VAL" ]; then
+                    print_info "FERNET_KEY generada automáticamente"
+                fi
+            fi
+
             if [ -n "$MONGO_URL" ]; then
                 # Actualizar .env con los valores fusionados
                 cat > .env << EOF
@@ -353,7 +373,7 @@ DB_NAME=$DB_NAME
 CORS_ORIGINS=$CORS
 CONFIG_PATH=$PERSISTENT_CONFIG
 EOF
-                # Añadir JWT_SECRET si existe
+                # Añadir JWT_SECRET (siempre debe existir en este punto)
                 if [ -n "$JWT_SECRET_VAL" ]; then
                     echo "JWT_SECRET=$JWT_SECRET_VAL" >> .env
                 fi
@@ -364,6 +384,7 @@ EOF
                 print_success "Archivo .env actualizado (config persistente + valores existentes)"
 
                 # Sincronizar valores faltantes de vuelta al config.json persistente
+                # IMPORTANTE: Siempre asegurar que jwt_secret y fernet_key estén guardados
                 python3 -c "
 import json, sys
 try:
@@ -373,16 +394,28 @@ try:
     if not cfg.get('db_name') and '$DB_NAME':
         cfg['db_name'] = '$DB_NAME'
         updated = True
+    # Siempre sincronizar jwt_secret si falta en config persistente
     if not cfg.get('jwt_secret') and '$JWT_SECRET_VAL':
         cfg['jwt_secret'] = '$JWT_SECRET_VAL'
         updated = True
+    # Siempre sincronizar fernet_key si falta en config persistente
     if not cfg.get('fernet_key') and '$FERNET_KEY_VAL':
         cfg['fernet_key'] = '$FERNET_KEY_VAL'
+        updated = True
+    # Asegurar que mongo_url esté en config persistente
+    if not cfg.get('mongo_url') and '$MONGO_URL':
+        cfg['mongo_url'] = '$MONGO_URL'
+        updated = True
+    # Asegurar que cors_origins esté en config persistente
+    if not cfg.get('cors_origins') and '$CORS':
+        cfg['cors_origins'] = '$CORS'
         updated = True
     if updated:
         with open('$PERSISTENT_CONFIG', 'w') as f:
             json.dump(cfg, f, indent=2)
         print('Config persistente actualizado con valores faltantes')
+    else:
+        print('Config persistente ya tiene todos los valores')
 except Exception as e:
     print(f'Aviso: no se pudo sincronizar config persistente: {e}', file=sys.stderr)
 " 2>/dev/null && print_info "Config persistente sincronizado" || true
@@ -391,6 +424,31 @@ except Exception as e:
     elif [ -f ".env" ]; then
         # No hay config persistente, pero sí hay .env — preservarlo
         print_info "No hay configuración persistente, preservando .env existente"
+
+        # Verificar que el .env existente tiene JWT_SECRET
+        if ! grep -q '^JWT_SECRET=' .env 2>/dev/null; then
+            print_warning "JWT_SECRET no encontrado en .env existente, generando uno..."
+            JWT_SECRET_VAL=$(python3 -c "import secrets; print(secrets.token_hex(64))" 2>/dev/null)
+            if [ -n "$JWT_SECRET_VAL" ]; then
+                echo "JWT_SECRET=$JWT_SECRET_VAL" >> .env
+                print_success "JWT_SECRET añadido al .env"
+            fi
+        fi
+    else
+        # No hay ni config persistente ni .env — crear .env mínimo
+        print_warning "No se encontró ni configuración persistente ni .env"
+        JWT_SECRET_VAL=$(python3 -c "import secrets; print(secrets.token_hex(64))" 2>/dev/null)
+        cat > .env << EOF
+MONGO_URL=mongodb://localhost:27017
+DB_NAME=syncstock_db
+CORS_ORIGINS=*
+EOF
+        if [ -n "$JWT_SECRET_VAL" ]; then
+            echo "JWT_SECRET=$JWT_SECRET_VAL" >> .env
+            print_success "Archivo .env creado con JWT_SECRET generado"
+        else
+            print_error "No se pudo generar .env con JWT_SECRET"
+        fi
     fi
     
     # Reiniciar servicio usando el nombre correcto
@@ -398,8 +456,8 @@ except Exception as e:
     
     if systemctl is-enabled --quiet ${SERVICE_NAME} 2>/dev/null; then
         systemctl restart ${SERVICE_NAME}
-        sleep 3
-        
+        sleep 5
+
         if systemctl is-active --quiet ${SERVICE_NAME}; then
             print_success "Backend reiniciado correctamente"
         else
@@ -411,7 +469,7 @@ except Exception as e:
         if systemctl is-enabled --quiet ${APP_NAME}-backend 2>/dev/null; then
             print_warning "Usando nombre de servicio antiguo: ${APP_NAME}-backend"
             systemctl restart ${APP_NAME}-backend
-            sleep 3
+            sleep 5
             
             if systemctl is-active --quiet ${APP_NAME}-backend; then
                 print_success "Backend reiniciado correctamente"
