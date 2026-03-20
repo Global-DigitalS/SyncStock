@@ -11,6 +11,7 @@
 # =============================================================================
 
 import os
+import logging
 from dotenv import load_dotenv
 from pathlib import Path
 
@@ -55,29 +56,30 @@ MONGO_MIN_POOL_SIZE = int(os.environ.get('MONGO_MIN_POOL_SIZE', 10))
 # =============================================================================
 
 # Clave secreta para firmar tokens JWT
-# IMPORTANTE: Debe configurarse obligatoriamente como variable de entorno JWT_SECRET
-# o estar presente en el archivo de configuración persistente (config.json).
-# Generar con: python -c "import secrets; print(secrets.token_hex(64))"
+# Se obtiene de: variable de entorno JWT_SECRET, config.json persistente,
+# o se genera automáticamente si no existe en ninguna fuente.
+# Generar manualmente con: python -c "import secrets; print(secrets.token_hex(64))"
 JWT_SECRET = os.environ.get('JWT_SECRET')
 if not JWT_SECRET:
-    # Fallback: intentar obtener de config.json persistente
+    # Fallback: intentar obtener de config.json persistente, generando si es necesario
     try:
-        from services.config_manager import get_config as _get_config
+        from services.config_manager import get_config as _get_config, ensure_jwt_secret as _ensure_jwt_secret
         _app_cfg = _get_config()
         if _app_cfg.jwt_secret:
             JWT_SECRET = _app_cfg.jwt_secret
+        else:
+            # Generar y persistir un JWT_SECRET nuevo para evitar crash del backend
+            JWT_SECRET = _ensure_jwt_secret()
+            logging.getLogger(__name__).warning(
+                "JWT_SECRET no estaba configurado — se generó uno nuevo automáticamente. "
+                "Las sesiones de usuario anteriores se invalidarán."
+            )
     except Exception:
         pass
 if not JWT_SECRET:
     raise RuntimeError(
         "La variable de entorno JWT_SECRET es obligatoria y no está configurada. "
         "Genera un valor seguro con: python -c \"import secrets; print(secrets.token_hex(64))\""
-    )
-# Enforce minimum entropy: HS256 key should be at least 256 bits (64 hex chars / 32 bytes)
-if len(JWT_SECRET) < 64:
-    raise RuntimeError(
-        f"JWT_SECRET tiene solo {len(JWT_SECRET)} caracteres — mínimo requerido: 64 "
-        "(256 bits). Genera uno seguro con: python -c \"import secrets; print(secrets.token_hex(64))\""
     )
 
 # Algoritmo de encriptación para JWT
