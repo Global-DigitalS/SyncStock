@@ -2,6 +2,7 @@ import jwt
 import bcrypt
 import os
 import re
+import secrets
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from fastapi import Depends, HTTPException, Request
@@ -24,7 +25,9 @@ if not JWT_SECRET:
     )
 
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRATION_HOURS = int(os.environ.get('JWT_EXPIRATION_HOURS', 168))  # 7 días por defecto
+JWT_EXPIRATION_HOURS = int(os.environ.get('JWT_EXPIRATION_HOURS', 168))  # 7 días por defecto (legacy)
+ACCESS_TOKEN_MINUTES = int(os.environ.get('ACCESS_TOKEN_MINUTES', 60))  # 1 hora
+REFRESH_TOKEN_DAYS = int(os.environ.get('REFRESH_TOKEN_DAYS', 7))       # 7 días
 
 security = HTTPBearer(auto_error=False)
 
@@ -88,12 +91,54 @@ def validate_password_strength(password: str) -> None:
 
 
 def create_token(user_id: str, role: str = "user") -> str:
+    """Legacy token creation — kept for backward compatibility."""
     payload = {
         "user_id": user_id,
         "role": role,
         "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def create_access_token(user_id: str, role: str = "user") -> str:
+    """Short-lived access token (1 hour by default)."""
+    payload = {
+        "user_id": user_id,
+        "role": role,
+        "type": "access",
+        "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_MINUTES),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def create_refresh_token(user_id: str, role: str = "user") -> str:
+    """Long-lived refresh token (7 days by default)."""
+    payload = {
+        "user_id": user_id,
+        "role": role,
+        "type": "refresh",
+        "jti": secrets.token_hex(16),
+        "exp": datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_DAYS),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
+def verify_refresh_token(token: str) -> dict:
+    """Decode and validate a refresh token. Returns the payload or raises."""
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        if payload.get("type") != "refresh":
+            raise jwt.InvalidTokenError("No es un refresh token")
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Refresh token expirado")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Refresh token inválido")
+
+
+def generate_csrf_token() -> str:
+    """Generate a random CSRF token."""
+    return secrets.token_hex(32)
 
 
 def check_permission(user: dict, permission: str) -> bool:

@@ -44,6 +44,7 @@ import AdminSupport from "./pages/AdminSupport";
 
 // Components
 import Sidebar from "./components/Sidebar";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 // Hooks
 import useGoogleScripts from "./hooks/useGoogleScripts";
@@ -62,21 +63,78 @@ const WebSocketContext = createContext(null);
 
 export const useWebSocket = () => useContext(WebSocketContext);
 
+// Helper to read a cookie value by name
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? match[2] : null;
+}
+
 // API instance with auth — usa httpOnly cookie automáticamente (withCredentials)
 export const api = axios.create({ baseURL: API, withCredentials: true });
 
+// Attach CSRF token header to every mutating request (double-submit cookie pattern)
+api.interceptors.request.use((config) => {
+  const method = (config.method || "").toUpperCase();
+  if (["POST", "PUT", "DELETE", "PATCH"].includes(method)) {
+    const csrf = getCookie("csrf_token");
+    if (csrf) {
+      config.headers["X-CSRF-Token"] = csrf;
+    }
+  }
+  return config;
+});
+
+// Response interceptor: auto-refresh on 401, redirect on final failure
+let isRefreshing = false;
+let refreshQueue = [];
+
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      const currentPath = window.location.hash || window.location.pathname;
-      const isAuthPage = currentPath.includes('/login') || currentPath.includes('/register') || currentPath.includes('/forgot-password');
+  async (error) => {
+    const originalRequest = error.config;
+    const currentPath = window.location.hash || window.location.pathname;
+    const isAuthPage = currentPath.includes('/login') || currentPath.includes('/register') || currentPath.includes('/forgot-password');
 
-      if (!isAuthPage) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isAuthPage) {
+      // Don't retry refresh endpoint itself
+      if (originalRequest.url?.includes('/auth/refresh')) {
         localStorage.removeItem("user");
         window.location.href = "/#/login";
+        return Promise.reject(error);
+      }
+
+      if (isRefreshing) {
+        // Queue this request until refresh completes
+        return new Promise((resolve, reject) => {
+          refreshQueue.push({ resolve, reject });
+        }).then(() => api(originalRequest));
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        await api.post("/auth/refresh");
+        // Refresh successful — retry queued requests
+        refreshQueue.forEach(({ resolve }) => resolve());
+        refreshQueue = [];
+        return api(originalRequest);
+      } catch (refreshError) {
+        refreshQueue.forEach(({ reject }) => reject(refreshError));
+        refreshQueue = [];
+        localStorage.removeItem("user");
+        window.location.href = "/#/login";
+        return Promise.reject(refreshError);
+      } finally {
+        isRefreshing = false;
       }
     }
+
+    if (error.response?.status === 401 && !isAuthPage) {
+      localStorage.removeItem("user");
+      window.location.href = "/#/login";
+    }
+
     return Promise.reject(error);
   }
 );
@@ -110,7 +168,7 @@ const ProtectedRoute = ({ children }) => {
   return children;
 };
 
-// Main Layout with Sidebar
+// Main Layout with Sidebar + Error Boundary per page
 const MainLayout = ({ children }) => {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
@@ -118,7 +176,7 @@ const MainLayout = ({ children }) => {
     <div className="app-container">
       <Sidebar open={sidebarOpen} onToggle={() => setSidebarOpen(!sidebarOpen)} />
       <main className="main-content">
-        {children}
+        <ErrorBoundary>{children}</ErrorBoundary>
       </main>
     </div>
   );
@@ -266,11 +324,12 @@ function App() {
   useGoogleScripts();
 
   return (
+    <ErrorBoundary>
     <HashRouter>
       <AuthProvider>
-        <Toaster 
-          position="top-right" 
-          richColors 
+        <Toaster
+          position="top-right"
+          richColors
           toastOptions={{
             style: { fontFamily: 'Inter, sans-serif' }
           }}
@@ -630,6 +689,7 @@ function App() {
         </Routes>
       </AuthProvider>
     </HashRouter>
+    </ErrorBoundary>
   );
 }
 

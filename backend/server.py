@@ -274,6 +274,37 @@ async def csp_report(request: Request):
     )
     return Response(status_code=204)
 
+class CSRFMiddleware(BaseHTTPMiddleware):
+    """
+    Double-submit cookie CSRF protection.
+    For state-changing methods (POST, PUT, DELETE, PATCH), verifies that
+    the X-CSRF-Token header matches the csrf_token cookie.
+    Exempt paths: auth endpoints (login/register/refresh need to work without prior CSRF),
+    webhooks, Stripe webhooks, and CSP reports.
+    """
+    _EXEMPT_PREFIXES = (
+        "/api/auth/login", "/api/auth/register", "/api/auth/refresh",
+        "/api/auth/forgot-password", "/api/auth/reset-password",
+        "/api/webhooks", "/api/stripe/webhook", "/api/csp-report",
+        "/api/setup",
+    )
+    _MUTATING_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
+
+    async def dispatch(self, request: Request, call_next):
+        if request.method in self._MUTATING_METHODS:
+            path = request.url.path
+            if not any(path.startswith(p) for p in self._EXEMPT_PREFIXES):
+                cookie_token = request.cookies.get("csrf_token")
+                header_token = request.headers.get("x-csrf-token")
+                if not cookie_token or not header_token or cookie_token != header_token:
+                    return Response(
+                        content='{"detail":"Token CSRF inválido"}',
+                        status_code=403,
+                        media_type="application/json",
+                    )
+        return await call_next(request)
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """
     Adds security HTTP headers to every API response.
@@ -346,6 +377,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(CSRFMiddleware)
 
 _cors_origins_env = os.environ.get('CORS_ORIGINS', '')
 if not _cors_origins_env or _cors_origins_env.strip() == '*':
@@ -365,5 +397,5 @@ app.add_middleware(
     allow_credentials=_cors_credentials,
     allow_origins=_cors_origins,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["Authorization", "Content-Type", "Accept"],
+    allow_headers=["Authorization", "Content-Type", "Accept", "X-CSRF-Token"],
 )
