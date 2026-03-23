@@ -48,6 +48,8 @@ from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
 from services.crm_scheduler import run_scheduled_crm_syncs
 from services.unified_sync import run_scheduled_syncs
 from services.database import ensure_indexes
+from services.cache import cache
+from services.error_monitor import RequestLoggingMiddleware
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -129,6 +131,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(run_scheduled_syncs, 'interval', hours=1, id='unified_sync', replace_existing=True)
     # Security maintenance: purge expired password-reset tokens and old login-attempt records
     scheduler.add_job(_purge_expired_security_records, 'interval', hours=6, id='security_purge', replace_existing=True)
+    # Cache cleanup: remove expired entries every 10 minutes
+    scheduler.add_job(cache.cleanup_expired, 'interval', minutes=10, id='cache_cleanup', replace_existing=True)
     scheduler.start()
     logger.info("Scheduler started - Unified sync check every 1h, Legacy: Suppliers 6h, WooCommerce 12h, Security purge 6h")
     yield
@@ -378,6 +382,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 _cors_origins_env = os.environ.get('CORS_ORIGINS', '')
 if not _cors_origins_env or _cors_origins_env.strip() == '*':
