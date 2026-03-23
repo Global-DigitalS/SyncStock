@@ -9,6 +9,7 @@ import csv
 from services.database import db
 from services.auth import get_current_user, get_superadmin_user
 from services.sync import calculate_final_price
+from services.cache import cache, DASHBOARD_STATS_TTL, SUPERADMIN_STATS_TTL, SYNC_HISTORY_STATS_TTL
 
 
 def _csv_safe(value) -> str:
@@ -35,6 +36,10 @@ router = APIRouter()
 @router.get("/dashboard/stats", response_model=DashboardStats)
 async def get_dashboard_stats(user: dict = Depends(get_current_user)):
     uid = user["id"]
+    cache_key = f"dashboard_stats:{uid}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
     # Unificar conteos de productos en una sola aggregation con $facet
@@ -72,7 +77,7 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
         {"_id": 0, "is_connected": 1, "auto_sync_enabled": 1, "products_synced": 1}
     ).to_list(100)
 
-    return DashboardStats(
+    result = DashboardStats(
         total_suppliers=total_suppliers, total_products=total_products,
         total_catalog_items=total_catalog_items, total_catalogs=total_catalogs,
         low_stock_count=low_stock_count, out_of_stock_count=out_of_stock_count,
@@ -82,11 +87,17 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
         woocommerce_auto_sync=sum(1 for c in wc_configs if c.get("auto_sync_enabled")),
         woocommerce_total_synced=sum(c.get("products_synced", 0) for c in wc_configs),
     )
+    await cache.set(cache_key, result, DASHBOARD_STATS_TTL)
+    return result
 
 
 @router.get("/dashboard/superadmin-stats")
 async def get_superadmin_dashboard_stats(superadmin: dict = Depends(get_superadmin_user)):
     """Dashboard estadísticas globales para SuperAdmin"""
+    cache_key = "superadmin_stats"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
     import asyncio
     now = datetime.now(timezone.utc)
     week_ago = (now - timedelta(days=7)).isoformat()
@@ -209,7 +220,7 @@ async def get_superadmin_dashboard_stats(superadmin: dict = Depends(get_superadm
     stripe_config = await db.app_config.find_one({"type": "stripe_config"})
     stripe_configured = bool(stripe_config and stripe_config.get("secret_key"))
 
-    return {
+    result = {
         "users": {
             "total": total_users,
             "active": active_users,
@@ -253,6 +264,8 @@ async def get_superadmin_dashboard_stats(superadmin: dict = Depends(get_superadm
             "stripe_configured": stripe_configured,
         },
     }
+    await cache.set(cache_key, result, SUPERADMIN_STATS_TTL)
+    return result
 
 
 @router.get("/dashboard/stock-alerts")
@@ -476,6 +489,10 @@ async def get_sync_history(
 @router.get("/sync-history/stats")
 async def get_sync_history_stats(days: int = 30, user: dict = Depends(get_current_user)):
     """Obtener estadísticas de sincronizaciones"""
+    cache_key = f"sync_history_stats:{user['id']}:{days}"
+    cached = await cache.get(cache_key)
+    if cached:
+        return cached
     start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
     query = {"user_id": user["id"], "created_at": {"$gte": start_date}}
     
@@ -515,7 +532,7 @@ async def get_sync_history_stats(days: int = 30, user: dict = Depends(get_curren
     ]
     daily_stats = await db.sync_history.aggregate(daily_pipeline).to_list(30)
     
-    return {
+    result = {
         "total": total,
         "success": success,
         "errors": errors,
@@ -526,6 +543,8 @@ async def get_sync_history_stats(days: int = 30, user: dict = Depends(get_curren
         "avg_duration": round(totals.get("avg_duration", 0) or 0, 2),
         "daily_stats": [{"date": d["_id"], "count": d["count"], "success": d["success"], "errors": d["errors"]} for d in daily_stats]
     }
+    await cache.set(cache_key, result, SYNC_HISTORY_STATS_TTL)
+    return result
 
 
 # ==================== CSV EXPORT ====================

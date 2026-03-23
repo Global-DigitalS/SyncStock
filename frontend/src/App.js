@@ -1,46 +1,46 @@
-import { useState, useEffect, createContext, useContext, useCallback, useRef } from "react";
+import { useState, useEffect, createContext, useContext, useCallback, useRef, lazy, Suspense } from "react";
 import "@/App.css";
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { Toaster, toast } from "sonner";
 
-// Pages
-import Login from "./pages/Login";
-import Register from "./pages/Register";
-import Setup from "./pages/Setup";
-import ForgotPassword from "./pages/ForgotPassword";
-import Dashboard from "./pages/Dashboard";
-import Suppliers from "./pages/Suppliers";
-import SupplierDetail from "./pages/SupplierDetail";
-import Products from "./pages/Products";
-import Catalogs from "./pages/Catalogs";
-import CatalogDetail from "./pages/CatalogDetail";
-import Export from "./pages/Export";
-import WooCommerceExport from "./pages/WooCommerceExport";
-import PriceHistory from "./pages/PriceHistory";
-import Notifications from "./pages/Notifications";
-import SyncHistory from "./pages/SyncHistory";
-import UserManagement from "./pages/UserManagement";
-import SuperAdminDashboard from "./pages/SuperAdminDashboard";
-import Subscriptions from "./pages/Subscriptions";
-import Webhooks from "./pages/Webhooks";
-import EmailConfig from "./pages/EmailConfig";
-import CRMPage from "./pages/CRM";
-import Marketplaces from "./pages/Marketplaces";
-import SyncSettings from "./pages/SyncSettings";
-import Profile from "./pages/Profile";
-import Support from "./pages/Support";
-import Landing from "./pages/Landing";
+// Pages — lazy loaded for code splitting
+const Login = lazy(() => import("./pages/Login"));
+const Register = lazy(() => import("./pages/Register"));
+const Setup = lazy(() => import("./pages/Setup"));
+const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Suppliers = lazy(() => import("./pages/Suppliers"));
+const SupplierDetail = lazy(() => import("./pages/SupplierDetail"));
+const Products = lazy(() => import("./pages/Products"));
+const Catalogs = lazy(() => import("./pages/Catalogs"));
+const CatalogDetail = lazy(() => import("./pages/CatalogDetail"));
+const Export = lazy(() => import("./pages/Export"));
+const WooCommerceExport = lazy(() => import("./pages/WooCommerceExport"));
+const PriceHistory = lazy(() => import("./pages/PriceHistory"));
+const Notifications = lazy(() => import("./pages/Notifications"));
+const SyncHistory = lazy(() => import("./pages/SyncHistory"));
+const UserManagement = lazy(() => import("./pages/UserManagement"));
+const SuperAdminDashboard = lazy(() => import("./pages/SuperAdminDashboard"));
+const Subscriptions = lazy(() => import("./pages/Subscriptions"));
+const Webhooks = lazy(() => import("./pages/Webhooks"));
+const EmailConfig = lazy(() => import("./pages/EmailConfig"));
+const CRMPage = lazy(() => import("./pages/CRM"));
+const Marketplaces = lazy(() => import("./pages/Marketplaces"));
+const SyncSettings = lazy(() => import("./pages/SyncSettings"));
+const Profile = lazy(() => import("./pages/Profile"));
+const Support = lazy(() => import("./pages/Support"));
+const Landing = lazy(() => import("./pages/Landing"));
 
-// Admin Pages
-import AdminBranding from "./pages/AdminBranding";
-import AdminPlans from "./pages/AdminPlans";
-import AdminEmailTemplates from "./pages/AdminEmailTemplates";
-import AdminStripe from "./pages/AdminStripe";
-import AdminEmailAccounts from "./pages/AdminEmailAccounts";
-import AdminLanding from "./pages/AdminLanding";
-import AdminGoogleServices from "./pages/AdminGoogleServices";
-import AdminSupport from "./pages/AdminSupport";
+// Admin Pages — lazy loaded
+const AdminBranding = lazy(() => import("./pages/AdminBranding"));
+const AdminPlans = lazy(() => import("./pages/AdminPlans"));
+const AdminEmailTemplates = lazy(() => import("./pages/AdminEmailTemplates"));
+const AdminStripe = lazy(() => import("./pages/AdminStripe"));
+const AdminEmailAccounts = lazy(() => import("./pages/AdminEmailAccounts"));
+const AdminLanding = lazy(() => import("./pages/AdminLanding"));
+const AdminGoogleServices = lazy(() => import("./pages/AdminGoogleServices"));
+const AdminSupport = lazy(() => import("./pages/AdminSupport"));
 
 // Components
 import Sidebar from "./components/Sidebar";
@@ -334,6 +334,11 @@ function App() {
             style: { fontFamily: 'Inter, sans-serif' }
           }}
         />
+        <Suspense fallback={
+          <div className="min-h-screen flex items-center justify-center bg-slate-50">
+            <div className="spinner"></div>
+          </div>
+        }>
         <Routes>
           {/* Setup Route */}
           <Route path="/setup" element={<Setup />} />
@@ -687,6 +692,7 @@ function App() {
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
       </AuthProvider>
     </HashRouter>
     </ErrorBoundary>
