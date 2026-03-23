@@ -15,7 +15,7 @@ import os
 # Add backend to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'backend'))
 
-from routes.crm import OdooClient
+from services.crm_clients import OdooClient
 
 
 class TestOdooClientBasics:
