@@ -12,6 +12,8 @@ from services.auth import (
     get_user_resource_usage, validate_password_strength,
     check_account_lockout, record_failed_login, reset_failed_logins,
     _DUMMY_HASH,
+    create_access_token, create_refresh_token, verify_refresh_token,
+    generate_csrf_token, REFRESH_TOKEN_DAYS,
 )
 from services.sanitizer import sanitize_string, sanitize_email, sanitize_password, sanitize_dict
 from models.schemas import UserCreate, UserLogin, UserResponse, UserUpdate, UserLimits, UserFullUpdate
@@ -47,6 +49,34 @@ def _set_auth_cookie(response: Response, token: str, expiration_hours: int = 168
         max_age=expiration_hours * 3600,
         path="/",
     )
+
+
+def _set_auth_cookies(response: Response, user_id: str, role: str):
+    """Set access token, refresh token (httpOnly) and CSRF token cookies."""
+    access = create_access_token(user_id, role)
+    refresh = create_refresh_token(user_id, role)
+    csrf = generate_csrf_token()
+
+    # Access token — httpOnly, short-lived
+    response.set_cookie(
+        key="auth_token", value=access,
+        httponly=True, secure=True, samesite="lax",
+        max_age=3600, path="/",
+    )
+    # Refresh token — httpOnly, long-lived, restricted path
+    response.set_cookie(
+        key="refresh_token", value=refresh,
+        httponly=True, secure=True, samesite="lax",
+        max_age=REFRESH_TOKEN_DAYS * 86400, path="/api/auth",
+    )
+    # CSRF token — readable by JS (not httpOnly), for double-submit pattern
+    response.set_cookie(
+        key="csrf_token", value=csrf,
+        httponly=False, secure=True, samesite="lax",
+        max_age=REFRESH_TOKEN_DAYS * 86400, path="/",
+    )
+
+    return access
 
 
 @router.post("/auth/register", response_model=dict)
@@ -112,8 +142,7 @@ async def register(request: Request, response: Response, user: UserCreate):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(user_doc)
-    token = create_token(user_id, role)
-    _set_auth_cookie(response, token)
+    token = _set_auth_cookies(response, user_id, role)
 
     # Create subscription record if a paid plan was selected
     if plan and plan.get("price_monthly", 0) > 0:
@@ -188,8 +217,7 @@ async def login(request: Request, response: Response, credentials: UserLogin):
     await reset_failed_logins(email)
 
     role = user.get("role", "user")
-    token = create_token(user["id"], role)
-    _set_auth_cookie(response, token)
+    token = _set_auth_cookies(response, user["id"], role)
     return {
         "token": token,  # Mantenido para compatibilidad con clientes API
         "user": {
@@ -204,9 +232,37 @@ async def login(request: Request, response: Response, credentials: UserLogin):
 
 @router.post("/auth/logout")
 async def logout(response: Response):
-    """Cierra sesión borrando la cookie httpOnly."""
+    """Cierra sesión borrando todas las cookies de autenticación."""
     response.delete_cookie(key="auth_token", path="/")
+    response.delete_cookie(key="refresh_token", path="/api/auth")
+    response.delete_cookie(key="csrf_token", path="/")
     return {"message": "Sesión cerrada correctamente"}
+
+
+@router.post("/auth/refresh")
+async def refresh_token(request: Request, response: Response):
+    """Issue a new access token using the refresh token cookie."""
+    token = request.cookies.get("refresh_token")
+    if not token:
+        raise HTTPException(status_code=401, detail="No hay refresh token")
+
+    payload = verify_refresh_token(token)
+    user_id = payload["user_id"]
+
+    # Verify user still exists and is active
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    if user.get("is_active") is False:
+        raise HTTPException(status_code=403, detail="ACCOUNT_DISABLED")
+
+    role = user.get("role", "user")
+    new_access = _set_auth_cookies(response, user_id, role)
+
+    return {"token": new_access, "user": {
+        "id": user["id"], "email": user["email"], "name": user.get("name"),
+        "role": role,
+    }}
 
 
 @router.get("/auth/me", response_model=UserResponse)
