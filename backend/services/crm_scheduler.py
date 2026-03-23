@@ -38,7 +38,8 @@ async def sync_crm_connection(connection_id: str) -> dict:
     """
     Execute sync for a single CRM connection
     """
-    from routes.crm import DolibarrClient, sync_products_to_dolibarr, sync_suppliers_to_dolibarr, sync_orders_to_dolibarr
+    from services.crm_clients import DolibarrClient
+    from services.crm_sync import sync_products_to_dolibarr, sync_suppliers_to_dolibarr, sync_orders_to_dolibarr
     
     connection = await db.crm_connections.find_one({"id": connection_id})
     if not connection:
