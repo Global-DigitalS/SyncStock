@@ -131,20 +131,6 @@ async def run_sync_in_background(
         )
 
 
-@router.get("/crm/sync-jobs/{job_id}")
-async def get_sync_job_status(job_id: str, user: dict = Depends(get_current_user)):
-    """Get the status of a sync job for progress tracking"""
-    job = await db.sync_jobs.find_one(
-        {"id": job_id, "user_id": user["id"]},
-        {"_id": 0}
-    )
-    
-    if not job:
-        raise HTTPException(status_code=404, detail="Job no encontrado")
-    
-    return job
-
-
 async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> Dict:
     """Sync products from our catalog to Dolibarr with full data including purchase price, stock and images"""
     if sync_settings is None:
