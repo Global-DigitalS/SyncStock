@@ -6,7 +6,7 @@ import re
 import logging
 import requests
 import base64
-from typing import Dict, Optional, Any
+from typing import Dict, List, Optional, Any
 
 logger = logging.getLogger(__name__)
 
