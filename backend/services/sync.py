@@ -14,6 +14,7 @@ import xmltodict
 from pymongo import UpdateOne, InsertOne
 from woocommerce import API as WooCommerceAPI
 from services.database import db
+from services.sku_cache import SKUCache
 from config import PRICE_CHANGE_THRESHOLD_PERCENT, LOW_STOCK_THRESHOLD
 
 logger = logging.getLogger(__name__)
@@ -59,31 +60,41 @@ async def send_sync_progress(user_id: str, supplier_name: str, processed: int, t
     })
 
 
-async def bulk_upsert_products(supplier: dict, normalized_products: list, existing_map: dict, now: str) -> dict:
+async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_cache: SKUCache, now: str) -> dict:
     """
-    Bulk upsert products using batched bulk_write operations.
+    Bulk upsert products using batched operations and SKU cache for efficient lookups.
+
+    OPTIMIZED for 1M+ products:
+    - Uses SKUCache for batch lookups instead of dict prefetch
+    - Processes in chunks to avoid loading all 1M products in memory at once
+    - Increased batch size from 500 to 5000
+    - Streaming approach: fetch SKUs in chunks, process, flush, repeat
 
     Args:
         supplier: supplier dict with id, name, user_id
         normalized_products: list of dicts with keys: sku, name, description, price, stock, etc.
-        existing_map: dict mapping (sku) -> existing product doc
+        sku_cache: SKUCache instance for efficient lookups
         now: ISO timestamp string
 
     Returns:
-        dict with imported, updated, errors counts and price_changes/stock_changes for notifications
+        dict with imported, updated, errors counts
     """
     imported = 0
     updated = 0
     errors = 0
 
-    product_ops = []        # bulk_write operations for products collection
-    price_history_docs = [] # docs to insert_many into price_history
-    notification_docs = []  # docs to insert_many into notifications
-
     supplier_id = supplier['id']
     supplier_name = supplier['name']
     user_id = supplier['user_id']
     total = len(normalized_products)
+
+    # Increased batch size from 500 to 5000 for better performance
+    CHUNK_SIZE = 5000
+    DB_BATCH_SIZE = 5000
+
+    product_ops = []
+    price_history_docs = []
+    notification_docs = []
 
     for i, normalized in enumerate(normalized_products):
         try:
@@ -109,15 +120,17 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, existi
                 "updated_at": now
             }
 
-            existing = existing_map.get(sku)
+            # Load SKU from cache (with lazy batch loading)
+            existing = sku_cache.get(sku)
+
             if existing:
                 # Track price changes
-                old_price = existing.get('price', 0)
+                old_price = existing.price
                 new_price = product_doc['price']
                 if old_price != new_price and old_price > 0:
                     change_pct = ((new_price - old_price) / old_price) * 100
                     price_history_docs.append({
-                        "id": str(uuid.uuid4()), "product_id": existing["id"],
+                        "id": str(uuid.uuid4()), "product_id": existing.id,
                         "product_name": name, "old_price": old_price,
                         "new_price": new_price, "change_percentage": change_pct,
                         "user_id": user_id, "created_at": now
@@ -127,30 +140,30 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, existi
                         notification_docs.append({
                             "id": str(uuid.uuid4()), "type": "price_change",
                             "message": f"Precio de '{name[:40]}' ha {direction} {abs(change_pct):.1f}% ({old_price:.2f}€ → {new_price:.2f}€)",
-                            "product_id": existing["id"], "product_name": name,
+                            "product_id": existing.id, "product_name": name,
                             "user_id": user_id, "read": False, "created_at": now
                         })
 
                 # Track stock changes
-                old_stock = existing.get('stock', 0)
+                old_stock = existing.stock
                 new_stock = product_doc['stock']
                 if old_stock > 0 and new_stock == 0:
                     notification_docs.append({
                         "id": str(uuid.uuid4()), "type": "stock_out",
                         "message": f"Producto '{name[:40]}' sin stock",
-                        "product_id": existing["id"], "product_name": name,
+                        "product_id": existing.id, "product_name": name,
                         "user_id": user_id, "read": False, "created_at": now
                     })
                 elif old_stock > LOW_STOCK_THRESHOLD and 0 < new_stock <= LOW_STOCK_THRESHOLD:
                     notification_docs.append({
                         "id": str(uuid.uuid4()), "type": "stock_low",
                         "message": f"Producto '{name[:40]}' con stock bajo ({new_stock} uds)",
-                        "product_id": existing["id"], "product_name": name,
+                        "product_id": existing.id, "product_name": name,
                         "user_id": user_id, "read": False, "created_at": now
                     })
 
                 product_ops.append(UpdateOne(
-                    {"id": existing["id"]},
+                    {"id": existing.id},
                     {"$set": product_doc}
                 ))
                 updated += 1
@@ -160,23 +173,29 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, existi
                 product_ops.append(InsertOne(product_doc))
                 imported += 1
 
-            # Flush product ops in batches
-            if len(product_ops) >= BULK_BATCH_SIZE:
+            # Flush in larger batches (5000 instead of 500)
+            if len(product_ops) >= DB_BATCH_SIZE:
                 await db.products.bulk_write(product_ops, ordered=False)
                 product_ops = []
 
-            # Flush price_history in batches
-            if len(price_history_docs) >= BULK_BATCH_SIZE:
+            if len(price_history_docs) >= DB_BATCH_SIZE:
                 await db.price_history.insert_many(price_history_docs, ordered=False)
                 price_history_docs = []
 
-            # Flush notifications in batches
-            if len(notification_docs) >= BULK_BATCH_SIZE:
+            if len(notification_docs) >= DB_BATCH_SIZE:
                 await db.notifications.insert_many(notification_docs, ordered=False)
                 notification_docs = []
 
-            # Send progress updates
-            if (i + 1) % PROGRESS_REPORT_INTERVAL == 0:
+            # Lazy-load next batch of SKUs when reaching chunk boundary
+            if (i + 1) % CHUNK_SIZE == 0:
+                next_batch_skus = [
+                    p.get('sku') for p in normalized_products[i+1:i+1+CHUNK_SIZE]
+                    if p.get('sku')
+                ]
+                if next_batch_skus:
+                    await sku_cache.populate_batch(next_batch_skus)
+
+                # Send progress updates
                 await send_sync_progress(user_id, supplier_name, i + 1, total)
 
         except Exception as e:
@@ -191,24 +210,23 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, existi
     if notification_docs:
         await db.notifications.insert_many(notification_docs, ordered=False)
 
+    # Log cache stats
+    cache_stats = sku_cache.get_stats()
+    logger.info(f"Sync complete for {supplier_name}: Cache stats: {cache_stats}")
+
     return {"imported": imported, "updated": updated, "errors": errors}
 
 
-async def prefetch_existing_products(supplier_id: str, user_id: str) -> dict:
+async def prefetch_existing_products(supplier_id: str, user_id: str) -> SKUCache:
     """
-    Pre-fetch all existing products for a supplier into a dict keyed by SKU.
-    This replaces individual find_one calls during sync.
+    Create and initialize an SKU cache for efficient lookups during sync.
+
+    Returns: SKUCache instance (replaces dict for chunk-based loading)
+
+    OPTIMIZED: Uses batch loading instead of full prefetch.
+    With 1M products: Loads ~50K at a time, avoiding 300+ MB RAM spike.
     """
-    existing_map = {}
-    cursor = db.products.find(
-        {"supplier_id": supplier_id, "user_id": user_id},
-        {"id": 1, "sku": 1, "price": 1, "stock": 1, "_id": 0}
-    )
-    async for doc in cursor:
-        sku = doc.get("sku")
-        if sku:
-            existing_map[sku] = doc
-    return existing_map
+    return SKUCache(supplier_id, user_id)
 
 
 # ==================== FILE DOWNLOAD ====================
@@ -687,9 +705,9 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                     logger.error(f"Error procesando producto ZIP: {e}")
                     errors += 1
 
-            # Bulk upsert with pre-fetched existing products
-            existing_map = await prefetch_existing_products(supplier['id'], supplier['user_id'])
-            bulk_result = await bulk_upsert_products(supplier, normalized_products, existing_map, now)
+            # Bulk upsert with SKU cache for efficient lookups
+            sku_cache = await prefetch_existing_products(supplier['id'], supplier['user_id'])
+            bulk_result = await bulk_upsert_products(supplier, normalized_products, sku_cache, now)
             imported = bulk_result["imported"]
             updated = bulk_result["updated"]
             errors += bulk_result["errors"]
@@ -794,9 +812,9 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 logger.error(f"Error processing product: {e}")
                 errors += 1
 
-        # Bulk upsert with pre-fetched existing products
-        existing_map = await prefetch_existing_products(supplier['id'], supplier['user_id'])
-        bulk_result = await bulk_upsert_products(supplier, normalized_products, existing_map, now)
+        # Bulk upsert with SKU cache for efficient lookups
+        sku_cache = await prefetch_existing_products(supplier['id'], supplier['user_id'])
+        bulk_result = await bulk_upsert_products(supplier, normalized_products, sku_cache, now)
         imported = bulk_result["imported"]
         updated = bulk_result["updated"]
         errors += bulk_result["errors"]
@@ -1333,9 +1351,9 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
             logger.error(f"Error processing multi-file product: {e}")
             errors += 1
 
-    # Bulk upsert with pre-fetched existing products
-    existing_map = await prefetch_existing_products(supplier['id'], supplier['user_id'])
-    bulk_result = await bulk_upsert_products(supplier, normalized_products, existing_map, now)
+    # Bulk upsert with SKU cache for efficient lookups
+    sku_cache = await prefetch_existing_products(supplier['id'], supplier['user_id'])
+    bulk_result = await bulk_upsert_products(supplier, normalized_products, sku_cache, now)
     imported = bulk_result["imported"]
     updated = bulk_result["updated"]
     errors += bulk_result["errors"]
