@@ -46,10 +46,11 @@ from routes.marketplaces import router as marketplaces_router
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
 from services.crm_scheduler import run_scheduled_crm_syncs
-from services.unified_sync import run_scheduled_syncs
+from services.unified_sync import run_scheduled_syncs, sync_user_suppliers, sync_user_stores, sync_user_crm
 from services.database import ensure_indexes
 from services.cache import cache
 from services.error_monitor import RequestLoggingMiddleware
+from services.sync_queue import get_sync_queue, SyncType
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -124,6 +125,39 @@ async def lifespan(app: FastAPI):
         await ensure_indexes()
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB (continuando sin ellos): {e}")
+
+    # Initialize Sync Queue Manager (for optimized concurrent syncs)
+    queue_manager = get_sync_queue()
+
+    # Register handlers for different sync types
+    async def sync_supplier_handler(user_id: str, supplier_id: str, task):
+        """Handler for supplier sync via queue"""
+        from services.sync import sync_supplier
+        supplier = await app.state.db.suppliers.find_one({"id": supplier_id, "user_id": user_id})
+        if not supplier:
+            raise ValueError(f"Supplier {supplier_id} not found")
+        return await sync_supplier(supplier)
+
+    async def sync_store_handler(user_id: str, store_id: str, task):
+        """Handler for store sync via queue"""
+        from services.sync import sync_woocommerce_store_price_stock
+        store = await app.state.db.stores.find_one({"id": store_id, "user_id": user_id})
+        if not store:
+            raise ValueError(f"Store {store_id} not found")
+        return await sync_woocommerce_store_price_stock(store)
+
+    async def sync_crm_handler(user_id: str, connection_id: str, task):
+        """Handler for CRM sync via queue"""
+        from services.crm_scheduler import sync_crm_connection
+        return await sync_crm_connection(connection_id)
+
+    await queue_manager.register_handler(SyncType.SUPPLIER, sync_supplier_handler)
+    await queue_manager.register_handler(SyncType.STORE, sync_store_handler)
+    await queue_manager.register_handler(SyncType.CRM, sync_crm_handler)
+
+    await queue_manager.start_worker()
+    logger.info("SyncQueueManager initialized and worker started")
+
     # Legacy scheduled syncs (fallback for users without unified config)
     scheduler.add_job(sync_all_suppliers, 'interval', hours=6, id='sync_suppliers_legacy', replace_existing=True)
     scheduler.add_job(sync_all_woocommerce_stores, 'interval', hours=12, id='sync_woocommerce_legacy', replace_existing=True)
@@ -135,8 +169,13 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(cache.cleanup_expired, 'interval', minutes=10, id='cache_cleanup', replace_existing=True)
     scheduler.start()
     logger.info("Scheduler started - Unified sync check every 1h, Legacy: Suppliers 6h, WooCommerce 12h, Security purge 6h")
+
+    # Store queue manager in app state for access in routes
+    app.state.sync_queue = queue_manager
+
     yield
     # Shutdown
+    await queue_manager.stop_worker()
     scheduler.shutdown()
 
 

@@ -108,3 +108,25 @@ SUPPLIER_SYNC_INTERVAL_HOURS = int(os.environ.get('SUPPLIER_SYNC_INTERVAL_HOURS'
 
 # Intervalo de sincronización automática de WooCommerce (en horas)
 WOOCOMMERCE_SYNC_INTERVAL_HOURS = int(os.environ.get('WOOCOMMERCE_SYNC_INTERVAL_HOURS', 12))
+
+# =============================================================================
+# CONFIGURACIÓN DE COLA DE SINCRONIZACIÓN Y LÍMITES DE RECURSOS
+# =============================================================================
+
+# Máximo de sincronizaciones concurrentes globales (en todo el servidor)
+SYNC_MAX_CONCURRENT_GLOBAL = int(os.environ.get('SYNC_MAX_CONCURRENT_GLOBAL', 3))
+
+# Máximo de sincronizaciones concurrentes por usuario
+SYNC_MAX_CONCURRENT_PER_USER = int(os.environ.get('SYNC_MAX_CONCURRENT_PER_USER', 2))
+
+# Tamaño máximo de la cola de sincronización pendiente
+SYNC_MAX_QUEUE_SIZE = int(os.environ.get('SYNC_MAX_QUEUE_SIZE', 50))
+
+# Timeout máximo para una sincronización (en segundos)
+SYNC_TIMEOUT_SECONDS = int(os.environ.get('SYNC_TIMEOUT_SECONDS', 3600))  # 1 hora
+
+# Tamaño de batch para operaciones de BD durante sync (optimizado para 1M+ productos)
+SYNC_DB_BATCH_SIZE = int(os.environ.get('SYNC_DB_BATCH_SIZE', 5000))
+
+# Intervalo de reporte de progreso durante sync (cada N productos)
+SYNC_PROGRESS_REPORT_INTERVAL = int(os.environ.get('SYNC_PROGRESS_REPORT_INTERVAL', 10000))

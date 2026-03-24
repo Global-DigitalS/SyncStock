@@ -224,6 +224,11 @@ async def ensure_indexes():
         await _db.users.create_index([("id", 1)], unique=True)
         # --- woocommerce_configs ---
         await _db.woocommerce_configs.create_index([("user_id", 1)])
+        # --- sync_status (NEW: for optimized sync queue) ---
+        await _db.sync_status.create_index([("id", 1)], unique=True)
+        await _db.sync_status.create_index([("user_id", 1), ("created_at", -1)])
+        await _db.sync_status.create_index([("status", 1), ("created_at", -1)])
+        await _db.sync_status.create_index([("user_id", 1), ("status", 1)])
         logger.info("MongoDB indexes ensured")
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB: {e}. Comprueba la URL de conexión y las credenciales.")
