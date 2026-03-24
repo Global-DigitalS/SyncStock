@@ -93,7 +93,7 @@ const ColumnMappingDialog = ({
       });
       setMapping(autoMapping);
     }
-  }, [detectedColumns, currentMapping, open]);
+  }, [detectedColumns, currentMapping, open, suggestedMapping]);
 
   const handleMappingChange = (systemField, supplierColumn) => {
     setMapping(prev => {
