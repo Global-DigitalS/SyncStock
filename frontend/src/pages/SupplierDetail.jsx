@@ -142,14 +142,16 @@ const SupplierDetail = () => {
 
   useEffect(() => {
     fetchData(1);
-  }, [supplierId, fetchData]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [supplierId]);
 
   // Refetch when filters change
   useEffect(() => {
     if (!loading) {
       fetchData(1);
     }
-  }, [filters.category, filters.subcategory, filters.subcategory2, filters.selection, fetchData, loading]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.category, filters.subcategory, filters.subcategory2, filters.selection]);
 
   const handleSearch = () => {
     fetchData(1);
