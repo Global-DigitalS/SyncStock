@@ -342,9 +342,132 @@ async def delete_price_alert(
     return {"message": "Alerta eliminada correctamente"}
 
 
+# ==================== CRAWL / SCRAPING ENDPOINTS ====================
+
+# Registro de tareas en background para evitar garbage collection
+_background_crawls: set = set()
+
+
+@router.post("/competitors/crawl")
+async def trigger_crawl(
+    competitor_id: Optional[str] = Query(None, description="ID de competidor específico"),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Lanza un crawl de precios de competidores en background.
+    Si se especifica competitor_id, solo se scrapea ese competidor.
+    """
+    import asyncio
+    from services.scrapers.orchestrator import run_crawl_for_user
+
+    # Verificar que hay competidores activos
+    query = {"user_id": user["id"], "active": True}
+    if competitor_id:
+        query["id"] = competitor_id
+    count = await db.competitors.count_documents(query)
+    if count == 0:
+        raise HTTPException(status_code=404, detail="No hay competidores activos para scrapear")
+
+    # Lanzar en background
+    async def _run_crawl():
+        try:
+            result = await run_crawl_for_user(user["id"], competitor_id)
+            logger.info(f"Crawl completado para {user['id']}: {result.get('status')}")
+        except Exception as e:
+            logger.error(f"Error en crawl background para {user['id']}: {e}")
+        finally:
+            _background_crawls.discard(asyncio.current_task())
+
+    task = asyncio.create_task(_run_crawl())
+    _background_crawls.add(task)
+
+    return {
+        "message": "Crawl iniciado en background",
+        "competitors": count,
+    }
+
+
+@router.get("/competitors/crawl/status")
+async def get_crawl_status(
+    user: dict = Depends(get_current_user),
+):
+    """Obtiene el estado del último crawl de cada competidor."""
+    competitors = await db.competitors.find(
+        {"user_id": user["id"]},
+        {"_id": 0, "id": 1, "name": 1, "channel": 1, "last_crawl_at": 1, "last_crawl_status": 1, "active": 1},
+    ).to_list(200)
+
+    # Añadir conteo de snapshots de las últimas 24h
+    yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    for comp in competitors:
+        comp["snapshots_24h"] = await db.price_snapshots.count_documents(
+            {"competitor_id": comp["id"], "user_id": user["id"], "scraped_at": {"$gte": yesterday}}
+        )
+
+    return {
+        "competitors": competitors,
+        "crawl_running": len(_background_crawls) > 0,
+    }
+
+
+# ==================== PENDING MATCHES ====================
+
+@router.get("/competitors/matches/pending")
+async def list_pending_matches(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    user: dict = Depends(get_current_user),
+):
+    """Lista los matches de baja confianza pendientes de revisión."""
+    matches = await db.pending_matches.find(
+        {"user_id": user["id"], "status": "pending"},
+        {"_id": 0},
+    ).sort("created_at", -1).skip(skip).to_list(limit)
+
+    total = await db.pending_matches.count_documents(
+        {"user_id": user["id"], "status": "pending"}
+    )
+
+    return {"matches": matches, "total": total}
+
+
+@router.put("/competitors/matches/{match_id}")
+async def review_pending_match(
+    match_id: str,
+    action: str = Query(..., description="Acción: confirm o reject"),
+    user: dict = Depends(get_current_user),
+):
+    """Confirma o rechaza un match pendiente de revisión."""
+    if action not in ("confirm", "reject"):
+        raise HTTPException(status_code=400, detail="Acción debe ser 'confirm' o 'reject'")
+
+    match = await db.pending_matches.find_one(
+        {"id": match_id, "user_id": user["id"]},
+    )
+    if not match:
+        raise HTTPException(status_code=404, detail="Match no encontrado")
+
+    now = datetime.now(timezone.utc).isoformat()
+    new_status = "confirmed" if action == "confirm" else "rejected"
+
+    await db.pending_matches.update_one(
+        {"id": match_id, "user_id": user["id"]},
+        {"$set": {"status": new_status, "reviewed_at": now}},
+    )
+
+    # Si se confirma, actualizar el snapshot con confianza elevada
+    if action == "confirm" and match.get("snapshot_id"):
+        await db.price_snapshots.update_one(
+            {"id": match["snapshot_id"], "user_id": user["id"]},
+            {"$set": {"match_confidence": 1.0, "matched_by": "manual_confirm"}},
+        )
+
+    return {"message": f"Match {new_status}", "match_id": match_id}
+
+
 # ==================== COMPETITORS CRUD ====================
 # NOTA: las rutas con path parameter ({competitor_id}) van AL FINAL
-# para que no capturen "prices", "alerts" como IDs.
+# para que no capturen "prices", "alerts", "crawl", "matches" como IDs.
 
 @router.get("/competitors", response_model=list[CompetitorResponse])
 async def list_competitors(
