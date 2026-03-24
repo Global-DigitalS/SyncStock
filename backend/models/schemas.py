@@ -587,6 +587,11 @@ class DashboardStats(BaseModel):
     woocommerce_connected: int = 0
     woocommerce_auto_sync: int = 0
     woocommerce_total_synced: int = 0
+    # Competitor monitoring stats
+    competitors_active: int = 0
+    competitors_snapshots_24h: int = 0
+    competitors_alerts_triggered_7d: int = 0
+    competitors_pending_matches: int = 0
 
 
 # ==================== UNIFIED PRODUCT MODELS (EAN-based) ====================

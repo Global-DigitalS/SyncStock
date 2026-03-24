@@ -16,8 +16,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { Label } from "../components/ui/label";
 import { Input } from "../components/ui/input";
 import {
-  Package, Eye, BookOpen, Star, RefreshCw, Truck, Save, Pencil, AlertTriangle
+  Package, Eye, BookOpen, Star, RefreshCw, Truck, Save, Pencil, AlertTriangle,
+  Radar, TrendingDown, TrendingUp, Minus, Loader2
 } from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
+} from "recharts";
 
 // Toggle field component for switches
 export const ToggleField = ({ label, value, onChange, testId }) => (
@@ -49,6 +53,9 @@ const ProductDetailDialog = ({
   const [activeTab, setActiveTab] = useState("proveedores");
   const [editForm, setEditForm] = useState({});
   const [savingProduct, setSavingProduct] = useState(false);
+  const [competitorData, setCompetitorData] = useState(null);
+  const [competitorHistory, setCompetitorHistory] = useState(null);
+  const [loadingCompetitors, setLoadingCompetitors] = useState(false);
 
   useEffect(() => {
     if (product && open) {
@@ -111,8 +118,61 @@ const ProductDetailDialog = ({
     }
   };
 
+  const loadCompetitorPrices = async () => {
+    if (!product?.ean && !product?.sku) return;
+    setLoadingCompetitors(true);
+    try {
+      const params = new URLSearchParams();
+      if (product.sku) params.append("sku", product.sku);
+      if (product.ean) params.append("ean", product.ean);
+      const [pricesRes, historyRes] = await Promise.all([
+        api.get(`/competitors/prices?${params}`),
+        api.get(`/competitors/prices/history?${params}&days=30`),
+      ]);
+      setCompetitorData(pricesRes.data);
+      setCompetitorHistory(historyRes.data);
+    } catch {
+      // No competitor data available — that's OK
+      setCompetitorData(null);
+      setCompetitorHistory(null);
+    } finally {
+      setLoadingCompetitors(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === "competidores" && open && product) {
+      loadCompetitorPrices();
+    }
+  }, [activeTab, open, product?.ean, product?.sku]);
+
   const updateEditField = (field, value) => {
     setEditForm(prev => ({ ...prev, [field]: value }));
+  };
+
+  const CHART_COLORS = ["#6366f1", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#ec4899"];
+
+  const buildChartData = () => {
+    if (!competitorHistory?.snapshots?.length) return [];
+    const byDate = {};
+    for (const snap of competitorHistory.snapshots) {
+      const date = snap.scraped_at?.slice(0, 10) || "N/A";
+      if (!byDate[date]) byDate[date] = { date };
+      byDate[date][snap.competitor_name || snap.competitor_id] = snap.price;
+    }
+    if (competitorData?.my_price != null) {
+      for (const row of Object.values(byDate)) {
+        row["Mi precio"] = competitorData.my_price;
+      }
+    }
+    return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
+  };
+
+  const getPositionBadge = (position) => {
+    if (position === "cheaper") return <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs"><TrendingDown className="w-3 h-3 mr-1" />Más barato</Badge>;
+    if (position === "expensive") return <Badge className="bg-rose-100 text-rose-700 border-0 text-xs"><TrendingUp className="w-3 h-3 mr-1" />Más caro</Badge>;
+    if (position === "equal") return <Badge className="bg-amber-100 text-amber-700 border-0 text-xs"><Minus className="w-3 h-3 mr-1" />Igual</Badge>;
+    return null;
   };
 
   if (!product) return null;
@@ -129,10 +189,14 @@ const ProductDetailDialog = ({
         
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
           <div className="px-6 pt-2">
-            <TabsList className="w-full grid grid-cols-2" data-testid="product-detail-tabs">
+            <TabsList className="w-full grid grid-cols-3" data-testid="product-detail-tabs">
               <TabsTrigger value="proveedores" data-testid="tab-proveedores">
                 <Truck className="w-4 h-4 mr-2" />
                 Proveedores
+              </TabsTrigger>
+              <TabsTrigger value="competidores" data-testid="tab-competidores">
+                <Radar className="w-4 h-4 mr-2" />
+                Competidores
               </TabsTrigger>
               <TabsTrigger value="datos" data-testid="tab-datos">
                 <Pencil className="w-4 h-4 mr-2" />
@@ -227,7 +291,155 @@ const ProductDetailDialog = ({
             </div>
           </TabsContent>
 
-          {/* TAB 2: Datos del Producto */}
+          {/* TAB 2: Competidores */}
+          <TabsContent value="competidores" className="flex-1 overflow-y-auto px-6 pb-4 mt-0">
+            <div className="space-y-5 pt-4">
+              {loadingCompetitors ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-6 h-6 animate-spin text-indigo-500 mr-2" />
+                  <span className="text-sm text-slate-500">Cargando precios de competidores...</span>
+                </div>
+              ) : !competitorData || !competitorData.competitors?.length ? (
+                <div className="text-center py-12">
+                  <Radar className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+                  <p className="text-sm text-slate-500">No hay datos de competidores para este producto</p>
+                  <p className="text-xs text-slate-400 mt-1">Los precios aparecerán tras ejecutar un crawl</p>
+                </div>
+              ) : (
+                <>
+                  {/* Positioning summary */}
+                  <Card className={`${
+                    competitorData.position === "cheaper" ? "border-emerald-200 bg-emerald-50" :
+                    competitorData.position === "expensive" ? "border-rose-200 bg-rose-50" :
+                    "border-amber-200 bg-amber-50"
+                  }`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-slate-600">Tu precio</p>
+                          <p className="text-2xl font-bold text-slate-900">
+                            {competitorData.my_price != null
+                              ? competitorData.my_price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
+                              : "N/A"}
+                          </p>
+                        </div>
+                        <div className="text-right space-y-1">
+                          {getPositionBadge(competitorData.position)}
+                          {competitorData.price_difference != null && (
+                            <p className="text-xs text-slate-500">
+                              {competitorData.price_difference > 0 ? "+" : ""}
+                              {competitorData.price_difference.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                              {competitorData.price_difference_percent != null && (
+                                <span> ({competitorData.price_difference_percent > 0 ? "+" : ""}{competitorData.price_difference_percent}%)</span>
+                              )}
+                            </p>
+                          )}
+                          {competitorData.best_competitor_price != null && (
+                            <p className="text-xs text-slate-400">
+                              Mejor competidor: {competitorData.best_competitor_price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Competitor price table */}
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-700 mb-3">
+                      Precios de Competidores ({competitorData.competitors.length})
+                    </h4>
+                    <div className="space-y-2">
+                      {competitorData.competitors
+                        .sort((a, b) => (a.price || Infinity) - (b.price || Infinity))
+                        .map((comp, idx) => {
+                          const diff = competitorData.my_price != null && comp.price != null
+                            ? competitorData.my_price - comp.price : null;
+                          return (
+                            <div key={idx} className={`flex items-center justify-between p-3 rounded-lg border ${
+                              diff != null && diff > 0 ? "bg-rose-50 border-rose-200" :
+                              diff != null && diff < -0.01 ? "bg-emerald-50 border-emerald-200" :
+                              "bg-white border-slate-200"
+                            }`}>
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center">
+                                  <Radar className="w-4 h-4 text-indigo-600" />
+                                </div>
+                                <div>
+                                  <p className="font-medium text-slate-900">{comp.competitor_name || "Competidor"}</p>
+                                  {comp.product_name && (
+                                    <p className="text-xs text-slate-500 truncate max-w-[250px]">{comp.product_name}</p>
+                                  )}
+                                  {comp.confidence != null && (
+                                    <p className="text-xs text-slate-400">Confianza: {Math.round(comp.confidence * 100)}%</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className="font-bold text-slate-900">
+                                  {comp.price != null
+                                    ? comp.price.toLocaleString("es-ES", { style: "currency", currency: "EUR" })
+                                    : "N/A"}
+                                </p>
+                                {comp.availability != null && (
+                                  comp.availability
+                                    ? <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">Disponible</Badge>
+                                    : <Badge className="bg-rose-100 text-rose-700 border-0 text-xs">No disponible</Badge>
+                                )}
+                                {diff != null && Math.abs(diff) >= 0.01 && (
+                                  <p className={`text-xs mt-0.5 ${diff > 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                                    {diff > 0 ? "+" : ""}{diff.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                    </div>
+                  </div>
+
+                  {/* Price history chart */}
+                  {competitorHistory?.snapshots?.length > 0 && (() => {
+                    const chartData = buildChartData();
+                    const competitorNames = [...new Set(
+                      competitorHistory.snapshots.map(s => s.competitor_name || s.competitor_id)
+                    )];
+                    return (
+                      <div>
+                        <h4 className="text-sm font-medium text-slate-700 mb-3">
+                          Evolución de Precios (30 días)
+                        </h4>
+                        <div className="h-64 w-full">
+                          <ResponsiveContainer width="100%" height="100%">
+                            <LineChart data={chartData} margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
+                              <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                              <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(d) => d.slice(5)} />
+                              <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => `${v}€`} />
+                              <Tooltip
+                                formatter={(value) => [`${Number(value).toLocaleString("es-ES", { style: "currency", currency: "EUR" })}`, undefined]}
+                                labelFormatter={(label) => `Fecha: ${label}`}
+                              />
+                              <Legend wrapperStyle={{ fontSize: 12 }} />
+                              {competitorData.my_price != null && (
+                                <ReferenceLine y={competitorData.my_price} stroke="#94a3b8" strokeDasharray="5 5" label={{ value: "Mi precio", fontSize: 10 }} />
+                              )}
+                              {competitorNames.map((name, i) => (
+                                <Line key={name} type="monotone" dataKey={name}
+                                  stroke={CHART_COLORS[i % CHART_COLORS.length]}
+                                  strokeWidth={2} dot={{ r: 3 }} connectNulls />
+                              ))}
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+          </TabsContent>
+
+          {/* TAB 3: Datos del Producto */}
           <TabsContent value="datos" className="flex-1 overflow-y-auto px-6 pb-4 mt-0">
             <div className="space-y-6 pt-4">
               <div className="space-y-2">

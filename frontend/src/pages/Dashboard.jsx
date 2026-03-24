@@ -21,7 +21,11 @@ import {
   Zap,
   Clock,
   Upload,
-  ExternalLink
+  ExternalLink,
+  Radar,
+  Eye,
+  BellRing,
+  ShieldCheck
 } from "lucide-react";
 
 const Dashboard = () => {
@@ -203,6 +207,54 @@ const Dashboard = () => {
                 </Link>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Competitor Monitoring Card */}
+      {stats?.competitors_active > 0 && (
+        <Card className="border-slate-200 mb-6">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg font-semibold flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+                <Radar className="w-5 h-5 text-orange-500" strokeWidth={1.5} />
+                Monitorización de Competidores
+              </CardTitle>
+              <Link to="/competitors">
+                <Badge className="bg-orange-100 text-orange-700 border-0 cursor-pointer hover:bg-orange-200">
+                  {stats.competitors_active} activos
+                </Badge>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="p-3 bg-orange-50 rounded-lg text-center">
+                <p className="text-2xl font-bold text-orange-700 font-mono">{stats.competitors_active}</p>
+                <p className="text-xs text-orange-600">Competidores</p>
+              </div>
+              <div className="p-3 bg-blue-50 rounded-lg text-center">
+                <p className="text-2xl font-bold text-blue-700 font-mono">{stats.competitors_snapshots_24h || 0}</p>
+                <p className="text-xs text-blue-600 flex items-center justify-center gap-1">
+                  <Eye className="w-3 h-3" /> Snapshots 24h
+                </p>
+              </div>
+              <div className="p-3 bg-amber-50 rounded-lg text-center">
+                <p className="text-2xl font-bold text-amber-700 font-mono">{stats.competitors_alerts_triggered_7d || 0}</p>
+                <p className="text-xs text-amber-600 flex items-center justify-center gap-1">
+                  <BellRing className="w-3 h-3" /> Alertas 7d
+                </p>
+              </div>
+              <div className="p-3 bg-violet-50 rounded-lg text-center">
+                <p className="text-2xl font-bold text-violet-700 font-mono">{stats.competitors_pending_matches || 0}</p>
+                <p className="text-xs text-violet-600 flex items-center justify-center gap-1">
+                  <ShieldCheck className="w-3 h-3" /> Pendientes
+                </p>
+              </div>
+            </div>
+            <Link to="/competitors" className="block text-center text-sm text-orange-600 hover:text-orange-700 font-medium py-2 mt-2">
+              Ver monitorización de competidores <ArrowRight className="w-3 h-3 inline ml-1" />
+            </Link>
           </CardContent>
         </Card>
       )}
