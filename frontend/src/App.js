@@ -73,7 +73,7 @@ function getCookie(name) {
 export const api = axios.create({
   baseURL: API,
   withCredentials: true,
-  timeout: 10000  // 10s max per request - fail fast if backend is slow
+  timeout: 30000  // 30s timeout - allow for slow MongoDB connections
 });
 
 // Attach CSRF token header to every mutating request (double-submit cookie pattern)

@@ -12,7 +12,7 @@ import { sanitizeEmail } from "../utils/sanitizer";
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const axiosInstance = axios.create({
   baseURL: BACKEND_URL,
-  timeout: 10000
+  timeout: 30000  // Allow time for slow MongoDB queries
 });
 
 const Login = () => {
@@ -83,7 +83,10 @@ const Login = () => {
       toast.success("Bienvenido de vuelta");
       navigate("/");
     } catch (error) {
+      console.error("Login error:", error);
       const detail = error.response?.data?.detail;
+      const status = error.response?.status;
+
       if (detail === "USER_NOT_FOUND") {
         setErrorType("USER_NOT_FOUND");
       } else if (detail === "INVALID_PASSWORD") {
@@ -91,7 +94,10 @@ const Login = () => {
       } else if (detail === "ACCOUNT_DISABLED") {
         toast.error("Tu cuenta ha sido desactivada. Contacta al administrador.");
       } else {
-        toast.error("Error al iniciar sesión");
+        // Show more details for debugging
+        const errorMsg = detail || error.message || "Error desconocido al iniciar sesión";
+        console.error("Full error details:", { status, detail, message: error.message });
+        toast.error(`Error al iniciar sesión: ${errorMsg}`);
       }
     } finally {
       setLoading(false);
