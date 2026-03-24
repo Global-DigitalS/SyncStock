@@ -2,6 +2,10 @@ import { useEffect, useRef } from "react";
 import axios from "axios";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const axiosInstance = axios.create({
+  baseURL: BACKEND_URL,
+  timeout: 5000  // Shorter timeout for optional tracking
+});
 
 /**
  * Hook que carga la configuración de Google Services desde el backend
@@ -17,7 +21,7 @@ export default function useGoogleScripts() {
 
     const load = async () => {
       try {
-        const res = await axios.get(`${BACKEND_URL}/api/google-services/public`);
+        const res = await axiosInstance.get("/api/google-services/public");
         const config = res.data;
         if (!config) return;
         injectScripts(config);
