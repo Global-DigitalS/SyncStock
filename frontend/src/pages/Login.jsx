@@ -1,12 +1,11 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../App";
+import { useAuth, api } from "../App";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Package, Mail, Lock, ArrowRight, Eye, EyeOff, AlertCircle, UserPlus, KeyRound } from "lucide-react";
-import axios from "axios";
 import { sanitizeEmail } from "../utils/sanitizer";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -35,7 +34,7 @@ const Login = () => {
   useEffect(() => {
     const loadBranding = async () => {
       try {
-        const res = await axios.get(`${BACKEND_URL}/api/branding/public`);
+        const res = await api.get("/branding/public");
         if (res.data) {
           setBranding(prev => ({ ...prev, ...res.data }));
           // Update page title
@@ -44,9 +43,7 @@ const Login = () => {
           }
         }
       } catch (error) {
-        // use default branding
-      } finally {
-        setBrandingLoaded(true);
+        // use default branding if load fails
       }
     };
     loadBranding();
@@ -101,14 +98,8 @@ const Login = () => {
     ? (branding.hero_image_url.startsWith('/') ? `${BACKEND_URL}${branding.hero_image_url}` : branding.hero_image_url)
     : 'https://images.unsplash.com/photo-1557447733-6db6888dd2d2?crop=entropy&cs=srgb&fm=jpg&q=85';
 
-  // Show loading state until branding is loaded
-  if (!brandingLoaded) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="spinner w-8 h-8 border-3 border-indigo-200 border-t-indigo-600" />
-      </div>
-    );
-  }
+  // Render with default branding while loading from server
+  // No need to wait — defaults are already set in state
 
   return (
     <div className="auth-container">
