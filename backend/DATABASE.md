@@ -359,6 +359,106 @@
 # ============================================================================
 
 
+# --- competitors ---------------------------------------------------------------
+# Competidores monitorizados para comparación de precios.
+# Cada usuario puede registrar múltiples competidores (tiendas online).
+#
+# Campos:
+#   id                (str)   UUID v4
+#   user_id           (str)   ID del usuario propietario
+#   name              (str)   Nombre del competidor (ej: "Amazon España")
+#   base_url          (str)   URL base del competidor (ej: "https://www.amazon.es")
+#   channel           (str)   Canal: amazon_es, pccomponentes, mediamarkt, fnac,
+#                              el_corte_ingles, worten, coolmod, ldlc, alternate,
+#                              web_directa, otro
+#   country           (str)   Código de país ISO 3166-1 alpha-2 (ej: "ES")
+#   active            (bool)  Si el competidor está activo para scraping
+#   last_crawl_at     (str)   Fecha ISO 8601 del último crawl
+#   last_crawl_status (str)   "success" | "error" | "partial"
+#   created_at        (str)   Fecha ISO 8601 de creación
+#
+# Índices recomendados:
+#   { "user_id": 1, "id": 1 }        único
+#   { "user_id": 1, "active": 1 }
+
+
+# --- price_snapshots -----------------------------------------------------------
+# Capturas de precios de productos en tiendas de competidores.
+# Cada snapshot es un registro inmutable de un precio en un momento dado.
+#
+# Campos:
+#   id               (str)    UUID v4
+#   user_id          (str)    ID del usuario propietario
+#   competitor_id    (str)    ID del competidor
+#   sku              (str)    SKU del producto (opcional)
+#   ean              (str)    EAN/GTIN del producto (opcional)
+#   product_name     (str)    Nombre del producto en la tienda del competidor
+#   price            (float)  Precio actual del producto
+#   original_price   (float)  Precio original / tachado (antes de descuento)
+#   currency         (str)    Moneda ISO 4217 (ej: "EUR")
+#   url              (str)    URL directa al producto en la tienda del competidor
+#   seller           (str)    Vendedor (relevante en marketplaces como Amazon)
+#   availability     (str)    "in_stock" | "out_of_stock" | "limited"
+#   match_confidence (float)  Confianza del matching 0.0 - 1.0
+#   matched_by       (str)    Método de matching: "ean", "sku", "fuzzy_name"
+#   scraped_at       (str)    Fecha ISO 8601 del momento del scraping
+#
+# Índices recomendados:
+#   { "sku": 1, "competitor_id": 1, "scraped_at": -1 }   consulta principal
+#   { "ean": 1, "competitor_id": 1, "scraped_at": -1 }   consulta por EAN
+#   { "competitor_id": 1, "scraped_at": -1 }              por competidor
+#   { "user_id": 1, "scraped_at": -1 }                    por usuario
+
+
+# --- price_alerts --------------------------------------------------------------
+# Alertas de precio configuradas por el usuario.
+# Se evalúan tras cada batch de scraping.
+#
+# Campos:
+#   id                (str)    UUID v4
+#   user_id           (str)    ID del usuario propietario
+#   sku               (str)    SKU del producto (opcional, al menos uno de sku/ean)
+#   ean               (str)    EAN del producto (opcional)
+#   alert_type        (str)    "price_drop" | "price_below" | "competitor_cheaper" | "any_change"
+#   threshold         (float)  Umbral en % o precio absoluto (según tipo)
+#   channel           (str)    "app" | "email" | "webhook"
+#   webhook_url       (str)    URL del webhook (solo si channel = "webhook")
+#   active            (bool)   Si la alerta está activa
+#   last_triggered_at (str)    Fecha ISO 8601 de la última vez que se disparó
+#   trigger_count     (int)    Número de veces que se ha disparado
+#   created_at        (str)    Fecha ISO 8601 de creación
+#
+# Índices recomendados:
+#   { "user_id": 1, "id": 1 }        único
+#   { "user_id": 1, "active": 1 }
+#   { "sku": 1, "active": 1 }
+#   { "ean": 1, "active": 1 }
+
+
+# --- pending_matches -----------------------------------------------------------
+# Matches de baja confianza pendientes de revisión manual.
+# Se crean cuando el matching automático tiene un score < 0.85.
+#
+# Campos:
+#   id                (str)    UUID v4
+#   user_id           (str)    ID del usuario propietario
+#   sku               (str)    SKU del producto propio
+#   ean               (str)    EAN del producto propio
+#   product_name      (str)    Nombre del producto propio
+#   competitor_id     (str)    ID del competidor
+#   snapshot_id       (str)    ID del snapshot candidato
+#   candidate_name    (str)    Nombre del producto del competidor
+#   candidate_url     (str)    URL del producto del competidor
+#   match_score       (float)  Score de similitud 0.0 - 1.0
+#   status            (str)    "pending" | "confirmed" | "rejected"
+#   reviewed_at       (str)    Fecha ISO 8601 de revisión (null si pendiente)
+#   created_at        (str)    Fecha ISO 8601 de creación
+#
+# Índices recomendados:
+#   { "user_id": 1, "status": 1 }
+#   { "sku": 1 }
+
+
 # ============================================================================
 # TAREAS PROGRAMADAS (APScheduler)
 # ============================================================================

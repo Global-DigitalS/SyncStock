@@ -663,3 +663,100 @@ class MarketplaceConnectionResponse(BaseModel):
     products_count: int = 0
     created_at: str
     updated_at: str
+
+
+# ==================== COMPETITOR MONITORING MODELS ====================
+
+class CompetitorCreate(BaseModel):
+    """Crear un competidor para monitorización de precios"""
+    name: str = Field(..., min_length=1, max_length=200, description="Nombre del competidor")
+    base_url: str = Field(..., min_length=1, max_length=500, description="URL base del competidor")
+    channel: str = Field(..., description="Canal: amazon_es, pccomponentes, web_directa, etc.")
+    country: str = Field(default="ES", max_length=5, description="Código de país ISO 3166-1 alpha-2")
+    active: bool = True
+
+class CompetitorUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    base_url: Optional[str] = Field(None, min_length=1, max_length=500)
+    channel: Optional[str] = None
+    country: Optional[str] = Field(None, max_length=5)
+    active: Optional[bool] = None
+
+class CompetitorResponse(BaseModel):
+    id: str
+    user_id: str
+    name: str
+    base_url: str
+    channel: str
+    country: str = "ES"
+    active: bool = True
+    last_crawl_at: Optional[str] = None
+    last_crawl_status: Optional[str] = None  # success, error, partial
+    total_snapshots: int = 0
+    created_at: str
+
+
+class PriceSnapshotResponse(BaseModel):
+    """Snapshot de precio de un competidor para un producto"""
+    id: str
+    competitor_id: str
+    competitor_name: Optional[str] = None
+    sku: Optional[str] = None
+    ean: Optional[str] = None
+    product_name: Optional[str] = None
+    price: float
+    original_price: Optional[float] = None  # Precio tachado / antes de descuento
+    currency: str = "EUR"
+    url: Optional[str] = None
+    seller: Optional[str] = None
+    availability: Optional[str] = None  # in_stock, out_of_stock, limited
+    match_confidence: Optional[float] = None  # 0.0 - 1.0
+    matched_by: Optional[str] = None  # ean, sku, fuzzy_name
+    scraped_at: str
+
+
+class PriceAlertCreate(BaseModel):
+    """Configurar una alerta de precio"""
+    sku: Optional[str] = None
+    ean: Optional[str] = None
+    alert_type: str = Field(..., description="Tipo: price_drop, price_below, competitor_cheaper, any_change")
+    threshold: Optional[float] = Field(None, ge=0, description="Umbral en porcentaje o precio absoluto")
+    channel: str = Field(default="app", description="Canal de notificación: app, email, webhook")
+    webhook_url: Optional[str] = Field(None, max_length=500)
+    active: bool = True
+
+class PriceAlertUpdate(BaseModel):
+    sku: Optional[str] = None
+    ean: Optional[str] = None
+    alert_type: Optional[str] = None
+    threshold: Optional[float] = Field(None, ge=0)
+    channel: Optional[str] = None
+    webhook_url: Optional[str] = Field(None, max_length=500)
+    active: Optional[bool] = None
+
+class PriceAlertResponse(BaseModel):
+    id: str
+    user_id: str
+    sku: Optional[str] = None
+    ean: Optional[str] = None
+    alert_type: str
+    threshold: Optional[float] = None
+    channel: str = "app"
+    webhook_url: Optional[str] = None
+    active: bool = True
+    last_triggered_at: Optional[str] = None
+    trigger_count: int = 0
+    created_at: str
+
+
+class CompetitorPriceComparison(BaseModel):
+    """Comparación de precio de un producto con competidores"""
+    sku: str
+    ean: Optional[str] = None
+    product_name: Optional[str] = None
+    my_price: Optional[float] = None
+    competitors: List[PriceSnapshotResponse] = []
+    best_competitor_price: Optional[float] = None
+    position: Optional[str] = None  # cheaper, equal, expensive
+    price_difference: Optional[float] = None
+    price_difference_percent: Optional[float] = None
