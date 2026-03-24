@@ -70,7 +70,11 @@ function getCookie(name) {
 }
 
 // API instance with auth — usa httpOnly cookie automáticamente (withCredentials)
-export const api = axios.create({ baseURL: API, withCredentials: true });
+export const api = axios.create({
+  baseURL: API,
+  withCredentials: true,
+  timeout: 10000  // 10s max per request - fail fast if backend is slow
+});
 
 // Attach CSRF token header to every mutating request (double-submit cookie pattern)
 api.interceptors.request.use((config) => {
@@ -270,6 +274,10 @@ const AuthProvider = ({ children }) => {
     if (savedUser) {
       try { setUser(JSON.parse(savedUser)); } catch (_) {}
     }
+    // NO BLOQUEAR: setear loading=false inmediatamente, validar JWT en background
+    setLoading(false);
+
+    // Validar JWT de forma asincrónica sin bloquear la UI
     api.get("/auth/me")
       .then((res) => {
         setUser(res.data);
@@ -279,8 +287,8 @@ const AuthProvider = ({ children }) => {
       .catch(() => {
         localStorage.removeItem("user");
         setUser(null);
-      })
-      .finally(() => setLoading(false));
+        // Si JWT inválido/expirado, ProtectedRoute redirige a /login automáticamente
+      });
 
     return () => disconnectWebSocket();
   }, [connectWebSocket, disconnectWebSocket]);
