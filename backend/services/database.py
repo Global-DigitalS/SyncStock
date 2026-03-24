@@ -229,6 +229,9 @@ async def ensure_indexes():
         await _db.sync_status.create_index([("user_id", 1), ("created_at", -1)])
         await _db.sync_status.create_index([("status", 1), ("created_at", -1)])
         await _db.sync_status.create_index([("user_id", 1), ("status", 1)])
+        # --- login_attempts (for account lockout) ---
+        await _db.login_attempts.create_index([("email", 1)])
+        await _db.login_attempts.create_index([("locked_until", 1)], expireAfterSeconds=0)  # TTL index
         logger.info("MongoDB indexes ensured")
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB: {e}. Comprueba la URL de conexión y las credenciales.")
