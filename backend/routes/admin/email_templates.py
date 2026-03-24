@@ -376,6 +376,5 @@ async def apply_theme_preset(preset_key: str, user: dict = Depends(get_superadmi
     )
 
     config = await db.app_config.find_one({"type": "branding"})
-    if config:
-        config.pop("_id", None)
-    return {"success": True, "branding": config or {}}
+    config.pop("_id", None)
+    return {"success": True, "branding": config}
