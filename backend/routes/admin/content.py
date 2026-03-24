@@ -3,11 +3,13 @@ Rutas de contenido de la landing page para SuperAdmin.
 """
 from fastapi import APIRouter, Depends
 from datetime import datetime, timezone
+import logging
 
 from services.auth import get_superadmin_user
 from services.database import db
 
 sub_router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # ==================== LANDING PAGE CONTENT ====================
@@ -15,7 +17,11 @@ sub_router = APIRouter()
 @sub_router.get("/landing/content")
 async def get_landing_content():
     """Get landing page content (public endpoint)"""
-    content = await db.app_config.find_one({"type": "landing_content"})
+    try:
+        content = await db.app_config.find_one({"type": "landing_content"})
+    except Exception:
+        logger.warning("No se pudo leer el contenido de la landing de la BD")
+        content = None
 
     # Default content if not configured
     default_content = {

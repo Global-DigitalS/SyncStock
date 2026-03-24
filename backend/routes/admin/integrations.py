@@ -53,6 +53,10 @@ class GoogleServicesConfigUpdate(BaseModel):
     google_ads_conversion_label: Optional[str] = None
 
 
+_GOOGLE_DEFAULTS = GoogleServicesConfig().model_dump()
+_SEO_DEFAULTS = None  # initialized after SEOConfig is defined
+
+
 # ==================== GOOGLE SERVICES ENDPOINTS ====================
 
 @sub_router.get("/admin/google-services")
@@ -60,7 +64,7 @@ async def get_google_services(user: dict = Depends(get_superadmin_user)):
     """Get Google services configuration"""
     config = await db.app_config.find_one({"type": "google_services"})
     if not config:
-        return GoogleServicesConfig().model_dump()
+        return _GOOGLE_DEFAULTS
     config.pop("_id", None)
     config.pop("type", None)
     config.pop("updated_at", None)
@@ -99,9 +103,14 @@ async def update_google_services(data: GoogleServicesConfigUpdate, user: dict = 
 async def get_public_google_services():
     """Get public Google services configuration (no auth required).
     Returns only the IDs/codes needed for frontend tracking scripts."""
-    config = await db.app_config.find_one({"type": "google_services"})
+    try:
+        config = await db.app_config.find_one({"type": "google_services"})
+    except Exception:
+        logger.warning("No se pudo leer la configuración de Google Services de la BD")
+        return _GOOGLE_DEFAULTS
+
     if not config:
-        return GoogleServicesConfig().model_dump()
+        return _GOOGLE_DEFAULTS
 
     return {
         "analytics_enabled": config.get("analytics_enabled", False),
@@ -151,6 +160,9 @@ class SEOConfigUpdate(BaseModel):
     twitter_image: Optional[str] = None
 
 
+_SEO_DEFAULTS = SEOConfig().model_dump()
+
+
 # ==================== SEO ENDPOINTS ====================
 
 SITEMAP_ROUTES = [
@@ -170,7 +182,7 @@ async def get_seo_config(user: dict = Depends(get_superadmin_user)):
     """Get SEO configuration"""
     config = await db.app_config.find_one({"type": "seo"})
     if not config:
-        return SEOConfig().model_dump()
+        return _SEO_DEFAULTS
     config.pop("_id", None)
     config.pop("type", None)
     config.pop("updated_at", None)
@@ -204,9 +216,14 @@ async def update_seo_config(data: SEOConfigUpdate, user: dict = Depends(get_supe
 @sub_router.get("/seo/public")
 async def get_public_seo():
     """Get public SEO configuration (no auth required)"""
-    config = await db.app_config.find_one({"type": "seo"})
+    try:
+        config = await db.app_config.find_one({"type": "seo"})
+    except Exception:
+        logger.warning("No se pudo leer la configuración SEO de la BD")
+        return _SEO_DEFAULTS
+
     if not config:
-        return SEOConfig().model_dump()
+        return _SEO_DEFAULTS
     config.pop("_id", None)
     config.pop("type", None)
     config.pop("updated_at", None)
@@ -217,7 +234,11 @@ async def get_public_seo():
 @sub_router.get("/seo/sitemap.xml")
 async def get_sitemap():
     """Generate and serve sitemap.xml (public, no auth required)"""
-    config = await db.app_config.find_one({"type": "seo"})
+    try:
+        config = await db.app_config.find_one({"type": "seo"})
+    except Exception:
+        config = None
+
     site_url = config.get("site_url", "https://sync-stock.com").rstrip("/") if config else "https://sync-stock.com"
 
     lastmod = datetime.now(timezone.utc).strftime("%Y-%m-%d")

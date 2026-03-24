@@ -217,16 +217,21 @@ async def get_current_user(
     token = await _extract_token(request, credentials)
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0, "password": 0})
-        if not user:
-            raise HTTPException(status_code=401, detail="Usuario no encontrado")
-        if "role" not in user:
-            user["role"] = "user"
-        return user
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expirado")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token inválido")
+
+    try:
+        user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0, "password": 0})
+    except Exception:
+        raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
+
+    if not user:
+        raise HTTPException(status_code=401, detail="Usuario no encontrado")
+    if "role" not in user:
+        user["role"] = "user"
+    return user
 
 
 async def get_admin_user(

@@ -64,6 +64,9 @@ class BrandingConfigUpdate(BaseModel):
     page_title: Optional[str] = None
 
 
+_BRANDING_DEFAULTS = BrandingConfig().model_dump()
+
+
 # ==================== BRANDING ENDPOINTS ====================
 
 @sub_router.get("/admin/branding")
@@ -71,7 +74,7 @@ async def get_branding(user: dict = Depends(get_superadmin_user)):
     """Get current branding configuration"""
     config = await db.app_config.find_one({"type": "branding"})
     if not config:
-        return BrandingConfig().model_dump()
+        return _BRANDING_DEFAULTS
     config.pop("_id", None)
     config.pop("type", None)
     return config
@@ -285,7 +288,12 @@ async def delete_icon(icon_key: str, user: dict = Depends(get_superadmin_user)):
 @sub_router.get("/icons/public")
 async def get_public_icons():
     """Get all custom icons (no auth required)"""
-    config = await db.app_config.find_one({"type": "icons"})
+    try:
+        config = await db.app_config.find_one({"type": "icons"})
+    except Exception:
+        logger.warning("No se pudo leer la configuración de iconos de la BD")
+        return {"icons": {}}
+
     if not config:
         return {"icons": {}}
     return {"icons": config.get("icons", {})}
@@ -294,9 +302,14 @@ async def get_public_icons():
 @sub_router.get("/branding/public")
 async def get_public_branding():
     """Get public branding configuration (no auth required)"""
-    config = await db.app_config.find_one({"type": "branding"})
+    try:
+        config = await db.app_config.find_one({"type": "branding"})
+    except Exception:
+        logger.warning("No se pudo leer la configuración de branding de la BD")
+        return _BRANDING_DEFAULTS
+
     if not config:
-        return BrandingConfig().model_dump()
+        return _BRANDING_DEFAULTS
 
     # Return only public fields
     return {
