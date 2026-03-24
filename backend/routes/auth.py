@@ -93,12 +93,18 @@ async def register(request: Request, response: Response, user: UserCreate):
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    existing = await db.users.find_one({"email": email})
+    try:
+        existing = await db.users.find_one({"email": email})
+    except Exception:
+        raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
     if existing:
         raise HTTPException(status_code=400, detail="El email ya está registrado")
-    
+
     # First user becomes superadmin
-    user_count = await db.users.count_documents({})
+    try:
+        user_count = await db.users.count_documents({})
+    except Exception:
+        raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
     role = "superadmin" if user_count == 0 else "user"
     
     # Get selected plan or default to free
@@ -199,7 +205,10 @@ async def login(request: Request, response: Response, credentials: UserLogin):
     # Check lockout before any DB lookup (still constant-time after this)
     await check_account_lockout(email)
 
-    user = await db.users.find_one({"email": email})
+    try:
+        user = await db.users.find_one({"email": email})
+    except Exception:
+        raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
 
     # Always run bcrypt to prevent timing-based email enumeration
     stored_hash = user.get("password", _DUMMY_HASH) if user else _DUMMY_HASH
@@ -221,7 +230,7 @@ async def login(request: Request, response: Response, credentials: UserLogin):
     return {
         "token": token,  # Mantenido para compatibilidad con clientes API
         "user": {
-            "id": user["id"], "email": user["email"], "name": user["name"],
+            "id": user["id"], "email": user["email"], "name": user.get("name", ""),
             "company": user.get("company"), "role": role,
             "max_suppliers": user.get("max_suppliers", DEFAULT_LIMITS.get(role, {}).get("max_suppliers", 10)),
             "max_catalogs": user.get("max_catalogs", DEFAULT_LIMITS.get(role, {}).get("max_catalogs", 5)),

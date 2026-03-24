@@ -259,51 +259,65 @@ async def get_superadmin_user(
 # ── Account lockout helpers ────────────────────────────────────────────────────
 
 async def check_account_lockout(email: str) -> None:
-    """Raise 429 if the account is currently locked out."""
-    now = datetime.now(timezone.utc)
-    record = await db.login_attempts.find_one({"email": email})
-    if not record:
-        return
-    locked_until = record.get("locked_until")
-    if locked_until:
-        lu = datetime.fromisoformat(locked_until)
-        if lu.tzinfo is None:
-            lu = lu.replace(tzinfo=timezone.utc)
-        if now < lu:
-            remaining = int((lu - now).total_seconds() / 60) + 1
-            raise HTTPException(
-                status_code=429,
-                detail=f"Cuenta bloqueada por demasiados intentos fallidos. Inténtalo en {remaining} minutos."
-            )
+    """Raise 429 if the account is currently locked out.
+    Fails open: if the DB is unreachable, allow the login attempt."""
+    try:
+        now = datetime.now(timezone.utc)
+        record = await db.login_attempts.find_one({"email": email})
+        if not record:
+            return
+        locked_until = record.get("locked_until")
+        if locked_until:
+            lu = datetime.fromisoformat(locked_until)
+            if lu.tzinfo is None:
+                lu = lu.replace(tzinfo=timezone.utc)
+            if now < lu:
+                remaining = int((lu - now).total_seconds() / 60) + 1
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"Cuenta bloqueada por demasiados intentos fallidos. Inténtalo en {remaining} minutos."
+                )
+    except HTTPException:
+        raise
+    except Exception:
+        # Fail open: if lockout check fails, allow the login attempt
+        pass
 
 
 async def record_failed_login(email: str) -> None:
     """Increment failed-attempt counter and lock if threshold reached."""
-    now = datetime.now(timezone.utc)
-    window_start = (now - timedelta(minutes=_ATTEMPT_WINDOW_MINUTES)).isoformat()
+    try:
+        now = datetime.now(timezone.utc)
+        window_start = (now - timedelta(minutes=_ATTEMPT_WINDOW_MINUTES)).isoformat()
 
-    record = await db.login_attempts.find_one({"email": email})
-    attempts = 1
-    if record:
-        # Count attempts within the rolling window only
-        last = record.get("last_attempt", "")
-        if last and last >= window_start:
-            attempts = record.get("attempts", 0) + 1
-        # else window expired, reset
+        record = await db.login_attempts.find_one({"email": email})
+        attempts = 1
+        if record:
+            # Count attempts within the rolling window only
+            last = record.get("last_attempt", "")
+            if last and last >= window_start:
+                attempts = record.get("attempts", 0) + 1
+            # else window expired, reset
 
-    update: dict = {
-        "email": email,
-        "attempts": attempts,
-        "last_attempt": now.isoformat(),
-    }
-    if attempts >= _MAX_FAILED_ATTEMPTS:
-        update["locked_until"] = (now + timedelta(minutes=_LOCKOUT_MINUTES)).isoformat()
+        update: dict = {
+            "email": email,
+            "attempts": attempts,
+            "last_attempt": now.isoformat(),
+        }
+        if attempts >= _MAX_FAILED_ATTEMPTS:
+            update["locked_until"] = (now + timedelta(minutes=_LOCKOUT_MINUTES)).isoformat()
 
-    await db.login_attempts.update_one(
-        {"email": email}, {"$set": update}, upsert=True
-    )
+        await db.login_attempts.update_one(
+            {"email": email}, {"$set": update}, upsert=True
+        )
+    except Exception:
+        # Best-effort: don't crash login flow if lockout tracking fails
+        pass
 
 
 async def reset_failed_logins(email: str) -> None:
     """Clear failed-attempt counter after a successful login."""
-    await db.login_attempts.delete_one({"email": email})
+    try:
+        await db.login_attempts.delete_one({"email": email})
+    except Exception:
+        pass
