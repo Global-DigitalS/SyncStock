@@ -91,9 +91,10 @@ async def update_branding(data: BrandingConfigUpdate, user: dict = Depends(get_s
     )
 
     config = await db.app_config.find_one({"type": "branding"})
-    config.pop("_id", None)
-    config.pop("type", None)
-    return {"success": True, "branding": config}
+    if config:
+        config.pop("_id", None)
+        config.pop("type", None)
+    return {"success": True, "branding": config or {}}
 
 
 @sub_router.post("/admin/branding/upload-logo")

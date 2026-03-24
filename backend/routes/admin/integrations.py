@@ -88,11 +88,12 @@ async def update_google_services(data: GoogleServicesConfigUpdate, user: dict = 
     )
 
     config = await db.app_config.find_one({"type": "google_services"})
-    config.pop("_id", None)
-    config.pop("type", None)
+    if config:
+        config.pop("_id", None)
+        config.pop("type", None)
 
     logger.info(f"Google services config updated by {user.get('email')}")
-    return {"success": True, "config": config}
+    return {"success": True, "config": config or {}}
 
 
 @sub_router.get("/google-services/public")
@@ -195,10 +196,11 @@ async def update_seo_config(data: SEOConfigUpdate, user: dict = Depends(get_supe
     )
 
     config = await db.app_config.find_one({"type": "seo"})
-    config.pop("_id", None)
-    config.pop("type", None)
+    if config:
+        config.pop("_id", None)
+        config.pop("type", None)
     logger.info(f"SEO config updated by {user.get('email')}")
-    return {"success": True, "config": config}
+    return {"success": True, "config": config or {}}
 
 
 @sub_router.get("/seo/public")
