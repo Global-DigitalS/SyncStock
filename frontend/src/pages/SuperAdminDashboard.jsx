@@ -97,14 +97,6 @@ const SuperAdminDashboard = () => {
   const [resetConfirmation, setResetConfirmation] = useState("");
   const [resetting, setResetting] = useState(false);
 
-  useEffect(() => {
-    if (user?.role !== "superadmin") {
-      navigate("/");
-      return;
-    }
-    fetchStats();
-  }, [user, navigate]);
-
   const fetchStats = async (silent = false) => {
     if (!silent) setLoading(true);
     else setRefreshing(true);
@@ -123,6 +115,15 @@ const SuperAdminDashboard = () => {
       setRefreshing(false);
     }
   };
+
+  useEffect(() => {
+    if (user?.role !== "superadmin") {
+      navigate("/");
+      return;
+    }
+    fetchStats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, navigate]);
 
   const formatDate = (dateStr) =>
     new Date(dateStr).toLocaleDateString("es-ES", { day: "2-digit", month: "short", year: "numeric" });

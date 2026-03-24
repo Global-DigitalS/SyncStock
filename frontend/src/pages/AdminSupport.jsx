@@ -276,11 +276,6 @@ const AdminSupport = () => {
   const [filterPriority, setFilterPriority] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
 
-  useEffect(() => {
-    if (user?.role !== "superadmin") return;
-    loadData();
-  }, [filterStatus, filterType, filterPriority]);
-
   const loadData = async () => {
     setLoading(true);
     try {
@@ -301,6 +296,12 @@ const AdminSupport = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (user?.role !== "superadmin") return;
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus, filterType, filterPriority, user]);
 
   const handleUpdateTicket = (updated) => {
     setTickets((prev) => prev.map((t) => (t.id === updated.id ? updated : t)));

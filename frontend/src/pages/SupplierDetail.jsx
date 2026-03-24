@@ -142,14 +142,14 @@ const SupplierDetail = () => {
 
   useEffect(() => {
     fetchData(1);
-  }, [supplierId]);
+  }, [supplierId, fetchData]);
 
   // Refetch when filters change
   useEffect(() => {
     if (!loading) {
       fetchData(1);
     }
-  }, [filters.category, filters.subcategory, filters.subcategory2, filters.selection]);
+  }, [filters.category, filters.subcategory, filters.subcategory2, filters.selection, fetchData, loading]);
 
   const handleSearch = () => {
     fetchData(1);

@@ -283,7 +283,7 @@ const AuthProvider = ({ children }) => {
       .finally(() => setLoading(false));
 
     return () => disconnectWebSocket();
-  }, []);
+  }, [connectWebSocket, disconnectWebSocket]);
 
   const login = async (email, password) => {
     const res = await api.post("/auth/login", { email, password });

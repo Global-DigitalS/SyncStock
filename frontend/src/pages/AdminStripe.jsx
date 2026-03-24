@@ -32,19 +32,6 @@ const AdminStripe = () => {
   const [hasWebhookSecret, setHasWebhookSecret] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState(null);
 
-  useEffect(() => {
-    // Wait for auth to finish loading
-    if (authLoading) return;
-    
-    // If no user or not superadmin, redirect
-    if (!user || user.role !== "superadmin") {
-      navigate("/");
-      return;
-    }
-    
-    fetchConfig();
-  }, [user, authLoading, navigate]);
-
   const fetchConfig = async () => {
     try {
       const res = await api.get("/admin/stripe/config");
@@ -69,6 +56,20 @@ const AdminStripe = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    // Wait for auth to finish loading
+    if (authLoading) return;
+
+    // If no user or not superadmin, redirect
+    if (!user || user.role !== "superadmin") {
+      navigate("/");
+      return;
+    }
+
+    fetchConfig();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, authLoading, navigate]);
 
   const testConnection = async () => {
     setTesting(true);

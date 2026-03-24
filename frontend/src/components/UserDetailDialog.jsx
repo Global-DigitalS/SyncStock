@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { api } from "../App";
 import { toast } from "sonner";
 import { sanitizeString, sanitizeEmail, sanitizeFormData } from "../utils/sanitizer";
@@ -52,15 +52,7 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
     subscription_status: "none"
   });
 
-  // Load user data
-  useEffect(() => {
-    if (open && userId) {
-      loadUserData();
-      loadSubscriptionPlans();
-    }
-  }, [open, userId]);
-
-  const loadUserData = async () => {
+  const loadUserData = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.get(`/users/${userId}/stats`);
@@ -87,16 +79,24 @@ const UserDetailDialog = ({ userId, open, onClose, onUpdate }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [userId]);
 
-  const loadSubscriptionPlans = async () => {
+  const loadSubscriptionPlans = useCallback(async () => {
     try {
       const res = await api.get("/subscriptions/plans");
       setSubscriptionPlans(res.data);
     } catch (error) {
       // handled silently
     }
-  };
+  }, []);
+
+  // Load user data
+  useEffect(() => {
+    if (open && userId) {
+      loadUserData();
+      loadSubscriptionPlans();
+    }
+  }, [open, userId, loadUserData, loadSubscriptionPlans]);
 
   const handleSave = async () => {
     setSaving(true);

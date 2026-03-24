@@ -74,10 +74,6 @@ const Setup = () => {
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [skipSmtp, setSkipSmtp] = useState(false);
 
-  useEffect(() => {
-    checkSetupStatus();
-  }, []);
-
   const checkSetupStatus = async () => {
     try {
       const res = await axios.get(`${API}/setup/status`);
@@ -96,6 +92,11 @@ const Setup = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    checkSetupStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const generateJwtSecret = () => {
     // Generar un JWT secret seguro en el cliente
