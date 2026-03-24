@@ -82,161 +82,174 @@ def _set_auth_cookies(response: Response, user_id: str, role: str):
 @router.post("/auth/register", response_model=dict)
 @limiter.limit("5/minute")
 async def register(request: Request, response: Response, user: UserCreate):
-    # Sanitize inputs
-    email = sanitize_email(user.email)
-    name = sanitize_string(user.name, max_length=100)
-    company = sanitize_string(user.company, max_length=200) if user.company else None
-    password = sanitize_password(user.password)
-
     try:
-        validate_password_strength(password)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
+        # Sanitize inputs
+        email = sanitize_email(user.email)
+        name = sanitize_string(user.name, max_length=100)
+        company = sanitize_string(user.company, max_length=200) if user.company else None
+        password = sanitize_password(user.password)
 
-    try:
-        existing = await db.users.find_one({"email": email})
-    except Exception:
-        raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
-    if existing:
-        raise HTTPException(status_code=400, detail="El email ya está registrado")
-
-    # First user becomes superadmin
-    try:
-        user_count = await db.users.count_documents({})
-    except Exception:
-        raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
-    role = "superadmin" if user_count == 0 else "user"
-    
-    # Get selected plan or default to free
-    selected_plan_id = getattr(user, 'plan_id', None)
-    plan = None
-    trial_end = None
-    
-    if selected_plan_id:
-        plan = await db.subscription_plans.find_one({"id": selected_plan_id, "is_active": True})
-    
-    if not plan:
-        # Get free plan
-        plan = await db.subscription_plans.find_one({"name": "Free", "is_active": True})
-    
-    # Set limits based on plan or defaults
-    if plan:
-        limits = {
-            "max_suppliers": plan.get("max_suppliers", 2),
-            "max_catalogs": plan.get("max_catalogs", 1),
-            "max_woocommerce_stores": plan.get("max_woocommerce_stores", 1)
-        }
-        # Apply trial period if plan has trial days
-        trial_days = plan.get("trial_days", 0)
-        if trial_days > 0:
-            trial_end = (datetime.now(timezone.utc) + timedelta(days=trial_days)).isoformat()
-    else:
-        limits = DEFAULT_LIMITS.get(role, DEFAULT_LIMITS["user"])
-    
-    user_id = str(uuid.uuid4())
-    user_doc = {
-        "id": user_id, "email": email,
-        "password": hash_password(password),
-        "name": name, "company": company,
-        "role": role,
-        "max_suppliers": limits["max_suppliers"],
-        "max_catalogs": limits["max_catalogs"],
-        "max_woocommerce_stores": limits["max_woocommerce_stores"],
-        "plan_id": plan["id"] if plan else None,
-        "plan_name": plan["name"] if plan else "Free",
-        "trial_end": trial_end,
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.users.insert_one(user_doc)
-    token = _set_auth_cookies(response, user_id, role)
-
-    # Create subscription record if a paid plan was selected
-    if plan and plan.get("price_monthly", 0) > 0:
-        subscription_doc = {
-            "id": str(uuid.uuid4()),
-            "user_id": user_id,
-            "plan_id": plan["id"],
-            "plan_name": plan["name"],
-            "status": "pending_payment",  # Requires payment
-            "billing_cycle": "monthly",
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        await db.user_subscriptions.insert_one(subscription_doc)
-    
-    # Send welcome email (async, don't block registration)
-    try:
-        from routes.email import send_welcome_email
-        await send_welcome_email(email, name)
-    except Exception as e:
-        # Don't fail registration if email fails
-        import logging
-        logging.getLogger(__name__).warning(f"Failed to send welcome email: {e}")
-
-    # Notify superadmins about the new registration (only for non-superadmin users)
-    if role != "superadmin":
         try:
-            from routes.email import notify_superadmins_new_registration
-            await notify_superadmins_new_registration(name, email, company)
+            validate_password_strength(password)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
+        try:
+            existing = await db.users.find_one({"email": email})
         except Exception as e:
-            logger.warning(f"Failed to notify superadmins of new registration: {e}")
-    
-    return {
-        "token": token,
-        "user": {
-            "id": user_id, "email": email, "name": name, 
-            "company": company, "role": role,
+            logger.error(f"Error de BD en register: {e}")
+            raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
+        if existing:
+            raise HTTPException(status_code=400, detail="El email ya está registrado")
+
+        # First user becomes superadmin
+        try:
+            user_count = await db.users.count_documents({})
+        except Exception:
+            raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
+        role = "superadmin" if user_count == 0 else "user"
+
+        # Get selected plan or default to free
+        selected_plan_id = getattr(user, 'plan_id', None)
+        plan = None
+        trial_end = None
+
+        if selected_plan_id:
+            plan = await db.subscription_plans.find_one({"id": selected_plan_id, "is_active": True})
+
+        if not plan:
+            # Get free plan
+            plan = await db.subscription_plans.find_one({"name": "Free", "is_active": True})
+
+        # Set limits based on plan or defaults
+        if plan:
+            limits = {
+                "max_suppliers": plan.get("max_suppliers", 2),
+                "max_catalogs": plan.get("max_catalogs", 1),
+                "max_woocommerce_stores": plan.get("max_woocommerce_stores", 1)
+            }
+            # Apply trial period if plan has trial days
+            trial_days = plan.get("trial_days", 0)
+            if trial_days > 0:
+                trial_end = (datetime.now(timezone.utc) + timedelta(days=trial_days)).isoformat()
+        else:
+            limits = DEFAULT_LIMITS.get(role, DEFAULT_LIMITS["user"])
+
+        user_id = str(uuid.uuid4())
+        user_doc = {
+            "id": user_id, "email": email,
+            "password": hash_password(password),
+            "name": name, "company": company,
+            "role": role,
             "max_suppliers": limits["max_suppliers"],
             "max_catalogs": limits["max_catalogs"],
             "max_woocommerce_stores": limits["max_woocommerce_stores"],
+            "plan_id": plan["id"] if plan else None,
             "plan_name": plan["name"] if plan else "Free",
             "trial_end": trial_end,
-            "is_in_trial": trial_end is not None
+            "created_at": datetime.now(timezone.utc).isoformat()
         }
-    }
+        await db.users.insert_one(user_doc)
+        token = _set_auth_cookies(response, user_id, role)
+
+        # Create subscription record if a paid plan was selected
+        if plan and plan.get("price_monthly", 0) > 0:
+            subscription_doc = {
+                "id": str(uuid.uuid4()),
+                "user_id": user_id,
+                "plan_id": plan["id"],
+                "plan_name": plan["name"],
+                "status": "pending_payment",  # Requires payment
+                "billing_cycle": "monthly",
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.user_subscriptions.insert_one(subscription_doc)
+
+        # Send welcome email (async, don't block registration)
+        try:
+            from routes.email import send_welcome_email
+            await send_welcome_email(email, name)
+        except Exception as e:
+            logger.warning(f"Failed to send welcome email: {e}")
+
+        # Notify superadmins about the new registration (only for non-superadmin users)
+        if role != "superadmin":
+            try:
+                from routes.email import notify_superadmins_new_registration
+                await notify_superadmins_new_registration(name, email, company)
+            except Exception as e:
+                logger.warning(f"Failed to notify superadmins of new registration: {e}")
+
+        return {
+            "token": token,
+            "user": {
+                "id": user_id, "email": email, "name": name,
+                "company": company, "role": role,
+                "max_suppliers": limits["max_suppliers"],
+                "max_catalogs": limits["max_catalogs"],
+                "max_woocommerce_stores": limits["max_woocommerce_stores"],
+                "plan_name": plan["name"] if plan else "Free",
+                "trial_end": trial_end,
+                "is_in_trial": trial_end is not None
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado en register: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {type(e).__name__}")
 
 
 @router.post("/auth/login", response_model=dict)
 @limiter.limit("10/minute")
 async def login(request: Request, response: Response, credentials: UserLogin):
-    # Sanitize inputs
-    email = sanitize_email(credentials.email)
-    password = sanitize_password(credentials.password)
-
-    # Check lockout before any DB lookup (still constant-time after this)
-    await check_account_lockout(email)
-
     try:
-        user = await db.users.find_one({"email": email})
-    except Exception:
-        raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
+        # Sanitize inputs
+        email = sanitize_email(credentials.email)
+        password = sanitize_password(credentials.password)
 
-    # Always run bcrypt to prevent timing-based email enumeration
-    stored_hash = user.get("password", _DUMMY_HASH) if user else _DUMMY_HASH
-    password_ok = verify_password(password, stored_hash)
+        # Check lockout before any DB lookup (still constant-time after this)
+        await check_account_lockout(email)
 
-    if not user or not password_ok:
-        await record_failed_login(email)
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
+        try:
+            user = await db.users.find_one({"email": email})
+        except Exception as e:
+            logger.error(f"Error de BD en login: {e}")
+            raise HTTPException(status_code=503, detail="Error de conexión con la base de datos")
 
-    # Check if user is active
-    if user.get("is_active") is False:
-        raise HTTPException(status_code=403, detail="ACCOUNT_DISABLED")
+        # Always run bcrypt to prevent timing-based email enumeration
+        stored_hash = user.get("password", _DUMMY_HASH) if user else _DUMMY_HASH
+        password_ok = verify_password(password, stored_hash)
 
-    # Successful login — clear lockout counter
-    await reset_failed_logins(email)
+        if not user or not password_ok:
+            await record_failed_login(email)
+            raise HTTPException(status_code=401, detail="Credenciales inválidas")
 
-    role = user.get("role", "user")
-    token = _set_auth_cookies(response, user["id"], role)
-    return {
-        "token": token,  # Mantenido para compatibilidad con clientes API
-        "user": {
-            "id": user["id"], "email": user["email"], "name": user.get("name", ""),
-            "company": user.get("company"), "role": role,
-            "max_suppliers": user.get("max_suppliers", DEFAULT_LIMITS.get(role, {}).get("max_suppliers", 10)),
-            "max_catalogs": user.get("max_catalogs", DEFAULT_LIMITS.get(role, {}).get("max_catalogs", 5)),
-            "max_woocommerce_stores": user.get("max_woocommerce_stores", DEFAULT_LIMITS.get(role, {}).get("max_woocommerce_stores", 2))
+        # Check if user is active
+        if user.get("is_active") is False:
+            raise HTTPException(status_code=403, detail="ACCOUNT_DISABLED")
+
+        # Successful login — clear lockout counter
+        await reset_failed_logins(email)
+
+        role = user.get("role", "user")
+        token = _set_auth_cookies(response, user["id"], role)
+        return {
+            "token": token,
+            "user": {
+                "id": user.get("id", ""), "email": user.get("email", ""),
+                "name": user.get("name", ""),
+                "company": user.get("company"), "role": role,
+                "max_suppliers": user.get("max_suppliers", DEFAULT_LIMITS.get(role, {}).get("max_suppliers", 10)),
+                "max_catalogs": user.get("max_catalogs", DEFAULT_LIMITS.get(role, {}).get("max_catalogs", 5)),
+                "max_woocommerce_stores": user.get("max_woocommerce_stores", DEFAULT_LIMITS.get(role, {}).get("max_woocommerce_stores", 2))
+            }
         }
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado en login: {type(e).__name__}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {type(e).__name__}")
 
 
 @router.post("/auth/logout")
