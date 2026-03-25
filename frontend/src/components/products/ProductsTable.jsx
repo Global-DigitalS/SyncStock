@@ -24,7 +24,7 @@ const SortableHeader = ({ column, label, currentSort, sortOrder, onSort }) => {
 };
 
 const StockBadge = ({ stock }) => {
-  if (stock === 0) {
+  if (stock <= 0) {
     return (
       <Badge className="bg-rose-100 text-rose-700">
         <AlertTriangle className="w-3 h-3 mr-1" />Sin stock

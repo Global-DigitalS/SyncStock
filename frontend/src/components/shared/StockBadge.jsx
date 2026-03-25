@@ -2,7 +2,7 @@ import { Badge } from "../ui/badge";
 import { AlertTriangle, Package, Check } from "lucide-react";
 
 const StockBadge = ({ stock, className }) => {
-  if (stock === 0) {
+  if (stock <= 0) {
     return (
       <Badge className={`bg-rose-100 text-rose-700 ${className || ""}`}>
         <AlertTriangle className="w-3 h-3 mr-1" />

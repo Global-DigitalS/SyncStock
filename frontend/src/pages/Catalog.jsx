@@ -180,7 +180,7 @@ const Catalog = () => {
   };
 
   const getStockBadge = (stock) => {
-    if (stock === 0) return <span className="badge-error">Sin stock</span>;
+    if (stock <= 0) return <span className="badge-error">Sin stock</span>;
     if (stock <= 5) return <span className="badge-warning">{stock} uds</span>;
     return <span className="badge-success">{stock} uds</span>;
   };

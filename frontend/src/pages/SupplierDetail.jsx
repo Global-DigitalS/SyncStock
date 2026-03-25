@@ -248,13 +248,13 @@ const SupplierDetail = () => {
 
   // Local filtering only for stock (search, category, and selection are now server-side)
   const filteredProducts = products.filter((product) => {
-    if (filters.stock === "low" && (product.stock === 0 || product.stock > 5)) {
+    if (filters.stock === "low" && (product.stock <= 0 || product.stock > 5)) {
       return false;
     }
-    if (filters.stock === "out" && product.stock !== 0) {
+    if (filters.stock === "out" && product.stock > 0) {
       return false;
     }
-    if (filters.stock === "in" && product.stock === 0) {
+    if (filters.stock === "in" && product.stock <= 0) {
       return false;
     }
     return true;
@@ -504,7 +504,7 @@ const SupplierDetail = () => {
   };
 
   const getStockBadge = (stock) => {
-    if (stock === 0) return <span className="badge-error">Sin stock</span>;
+    if (stock <= 0) return <span className="badge-error">Sin stock</span>;
     if (stock <= 5) return <span className="badge-warning">{stock} uds</span>;
     return <span className="badge-success">{stock} uds</span>;
   };

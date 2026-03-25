@@ -480,7 +480,7 @@ const Products = () => {
 
   // Stock badge helper
   const getStockBadge = (stock) => {
-    if (stock === 0) return <Badge className="bg-rose-100 text-rose-700 border-0">Sin stock</Badge>;
+    if (stock <= 0) return <Badge className="bg-rose-100 text-rose-700 border-0">Sin stock</Badge>;
     if (stock <= 5) return <Badge className="bg-amber-100 text-amber-700 border-0">{stock} uds</Badge>;
     return <Badge className="bg-emerald-100 text-emerald-700 border-0">{stock} uds</Badge>;
   };
@@ -569,6 +569,7 @@ const Products = () => {
               <SelectContent>
                 <SelectItem value="all">Todo el stock</SelectItem>
                 <SelectItem value="available">Con stock</SelectItem>
+                <SelectItem value="out">Sin stock</SelectItem>
               </SelectContent>
             </Select>
             <Button onClick={handleSearch} variant="outline" data-testid="filter-btn">
@@ -792,7 +793,9 @@ const Products = () => {
                       <p className="text-2xl font-bold text-emerald-700">
                         {selectedProduct.best_price?.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
                       </p>
-                      <p className="text-sm text-emerald-600">Stock: {selectedProduct.total_stock} uds</p>
+                      <p className={`text-sm ${selectedProduct.total_stock <= 0 ? 'text-rose-600 font-semibold' : 'text-emerald-600'}`}>
+                        {selectedProduct.total_stock <= 0 ? 'Sin stock' : `Stock: ${selectedProduct.total_stock} uds`}
+                      </p>
                     </div>
                   </div>
                 </CardContent>

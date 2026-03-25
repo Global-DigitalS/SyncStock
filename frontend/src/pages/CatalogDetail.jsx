@@ -302,7 +302,7 @@ const CatalogDetail = () => {
   const totalProducts = products.length;
   const totalValue = products.reduce((sum, p) => sum + (p.final_price || 0), 0);
   const lowStock = products.filter(p => p.product?.stock <= 5 && p.product?.stock > 0).length;
-  const outOfStock = products.filter(p => p.product?.stock === 0).length;
+  const outOfStock = products.filter(p => p.product?.stock <= 0).length;
 
   return (
     <div className="p-6 lg:p-8 animate-fade-in">
@@ -544,7 +544,7 @@ const CatalogDetail = () => {
                       {(item.final_price || 0).toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
                     </TableCell>
                     <TableCell className="text-right">
-                      {item.product?.stock === 0 ? (
+                      {item.product?.stock <= 0 ? (
                         <Badge className="bg-rose-100 text-rose-700 border-0">Sin stock</Badge>
                       ) : item.product?.stock <= 5 ? (
                         <Badge className="bg-amber-100 text-amber-700 border-0">{item.product?.stock}</Badge>
