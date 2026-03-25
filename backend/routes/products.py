@@ -317,7 +317,8 @@ async def get_unified_products(
                 "id": "$id", "name": "$name", "description": "$description",
                 "category": "$category", "brand": "$brand", "image_url": "$image_url",
                 "price": "$price", "stock": "$stock", "sku": "$sku",
-                "supplier_id": "$supplier_id", "supplier_name": "$supplier_name", "weight": "$weight"
+                "supplier_id": "$supplier_id", "supplier_name": "$supplier_name", "weight": "$weight",
+                "short_description": "$short_description", "long_description": "$long_description"
             }},
             "total_stock": {"$sum": "$stock"},
             "supplier_count": {"$sum": 1},
@@ -365,7 +366,9 @@ async def get_unified_products(
             image_url=best.get("image_url"), best_price=best.get("price", 0),
             best_supplier=best.get("supplier_name", ""), best_supplier_id=best.get("supplier_id", ""),
             total_stock=item["total_stock"], supplier_count=item["supplier_count"],
-            suppliers=suppliers, weight=best.get("weight")
+            suppliers=suppliers, weight=best.get("weight"),
+            short_description=best.get("short_description"),
+            long_description=best.get("long_description")
         ))
     return unified_products
 
@@ -431,7 +434,9 @@ async def get_unified_product(ean: str, user: dict = Depends(get_current_user)):
         image_url=best.get("image_url"), best_price=best.get("price", 0),
         best_supplier=best.get("supplier_name", ""), best_supplier_id=best.get("supplier_id", ""),
         total_stock=total_stock, supplier_count=len(products), suppliers=suppliers,
-        weight=best.get("weight")
+        weight=best.get("weight"),
+        short_description=best.get("short_description"),
+        long_description=best.get("long_description")
     )
 
 

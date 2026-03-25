@@ -49,6 +49,8 @@ const COMPLETION_FIELDS = [
   { key: "name", label: "Nombre" },
   { key: "ean", label: "EAN" },
   { key: "description", label: "Descripción" },
+  { key: "short_description", label: "Descripción corta" },
+  { key: "long_description", label: "Descripción larga" },
   { key: "category", label: "Categoría" },
   { key: "brand", label: "Marca" },
   { key: "image_url", label: "Imagen" },

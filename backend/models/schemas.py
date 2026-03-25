@@ -619,6 +619,8 @@ class UnifiedProductResponse(BaseModel):
     supplier_count: int
     suppliers: List[SupplierOffer]
     weight: Optional[float] = None
+    short_description: Optional[str] = None
+    long_description: Optional[str] = None
 
 
 # ==================== MARKETPLACE MODELS ====================
