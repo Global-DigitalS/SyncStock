@@ -65,6 +65,15 @@ import {
   Globe,
   ShieldCheck,
   Loader2,
+  Download,
+  BarChart3,
+  Zap,
+  ArrowDown,
+  ArrowUp,
+  Equal,
+  Settings2,
+  FlaskConical,
+  Rocket,
 } from "lucide-react";
 
 // Canales válidos
@@ -118,6 +127,34 @@ const defaultAlertForm = {
   active: true,
 };
 
+const AUTOMATION_STRATEGIES = [
+  { value: "match_cheapest", label: "Igualar al más barato" },
+  { value: "undercut_by_amount", label: "Rebajar importe fijo" },
+  { value: "undercut_by_percent", label: "Rebajar porcentaje" },
+  { value: "margin_above_cost", label: "Margen sobre coste" },
+  { value: "price_cap", label: "Techo de precio" },
+];
+
+const APPLY_TO_OPTIONS = [
+  { value: "all", label: "Todos los productos" },
+  { value: "category", label: "Categoría" },
+  { value: "supplier", label: "Proveedor" },
+  { value: "product", label: "Producto específico" },
+];
+
+const defaultRuleForm = {
+  name: "",
+  strategy: "match_cheapest",
+  value: "",
+  apply_to: "all",
+  apply_to_value: "",
+  min_price: "",
+  max_price: "",
+  catalog_id: "",
+  priority: "0",
+  active: true,
+};
+
 const Competitors = () => {
   // Competitors state
   const [competitors, setCompetitors] = useState([]);
@@ -142,6 +179,23 @@ const Competitors = () => {
   // Pending matches state
   const [pendingMatches, setPendingMatches] = useState([]);
   const [pendingTotal, setPendingTotal] = useState(0);
+
+  // Report state
+  const [report, setReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportCategory, setReportCategory] = useState("");
+  const [reportSupplier, setReportSupplier] = useState("");
+
+  // Automation state
+  const [automationRules, setAutomationRules] = useState([]);
+  const [automationLoading, setAutomationLoading] = useState(false);
+  const [showRuleDialog, setShowRuleDialog] = useState(false);
+  const [showDeleteRuleDialog, setShowDeleteRuleDialog] = useState(false);
+  const [selectedRule, setSelectedRule] = useState(null);
+  const [ruleForm, setRuleForm] = useState(defaultRuleForm);
+  const [simulation, setSimulation] = useState(null);
+  const [simulating, setSimulating] = useState(false);
+  const [applying, setApplying] = useState(false);
 
   // Active tab
   const [activeTab, setActiveTab] = useState("competitors");
@@ -186,6 +240,34 @@ const Competitors = () => {
       setPendingTotal(res.data.total);
     } catch (error) {
       // silent
+    }
+  }, []);
+
+  const fetchReport = useCallback(async () => {
+    try {
+      setReportLoading(true);
+      const params = new URLSearchParams();
+      if (reportCategory) params.set("category", reportCategory);
+      if (reportSupplier) params.set("supplier_id", reportSupplier);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const res = await api.get(`/competitors/report/positioning${qs}`);
+      setReport(res.data);
+    } catch (error) {
+      toast.error("Error al cargar informe de posicionamiento");
+    } finally {
+      setReportLoading(false);
+    }
+  }, [reportCategory, reportSupplier]);
+
+  const fetchAutomationRules = useCallback(async () => {
+    try {
+      setAutomationLoading(true);
+      const res = await api.get("/competitors/automation/rules");
+      setAutomationRules(res.data.rules || []);
+    } catch (error) {
+      toast.error("Error al cargar reglas de automatización");
+    } finally {
+      setAutomationLoading(false);
     }
   }, []);
 
@@ -350,6 +432,151 @@ const Competitors = () => {
     }
   };
 
+  // ==================== EXPORT ====================
+
+  const exportPricesCSV = async () => {
+    try {
+      const res = await api.get("/competitors/export/prices?days=30", {
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `precios_competidores_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("Exportación CSV descargada");
+    } catch (error) {
+      toast.error("Error al exportar precios");
+    }
+  };
+
+  const exportPositioningCSV = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (reportCategory) params.set("category", reportCategory);
+      if (reportSupplier) params.set("supplier_id", reportSupplier);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const res = await api.get(`/competitors/report/positioning/export${qs}`, {
+        responseType: "blob",
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `informe_posicionamiento_${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      window.URL.revokeObjectURL(url);
+      toast.success("Informe CSV descargado");
+    } catch (error) {
+      toast.error("Error al exportar informe");
+    }
+  };
+
+  // ==================== AUTOMATION CRUD ====================
+
+  const openCreateRule = () => {
+    setSelectedRule(null);
+    setRuleForm(defaultRuleForm);
+    setShowRuleDialog(true);
+  };
+
+  const openEditRule = (rule) => {
+    setSelectedRule(rule);
+    setRuleForm({
+      name: rule.name,
+      strategy: rule.strategy,
+      value: rule.value?.toString() || "",
+      apply_to: rule.apply_to || "all",
+      apply_to_value: rule.apply_to_value || "",
+      min_price: rule.min_price?.toString() || "",
+      max_price: rule.max_price?.toString() || "",
+      catalog_id: rule.catalog_id || "",
+      priority: rule.priority?.toString() || "0",
+      active: rule.active,
+    });
+    setShowRuleDialog(true);
+  };
+
+  const saveRule = async () => {
+    if (!ruleForm.name.trim()) {
+      toast.error("El nombre es obligatorio");
+      return;
+    }
+    if (!ruleForm.value || parseFloat(ruleForm.value) < 0) {
+      toast.error("El valor debe ser un número >= 0");
+      return;
+    }
+    try {
+      setSaving(true);
+      const data = {
+        name: ruleForm.name.trim(),
+        strategy: ruleForm.strategy,
+        value: parseFloat(ruleForm.value),
+        apply_to: ruleForm.apply_to,
+        apply_to_value: ruleForm.apply_to_value || null,
+        min_price: ruleForm.min_price ? parseFloat(ruleForm.min_price) : 0,
+        max_price: ruleForm.max_price ? parseFloat(ruleForm.max_price) : null,
+        catalog_id: ruleForm.catalog_id || null,
+        priority: parseInt(ruleForm.priority) || 0,
+        active: ruleForm.active,
+      };
+      if (selectedRule) {
+        await api.put(`/competitors/automation/rules/${selectedRule.id}`, data);
+        toast.success("Regla actualizada");
+      } else {
+        await api.post("/competitors/automation/rules", data);
+        toast.success("Regla creada");
+      }
+      setShowRuleDialog(false);
+      fetchAutomationRules();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al guardar regla");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteRule = async () => {
+    if (!selectedRule) return;
+    try {
+      await api.delete(`/competitors/automation/rules/${selectedRule.id}`);
+      toast.success("Regla eliminada");
+      setShowDeleteRuleDialog(false);
+      setSelectedRule(null);
+      fetchAutomationRules();
+    } catch (error) {
+      toast.error("Error al eliminar regla");
+    }
+  };
+
+  const runSimulation = async (ruleId = null) => {
+    try {
+      setSimulating(true);
+      const params = ruleId ? `?rule_id=${ruleId}&limit=100` : "?limit=100";
+      const res = await api.post(`/competitors/automation/simulate${params}`);
+      setSimulation(res.data);
+    } catch (error) {
+      toast.error("Error al simular automatización");
+    } finally {
+      setSimulating(false);
+    }
+  };
+
+  const applyAutomation = async (ruleId = null) => {
+    try {
+      setApplying(true);
+      const params = ruleId ? `?rule_id=${ruleId}` : "";
+      const res = await api.post(`/competitors/automation/apply${params}`);
+      toast.success(res.data.message || "Automatización aplicada");
+      setSimulation(null);
+      fetchAutomationRules();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al aplicar automatización");
+    } finally {
+      setApplying(false);
+    }
+  };
+
   // ==================== RENDER ====================
 
   const CrawlStatusBadge = ({ status }) => {
@@ -380,6 +607,10 @@ const Competitors = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" size="sm" onClick={exportPricesCSV}>
+            <Download className="h-4 w-4 mr-2" />
+            Exportar CSV
+          </Button>
           <Button
             variant="outline"
             onClick={() => triggerCrawl()}
@@ -413,6 +644,14 @@ const Competitors = () => {
           <TabsTrigger value="matches">
             <ShieldCheck className="h-4 w-4 mr-2" />
             Revisión ({pendingTotal})
+          </TabsTrigger>
+          <TabsTrigger value="report" onClick={() => !report && fetchReport()}>
+            <BarChart3 className="h-4 w-4 mr-2" />
+            Informes
+          </TabsTrigger>
+          <TabsTrigger value="automation" onClick={() => automationRules.length === 0 && fetchAutomationRules()}>
+            <Zap className="h-4 w-4 mr-2" />
+            Automatización
           </TabsTrigger>
         </TabsList>
 
@@ -669,6 +908,341 @@ const Competitors = () => {
             </div>
           )}
         </TabsContent>
+
+        {/* ==================== TAB: REPORT ==================== */}
+        <TabsContent value="report" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <Input
+                placeholder="Filtrar por categoría..."
+                value={reportCategory}
+                onChange={(e) => setReportCategory(e.target.value)}
+                className="w-48"
+              />
+              <Input
+                placeholder="ID de proveedor..."
+                value={reportSupplier}
+                onChange={(e) => setReportSupplier(e.target.value)}
+                className="w-48"
+              />
+              <Button variant="outline" onClick={fetchReport} disabled={reportLoading}>
+                {reportLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+              </Button>
+            </div>
+            <Button variant="outline" size="sm" onClick={exportPositioningCSV} disabled={!report}>
+              <Download className="h-4 w-4 mr-2" />
+              Exportar Informe
+            </Button>
+          </div>
+
+          {reportLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : !report ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">Informe de posicionamiento competitivo</p>
+              <p className="text-sm">Pulsa el botón de búsqueda para generar el informe</p>
+              <Button className="mt-4" onClick={fetchReport}>
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Generar Informe
+              </Button>
+            </div>
+          ) : (
+            <>
+              {/* Summary cards */}
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="border rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold">{report.summary?.total || 0}</p>
+                  <p className="text-xs text-muted-foreground">Analizados</p>
+                </div>
+                <div className="border rounded-lg p-4 text-center bg-green-50 dark:bg-green-950">
+                  <p className="text-2xl font-bold text-green-600">{report.summary?.cheaper || 0}</p>
+                  <p className="text-xs text-green-600">Más baratos</p>
+                </div>
+                <div className="border rounded-lg p-4 text-center bg-blue-50 dark:bg-blue-950">
+                  <p className="text-2xl font-bold text-blue-600">{report.summary?.equal || 0}</p>
+                  <p className="text-xs text-blue-600">Igual precio</p>
+                </div>
+                <div className="border rounded-lg p-4 text-center bg-red-50 dark:bg-red-950">
+                  <p className="text-2xl font-bold text-red-600">{report.summary?.expensive || 0}</p>
+                  <p className="text-xs text-red-600">Más caros</p>
+                </div>
+                <div className="border rounded-lg p-4 text-center">
+                  <p className="text-2xl font-bold text-muted-foreground">{report.summary?.no_data || 0}</p>
+                  <p className="text-xs text-muted-foreground">Sin datos</p>
+                </div>
+              </div>
+
+              {/* Report table */}
+              {report.items?.length > 0 ? (
+                <div className="border rounded-lg">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Producto</TableHead>
+                        <TableHead>Mi precio</TableHead>
+                        <TableHead>Mejor competidor</TableHead>
+                        <TableHead>Posición</TableHead>
+                        <TableHead>Diferencia</TableHead>
+                        <TableHead>Comp.</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {report.items.slice(0, 100).map((item, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>
+                            <div>
+                              <span className="font-medium text-sm">{item.product_name}</span>
+                              <p className="text-xs text-muted-foreground font-mono">
+                                {item.sku || item.ean}
+                              </p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-medium">{item.my_price?.toFixed(2)}€</TableCell>
+                          <TableCell>
+                            <div>
+                              <span className="font-medium">{item.best_competitor_price?.toFixed(2)}€</span>
+                              <p className="text-xs text-muted-foreground">{item.best_competitor_name}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {item.position === "cheaper" && (
+                              <Badge className="bg-green-100 text-green-700 gap-1">
+                                <ArrowDown className="h-3 w-3" />Más barato
+                              </Badge>
+                            )}
+                            {item.position === "equal" && (
+                              <Badge variant="secondary" className="gap-1">
+                                <Equal className="h-3 w-3" />Igual
+                              </Badge>
+                            )}
+                            {item.position === "expensive" && (
+                              <Badge variant="destructive" className="gap-1">
+                                <ArrowUp className="h-3 w-3" />Más caro
+                              </Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {item.price_difference != null && (
+                              <span className={item.price_difference > 0 ? "text-red-600" : "text-green-600"}>
+                                {item.price_difference > 0 ? "+" : ""}{item.price_difference?.toFixed(2)}€
+                                <span className="text-xs ml-1">
+                                  ({item.price_difference_percent > 0 ? "+" : ""}{item.price_difference_percent?.toFixed(1)}%)
+                                </span>
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">{item.competitors_count}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <p className="text-center py-8 text-muted-foreground">
+                  No hay datos de posicionamiento disponibles
+                </p>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        {/* ==================== TAB: AUTOMATION ==================== */}
+        <TabsContent value="automation" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="flex gap-2">
+              <Button onClick={openCreateRule}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva Regla
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => runSimulation()}
+                disabled={simulating || automationRules.length === 0}
+              >
+                {simulating ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <FlaskConical className="h-4 w-4 mr-2" />
+                )}
+                Simular
+              </Button>
+              <Button
+                variant="default"
+                onClick={() => {
+                  if (window.confirm("¿Aplicar todas las reglas activas? Los precios se actualizarán.")) {
+                    applyAutomation();
+                  }
+                }}
+                disabled={applying || automationRules.length === 0}
+              >
+                {applying ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Rocket className="h-4 w-4 mr-2" />
+                )}
+                Aplicar
+              </Button>
+            </div>
+          </div>
+
+          {/* Simulation results */}
+          {simulation && (
+            <div className="border rounded-lg p-4 bg-amber-50 dark:bg-amber-950 space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold flex items-center gap-2">
+                  <FlaskConical className="h-4 w-4" />
+                  Resultado de la simulación
+                </h3>
+                <Badge variant="outline">
+                  {simulation.total_changes} cambios · {simulation.rules_evaluated} reglas
+                </Badge>
+              </div>
+              {simulation.changes?.length > 0 ? (
+                <div className="border rounded-lg bg-background">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Producto</TableHead>
+                        <TableHead>Precio actual</TableHead>
+                        <TableHead>Nuevo precio</TableHead>
+                        <TableHead>Cambio</TableHead>
+                        <TableHead>Regla</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {simulation.changes.slice(0, 50).map((ch, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell>
+                            <span className="text-sm">{ch.product_name}</span>
+                            <p className="text-xs text-muted-foreground font-mono">{ch.sku || ch.ean}</p>
+                          </TableCell>
+                          <TableCell>{ch.current_price?.toFixed(2)}€</TableCell>
+                          <TableCell className="font-medium">{ch.new_price?.toFixed(2)}€</TableCell>
+                          <TableCell>
+                            <span className={ch.change_amount < 0 ? "text-green-600" : "text-red-600"}>
+                              {ch.change_amount > 0 ? "+" : ""}{ch.change_amount?.toFixed(2)}€
+                              <span className="text-xs ml-1">({ch.change_percent > 0 ? "+" : ""}{ch.change_percent?.toFixed(1)}%)</span>
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className="text-xs">{ch.rule_name}</Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No hay cambios que aplicar con las reglas actuales</p>
+              )}
+            </div>
+          )}
+
+          {/* Rules list */}
+          {automationLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : automationRules.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Zap className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">No hay reglas de automatización</p>
+              <p className="text-sm">Crea reglas para ajustar precios automáticamente según la competencia</p>
+              <Button className="mt-4" onClick={openCreateRule}>
+                <Plus className="h-4 w-4 mr-2" />
+                Nueva Regla
+              </Button>
+            </div>
+          ) : (
+            <div className="border rounded-lg">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Nombre</TableHead>
+                    <TableHead>Estrategia</TableHead>
+                    <TableHead>Valor</TableHead>
+                    <TableHead>Aplica a</TableHead>
+                    <TableHead>Prioridad</TableHead>
+                    <TableHead>Último uso</TableHead>
+                    <TableHead>Estado</TableHead>
+                    <TableHead className="w-[70px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {automationRules.map((rule) => (
+                    <TableRow key={rule.id}>
+                      <TableCell className="font-medium">{rule.name}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {AUTOMATION_STRATEGIES.find((s) => s.value === rule.strategy)?.label || rule.strategy}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {rule.strategy === "price_cap" || rule.strategy === "undercut_by_amount"
+                          ? `${rule.value}€`
+                          : `${rule.value}%`}
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm">
+                          {APPLY_TO_OPTIONS.find((a) => a.value === rule.apply_to)?.label || rule.apply_to}
+                          {rule.apply_to_value && (
+                            <span className="text-xs text-muted-foreground ml-1">({rule.apply_to_value})</span>
+                          )}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-center">{rule.priority}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {rule.last_applied_at
+                          ? new Date(rule.last_applied_at).toLocaleString("es-ES")
+                          : "Nunca"}
+                        {rule.products_affected > 0 && (
+                          <p className="text-xs">{rule.products_affected} productos</p>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={rule.active ? "default" : "secondary"}>
+                          {rule.active ? "Activa" : "Inactiva"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => runSimulation(rule.id)}>
+                              <FlaskConical className="h-4 w-4 mr-2" />
+                              Simular esta regla
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => openEditRule(rule)}>
+                              <Pencil className="h-4 w-4 mr-2" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              onClick={() => {
+                                setSelectedRule(rule);
+                                setShowDeleteRuleDialog(true);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Eliminar
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </TabsContent>
       </Tabs>
 
       {/* ==================== COMPETITOR DIALOG ==================== */}
@@ -915,6 +1489,158 @@ const Competitors = () => {
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
             <AlertDialogAction
               onClick={deleteAlert}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Eliminar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* ==================== AUTOMATION RULE DIALOG ==================== */}
+      <Dialog open={showRuleDialog} onOpenChange={setShowRuleDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {selectedRule ? "Editar Regla" : "Nueva Regla de Automatización"}
+            </DialogTitle>
+            <DialogDescription>
+              Define cómo se ajustarán los precios automáticamente
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Nombre *</Label>
+              <Input
+                placeholder="Ej: Igualar Amazon en electrónica"
+                value={ruleForm.name}
+                onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Estrategia *</Label>
+                <Select
+                  value={ruleForm.strategy}
+                  onValueChange={(val) => setRuleForm({ ...ruleForm, strategy: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUTOMATION_STRATEGIES.map((s) => (
+                      <SelectItem key={s.value} value={s.value}>
+                        {s.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>
+                  Valor * {ruleForm.strategy === "undercut_by_amount" || ruleForm.strategy === "price_cap" ? "(€)" : "(%)"}
+                </Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder={ruleForm.strategy === "match_cheapest" ? "0" : "5"}
+                  value={ruleForm.value}
+                  onChange={(e) => setRuleForm({ ...ruleForm, value: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Aplica a</Label>
+                <Select
+                  value={ruleForm.apply_to}
+                  onValueChange={(val) => setRuleForm({ ...ruleForm, apply_to: val })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {APPLY_TO_OPTIONS.map((a) => (
+                      <SelectItem key={a.value} value={a.value}>
+                        {a.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {ruleForm.apply_to !== "all" && (
+                <div>
+                  <Label>Valor del filtro</Label>
+                  <Input
+                    placeholder={ruleForm.apply_to === "category" ? "Electrónica" : "ID..."}
+                    value={ruleForm.apply_to_value}
+                    onChange={(e) => setRuleForm({ ...ruleForm, apply_to_value: e.target.value })}
+                  />
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              <div>
+                <Label>Precio mín (€)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0"
+                  value={ruleForm.min_price}
+                  onChange={(e) => setRuleForm({ ...ruleForm, min_price: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Precio máx (€)</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="Sin límite"
+                  value={ruleForm.max_price}
+                  onChange={(e) => setRuleForm({ ...ruleForm, max_price: e.target.value })}
+                />
+              </div>
+              <div>
+                <Label>Prioridad</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={ruleForm.priority}
+                  onChange={(e) => setRuleForm({ ...ruleForm, priority: e.target.value })}
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRuleDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={saveRule} disabled={saving}>
+              {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {selectedRule ? "Guardar" : "Crear"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ==================== DELETE RULE DIALOG ==================== */}
+      <AlertDialog open={showDeleteRuleDialog} onOpenChange={setShowDeleteRuleDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Eliminar regla?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se eliminará la regla <strong>{selectedRule?.name}</strong>. Los precios
+              ya aplicados no se revertirán.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteRule}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Eliminar
