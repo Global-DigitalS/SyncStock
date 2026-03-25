@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
 import { useEffect } from "react";
+import posthog from "posthog-js";
 import { AppProvider, useApp } from "./context/AppContext";
 import Navbar from "./components/Navbar";
 import Footer from "./components/Footer";
@@ -15,6 +16,14 @@ import Blog from "./pages/Blog";
 function ScrollToTop() {
   const { pathname } = useLocation();
   useEffect(() => { window.scrollTo(0, 0); }, [pathname]);
+  return null;
+}
+
+function PostHogPageviewTracker() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    posthog.capture("$pageview");
+  }, [pathname]);
   return null;
 }
 
@@ -54,6 +63,7 @@ export default function App() {
     <AppProvider>
       <BrowserRouter>
         <ScrollToTop />
+        <PostHogPageviewTracker />
         <AppLayout />
       </BrowserRouter>
     </AppProvider>

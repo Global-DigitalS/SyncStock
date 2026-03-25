@@ -3,6 +3,7 @@ import "@/App.css";
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { Toaster, toast } from "sonner";
+import posthog from "posthog-js";
 
 // Pages — lazy loaded for code splitting
 const Login = lazy(() => import("./pages/Login"));
@@ -300,6 +301,7 @@ const AuthProvider = ({ children }) => {
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
     connectWebSocket(userData.id);
+    posthog.identify(userData.id, { email: userData.email, role: userData.role, name: userData.name });
     return userData;
   };
 
@@ -309,6 +311,7 @@ const AuthProvider = ({ children }) => {
     localStorage.setItem("user", JSON.stringify(userData));
     setUser(userData);
     connectWebSocket(userData.id);
+    posthog.identify(userData.id, { email: userData.email, role: userData.role, name: userData.name });
     return userData;
   };
 
@@ -318,6 +321,7 @@ const AuthProvider = ({ children }) => {
     try { await api.post("/auth/logout"); } catch (_) {}
     localStorage.removeItem("user");
     setUser(null);
+    posthog.reset();
   };
 
   return (
@@ -329,12 +333,22 @@ const AuthProvider = ({ children }) => {
   );
 };
 
+// Captura pageviews en cada cambio de ruta (necesario con HashRouter)
+function PostHogPageviewTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    posthog.capture("$pageview");
+  }, [location.pathname]);
+  return null;
+}
+
 function App() {
   useGoogleScripts();
 
   return (
     <ErrorBoundary>
     <HashRouter>
+      <PostHogPageviewTracker />
       <AuthProvider>
         <Toaster
           position="top-right"
