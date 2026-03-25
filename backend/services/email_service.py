@@ -634,6 +634,94 @@ Para responder, escribe a: {email}
     return {"html": html, "text": text, "subject": f"[Contacto] {subject_line} – {name}"}
 
 
+def get_competitor_alert_email_template(
+    user_name: str,
+    alert_type: str,
+    message: str,
+    competitor_name: str,
+    competitor_price: float,
+    product_ref: str,
+) -> Dict[str, str]:
+    """Template para alertas de precios de competidores"""
+    alert_type_labels = {
+        "price_drop": "Bajada de precio",
+        "price_below": "Precio por debajo del umbral",
+        "competitor_cheaper": "Competidor más barato",
+        "any_change": "Nuevo precio detectado",
+    }
+    alert_label = alert_type_labels.get(alert_type, "Alerta de precio")
+
+    # Colores según tipo
+    if alert_type == "competitor_cheaper":
+        header_bg = "#dc2626"
+        badge_bg = "#fef2f2"
+        badge_color = "#991b1b"
+    elif alert_type == "price_drop":
+        header_bg = "#059669"
+        badge_bg = "#ecfdf5"
+        badge_color = "#065f46"
+    else:
+        header_bg = "#d97706"
+        badge_bg = "#fffbeb"
+        badge_color = "#92400e"
+
+    html = f"""
+    <!DOCTYPE html>
+    <html lang="es">
+    <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+    <body style="font-family: Arial, sans-serif; background-color: #f4f4f4; margin: 0; padding: 20px;">
+      <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+        <div style="background-color: {header_bg}; padding: 30px 40px;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 22px;">Alerta de Precio</h1>
+          <p style="color: rgba(255,255,255,0.8); margin: 8px 0 0; font-size: 14px;">{alert_label}</p>
+        </div>
+        <div style="padding: 32px 40px;">
+          <p style="color: #374151; font-size: 15px; margin: 0 0 20px;">Hola <strong>{user_name}</strong>,</p>
+          <div style="background-color: {badge_bg}; border: 1px solid {badge_color}20; border-radius: 8px; padding: 20px; margin-bottom: 24px;">
+            <p style="color: {badge_color}; font-size: 15px; margin: 0; font-weight: 600;">{message}</p>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 24px;">
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #6b7280; font-size: 13px; font-weight: 600;">Competidor</td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #111827; font-size: 15px;">{competitor_name}</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #6b7280; font-size: 13px; font-weight: 600;">Precio</td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #111827; font-size: 15px; font-weight: 700;">{competitor_price:.2f} €</td>
+            </tr>
+            <tr>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #6b7280; font-size: 13px; font-weight: 600;">Producto</td>
+              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; color: #111827; font-size: 15px; font-family: monospace;">{product_ref}</td>
+            </tr>
+          </table>
+          <p style="color: #6b7280; font-size: 13px;">Puedes gestionar tus alertas desde el panel de Competidores en SyncStock.</p>
+        </div>
+        <div style="background-color: #f9fafb; padding: 16px 40px; text-align: center;">
+          <p style="color: #9ca3af; font-size: 12px; margin: 0;">© {datetime.now().year} SyncStock · Alerta automática de monitorización de precios</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    """
+
+    text = f"""Alerta de Precio — {alert_label}
+
+Hola {user_name},
+
+{message}
+
+Competidor: {competitor_name}
+Precio: {competitor_price:.2f} €
+Producto: {product_ref}
+
+Puedes gestionar tus alertas desde el panel de Competidores en SyncStock.
+
+© {datetime.now().year} SyncStock
+"""
+
+    return {"html": html, "text": text, "subject": f"[Alerta] {alert_label} — {competitor_name}"}
+
+
 # ==================== EMAIL SERVICE INSTANCE ====================
 
 def get_email_service(account_type: str = "transactional") -> EmailService:

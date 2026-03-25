@@ -1,15 +1,18 @@
 """
 Competitor Monitoring Routes
 CRUD de competidores, consulta de snapshots de precios y gestión de alertas.
-Fase 0 del sistema de monitorización de precios de la competencia.
+Incluye: exportación CSV/Excel, informes de posicionamiento y automatización de precios.
 """
+import csv
+import io
 import re
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
-from typing import Optional
+from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from starlette.responses import StreamingResponse
 from services.database import db
 from services.auth import get_current_user
 from models.schemas import (
@@ -463,6 +466,662 @@ async def review_pending_match(
         )
 
     return {"message": f"Match {new_status}", "match_id": match_id}
+
+
+# ==================== EXPORT & REPORTS (Fase 4B) ====================
+
+def _csv_safe(value) -> str:
+    """Previene inyección de fórmulas en CSV (OWASP A03)."""
+    if not isinstance(value, str):
+        return value
+    if value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + value
+    return value
+
+
+@router.get("/competitors/export/prices")
+async def export_competitor_prices_csv(
+    days: int = Query(30, ge=1, le=365, description="Días de historial"),
+    competitor_id: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Exporta los snapshots de precios de competidores en CSV.
+    Incluye: producto, competidor, precio, disponibilidad, fecha.
+    """
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    query = {"user_id": user["id"], "scraped_at": {"$gte": since}}
+    if competitor_id:
+        query["competitor_id"] = competitor_id
+
+    snapshots = await db.price_snapshots.find(
+        query, {"_id": 0}
+    ).sort("scraped_at", -1).to_list(50000)
+
+    # Enriquecer con nombres de competidor
+    comp_ids = list({s["competitor_id"] for s in snapshots})
+    comp_names = {}
+    if comp_ids:
+        async for comp in db.competitors.find(
+            {"id": {"$in": comp_ids}, "user_id": user["id"]},
+            {"_id": 0, "id": 1, "name": 1},
+        ):
+            comp_names[comp["id"]] = comp["name"]
+
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_ALL)
+    writer.writerow([
+        "SKU", "EAN", "Producto (competidor)", "Competidor",
+        "Precio", "Precio original", "Moneda", "Disponibilidad",
+        "Confianza match", "Método match", "Fecha scraping", "URL",
+    ])
+
+    for s in snapshots:
+        writer.writerow([
+            _csv_safe(s.get("sku", "")),
+            _csv_safe(s.get("ean", "")),
+            _csv_safe(s.get("product_name", "")),
+            _csv_safe(comp_names.get(s["competitor_id"], "Desconocido")),
+            s.get("price", ""),
+            s.get("original_price", ""),
+            s.get("currency", "EUR"),
+            s.get("availability", ""),
+            s.get("match_confidence", ""),
+            s.get("matched_by", ""),
+            s.get("scraped_at", ""),
+            _csv_safe(s.get("url", "")),
+        ])
+
+    filename = f"precios_competidores_{datetime.now().strftime('%Y%m%d')}.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/competitors/report/positioning")
+async def get_positioning_report(
+    category: Optional[str] = Query(None, description="Filtrar por categoría"),
+    supplier_id: Optional[str] = Query(None, description="Filtrar por proveedor"),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Informe de posicionamiento competitivo.
+    Compara precios propios vs mejores precios de competidores para todos los productos
+    que tienen snapshots. Devuelve resumen estadístico + detalle por producto.
+    """
+    # Obtener últimos snapshots por SKU/EAN (uno por competidor)
+    pipeline = [
+        {"$match": {"user_id": user["id"]}},
+        {"$sort": {"scraped_at": -1}},
+        {
+            "$group": {
+                "_id": {"sku": "$sku", "ean": "$ean", "competitor_id": "$competitor_id"},
+                "latest": {"$first": "$$ROOT"},
+            }
+        },
+        {"$replaceRoot": {"newRoot": "$latest"}},
+        {"$project": {"_id": 0}},
+    ]
+    all_snapshots = await db.price_snapshots.aggregate(pipeline).to_list(50000)
+
+    # Agrupar snapshots por producto (SKU o EAN)
+    product_snapshots = {}
+    for s in all_snapshots:
+        key = s.get("sku") or s.get("ean")
+        if not key:
+            continue
+        product_snapshots.setdefault(key, []).append(s)
+
+    # Obtener nuestros productos
+    product_query = {"user_id": user["id"]}
+    if category:
+        product_query["category"] = category
+    if supplier_id:
+        product_query["supplier_id"] = supplier_id
+
+    my_products = await db.products.find(
+        product_query,
+        {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1, "category": 1, "supplier_name": 1},
+    ).to_list(50000)
+
+    # Nombres de competidores
+    comp_ids = list({s["competitor_id"] for snaps in product_snapshots.values() for s in snaps})
+    comp_names = {}
+    if comp_ids:
+        async for comp in db.competitors.find(
+            {"id": {"$in": comp_ids}, "user_id": user["id"]},
+            {"_id": 0, "id": 1, "name": 1},
+        ):
+            comp_names[comp["id"]] = comp["name"]
+
+    # Construir informe
+    report_items = []
+    stats = {"total": 0, "cheaper": 0, "equal": 0, "expensive": 0, "no_data": 0}
+
+    for product in my_products:
+        key = product.get("sku") or product.get("ean")
+        if not key:
+            stats["no_data"] += 1
+            continue
+
+        snapshots = product_snapshots.get(key, [])
+        if not snapshots:
+            stats["no_data"] += 1
+            continue
+
+        stats["total"] += 1
+        my_price = product.get("price", 0)
+        best_snap = min(snapshots, key=lambda s: s.get("price", float("inf")))
+        best_price = best_snap.get("price", 0)
+
+        if my_price <= 0 or best_price <= 0:
+            position = "sin_datos"
+            stats["no_data"] += 1
+        elif abs(my_price - best_price) < 0.01:
+            position = "equal"
+            stats["equal"] += 1
+        elif my_price < best_price:
+            position = "cheaper"
+            stats["cheaper"] += 1
+        else:
+            position = "expensive"
+            stats["expensive"] += 1
+
+        diff = round(my_price - best_price, 2) if my_price > 0 and best_price > 0 else None
+        diff_pct = round((diff / best_price) * 100, 2) if diff is not None and best_price > 0 else None
+
+        report_items.append({
+            "product_id": product["id"],
+            "product_name": product.get("name", ""),
+            "sku": product.get("sku"),
+            "ean": product.get("ean"),
+            "category": product.get("category"),
+            "supplier_name": product.get("supplier_name"),
+            "my_price": my_price,
+            "best_competitor_price": best_price,
+            "best_competitor_name": comp_names.get(best_snap["competitor_id"], "Desconocido"),
+            "position": position,
+            "price_difference": diff,
+            "price_difference_percent": diff_pct,
+            "competitors_count": len(snapshots),
+        })
+
+    # Ordenar: los más caros primero (mayor oportunidad de ajuste)
+    report_items.sort(key=lambda x: x.get("price_difference_percent") or 0, reverse=True)
+
+    return {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "summary": stats,
+        "total_products_analyzed": len(report_items),
+        "items": report_items,
+    }
+
+
+@router.get("/competitors/report/positioning/export")
+async def export_positioning_report_csv(
+    category: Optional[str] = Query(None),
+    supplier_id: Optional[str] = Query(None),
+    user: dict = Depends(get_current_user),
+):
+    """Exporta el informe de posicionamiento en CSV."""
+    report = await get_positioning_report(category, supplier_id, user)
+
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_ALL)
+    writer.writerow([
+        "SKU", "EAN", "Producto", "Categoría", "Proveedor",
+        "Mi precio (€)", "Mejor precio competidor (€)", "Competidor",
+        "Posición", "Diferencia (€)", "Diferencia (%)", "Nº competidores",
+    ])
+
+    for item in report["items"]:
+        pos_label = {"cheaper": "Más barato", "equal": "Igual", "expensive": "Más caro"}.get(
+            item["position"], item["position"]
+        )
+        writer.writerow([
+            _csv_safe(item.get("sku", "")),
+            _csv_safe(item.get("ean", "")),
+            _csv_safe(item.get("product_name", "")),
+            _csv_safe(item.get("category", "")),
+            _csv_safe(item.get("supplier_name", "")),
+            item.get("my_price", ""),
+            item.get("best_competitor_price", ""),
+            _csv_safe(item.get("best_competitor_name", "")),
+            pos_label,
+            item.get("price_difference", ""),
+            item.get("price_difference_percent", ""),
+            item.get("competitors_count", 0),
+        ])
+
+    filename = f"informe_posicionamiento_{datetime.now().strftime('%Y%m%d')}.csv"
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+# ==================== SMART PRICING AUTOMATION (Fase 4C) ====================
+
+VALID_AUTOMATION_STRATEGIES = {
+    "match_cheapest",      # Igualar al competidor más barato
+    "undercut_by_amount",  # Precio = mejor competidor - amount
+    "undercut_by_percent", # Precio = mejor competidor * (1 - pct/100)
+    "margin_above_cost",   # Precio = coste proveedor * (1 + margin/100)
+    "price_cap",           # No superar un techo de precio
+}
+
+
+@router.get("/competitors/automation/rules")
+async def list_automation_rules(
+    active_only: bool = Query(False),
+    user: dict = Depends(get_current_user),
+):
+    """Lista las reglas de automatización de precios del usuario."""
+    query = {"user_id": user["id"]}
+    if active_only:
+        query["active"] = True
+
+    rules = await db.price_automation_rules.find(
+        query, {"_id": 0}
+    ).sort("priority", -1).to_list(500)
+    return {"rules": rules, "total": len(rules)}
+
+
+@router.post("/competitors/automation/rules", status_code=201)
+async def create_automation_rule(
+    data: dict = Body(...),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Crea una regla de automatización de precios.
+
+    Body esperado:
+    {
+        "name": "Igualar Amazon",
+        "strategy": "match_cheapest" | "undercut_by_amount" | "undercut_by_percent" |
+                    "margin_above_cost" | "price_cap",
+        "value": 5.0,
+        "apply_to": "all" | "category" | "supplier" | "competitor" | "product",
+        "apply_to_value": "string",
+        "min_price": 0.0,
+        "max_price": null,
+        "catalog_id": null,
+        "priority": 0,
+        "active": true
+    }
+    """
+    strategy = data.get("strategy", "")
+    if strategy not in VALID_AUTOMATION_STRATEGIES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Estrategia no válida. Permitidas: {', '.join(sorted(VALID_AUTOMATION_STRATEGIES))}",
+        )
+
+    name = (data.get("name") or "").strip()
+    if not name or len(name) > 200:
+        raise HTTPException(status_code=400, detail="Nombre requerido (máx 200 caracteres)")
+
+    value = data.get("value")
+    if value is None or not isinstance(value, (int, float)) or value < 0:
+        raise HTTPException(status_code=400, detail="El campo 'value' debe ser un número >= 0")
+
+    apply_to = data.get("apply_to", "all")
+    if apply_to not in ("all", "category", "supplier", "competitor", "product"):
+        raise HTTPException(status_code=400, detail="apply_to no válido")
+
+    min_price = data.get("min_price", 0)
+    max_price = data.get("max_price")
+    if min_price is not None and not isinstance(min_price, (int, float)):
+        raise HTTPException(status_code=400, detail="min_price debe ser numérico")
+    if max_price is not None and not isinstance(max_price, (int, float)):
+        raise HTTPException(status_code=400, detail="max_price debe ser numérico")
+    if min_price is not None and max_price is not None and min_price > max_price:
+        raise HTTPException(status_code=400, detail="min_price no puede ser mayor que max_price")
+
+    now = datetime.now(timezone.utc).isoformat()
+    rule = {
+        "id": str(uuid.uuid4()),
+        "user_id": user["id"],
+        "name": name,
+        "strategy": strategy,
+        "value": float(value),
+        "apply_to": apply_to,
+        "apply_to_value": data.get("apply_to_value"),
+        "min_price": float(min_price) if min_price is not None else 0,
+        "max_price": float(max_price) if max_price is not None else None,
+        "catalog_id": data.get("catalog_id"),
+        "priority": int(data.get("priority", 0)),
+        "active": bool(data.get("active", True)),
+        "last_applied_at": None,
+        "products_affected": 0,
+        "created_at": now,
+    }
+
+    await db.price_automation_rules.insert_one(rule)
+    rule.pop("_id", None)
+    return rule
+
+
+@router.put("/competitors/automation/rules/{rule_id}")
+async def update_automation_rule(
+    rule_id: str,
+    data: dict = Body(...),
+    user: dict = Depends(get_current_user),
+):
+    """Actualiza una regla de automatización de precios."""
+    existing = await db.price_automation_rules.find_one(
+        {"id": rule_id, "user_id": user["id"]},
+    )
+    if not existing:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+
+    allowed_fields = {
+        "name", "strategy", "value", "apply_to", "apply_to_value",
+        "min_price", "max_price", "catalog_id", "priority", "active",
+    }
+    updates = {k: v for k, v in data.items() if k in allowed_fields and v is not None}
+
+    if "strategy" in updates and updates["strategy"] not in VALID_AUTOMATION_STRATEGIES:
+        raise HTTPException(status_code=400, detail="Estrategia no válida")
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No se proporcionaron campos para actualizar")
+
+    await db.price_automation_rules.update_one(
+        {"id": rule_id, "user_id": user["id"]},
+        {"$set": updates},
+    )
+    updated = await db.price_automation_rules.find_one(
+        {"id": rule_id, "user_id": user["id"]}, {"_id": 0}
+    )
+    return updated
+
+
+@router.delete("/competitors/automation/rules/{rule_id}")
+async def delete_automation_rule(
+    rule_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """Elimina una regla de automatización de precios."""
+    result = await db.price_automation_rules.delete_one(
+        {"id": rule_id, "user_id": user["id"]}
+    )
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Regla no encontrada")
+    return {"message": "Regla eliminada correctamente"}
+
+
+@router.post("/competitors/automation/simulate")
+async def simulate_automation(
+    rule_id: Optional[str] = Query(None, description="Simular regla específica"),
+    limit: int = Query(50, ge=1, le=500),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Simula la aplicación de reglas de automatización SIN modificar datos.
+    Devuelve qué precios cambiarían y cómo.
+    """
+    rule_query = {"user_id": user["id"], "active": True}
+    if rule_id:
+        rule_query["id"] = rule_id
+    rules = await db.price_automation_rules.find(
+        rule_query, {"_id": 0}
+    ).sort("priority", -1).to_list(100)
+
+    if not rules:
+        return {"message": "No hay reglas activas", "changes": [], "total": 0}
+
+    # Obtener últimos snapshots agrupados por producto
+    pipeline = [
+        {"$match": {"user_id": user["id"]}},
+        {"$sort": {"scraped_at": -1}},
+        {
+            "$group": {
+                "_id": {"sku": "$sku", "ean": "$ean"},
+                "best_price": {"$min": "$price"},
+                "competitor_id": {"$first": "$competitor_id"},
+                "latest_at": {"$first": "$scraped_at"},
+            }
+        },
+    ]
+    competitor_data = await db.price_snapshots.aggregate(pipeline).to_list(50000)
+
+    comp_best = {}
+    for cd in competitor_data:
+        key = cd["_id"].get("sku") or cd["_id"].get("ean")
+        if key:
+            comp_best[key] = cd
+
+    my_products = await db.products.find(
+        {"user_id": user["id"]},
+        {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1,
+         "category": 1, "supplier_id": 1, "supplier_name": 1},
+    ).to_list(50000)
+
+    changes = []
+    for product in my_products:
+        key = product.get("sku") or product.get("ean")
+        if not key or key not in comp_best:
+            continue
+
+        best = comp_best[key]["best_price"]
+        current_price = product.get("price", 0)
+        if current_price <= 0 or best <= 0:
+            continue
+
+        for rule in rules:
+            if not _rule_applies_to(rule, product):
+                continue
+
+            new_price = _calculate_automated_price(rule, current_price, best)
+            if new_price is None:
+                continue
+
+            floor = rule.get("min_price", 0) or 0
+            ceiling = rule.get("max_price")
+            if new_price < floor:
+                new_price = floor
+            if ceiling is not None and new_price > ceiling:
+                new_price = ceiling
+
+            new_price = round(new_price, 2)
+
+            if abs(new_price - current_price) >= 0.01:
+                changes.append({
+                    "product_id": product["id"],
+                    "product_name": product.get("name", ""),
+                    "sku": product.get("sku"),
+                    "ean": product.get("ean"),
+                    "current_price": current_price,
+                    "new_price": new_price,
+                    "best_competitor_price": best,
+                    "rule_id": rule["id"],
+                    "rule_name": rule["name"],
+                    "strategy": rule["strategy"],
+                    "change_amount": round(new_price - current_price, 2),
+                    "change_percent": round(((new_price - current_price) / current_price) * 100, 2),
+                })
+            break  # Solo primera regla coincidente
+
+        if len(changes) >= limit:
+            break
+
+    changes.sort(key=lambda c: abs(c["change_percent"]), reverse=True)
+
+    return {
+        "total_changes": len(changes),
+        "rules_evaluated": len(rules),
+        "changes": changes[:limit],
+    }
+
+
+@router.post("/competitors/automation/apply")
+async def apply_automation(
+    rule_id: Optional[str] = Query(None, description="Aplicar regla específica"),
+    dry_run: bool = Query(False, description="Solo simular sin aplicar"),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Aplica las reglas de automatización: actualiza custom_price en catalog_items.
+    Si catalog_id está en la regla, solo afecta ese catálogo.
+    Si no hay catalog_id, actualiza el precio base del producto.
+    """
+    if dry_run:
+        return await simulate_automation(rule_id, 500, user)
+
+    rule_query = {"user_id": user["id"], "active": True}
+    if rule_id:
+        rule_query["id"] = rule_id
+    rules = await db.price_automation_rules.find(
+        rule_query, {"_id": 0}
+    ).sort("priority", -1).to_list(100)
+
+    if not rules:
+        return {"message": "No hay reglas activas", "applied": 0}
+
+    # Obtener datos de competidores
+    pipeline = [
+        {"$match": {"user_id": user["id"]}},
+        {"$sort": {"scraped_at": -1}},
+        {
+            "$group": {
+                "_id": {"sku": "$sku", "ean": "$ean"},
+                "best_price": {"$min": "$price"},
+            }
+        },
+    ]
+    competitor_data = await db.price_snapshots.aggregate(pipeline).to_list(50000)
+    comp_best = {}
+    for cd in competitor_data:
+        key = cd["_id"].get("sku") or cd["_id"].get("ean")
+        if key:
+            comp_best[key] = cd["best_price"]
+
+    my_products = await db.products.find(
+        {"user_id": user["id"]},
+        {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1,
+         "category": 1, "supplier_id": 1},
+    ).to_list(50000)
+
+    applied = 0
+    now = datetime.now(timezone.utc).isoformat()
+    rule_counts = {r["id"]: 0 for r in rules}
+
+    for product in my_products:
+        key = product.get("sku") or product.get("ean")
+        if not key or key not in comp_best:
+            continue
+
+        best = comp_best[key]
+        current_price = product.get("price", 0)
+        if current_price <= 0 or best <= 0:
+            continue
+
+        for rule in rules:
+            if not _rule_applies_to(rule, product):
+                continue
+
+            new_price = _calculate_automated_price(rule, current_price, best)
+            if new_price is None:
+                continue
+
+            floor = rule.get("min_price", 0) or 0
+            ceiling = rule.get("max_price")
+            if new_price < floor:
+                new_price = floor
+            if ceiling is not None and new_price > ceiling:
+                new_price = ceiling
+
+            new_price = round(new_price, 2)
+            if abs(new_price - current_price) < 0.01:
+                break
+
+            catalog_id = rule.get("catalog_id")
+            if catalog_id:
+                await db.catalog_items.update_many(
+                    {"product_id": product["id"], "catalog_id": catalog_id, "user_id": user["id"]},
+                    {"$set": {"custom_price": new_price}},
+                )
+            else:
+                await db.products.update_one(
+                    {"id": product["id"], "user_id": user["id"]},
+                    {"$set": {"price": new_price, "updated_at": now}},
+                )
+
+            applied += 1
+            rule_counts[rule["id"]] = rule_counts.get(rule["id"], 0) + 1
+            break
+
+    # Actualizar estadísticas de las reglas
+    for rule in rules:
+        if rule_counts.get(rule["id"], 0) > 0:
+            await db.price_automation_rules.update_one(
+                {"id": rule["id"], "user_id": user["id"]},
+                {"$set": {"last_applied_at": now, "products_affected": rule_counts[rule["id"]]}},
+            )
+
+    # Notificación de resultado
+    if applied > 0:
+        try:
+            from services.sync import send_realtime_notification
+            notification = {
+                "id": str(uuid.uuid4()),
+                "user_id": user["id"],
+                "type": "competitor_price",
+                "message": f"Automatización de precios aplicada: {applied} productos actualizados",
+                "read": False,
+                "created_at": now,
+            }
+            await db.notifications.insert_one(notification)
+            await send_realtime_notification(user["id"], notification)
+        except Exception:
+            pass
+
+    return {
+        "message": f"Automatización aplicada: {applied} productos actualizados",
+        "applied": applied,
+        "rules_applied": {rid: cnt for rid, cnt in rule_counts.items() if cnt > 0},
+    }
+
+
+# ==================== HELPER FUNCTIONS ====================
+
+def _rule_applies_to(rule: dict, product: dict) -> bool:
+    """Evalúa si una regla de automatización aplica a un producto."""
+    apply_to = rule.get("apply_to", "all")
+    if apply_to == "all":
+        return True
+    target = rule.get("apply_to_value", "")
+    if apply_to == "category":
+        return product.get("category", "").lower() == (target or "").lower()
+    if apply_to == "supplier":
+        return product.get("supplier_id") == target
+    if apply_to == "product":
+        return product.get("id") == target
+    if apply_to == "competitor":
+        return True
+    return False
+
+
+def _calculate_automated_price(rule: dict, current_price: float, best_competitor: float) -> Optional[float]:
+    """Calcula el nuevo precio según la estrategia de la regla."""
+    strategy = rule["strategy"]
+    value = rule.get("value", 0)
+
+    if strategy == "match_cheapest":
+        return best_competitor
+    elif strategy == "undercut_by_amount":
+        return best_competitor - value
+    elif strategy == "undercut_by_percent":
+        return best_competitor * (1 - value / 100)
+    elif strategy == "margin_above_cost":
+        return current_price * (1 + value / 100)
+    elif strategy == "price_cap":
+        return min(current_price, value)
+    return None
 
 
 # ==================== COMPETITORS CRUD ====================

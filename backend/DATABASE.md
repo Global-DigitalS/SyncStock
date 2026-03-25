@@ -459,6 +459,33 @@
 #   { "sku": 1 }
 
 
+# --- price_automation_rules ----------------------------------------------------
+# Reglas de automatización inteligente de precios basadas en datos de competidores.
+# Permiten ajustar precios automáticamente según diferentes estrategias.
+#
+# Campos:
+#   id                (str)    UUID v4
+#   user_id           (str)    ID del usuario propietario
+#   name              (str)    Nombre descriptivo de la regla
+#   strategy          (str)    "match_cheapest" | "undercut_by_amount" | "undercut_by_percent" |
+#                              "margin_above_cost" | "price_cap"
+#   value             (float)  Importe o porcentaje según la estrategia
+#   apply_to          (str)    "all" | "category" | "supplier" | "competitor" | "product"
+#   apply_to_value    (str)    ID o nombre del target (según apply_to)
+#   min_price         (float)  Precio mínimo resultante (floor). Default 0
+#   max_price         (float)  Precio máximo resultante (ceiling). Null = sin límite
+#   catalog_id        (str)    Catálogo donde aplicar (null = precio base del producto)
+#   priority          (int)    Mayor = se evalúa primero (como margin_rules)
+#   active            (bool)   Si la regla está habilitada
+#   last_applied_at   (str)    Fecha ISO 8601 de última aplicación
+#   products_affected (int)    Número de productos afectados en última ejecución
+#   created_at        (str)    Fecha ISO 8601 de creación
+#
+# Índices recomendados:
+#   { "user_id": 1, "active": 1, "priority": -1 }
+#   { "id": 1 }   único
+
+
 # ============================================================================
 # TAREAS PROGRAMADAS (APScheduler)
 # ============================================================================

@@ -185,8 +185,10 @@ async def _evaluate_alerts(
                 },
             )
 
-            # Crear notificación en la app
-            if alert.get("channel") in ("app", "email"):
+            channel = alert.get("channel", "app")
+
+            # Crear notificación en la app + push WebSocket
+            if channel in ("app", "email"):
                 notification = {
                     "id": str(uuid.uuid4()),
                     "user_id": user_id,
@@ -196,8 +198,92 @@ async def _evaluate_alerts(
                     "created_at": now,
                 }
                 await db.notifications.insert_one(notification)
+                # Push en tiempo real por WebSocket
+                try:
+                    from services.sync import send_realtime_notification
+                    await send_realtime_notification(user_id, notification)
+                except Exception as ws_err:
+                    logger.debug(f"WebSocket push falló: {ws_err}")
+
+            # Enviar email si el canal es email
+            if channel == "email":
+                try:
+                    await _send_alert_email(user_id, alert, message, competitor_name, competitor_price, sku, ean)
+                except Exception as email_err:
+                    logger.warning(f"Error enviando email de alerta: {email_err}")
+
+            # Enviar webhook si el canal es webhook
+            if channel == "webhook" and alert.get("webhook_url"):
+                try:
+                    await _send_alert_webhook(alert["webhook_url"], {
+                        "alert_id": alert["id"],
+                        "alert_type": alert["alert_type"],
+                        "message": message,
+                        "competitor_name": competitor_name,
+                        "price": competitor_price,
+                        "sku": sku,
+                        "ean": ean,
+                        "triggered_at": now,
+                    })
+                except Exception as wh_err:
+                    logger.warning(f"Error enviando webhook: {wh_err}")
 
             logger.info(f"Alerta disparada [{alert['alert_type']}]: {message}")
+
+
+async def _send_alert_email(
+    user_id: str,
+    alert: dict,
+    message: str,
+    competitor_name: str,
+    competitor_price: float,
+    sku: Optional[str],
+    ean: Optional[str],
+) -> None:
+    """Envía un email al usuario cuando se dispara una alerta de precio."""
+    from services.email_service import get_email_service_async, get_competitor_alert_email_template
+
+    user = await db.users.find_one({"id": user_id}, {"_id": 0, "email": 1, "name": 1})
+    if not user or not user.get("email"):
+        return
+
+    email_service = await get_email_service_async("transactional")
+    if not email_service.is_configured():
+        logger.debug("Email no configurado, omitiendo envío de alerta")
+        return
+
+    product_ref = sku or ean or "N/A"
+    template = get_competitor_alert_email_template(
+        user_name=user.get("name", "Usuario"),
+        alert_type=alert["alert_type"],
+        message=message,
+        competitor_name=competitor_name,
+        competitor_price=competitor_price,
+        product_ref=product_ref,
+    )
+
+    await email_service.send_email(
+        to_email=user["email"],
+        subject=template["subject"],
+        html_content=template["html"],
+        text_content=template["text"],
+    )
+    logger.info(f"Email de alerta enviado a {user['email']}")
+
+
+async def _send_alert_webhook(webhook_url: str, payload: dict) -> None:
+    """Envía un POST al webhook configurado con los datos de la alerta."""
+    import aiohttp
+
+    timeout = aiohttp.ClientTimeout(total=10)
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(
+            webhook_url,
+            json=payload,
+            headers={"Content-Type": "application/json", "User-Agent": "SyncStockAlertBot/1.0"},
+        ) as resp:
+            if resp.status >= 400:
+                logger.warning(f"Webhook devolvió status {resp.status}: {webhook_url}")
 
 
 async def crawl_competitor(
@@ -364,5 +450,28 @@ async def run_crawl_for_user(user_id: str, competitor_id: Optional[str] = None) 
         f"{global_stats['total_stored']} snapshots, "
         f"{elapsed:.1f}s"
     )
+
+    # Notificación resumen del crawl
+    try:
+        from services.sync import send_realtime_notification
+        summary_msg = (
+            f"Crawl de competidores completado: "
+            f"{global_stats['competitors_crawled']} competidores, "
+            f"{global_stats['total_stored']} precios capturados"
+        )
+        if global_stats["total_pending_review"] > 0:
+            summary_msg += f", {global_stats['total_pending_review']} pendientes de revisión"
+        notification = {
+            "id": str(uuid.uuid4()),
+            "user_id": user_id,
+            "type": "competitor_price",
+            "message": summary_msg,
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        await db.notifications.insert_one(notification)
+        await send_realtime_notification(user_id, notification)
+    except Exception as e:
+        logger.debug(f"Error enviando notificación de resumen de crawl: {e}")
 
     return global_stats
