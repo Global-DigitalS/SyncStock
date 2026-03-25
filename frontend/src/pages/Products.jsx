@@ -51,7 +51,87 @@ import {
   Trash2,
   FolderTree,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../components/ui/tooltip";
 import ProductDetailDialog from "../components/dialogs/ProductDetailDialog";
+
+const COMPLETION_FIELDS = [
+  { key: "name", label: "Nombre" },
+  { key: "ean", label: "EAN" },
+  { key: "description", label: "Descripción" },
+  { key: "short_description", label: "Descripción corta" },
+  { key: "long_description", label: "Descripción larga" },
+  { key: "category", label: "Categoría" },
+  { key: "brand", label: "Marca" },
+  { key: "image_url", label: "Imagen" },
+  { key: "weight", label: "Peso" },
+  { key: "best_price", label: "Precio", check: (v) => v != null && v > 0 },
+  { key: "total_stock", label: "Stock", check: (v) => v != null && v > 0 },
+];
+
+const getProductCompletion = (product) => {
+  const results = COMPLETION_FIELDS.map((field) => {
+    const value = product[field.key];
+    const filled = field.check
+      ? field.check(value)
+      : value != null && value !== "" && value !== 0;
+    return { ...field, filled };
+  });
+  const filledCount = results.filter((r) => r.filled).length;
+  const percentage = Math.round((filledCount / results.length) * 100);
+  return { percentage, results };
+};
+
+const getCompletionColor = (pct) => {
+  if (pct >= 80) return { bar: "bg-emerald-500", text: "text-emerald-700" };
+  if (pct >= 50) return { bar: "bg-amber-500", text: "text-amber-700" };
+  return { bar: "bg-rose-500", text: "text-rose-700" };
+};
+
+const ProductCompletionBar = ({ product }) => {
+  const { percentage, results } = getProductCompletion(product);
+  const colors = getCompletionColor(percentage);
+  const missing = results.filter((r) => !r.filled);
+
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center gap-2 min-w-[100px] cursor-default">
+            <div className="flex-1 h-2 bg-slate-200 rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${colors.bar}`}
+                style={{ width: `${percentage}%` }}
+              />
+            </div>
+            <span className={`text-xs font-semibold ${colors.text} w-8 text-right`}>
+              {percentage}%
+            </span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[220px]">
+          <p className="font-semibold text-xs mb-1">Completado: {percentage}%</p>
+          {missing.length > 0 ? (
+            <div className="text-xs">
+              <p className="text-slate-400 mb-0.5">Campos vacíos:</p>
+              <ul className="list-disc pl-3 space-y-0">
+                {missing.map((f) => (
+                  <li key={f.key}>{f.label}</li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-xs text-emerald-400">Todos los campos completos</p>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
 
 const Products = () => {
   const navigate = useNavigate();
@@ -572,6 +652,7 @@ const Products = () => {
                   <TableHead className="text-right">Mejor Precio</TableHead>
                   <TableHead className="text-right">Stock Total</TableHead>
                   <TableHead className="text-center">Proveedores</TableHead>
+                  <TableHead className="w-[140px]">Completado</TableHead>
                   <TableHead className="w-[100px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -625,6 +706,9 @@ const Products = () => {
                         <Truck className="w-3 h-3 mr-1" />
                         {product.supplier_count}
                       </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <ProductCompletionBar product={product} />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1">
