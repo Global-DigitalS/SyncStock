@@ -232,6 +232,22 @@ async def ensure_indexes():
         # --- login_attempts (for account lockout) ---
         await _db.login_attempts.create_index([("email", 1)])
         await _db.login_attempts.create_index([("locked_until", 1)], expireAfterSeconds=0)  # TTL index
+        # --- competitors (monitorización de precios) ---
+        await _db.competitors.create_index([("user_id", 1), ("id", 1)], unique=True)
+        await _db.competitors.create_index([("user_id", 1), ("active", 1)])
+        # --- price_snapshots (capturas de precios de competidores) ---
+        await _db.price_snapshots.create_index([("sku", 1), ("competitor_id", 1), ("scraped_at", -1)])
+        await _db.price_snapshots.create_index([("ean", 1), ("competitor_id", 1), ("scraped_at", -1)])
+        await _db.price_snapshots.create_index([("competitor_id", 1), ("scraped_at", -1)])
+        await _db.price_snapshots.create_index([("user_id", 1), ("scraped_at", -1)])
+        # --- price_alerts (alertas de precio configuradas por el usuario) ---
+        await _db.price_alerts.create_index([("user_id", 1), ("id", 1)], unique=True)
+        await _db.price_alerts.create_index([("user_id", 1), ("active", 1)])
+        await _db.price_alerts.create_index([("sku", 1), ("active", 1)])
+        await _db.price_alerts.create_index([("ean", 1), ("active", 1)])
+        # --- pending_matches (matches de baja confianza pendientes de revisión) ---
+        await _db.pending_matches.create_index([("user_id", 1), ("status", 1)])
+        await _db.pending_matches.create_index([("sku", 1)])
         logger.info("MongoDB indexes ensured")
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB: {e}. Comprueba la URL de conexión y las credenciales.")

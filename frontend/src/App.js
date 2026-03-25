@@ -27,6 +27,7 @@ const Webhooks = lazy(() => import("./pages/Webhooks"));
 const EmailConfig = lazy(() => import("./pages/EmailConfig"));
 const CRMPage = lazy(() => import("./pages/CRM"));
 const Marketplaces = lazy(() => import("./pages/Marketplaces"));
+const Competitors = lazy(() => import("./pages/Competitors"));
 const SyncSettings = lazy(() => import("./pages/SyncSettings"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Support = lazy(() => import("./pages/Support"));
@@ -455,6 +456,16 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <Marketplaces />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/competitors"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Competitors />
                 </MainLayout>
               </ProtectedRoute>
             }

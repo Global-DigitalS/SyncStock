@@ -35,7 +35,8 @@ import {
   Layout,
   BarChart3,
   LifeBuoy,
-  ShoppingCart
+  ShoppingCart,
+  Radar
 } from "lucide-react";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -47,6 +48,7 @@ const navItems = [
   { path: "/catalogs", label: "Catálogos", icon: BookOpen },
   { path: "/export", label: "Exportar", icon: Download },
   { path: "/webhooks", label: "Webhooks", icon: Webhook },
+  { path: "/competitors", label: "Competidores", icon: Radar },
   { path: "/price-history", label: "Historial de Precios", icon: TrendingUp },
   { path: "/sync-history", label: "Historial de Syncs", icon: History },
   { path: "/sync-settings", label: "Sincronización", icon: RefreshCw },

@@ -77,6 +77,20 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
         {"_id": 0, "is_connected": 1, "auto_sync_enabled": 1, "products_synced": 1}
     ).to_list(100)
 
+    # Competitor monitoring stats (parallel)
+    yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    (
+        competitors_active,
+        snapshots_24h,
+        alerts_triggered_7d,
+        pending_matches,
+    ) = await asyncio.gather(
+        db.competitors.count_documents({"user_id": uid, "active": True}),
+        db.price_snapshots.count_documents({"user_id": uid, "scraped_at": {"$gte": yesterday}}),
+        db.price_alerts.count_documents({"user_id": uid, "last_triggered_at": {"$gte": week_ago}}),
+        db.pending_matches.count_documents({"user_id": uid, "status": "pending"}),
+    )
+
     result = DashboardStats(
         total_suppliers=total_suppliers, total_products=total_products,
         total_catalog_items=total_catalog_items, total_catalogs=total_catalogs,
@@ -86,6 +100,10 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
         woocommerce_connected=sum(1 for c in wc_configs if c.get("is_connected")),
         woocommerce_auto_sync=sum(1 for c in wc_configs if c.get("auto_sync_enabled")),
         woocommerce_total_synced=sum(c.get("products_synced", 0) for c in wc_configs),
+        competitors_active=competitors_active,
+        competitors_snapshots_24h=snapshots_24h,
+        competitors_alerts_triggered_7d=alerts_triggered_7d,
+        competitors_pending_matches=pending_matches,
     )
     await cache.set(cache_key, result, DASHBOARD_STATS_TTL)
     return result

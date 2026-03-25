@@ -42,6 +42,7 @@ from routes.stripe import router as stripe_router
 from routes.crm import router as crm_router
 from routes.support import router as support_router
 from routes.marketplaces import router as marketplaces_router
+from routes.competitors import router as competitors_router
 
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
@@ -167,8 +168,11 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_purge_expired_security_records, 'interval', hours=6, id='security_purge', replace_existing=True)
     # Cache cleanup: remove expired entries every 10 minutes
     scheduler.add_job(cache.cleanup_expired, 'interval', minutes=10, id='cache_cleanup', replace_existing=True)
+    # Competitor price scraping - runs every 8 hours for all users with active competitors
+    from services.scrapers.scheduler import run_scheduled_crawls
+    scheduler.add_job(run_scheduled_crawls, 'interval', hours=8, id='competitor_crawl', replace_existing=True)
     scheduler.start()
-    logger.info("Scheduler started - Unified sync check every 1h, Legacy: Suppliers 6h, WooCommerce 12h, Security purge 6h")
+    logger.info("Scheduler started - Unified sync 1h, Legacy: Suppliers 6h, WooCommerce 12h, Security purge 6h, Competitor crawl 8h")
 
     # Store queue manager in app state for access in routes
     app.state.sync_queue = queue_manager
@@ -216,6 +220,7 @@ api_router.include_router(stripe_router)
 api_router.include_router(crm_router)
 api_router.include_router(support_router)
 api_router.include_router(marketplaces_router)
+api_router.include_router(competitors_router)
 
 
 # Health check endpoint under /api
