@@ -58,6 +58,36 @@ class MagentoClient:
             logger.error(f"Magento get_products error: {e}")
             return []
 
+    def get_all_products(self, page_size: int = 100) -> List[Dict]:
+        """Get all products from Magento with pagination"""
+        all_products = []
+        page = 1
+        try:
+            while True:
+                response = requests.get(
+                    f"{self.base_url}/products",
+                    headers=self.headers,
+                    params={
+                        'searchCriteria[pageSize]': page_size,
+                        'searchCriteria[currentPage]': page
+                    },
+                    timeout=60
+                )
+                if response.status_code != 200:
+                    break
+                data = response.json()
+                products = data.get('items', [])
+                if not products:
+                    break
+                all_products.extend(products)
+                total = data.get('total_count', 0)
+                if len(all_products) >= total:
+                    break
+                page += 1
+        except Exception as e:
+            logger.error(f"Magento get_all_products error: {e}")
+        return all_products
+
     def get_stock(self, sku: str) -> Optional[Dict]:
         """Get stock info for a product by SKU"""
         try:

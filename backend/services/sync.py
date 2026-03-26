@@ -1683,6 +1683,100 @@ async def export_catalog_categories_to_woocommerce(config: dict, catalog_id: str
     }
 
 
+async def fetch_all_store_products(store_config: dict) -> list:
+    """
+    Fetch ALL products from a store using paginated API calls.
+    Supports WooCommerce, PrestaShop, Shopify, Magento, and Wix.
+    """
+    from services.platforms import get_platform_client
+
+    platform = store_config.get("platform", "woocommerce")
+    store_products = []
+
+    if platform == "woocommerce":
+        wc = get_woocommerce_client(store_config)
+        page = 1
+        while True:
+            batch = await asyncio.to_thread(
+                wc.get, "products", params={"per_page": 100, "page": page}
+            )
+            if hasattr(batch, 'json'):
+                batch = batch.json()
+            if isinstance(batch, dict) and "body" in batch:
+                batch = batch["body"]
+            if not batch or not isinstance(batch, list):
+                break
+            store_products.extend(batch)
+            if len(batch) < 100:
+                break
+            page += 1
+    else:
+        client = get_platform_client(store_config)
+        if client and hasattr(client, 'get_all_products'):
+            store_products = await asyncio.to_thread(client.get_all_products)
+        elif client:
+            store_products = await asyncio.to_thread(client.get_products, 100)
+
+    return store_products
+
+
+def extract_store_product_info(store_prod: dict, platform: str) -> dict:
+    """Extract normalized SKU, EAN, name, price, stock from a store product."""
+    info = {"sku": "", "ean": "", "name": "", "price": 0, "stock": 0,
+            "description": "", "image_url": "", "category": "", "brand": ""}
+
+    if platform == "woocommerce":
+        info["sku"] = (store_prod.get("sku") or "").strip()
+        info["ean"] = (store_prod.get("ean") or "").strip()
+        info["name"] = (store_prod.get("name") or "").strip()
+        info["price"] = float(store_prod.get("price") or store_prod.get("regular_price") or 0)
+        info["stock"] = int(store_prod.get("stock_quantity") or 0)
+        info["description"] = store_prod.get("description") or store_prod.get("short_description") or ""
+        images = store_prod.get("images") or []
+        info["image_url"] = images[0].get("src", "") if images else ""
+        cats = store_prod.get("categories") or []
+        info["category"] = cats[0].get("name", "") if cats else ""
+    elif platform == "prestashop":
+        info["sku"] = (store_prod.get("reference") or "").strip()
+        info["ean"] = (store_prod.get("ean13") or "").strip()
+        name_val = store_prod.get("name") or ""
+        if isinstance(name_val, list):
+            name_val = name_val[0].get("value", "") if name_val else ""
+        elif isinstance(name_val, dict):
+            name_val = name_val.get("value", "") or name_val.get("language", "")
+        info["name"] = str(name_val).strip()
+        info["price"] = float(store_prod.get("price") or 0)
+    elif platform == "shopify":
+        variants = store_prod.get("variants") or []
+        first_variant = variants[0] if variants else {}
+        info["sku"] = (first_variant.get("sku") or "").strip()
+        info["ean"] = (first_variant.get("barcode") or "").strip()
+        info["name"] = (store_prod.get("title") or "").strip()
+        info["price"] = float(first_variant.get("price") or 0)
+        info["stock"] = int(first_variant.get("inventory_quantity") or 0)
+        info["description"] = store_prod.get("body_html") or ""
+        info["brand"] = store_prod.get("vendor") or ""
+        info["category"] = store_prod.get("product_type") or ""
+        images = store_prod.get("images") or []
+        info["image_url"] = images[0].get("src", "") if images else ""
+    elif platform == "magento":
+        info["sku"] = (store_prod.get("sku") or "").strip()
+        info["name"] = (store_prod.get("name") or "").strip()
+        info["price"] = float(store_prod.get("price") or 0)
+        ext = store_prod.get("extension_attributes") or {}
+        stock_item = ext.get("stock_item") or {}
+        info["stock"] = int(stock_item.get("qty") or 0)
+    elif platform == "wix":
+        info["sku"] = (store_prod.get("sku") or "").strip()
+        info["name"] = (store_prod.get("name") or "").strip()
+        info["price"] = float(store_prod.get("price", {}).get("amount") or store_prod.get("price") or 0) if isinstance(store_prod.get("price"), (dict, int, float)) else 0
+        info["description"] = store_prod.get("description") or ""
+        media = store_prod.get("media", {}).get("items") or []
+        info["image_url"] = media[0].get("url", "") if media else ""
+
+    return info
+
+
 async def create_catalog_from_store_products(
     user_id: str,
     store_config_id: str,
@@ -1693,6 +1787,7 @@ async def create_catalog_from_store_products(
 ) -> dict:
     """
     Create a catalog with products from a store by matching them with supplier products.
+    Supports pagination for large stores and sends WebSocket progress notifications.
 
     Args:
         user_id: ID of the user
@@ -1700,19 +1795,19 @@ async def create_catalog_from_store_products(
         catalog_name: Name for the new catalog (if creating new)
         catalog_id: Use existing catalog instead of creating new one
         match_by: List of fields to match by (sku, ean, name)
-        skip_unmatched: If False, create products without supplier
+        skip_unmatched: If True, skip products not found in suppliers.
+                        If False, create them as standalone products.
 
     Returns:
         dict with creation results
     """
-    from services.platforms import get_platform_client
-    from woocommerce import API as WooCommerceAPI
-
     if match_by is None:
         match_by = ["sku", "ean", "name"]
 
     errors = []
     now = datetime.now(timezone.utc).isoformat()
+    created_products = 0
+    catalog = None
 
     try:
         # Get store configuration
@@ -1722,28 +1817,40 @@ async def create_catalog_from_store_products(
         if not store_config:
             raise Exception("Configuración de tienda no encontrada")
 
-        # Get store products
-        store_products = []
+        store_name = store_config.get("name", "Tienda")
         platform = store_config.get("platform", "woocommerce")
 
+        # Step 1: Notify — fetching products from store
+        await send_realtime_notification(user_id, {
+            "id": str(uuid.uuid4()),
+            "type": "sync_progress",
+            "message": f"Obteniendo productos de '{store_name}'...",
+            "progress": 5,
+            "processed": 0,
+            "total": 0,
+        })
+
+        # Fetch ALL products with pagination
         try:
-            if platform == "woocommerce":
-                # WooCommerce using existing client
-                wc = get_woocommerce_client(store_config)
-                store_products = wc.get("products", params={"per_page": 100})
-                if isinstance(store_products, dict) and "body" in store_products:
-                    store_products = store_products["body"]
-            else:
-                # Other platforms (PrestaShop, Shopify, Magento, Wix)
-                client = get_platform_client(store_config)
-                if client:
-                    store_products = client.get_products(limit=100)
+            store_products = await fetch_all_store_products(store_config)
         except Exception as e:
             logger.error(f"Error fetching store products: {e}")
             raise Exception(f"Error al obtener productos de la tienda: {str(e)[:100]}")
 
         if not store_products:
             raise Exception("No se encontraron productos en la tienda")
+
+        total_store = len(store_products)
+
+        # Step 2: Notify — products fetched
+        await send_realtime_notification(user_id, {
+            "id": str(uuid.uuid4()),
+            "type": "sync_progress",
+            "message": f"Se encontraron {total_store} productos en '{store_name}'. Preparando catálogo...",
+            "progress": 15,
+            "processed": 0,
+            "total": total_store,
+        })
 
         # Get or create catalog
         if catalog_id:
@@ -1754,18 +1861,28 @@ async def create_catalog_from_store_products(
                 raise Exception("Catálogo no encontrado")
         else:
             if not catalog_name:
-                catalog_name = f"Catálogo {store_config.get('name', 'Tienda')}"
+                catalog_name = f"Catálogo {store_name}"
 
             catalog_id = str(uuid.uuid4())
             catalog = {
                 "id": catalog_id,
                 "user_id": user_id,
                 "name": catalog_name,
-                "description": f"Creado desde productos de {store_config.get('name', 'la tienda')}",
+                "description": f"Creado desde productos de {store_name}",
                 "is_default": False,
                 "created_at": now
             }
             await db.catalogs.insert_one(catalog)
+
+        # Step 3: Notify — loading supplier products for matching
+        await send_realtime_notification(user_id, {
+            "id": str(uuid.uuid4()),
+            "type": "sync_progress",
+            "message": f"Cargando productos de proveedores para cruzar datos...",
+            "progress": 20,
+            "processed": 0,
+            "total": total_store,
+        })
 
         # Get all user's products from suppliers for matching
         supplier_products = await db.products.find(
@@ -1787,7 +1904,7 @@ async def create_catalog_from_store_products(
                 products_by_sku[sku] = prod
             if ean:
                 products_by_ean[ean] = prod
-            if name and len(name) > 3:  # Avoid matching very short names
+            if name and len(name) > 3:
                 if name not in products_by_name:
                     products_by_name[name] = []
                 products_by_name[name].append(prod)
@@ -1797,31 +1914,15 @@ async def create_catalog_from_store_products(
         unmatched = 0
         added_items = 0
         catalog_items = []
+        products_to_create = []
 
-        for store_prod in store_products:
+        for i, store_prod in enumerate(store_products):
             matched_product = None
+            info = extract_store_product_info(store_prod, platform)
 
-            # Extract store product info
-            store_sku = None
-            store_ean = None
-            store_name = None
-
-            if platform == "woocommerce":
-                store_sku = (store_prod.get("sku") or "").lower().strip()
-                store_ean = (store_prod.get("ean") or "").lower().strip()
-                store_name = (store_prod.get("name") or "").lower().strip()
-            elif platform == "prestashop":
-                store_sku = (store_prod.get("reference") or "").lower().strip()
-                store_name = (store_prod.get("name") or "").lower().strip()
-            elif platform == "shopify":
-                store_sku = (store_prod.get("sku") or "").lower().strip()
-                store_name = (store_prod.get("title") or "").lower().strip()
-            elif platform == "magento":
-                store_sku = (store_prod.get("sku") or "").lower().strip()
-                store_name = (store_prod.get("name") or "").lower().strip()
-            elif platform == "wix":
-                store_sku = (store_prod.get("sku") or "").lower().strip()
-                store_name = (store_prod.get("name") or "").lower().strip()
+            store_sku = info["sku"].lower()
+            store_ean = info["ean"].lower()
+            store_product_name = info["name"].lower()
 
             # Try to match by SKU first (most reliable)
             if "sku" in match_by and store_sku and store_sku in products_by_sku:
@@ -1831,15 +1932,14 @@ async def create_catalog_from_store_products(
             if not matched_product and "ean" in match_by and store_ean and store_ean in products_by_ean:
                 matched_product = products_by_ean[store_ean]
 
-            # Finally by name (fuzzy match)
-            if not matched_product and "name" in match_by and store_name and store_name in products_by_name:
-                matched_product = products_by_name[store_name][0]
+            # Finally by name (exact match, case-insensitive)
+            if not matched_product and "name" in match_by and store_product_name and store_product_name in products_by_name:
+                matched_product = products_by_name[store_product_name][0]
 
             if matched_product:
                 matched += 1
-                # Create catalog item
                 item_id = str(uuid.uuid4())
-                catalog_item = {
+                catalog_items.append({
                     "id": item_id,
                     "catalog_id": catalog_id,
                     "product_id": matched_product["id"],
@@ -1848,39 +1948,102 @@ async def create_catalog_from_store_products(
                     "active": True,
                     "category_ids": [],
                     "created_at": now
-                }
-                catalog_items.append(catalog_item)
+                })
                 added_items += 1
             else:
                 unmatched += 1
-                if not skip_unmatched:
-                    # TODO: Crear producto sin proveedor si es necesario
-                    pass
+                if not skip_unmatched and info["name"]:
+                    # Create product without supplier
+                    product_id = str(uuid.uuid4())
+                    new_product = {
+                        "id": product_id,
+                        "sku": info["sku"] or f"STORE-{product_id[:8]}",
+                        "name": info["name"],
+                        "description": info["description"],
+                        "price": info["price"],
+                        "stock": info["stock"],
+                        "category": info["category"],
+                        "brand": info["brand"],
+                        "ean": info["ean"],
+                        "image_url": info["image_url"],
+                        "supplier_id": "store_import",
+                        "supplier_name": store_name,
+                        "user_id": user_id,
+                        "is_selected": False,
+                        "created_at": now,
+                        "updated_at": now,
+                    }
+                    products_to_create.append(new_product)
+                    catalog_items.append({
+                        "id": str(uuid.uuid4()),
+                        "catalog_id": catalog_id,
+                        "product_id": product_id,
+                        "custom_price": None,
+                        "custom_name": None,
+                        "active": True,
+                        "category_ids": [],
+                        "created_at": now
+                    })
+                    added_items += 1
+                    created_products += 1
+
+            # Send progress every 50 products
+            if (i + 1) % 50 == 0 or (i + 1) == total_store:
+                pct = 20 + int(((i + 1) / total_store) * 70)
+                await send_realtime_notification(user_id, {
+                    "id": str(uuid.uuid4()),
+                    "type": "sync_progress",
+                    "message": f"Cruzando productos: {i + 1}/{total_store} ({matched} encontrados)",
+                    "progress": pct,
+                    "processed": i + 1,
+                    "total": total_store,
+                })
+
+        # Bulk insert new products (unmatched, when skip_unmatched=False)
+        if products_to_create:
+            await db.products.insert_many(products_to_create)
 
         # Insert catalog items in bulk
         if catalog_items:
             await db.catalog_items.insert_many(catalog_items)
 
+        # Step 5: Notify — complete
+        await send_realtime_notification(user_id, {
+            "id": str(uuid.uuid4()),
+            "type": "sync_complete",
+            "message": f"Catálogo '{catalog['name']}' creado: {matched} coincidencias, {unmatched} sin coincidencia, {added_items} añadidos al catálogo",
+        })
+
         return {
             "status": "success",
             "catalog_id": catalog["id"],
             "catalog_name": catalog["name"],
-            "total_products": len(store_products),
+            "total_products": total_store,
             "matched_products": matched,
             "unmatched_products": unmatched,
             "added_items": added_items,
-            "errors": errors
+            "created_products": created_products,
+            "errors": errors,
+            "created_at": now,
         }
 
     except Exception as e:
         logger.error(f"Error creating catalog from store: {e}")
+        # Notify error via WebSocket
+        await send_realtime_notification(user_id, {
+            "id": str(uuid.uuid4()),
+            "type": "sync_error",
+            "message": f"Error creando catálogo desde tienda: {str(e)[:100]}",
+        })
         return {
             "status": "error",
-            "catalog_id": catalog_id if "catalog_id" in locals() else None,
-            "catalog_name": catalog_name if "catalog_name" in locals() else None,
-            "total_products": len(store_products) if "store_products" in locals() else 0,
+            "catalog_id": catalog["id"] if catalog else (catalog_id if catalog_id else None),
+            "catalog_name": catalog["name"] if catalog else (catalog_name or ""),
+            "total_products": len(store_products) if "store_products" in dir() else 0,
             "matched_products": 0,
             "unmatched_products": 0,
             "added_items": 0,
-            "errors": [str(e)]
+            "created_products": 0,
+            "errors": [str(e)],
+            "created_at": now,
         }

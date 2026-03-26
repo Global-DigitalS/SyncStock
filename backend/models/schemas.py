@@ -787,5 +787,6 @@ class StoreCatalogCreationResponse(BaseModel):
     matched_products: int
     unmatched_products: int
     added_items: int
+    created_products: int = 0
     errors: List[str] = []
     created_at: str

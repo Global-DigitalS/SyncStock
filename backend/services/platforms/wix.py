@@ -55,6 +55,33 @@ class WixClient:
             logger.error(f"Wix get_products error: {e}")
             return []
 
+    def get_all_products(self, page_size: int = 100) -> List[Dict]:
+        """Get all products from Wix with pagination"""
+        all_products = []
+        offset = 0
+        try:
+            while True:
+                response = requests.get(
+                    f"{self.base_url}/products",
+                    headers=self.headers,
+                    params={'limit': page_size, 'offset': offset},
+                    timeout=60
+                )
+                if response.status_code != 200:
+                    break
+                data = response.json()
+                products = data.get('products', [])
+                if not products:
+                    break
+                all_products.extend(products)
+                total = data.get('totalResults', 0)
+                offset += page_size
+                if offset >= total or len(products) < page_size:
+                    break
+        except Exception as e:
+            logger.error(f"Wix get_all_products error: {e}")
+        return all_products
+
     def update_inventory(self, product_id: str, variant_id: str, quantity: int) -> Dict:
         """Update inventory for a product variant"""
         try:

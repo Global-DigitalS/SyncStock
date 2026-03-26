@@ -58,6 +58,34 @@ class ShopifyClient:
             logger.error(f"Shopify get_products error: {e}")
             return []
 
+    def get_all_products(self, page_size: int = 250) -> List[Dict]:
+        """Get all products from Shopify with pagination using since_id"""
+        all_products = []
+        since_id = 0
+        try:
+            while True:
+                params = {'limit': min(page_size, 250)}
+                if since_id > 0:
+                    params['since_id'] = since_id
+                response = requests.get(
+                    f"{self.base_url}/products.json",
+                    headers=self.headers,
+                    params=params,
+                    timeout=60
+                )
+                if response.status_code != 200:
+                    break
+                products = response.json().get('products', [])
+                if not products:
+                    break
+                all_products.extend(products)
+                since_id = products[-1].get('id', 0)
+                if len(products) < page_size:
+                    break
+        except Exception as e:
+            logger.error(f"Shopify get_all_products error: {e}")
+        return all_products
+
     def get_locations(self) -> List[Dict]:
         """Get inventory locations"""
         try:

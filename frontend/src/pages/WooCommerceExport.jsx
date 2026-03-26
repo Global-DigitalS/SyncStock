@@ -26,7 +26,7 @@ import {
 import {
   Store, Plus, MoreVertical, Trash2, RefreshCw, ExternalLink, Upload,
   Wifi, WifiOff, Package, Key, Link2, BookOpen, Settings,
-  ShoppingCart, ShoppingBag, Globe, Boxes, Sparkles
+  ShoppingCart, ShoppingBag, Globe, Boxes, Sparkles, Download, Search
 } from "lucide-react";
 import IconDisplay from "../components/shared/IconDisplay";
 
@@ -117,6 +117,15 @@ const StoresPage = () => {
   const [syncing, setSyncing] = useState({});
   const [exportResult, setExportResult] = useState(null);
   const [loadingCatalogProducts, setLoadingCatalogProducts] = useState(false);
+  const [showCreateCatalogDialog, setShowCreateCatalogDialog] = useState(false);
+  const [creatingCatalog, setCreatingCatalog] = useState(false);
+  const [createCatalogOptions, setCreateCatalogOptions] = useState({
+    catalog_name: "",
+    catalog_id: "",
+    use_existing: false,
+    match_by: ["sku", "ean", "name"],
+    skip_unmatched: true,
+  });
 
   const fetchData = useCallback(async () => {
     try {
@@ -323,6 +332,72 @@ const StoresPage = () => {
     } finally {
       setTesting(false);
     }
+  };
+
+  const openCreateCatalog = (config) => {
+    setSelectedConfig(config);
+    setSelectedPlatform(PLATFORMS[config.platform] || PLATFORMS.woocommerce);
+    setCreateCatalogOptions({
+      catalog_name: `Catálogo ${config.name}`,
+      catalog_id: "",
+      use_existing: false,
+      match_by: ["sku", "ean", "name"],
+      skip_unmatched: true,
+    });
+    setShowCreateCatalogDialog(true);
+  };
+
+  const handleCreateCatalog = async () => {
+    if (!selectedConfig) return;
+
+    const opts = createCatalogOptions;
+    if (!opts.use_existing && !opts.catalog_name?.trim()) {
+      toast.error("Introduce un nombre para el catálogo");
+      return;
+    }
+
+    setCreatingCatalog(true);
+    try {
+      const payload = {
+        match_by: opts.match_by,
+        skip_unmatched: opts.skip_unmatched,
+      };
+      if (opts.use_existing && opts.catalog_id) {
+        payload.catalog_id = opts.catalog_id;
+      } else {
+        payload.catalog_name = opts.catalog_name;
+      }
+
+      const res = await api.post(`/stores/${selectedConfig.id}/create-catalog`, payload);
+
+      if (res.data.status === "started") {
+        toast.info(res.data.message || "Proceso iniciado en segundo plano. Recibirás notificaciones de progreso.");
+        setTimeout(() => {
+          setShowCreateCatalogDialog(false);
+          fetchData();
+        }, 2000);
+      } else if (res.data.status === "success") {
+        toast.success(
+          `Catálogo creado: ${res.data.matched_products} coincidencias de ${res.data.total_products} productos`
+        );
+        setShowCreateCatalogDialog(false);
+        fetchData();
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.detail || "Error al crear catálogo desde tienda");
+    } finally {
+      setCreatingCatalog(false);
+    }
+  };
+
+  const toggleMatchBy = (field) => {
+    setCreateCatalogOptions(prev => {
+      const current = prev.match_by;
+      const updated = current.includes(field)
+        ? current.filter(f => f !== field)
+        : [...current, field];
+      return { ...prev, match_by: updated.length > 0 ? updated : [field] };
+    });
   };
 
   const handleExport = async () => {
@@ -573,11 +648,15 @@ const StoresPage = () => {
                                 <Wifi className="w-4 h-4 mr-2" strokeWidth={1.5} />
                                 Probar Conexión
                               </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => openCreateCatalog(config)}>
+                                <Download className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                                Crear Catálogo desde Tienda
+                              </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => openEdit(config)}>
                                 <Settings className="w-4 h-4 mr-2" strokeWidth={1.5} />
                                 Configurar
                               </DropdownMenuItem>
-                              <DropdownMenuItem 
+                              <DropdownMenuItem
                                 onClick={() => openDelete(config)}
                                 className="text-rose-600 focus:text-rose-600"
                               >
@@ -871,6 +950,156 @@ const StoresPage = () => {
                 )}
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Catalog from Store Dialog */}
+      <Dialog open={showCreateCatalogDialog} onOpenChange={setShowCreateCatalogDialog}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
+              <Download className="w-5 h-5 text-indigo-600" />
+              Crear Catálogo desde Tienda
+            </DialogTitle>
+            <DialogDescription>
+              Importa los productos de "{selectedConfig?.name}" y búscalos en tus proveedores para crear un catálogo automáticamente
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-2">
+            {/* Catalog destination */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="use_existing_catalog"
+                  checked={createCatalogOptions.use_existing}
+                  onChange={(e) => setCreateCatalogOptions(prev => ({
+                    ...prev,
+                    use_existing: e.target.checked,
+                    catalog_id: e.target.checked ? (catalogs[0]?.id || "") : "",
+                  }))}
+                  className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                />
+                <Label htmlFor="use_existing_catalog" className="cursor-pointer text-sm">
+                  Usar un catálogo existente
+                </Label>
+              </div>
+
+              {createCatalogOptions.use_existing ? (
+                <div className="space-y-2">
+                  <Label>Catálogo destino</Label>
+                  <Select
+                    value={createCatalogOptions.catalog_id}
+                    onValueChange={(val) => setCreateCatalogOptions(prev => ({ ...prev, catalog_id: val }))}
+                  >
+                    <SelectTrigger className="input-base">
+                      <BookOpen className="w-4 h-4 mr-2 text-slate-400" />
+                      <SelectValue placeholder="Selecciona un catálogo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {catalogs.map(catalog => (
+                        <SelectItem key={catalog.id} value={catalog.id}>
+                          {catalog.name} ({catalog.product_count} productos)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <Label htmlFor="catalog_name">Nombre del nuevo catálogo</Label>
+                  <Input
+                    id="catalog_name"
+                    value={createCatalogOptions.catalog_name}
+                    onChange={(e) => setCreateCatalogOptions(prev => ({ ...prev, catalog_name: e.target.value }))}
+                    placeholder="Ej: Catálogo Mi Tienda"
+                    className="input-base"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Match criteria */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-indigo-600" />
+                Criterios de búsqueda en proveedores
+              </Label>
+              <p className="text-xs text-slate-500">
+                Selecciona los campos por los que se buscarán coincidencias entre los productos de la tienda y los de tus proveedores
+              </p>
+              <div className="flex gap-3 pt-1">
+                {[
+                  { key: "sku", label: "SKU" },
+                  { key: "ean", label: "EAN / Código de barras" },
+                  { key: "name", label: "Nombre" },
+                ].map(({ key, label }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => toggleMatchBy(key)}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                      createCatalogOptions.match_by.includes(key)
+                        ? "bg-indigo-100 text-indigo-700 border-indigo-300"
+                        : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Skip unmatched */}
+            <div className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
+              <div>
+                <p className="font-medium text-slate-900 text-sm">Importar productos sin coincidencia</p>
+                <p className="text-xs text-slate-500">
+                  Si se activa, los productos sin proveedor se crearán como productos importados directamente desde la tienda
+                </p>
+              </div>
+              <Switch
+                checked={!createCatalogOptions.skip_unmatched}
+                onCheckedChange={(checked) => setCreateCatalogOptions(prev => ({ ...prev, skip_unmatched: !checked }))}
+              />
+            </div>
+
+            {/* Info */}
+            <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+              <div className="flex items-center gap-2 mb-1">
+                <Package className="w-4 h-4 text-indigo-600" />
+                <p className="font-medium text-indigo-900 text-sm">Proceso en segundo plano</p>
+              </div>
+              <p className="text-xs text-indigo-700">
+                Los productos se obtendrán de la tienda con paginación automática, se buscarán en todos tus proveedores
+                y se añadirán al catálogo. Recibirás notificaciones en tiempo real del progreso.
+              </p>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCreateCatalogDialog(false)} className="btn-secondary">
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleCreateCatalog}
+              disabled={creatingCatalog || (createCatalogOptions.use_existing && !createCatalogOptions.catalog_id)}
+              className="btn-primary"
+            >
+              {creatingCatalog ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Iniciando...
+                </>
+              ) : (
+                <>
+                  <Download className="w-4 h-4 mr-2" />
+                  Crear Catálogo
+                </>
+              )}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
