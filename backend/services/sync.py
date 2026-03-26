@@ -1681,3 +1681,206 @@ async def export_catalog_categories_to_woocommerce(config: dict, catalog_id: str
         "category_mapping": category_mapping,
         "errors": errors[:10]
     }
+
+
+async def create_catalog_from_store_products(
+    user_id: str,
+    store_config_id: str,
+    catalog_name: Optional[str] = None,
+    catalog_id: Optional[str] = None,
+    match_by: List[str] = None,
+    skip_unmatched: bool = True
+) -> dict:
+    """
+    Create a catalog with products from a store by matching them with supplier products.
+
+    Args:
+        user_id: ID of the user
+        store_config_id: ID of the store configuration
+        catalog_name: Name for the new catalog (if creating new)
+        catalog_id: Use existing catalog instead of creating new one
+        match_by: List of fields to match by (sku, ean, name)
+        skip_unmatched: If False, create products without supplier
+
+    Returns:
+        dict with creation results
+    """
+    from services.platforms import get_platform_client
+    from woocommerce import API as WooCommerceAPI
+
+    if match_by is None:
+        match_by = ["sku", "ean", "name"]
+
+    errors = []
+    now = datetime.now(timezone.utc).isoformat()
+
+    try:
+        # Get store configuration
+        store_config = await db.woocommerce_configs.find_one(
+            {"id": store_config_id, "user_id": user_id}
+        )
+        if not store_config:
+            raise Exception("Configuración de tienda no encontrada")
+
+        # Get store products
+        store_products = []
+        platform = store_config.get("platform", "woocommerce")
+
+        try:
+            if platform == "woocommerce":
+                # WooCommerce using existing client
+                wc = get_woocommerce_client(store_config)
+                store_products = wc.get("products", params={"per_page": 100})
+                if isinstance(store_products, dict) and "body" in store_products:
+                    store_products = store_products["body"]
+            else:
+                # Other platforms (PrestaShop, Shopify, Magento, Wix)
+                client = get_platform_client(store_config)
+                if client:
+                    store_products = client.get_products(limit=100)
+        except Exception as e:
+            logger.error(f"Error fetching store products: {e}")
+            raise Exception(f"Error al obtener productos de la tienda: {str(e)[:100]}")
+
+        if not store_products:
+            raise Exception("No se encontraron productos en la tienda")
+
+        # Get or create catalog
+        if catalog_id:
+            catalog = await db.catalogs.find_one(
+                {"id": catalog_id, "user_id": user_id}
+            )
+            if not catalog:
+                raise Exception("Catálogo no encontrado")
+        else:
+            if not catalog_name:
+                catalog_name = f"Catálogo {store_config.get('name', 'Tienda')}"
+
+            catalog_id = str(uuid.uuid4())
+            catalog = {
+                "id": catalog_id,
+                "user_id": user_id,
+                "name": catalog_name,
+                "description": f"Creado desde productos de {store_config.get('name', 'la tienda')}",
+                "is_default": False,
+                "created_at": now
+            }
+            await db.catalogs.insert_one(catalog)
+
+        # Get all user's products from suppliers for matching
+        supplier_products = await db.products.find(
+            {"user_id": user_id},
+            {"_id": 0}
+        ).to_list(None)
+
+        # Create lookup maps for fast matching
+        products_by_sku = {}
+        products_by_ean = {}
+        products_by_name = {}
+
+        for prod in supplier_products:
+            sku = (prod.get("sku") or "").lower().strip()
+            ean = (prod.get("ean") or "").lower().strip()
+            name = (prod.get("name") or "").lower().strip()
+
+            if sku:
+                products_by_sku[sku] = prod
+            if ean:
+                products_by_ean[ean] = prod
+            if name and len(name) > 3:  # Avoid matching very short names
+                if name not in products_by_name:
+                    products_by_name[name] = []
+                products_by_name[name].append(prod)
+
+        # Match store products with supplier products
+        matched = 0
+        unmatched = 0
+        added_items = 0
+        catalog_items = []
+
+        for store_prod in store_products:
+            matched_product = None
+
+            # Extract store product info
+            store_sku = None
+            store_ean = None
+            store_name = None
+
+            if platform == "woocommerce":
+                store_sku = (store_prod.get("sku") or "").lower().strip()
+                store_ean = (store_prod.get("ean") or "").lower().strip()
+                store_name = (store_prod.get("name") or "").lower().strip()
+            elif platform == "prestashop":
+                store_sku = (store_prod.get("reference") or "").lower().strip()
+                store_name = (store_prod.get("name") or "").lower().strip()
+            elif platform == "shopify":
+                store_sku = (store_prod.get("sku") or "").lower().strip()
+                store_name = (store_prod.get("title") or "").lower().strip()
+            elif platform == "magento":
+                store_sku = (store_prod.get("sku") or "").lower().strip()
+                store_name = (store_prod.get("name") or "").lower().strip()
+            elif platform == "wix":
+                store_sku = (store_prod.get("sku") or "").lower().strip()
+                store_name = (store_prod.get("name") or "").lower().strip()
+
+            # Try to match by SKU first (most reliable)
+            if "sku" in match_by and store_sku and store_sku in products_by_sku:
+                matched_product = products_by_sku[store_sku]
+
+            # Then by EAN
+            if not matched_product and "ean" in match_by and store_ean and store_ean in products_by_ean:
+                matched_product = products_by_ean[store_ean]
+
+            # Finally by name (fuzzy match)
+            if not matched_product and "name" in match_by and store_name and store_name in products_by_name:
+                matched_product = products_by_name[store_name][0]
+
+            if matched_product:
+                matched += 1
+                # Create catalog item
+                item_id = str(uuid.uuid4())
+                catalog_item = {
+                    "id": item_id,
+                    "catalog_id": catalog_id,
+                    "product_id": matched_product["id"],
+                    "custom_price": None,
+                    "custom_name": None,
+                    "active": True,
+                    "category_ids": [],
+                    "created_at": now
+                }
+                catalog_items.append(catalog_item)
+                added_items += 1
+            else:
+                unmatched += 1
+                if not skip_unmatched:
+                    # TODO: Crear producto sin proveedor si es necesario
+                    pass
+
+        # Insert catalog items in bulk
+        if catalog_items:
+            await db.catalog_items.insert_many(catalog_items)
+
+        return {
+            "status": "success",
+            "catalog_id": catalog["id"],
+            "catalog_name": catalog["name"],
+            "total_products": len(store_products),
+            "matched_products": matched,
+            "unmatched_products": unmatched,
+            "added_items": added_items,
+            "errors": errors
+        }
+
+    except Exception as e:
+        logger.error(f"Error creating catalog from store: {e}")
+        return {
+            "status": "error",
+            "catalog_id": catalog_id if "catalog_id" in locals() else None,
+            "catalog_name": catalog_name if "catalog_name" in locals() else None,
+            "total_products": len(store_products) if "store_products" in locals() else 0,
+            "matched_products": 0,
+            "unmatched_products": 0,
+            "added_items": 0,
+            "errors": [str(e)]
+        }
