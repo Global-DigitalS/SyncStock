@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from openpyxl import load_workbook
 import xlrd
 import xmltodict
-from pymongo import UpdateOne, InsertOne
+from pymongo import UpdateOne
 from woocommerce import API as WooCommerceAPI
 from services.database import db
 from services.sku_cache import SKUCache
@@ -65,9 +65,10 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
     Bulk upsert products using batched operations and SKU cache for efficient lookups.
 
     OPTIMIZED for 1M+ products:
-    - Uses SKUCache for batch lookups instead of dict prefetch
+    - Uses UpdateOne with upsert=True to avoid E11000 duplicate key errors
+    - Populates SKU cache for first batch before processing
     - Processes in chunks to avoid loading all 1M products in memory at once
-    - Increased batch size from 500 to 5000
+    - Batch size of 5000 for better performance
     - Streaming approach: fetch SKUs in chunks, process, flush, repeat
 
     Args:
@@ -88,13 +89,23 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
     user_id = supplier['user_id']
     total = len(normalized_products)
 
-    # Increased batch size from 500 to 5000 for better performance
+    # Batch size for bulk operations
     CHUNK_SIZE = 5000
     DB_BATCH_SIZE = 5000
 
     product_ops = []
     price_history_docs = []
     notification_docs = []
+
+    # Populate cache with the first batch of SKUs BEFORE the loop starts.
+    # Without this, the first CHUNK_SIZE products would all miss the cache
+    # and be treated as new, causing E11000 if they already exist in the DB.
+    first_batch_skus = [
+        p.get('sku') for p in normalized_products[:CHUNK_SIZE]
+        if p.get('sku')
+    ]
+    if first_batch_skus:
+        await sku_cache.populate_batch(first_batch_skus)
 
     for i, normalized in enumerate(normalized_products):
         try:
@@ -162,18 +173,33 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
                         "user_id": user_id, "read": False, "created_at": now
                     })
 
+                # Use UpdateOne with upsert=True to avoid E11000 duplicate key errors.
+                # Filter by (supplier_id, sku) which is the unique compound key.
+                # $setOnInsert guards against race conditions where the doc was
+                # deleted between cache lookup and DB write.
                 product_ops.append(UpdateOne(
-                    {"id": existing.id},
-                    {"$set": product_doc}
+                    {"supplier_id": supplier_id, "sku": sku},
+                    {
+                        "$set": product_doc,
+                        "$setOnInsert": {"id": existing.id, "created_at": now}
+                    },
+                    upsert=True
                 ))
                 updated += 1
             else:
-                product_doc["id"] = str(uuid.uuid4())
-                product_doc["created_at"] = now
-                product_ops.append(InsertOne(product_doc))
+                # New product: $set includes all fields, $setOnInsert adds id and created_at
+                # only when the document is actually inserted.
+                product_ops.append(UpdateOne(
+                    {"supplier_id": supplier_id, "sku": sku},
+                    {
+                        "$set": product_doc,
+                        "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}
+                    },
+                    upsert=True
+                ))
                 imported += 1
 
-            # Flush in larger batches (5000 instead of 500)
+            # Flush in larger batches (5000)
             if len(product_ops) >= DB_BATCH_SIZE:
                 await db.products.bulk_write(product_ops, ordered=False)
                 product_ops = []
