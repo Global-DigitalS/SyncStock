@@ -65,9 +65,9 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
     Bulk upsert products using batched operations and SKU cache for efficient lookups.
 
     OPTIMIZED for 1M+ products:
-    - Uses SKUCache for batch lookups instead of dict prefetch
+    - Uses ReplaceOne with upsert=True to avoid E11000 duplicate key errors
     - Processes in chunks to avoid loading all 1M products in memory at once
-    - Increased batch size from 500 to 5000
+    - Batch size of 5000 for better performance
     - Streaming approach: fetch SKUs in chunks, process, flush, repeat
 
     Args:
@@ -88,7 +88,7 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
     user_id = supplier['user_id']
     total = len(normalized_products)
 
-    # Increased batch size from 500 to 5000 for better performance
+    # Batch size for bulk operations
     CHUNK_SIZE = 5000
     DB_BATCH_SIZE = 5000
 
@@ -162,18 +162,29 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
                         "user_id": user_id, "read": False, "created_at": now
                     })
 
+                # Use UpdateOne with upsert=True to avoid E11000 duplicate key errors
+                # Filter by (supplier_id, sku) which should be unique per supplier+user
                 product_ops.append(UpdateOne(
-                    {"id": existing.id},
-                    {"$set": product_doc}
+                    {"supplier_id": supplier_id, "sku": sku},
+                    {"$set": product_doc},
+                    upsert=True
                 ))
                 updated += 1
             else:
-                product_doc["id"] = str(uuid.uuid4())
+                # For new products, generate id and created_at
+                new_id = str(uuid.uuid4())
+                product_doc["id"] = new_id
                 product_doc["created_at"] = now
-                product_ops.append(InsertOne(product_doc))
+
+                # Use UpdateOne with upsert=True - will insert the full doc with $setOnInsert when needed
+                product_ops.append(UpdateOne(
+                    {"supplier_id": supplier_id, "sku": sku},
+                    {"$set": product_doc},
+                    upsert=True
+                ))
                 imported += 1
 
-            # Flush in larger batches (5000 instead of 500)
+            # Flush in larger batches (5000)
             if len(product_ops) >= DB_BATCH_SIZE:
                 await db.products.bulk_write(product_ops, ordered=False)
                 product_ops = []
