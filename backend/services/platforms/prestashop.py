@@ -65,6 +65,36 @@ class PrestaShopClient:
             logger.error(f"PrestaShop get_products error: {e}")
             return []
 
+    def get_all_products(self, page_size: int = 100) -> List[Dict]:
+        """Get all products from PrestaShop with pagination"""
+        all_products = []
+        offset = 0
+        try:
+            while True:
+                response = requests.get(
+                    f"{self.base_url}/products",
+                    auth=self.auth,
+                    headers=self.headers,
+                    params={
+                        'output_format': 'JSON',
+                        'display': '[id,reference,name,price,active,ean13]',
+                        'limit': f'{offset},{page_size}'
+                    },
+                    timeout=60
+                )
+                if response.status_code != 200:
+                    break
+                products = response.json().get('products', [])
+                if not products:
+                    break
+                all_products.extend(products)
+                offset += page_size
+                if len(products) < page_size:
+                    break
+        except Exception as e:
+            logger.error(f"PrestaShop get_all_products error: {e}")
+        return all_products
+
     def get_stock_available(self, product_id: int, combination_id: int = 0) -> Optional[Dict]:
         """Get stock info for a product"""
         try:

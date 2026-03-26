@@ -1083,3 +1083,92 @@ async def export_categories_to_store(config_id: str, request: dict, user: dict =
             "status": "info",
             "message": f"Exportación de categorías para {SUPPORTED_PLATFORMS.get(platform, {}).get('name', platform)} no está implementada todavía"
         }
+
+
+# ==================== CREATE CATALOG FROM STORE PRODUCTS ====================
+
+async def _run_create_catalog_from_store(
+    user_id: str,
+    store_config_id: str,
+    catalog_name: str,
+    catalog_id: str,
+    match_by: list,
+    skip_unmatched: bool,
+):
+    """Background wrapper that runs the catalog creation task."""
+    from services.sync import create_catalog_from_store_products
+    await create_catalog_from_store_products(
+        user_id=user_id,
+        store_config_id=store_config_id,
+        catalog_name=catalog_name,
+        catalog_id=catalog_id,
+        match_by=match_by,
+        skip_unmatched=skip_unmatched,
+    )
+
+
+@router.post("/stores/{store_config_id}/create-catalog")
+async def create_catalog_from_store(
+    store_config_id: str,
+    request: dict,
+    background_tasks: BackgroundTasks,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Create a catalog with products from a store by matching them with supplier products.
+    Runs as a background task — progress is sent via WebSocket.
+
+    Request body:
+    {
+        "catalog_name": "Mi Catálogo desde Tienda" (optional),
+        "catalog_id": "existing-catalog-id" (optional, use instead of catalog_name),
+        "match_by": ["sku", "ean", "name"] (optional, default: all),
+        "skip_unmatched": true (optional, default: true)
+    }
+    """
+    # Validate store config exists
+    store_config = await db.woocommerce_configs.find_one(
+        {"id": store_config_id, "user_id": user["id"]}
+    )
+    if not store_config:
+        raise HTTPException(
+            status_code=404,
+            detail="Configuración de tienda no encontrada"
+        )
+
+    # Validate catalog limits when creating a new catalog
+    if not request.get("catalog_id"):
+        can_create = await check_user_limit(user, "catalogs")
+        if not can_create:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Has alcanzado el límite de catálogos. Máximo: {user.get('max_catalogs', 5)}"
+            )
+
+    skip_unmatched = request.get("skip_unmatched", True)
+
+    # Only require suppliers when skipping unmatched (matching mode)
+    if skip_unmatched:
+        supplier_count = await db.suppliers.count_documents({"user_id": user["id"]})
+        product_count = await db.products.count_documents({"user_id": user["id"]})
+        if supplier_count == 0 and product_count == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Debes tener al menos un proveedor con productos para buscar coincidencias"
+            )
+
+    # Schedule as background task — returns immediately
+    background_tasks.add_task(
+        _run_create_catalog_from_store,
+        user_id=user["id"],
+        store_config_id=store_config_id,
+        catalog_name=request.get("catalog_name"),
+        catalog_id=request.get("catalog_id"),
+        match_by=request.get("match_by", ["sku", "ean", "name"]),
+        skip_unmatched=skip_unmatched,
+    )
+
+    return {
+        "status": "started",
+        "message": f"Creación de catálogo desde '{store_config.get('name', 'tienda')}' iniciada en segundo plano. Recibirás notificaciones de progreso."
+    }

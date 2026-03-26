@@ -767,3 +767,26 @@ class CompetitorPriceComparison(BaseModel):
     position: Optional[str] = None  # cheaper, equal, expensive
     price_difference: Optional[float] = None
     price_difference_percent: Optional[float] = None
+
+
+# ==================== STORE CATALOG CREATION ====================
+
+class CreateStoreCatalogRequest(BaseModel):
+    """Request to create a catalog from store products"""
+    store_config_id: str
+    catalog_name: Optional[str] = None
+    catalog_id: Optional[str] = None  # Use existing catalog instead of creating new one
+    match_by: List[str] = ["sku", "ean", "name"]  # Fields to match products by
+    skip_unmatched: bool = True  # If False, create products without supplier
+
+class StoreCatalogCreationResponse(BaseModel):
+    """Response from creating catalog from store products"""
+    catalog_id: str
+    catalog_name: str
+    total_products: int
+    matched_products: int
+    unmatched_products: int
+    added_items: int
+    created_products: int = 0
+    errors: List[str] = []
+    created_at: str
