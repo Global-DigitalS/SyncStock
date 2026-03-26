@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr
 from typing import Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 import uuid
+import secrets
 import logging
 
 from services.auth import get_current_user, get_superadmin_user, hash_password
@@ -328,8 +329,8 @@ async def save_email_config(req: SmtpConfigRequest, user: dict = Depends(get_sup
 
 
 @router.post("/email/test-connection")
-async def test_smtp_connection(req: SmtpTestRequest):
-    """Prueba la conexión SMTP sin guardar la configuración"""
+async def test_smtp_connection(req: SmtpTestRequest, _admin: dict = Depends(get_superadmin_user)):
+    """Prueba la conexión SMTP sin guardar la configuración. Requiere SuperAdmin."""
     email_service = EmailService({
         'smtp_host': req.smtp_host,
         'smtp_port': req.smtp_port,
@@ -402,8 +403,8 @@ async def forgot_password(req: PasswordResetRequest):
             "message": "Si el email existe, recibirás un enlace para restablecer tu contraseña"
         }
     
-    # Generar token de reset
-    reset_token = str(uuid.uuid4())
+    # Generar token de reset (criptográficamente seguro)
+    reset_token = secrets.token_urlsafe(32)
     reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
     
     # Guardar token en la base de datos
@@ -493,7 +494,7 @@ async def verify_reset_token(token: str):
         if datetime.now(timezone.utc) > expires_dt:
             return {"valid": False, "message": "Token expirado"}
     
-    return {"valid": True, "email": user.get('email')}
+    return {"valid": True}
 
 
 # ==================== HELPER FUNCTIONS ====================

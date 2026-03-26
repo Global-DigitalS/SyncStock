@@ -136,6 +136,15 @@ def verify_refresh_token(token: str) -> dict:
         raise HTTPException(status_code=401, detail="Refresh token inválido")
 
 
+async def verify_refresh_token_async(token: str) -> dict:
+    """Decode, validate AND check revocation of a refresh token."""
+    payload = verify_refresh_token(token)  # raises on invalid/expired
+    jti = payload.get("jti")
+    if jti and await is_token_revoked(jti):
+        raise HTTPException(status_code=401, detail="Refresh token revocado")
+    return payload
+
+
 def generate_csrf_token() -> str:
     """Generate a random CSRF token."""
     return secrets.token_hex(32)
@@ -321,3 +330,33 @@ async def reset_failed_logins(email: str) -> None:
         await db.login_attempts.delete_one({"email": email})
     except Exception:
         pass
+
+
+# ── Token revocation (blacklist) ─────────────────────────────────────────────
+
+async def revoke_refresh_token(jti: str) -> None:
+    """Add a refresh token's jti to the blacklist so it cannot be reused."""
+    try:
+        now = datetime.now(timezone.utc)
+        await db.token_blacklist.update_one(
+            {"jti": jti},
+            {"$set": {
+                "jti": jti,
+                "revoked_at": now.isoformat(),
+                # TTL field — MongoDB will auto-delete after REFRESH_TOKEN_DAYS
+                "expires_at": now + timedelta(days=REFRESH_TOKEN_DAYS),
+            }},
+            upsert=True,
+        )
+    except Exception:
+        # Best-effort: don't crash logout if blacklist write fails
+        pass
+
+
+async def is_token_revoked(jti: str) -> bool:
+    """Check whether a refresh token has been revoked."""
+    try:
+        return await db.token_blacklist.find_one({"jti": jti}) is not None
+    except Exception:
+        # Fail open: if check fails, allow the token (same pattern as lockout)
+        return False
