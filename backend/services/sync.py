@@ -306,7 +306,7 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
 
 
 async def download_file_from_ftp(supplier: dict) -> bytes:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         return await asyncio.wait_for(
             loop.run_in_executor(None, download_file_from_ftp_sync, supplier),
@@ -370,7 +370,7 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
 
 
 async def download_file_from_url(url: str, username: str = None, password: str = None) -> bytes:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     try:
         return await asyncio.wait_for(
             loop.run_in_executor(None, download_file_from_url_sync, url, username, password),
@@ -1127,7 +1127,7 @@ def format_file_size(size: int) -> str:
 
 
 async def browse_ftp_directory(config: dict, path: str = "/") -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, browse_ftp_sync, config, path)
 
 
@@ -1592,7 +1592,7 @@ def get_woocommerce_categories_sync(config: dict) -> list:
 
 
 async def get_woocommerce_categories(config: dict) -> list:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, get_woocommerce_categories_sync, config)
 
 
@@ -1616,7 +1616,7 @@ def create_woocommerce_category_sync(config: dict, category_data: dict) -> dict:
 
 
 async def create_woocommerce_category(config: dict, category_data: dict) -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, create_woocommerce_category_sync, config, category_data)
 
 
