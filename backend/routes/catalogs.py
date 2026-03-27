@@ -331,12 +331,22 @@ async def get_catalog(active_only: bool = False, search: Optional[str] = None,
         query["active"] = True
     catalog_items = await db.catalog_items.find(query, {"_id": 0, "user_id": 0}).skip(skip).limit(limit).to_list(limit)
     margin_rules = await db.catalog_margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(100)
+
+    # Batch: cargar todos los productos de una vez en lugar de N queries individuales
+    product_ids = [item["product_id"] for item in catalog_items]
+    products_cursor = db.products.find(
+        {"id": {"$in": product_ids}},
+        {"_id": 0, "user_id": 0}
+    )
+    products_map = {p["id"]: p async for p in products_cursor}
+
+    search_lower = search.lower() if search else None
     result = []
     for item in catalog_items:
-        product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0, "user_id": 0})
+        product = products_map.get(item["product_id"])
         if not product:
             continue
-        if search and search.lower() not in product.get("name", "").lower() and search.lower() not in product.get("sku", "").lower():
+        if search_lower and search_lower not in product.get("name", "").lower() and search_lower not in product.get("sku", "").lower():
             continue
         base_price = item.get("custom_price") or product.get("price", 0)
         final_price = calculate_final_price(base_price, product, margin_rules)
@@ -416,25 +426,33 @@ async def get_category_level(catalog_id: str, parent_id: Optional[str]) -> int:
     return parent.get("level", 0)
 
 
-async def build_category_tree(categories: List[dict], parent_id: Optional[str] = None) -> List[dict]:
+async def build_category_tree(categories: List[dict], parent_id: Optional[str] = None, counts_map: dict = None) -> List[dict]:
     """Build hierarchical tree structure from flat category list"""
+    # Pre-cargar conteos si no se han cargado (1 query en vez de N)
+    if counts_map is None and categories:
+        catalog_id = categories[0].get("catalog_id")
+        cat_ids = [c["id"] for c in categories]
+        pipeline = [
+            {"$match": {"catalog_id": catalog_id, "category_ids": {"$in": cat_ids}}},
+            {"$unwind": "$category_ids"},
+            {"$match": {"category_ids": {"$in": cat_ids}}},
+            {"$group": {"_id": "$category_ids", "count": {"$sum": 1}}}
+        ]
+        counts_map = {}
+        async for doc in db.catalog_items.aggregate(pipeline):
+            counts_map[doc["_id"]] = doc["count"]
+
     tree = []
     for cat in categories:
         if cat.get("parent_id") == parent_id:
-            children = await build_category_tree(categories, cat["id"])
-            # Count products in this category
-            product_count = await db.catalog_items.count_documents({
-                "catalog_id": cat["catalog_id"],
-                "category_ids": cat["id"]
-            })
-            # Explicitly exclude _id to prevent serialization issues
+            children = await build_category_tree(categories, cat["id"], counts_map)
+            product_count = counts_map.get(cat["id"], 0) if counts_map else 0
             cat_data = {k: v for k, v in cat.items() if k != "_id"}
             tree.append({
                 **cat_data,
                 "children": children,
                 "product_count": product_count
             })
-    # Sort by position
     tree.sort(key=lambda x: x.get("position", 0))
     return tree
 
@@ -500,20 +518,22 @@ async def get_catalog_categories(catalog_id: str, flat: bool = False, user: dict
         ).sort("position", 1).to_list(500)
         
         if flat:
-            # Return flat list with product counts
+            # Batch: obtener conteos de todas las categorías en 1 query
+            cat_ids = [c["id"] for c in categories]
+            pipeline = [
+                {"$match": {"catalog_id": catalog_id, "category_ids": {"$in": cat_ids}}},
+                {"$unwind": "$category_ids"},
+                {"$match": {"category_ids": {"$in": cat_ids}}},
+                {"$group": {"_id": "$category_ids", "count": {"$sum": 1}}}
+            ]
+            counts_map = {}
+            async for doc in db.catalog_items.aggregate(pipeline):
+                counts_map[doc["_id"]] = doc["count"]
+
             result = []
             for cat in categories:
-                try:
-                    product_count = await db.catalog_items.count_documents({
-                        "catalog_id": catalog_id,
-                        "category_ids": cat["id"]
-                    })
-                    # Explicitly exclude _id to prevent serialization issues
-                    cat_data = {k: v for k, v in cat.items() if k != "_id"}
-                    result.append({**cat_data, "product_count": product_count, "children": []})
-                except Exception as e:
-                    logger.error(f"Error processing category {cat.get('id')}: {e}")
-                    continue
+                cat_data = {k: v for k, v in cat.items() if k != "_id"}
+                result.append({**cat_data, "product_count": counts_map.get(cat["id"], 0), "children": []})
             return result
         
         # Return tree structure

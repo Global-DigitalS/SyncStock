@@ -400,12 +400,22 @@ async def get_crawl_status(
         {"_id": 0, "id": 1, "name": 1, "channel": 1, "last_crawl_at": 1, "last_crawl_status": 1, "active": 1},
     ).to_list(200)
 
-    # Añadir conteo de snapshots de las últimas 24h
+    # Batch: obtener conteos de snapshots de las últimas 24h en 1 query
     yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
-    for comp in competitors:
-        comp["snapshots_24h"] = await db.price_snapshots.count_documents(
-            {"competitor_id": comp["id"], "user_id": user["id"], "scraped_at": {"$gte": yesterday}}
-        )
+    comp_ids = [c["id"] for c in competitors]
+    if comp_ids:
+        pipeline = [
+            {"$match": {"competitor_id": {"$in": comp_ids}, "user_id": user["id"], "scraped_at": {"$gte": yesterday}}},
+            {"$group": {"_id": "$competitor_id", "count": {"$sum": 1}}}
+        ]
+        counts_map = {}
+        async for doc in db.price_snapshots.aggregate(pipeline):
+            counts_map[doc["_id"]] = doc["count"]
+        for comp in competitors:
+            comp["snapshots_24h"] = counts_map.get(comp["id"], 0)
+    else:
+        for comp in competitors:
+            comp["snapshots_24h"] = 0
 
     return {
         "competitors": competitors,
@@ -1142,11 +1152,21 @@ async def list_competitors(
         query, {"_id": 0}
     ).sort("created_at", -1).to_list(200)
 
-    # Enriquecer con conteo de snapshots
-    for comp in competitors:
-        comp["total_snapshots"] = await db.price_snapshots.count_documents(
-            {"competitor_id": comp["id"], "user_id": user["id"]}
-        )
+    # Batch: obtener conteos de snapshots de todos los competidores en 1 query
+    comp_ids = [c["id"] for c in competitors]
+    if comp_ids:
+        pipeline = [
+            {"$match": {"competitor_id": {"$in": comp_ids}, "user_id": user["id"]}},
+            {"$group": {"_id": "$competitor_id", "count": {"$sum": 1}}}
+        ]
+        counts_map = {}
+        async for doc in db.price_snapshots.aggregate(pipeline):
+            counts_map[doc["_id"]] = doc["count"]
+        for comp in competitors:
+            comp["total_snapshots"] = counts_map.get(comp["id"], 0)
+    else:
+        for comp in competitors:
+            comp["total_snapshots"] = 0
 
     return competitors
 

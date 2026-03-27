@@ -9,6 +9,7 @@ from typing import Dict, Set
 
 from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -483,6 +484,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=500)  # Comprimir respuestas > 500 bytes
 
 _cors_origins_env = os.environ.get('CORS_ORIGINS', '')
 if not _cors_origins_env or _cors_origins_env.strip() == '*':

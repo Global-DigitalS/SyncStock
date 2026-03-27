@@ -39,15 +39,26 @@ async def get_crm_connections(user: dict = Depends(get_current_user)):
         {"_id": 0}
     ).to_list(100)
 
-    # Add sync status from latest sync jobs
-    for conn in connections:
-        latest_job = await db.sync_jobs.find_one(
-            {"connection_id": conn["id"], "user_id": user["id"]},
-            {"_id": 0},
-            sort=[("started_at", -1)]
-        )
-        conn["last_sync_status"] = latest_job.get("status") if latest_job else None
-        conn["last_sync_message"] = latest_job.get("current_step") if latest_job else None
+    # Batch: obtener último sync job de todas las conexiones de una vez
+    if connections:
+        conn_ids = [conn["id"] for conn in connections]
+        pipeline = [
+            {"$match": {"connection_id": {"$in": conn_ids}, "user_id": user["id"]}},
+            {"$sort": {"started_at": -1}},
+            {"$group": {
+                "_id": "$connection_id",
+                "status": {"$first": "$status"},
+                "current_step": {"$first": "$current_step"}
+            }}
+        ]
+        latest_jobs = {}
+        async for job in db.sync_jobs.aggregate(pipeline):
+            latest_jobs[job["_id"]] = job
+
+        for conn in connections:
+            job = latest_jobs.get(conn["id"])
+            conn["last_sync_status"] = job["status"] if job else None
+            conn["last_sync_message"] = job["current_step"] if job else None
 
     return connections
 

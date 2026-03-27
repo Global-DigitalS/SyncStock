@@ -251,7 +251,28 @@ async def ensure_indexes():
         # --- pending_matches (matches de baja confianza pendientes de revisión) ---
         await _db.pending_matches.create_index([("user_id", 1), ("status", 1)])
         await _db.pending_matches.create_index([("sku", 1)])
-        logger.info("MongoDB indexes ensured")
+
+        # === ÍNDICES DE OPTIMIZACIÓN (rendimiento) ===
+        # products: búsqueda directa por SKU del usuario
+        await _db.products.create_index([("user_id", 1), ("sku", 1)])
+        # catalog_margin_rules: búsquedas por usuario y por catálogo+prioridad
+        await _db.catalog_margin_rules.create_index([("user_id", 1)])
+        await _db.catalog_margin_rules.create_index([("catalog_id", 1), ("priority", -1)])
+        # woocommerce_configs: filtro por conexión activa y por catálogo
+        await _db.woocommerce_configs.create_index([("user_id", 1), ("is_connected", 1)])
+        await _db.woocommerce_configs.create_index([("user_id", 1), ("catalog_id", 1)])
+        # store_configs: tiendas online multi-plataforma
+        await _db.store_configs.create_index([("user_id", 1)])
+        await _db.store_configs.create_index([("user_id", 1), ("is_connected", 1)])
+        # crm_connections y sync_jobs
+        await _db.crm_connections.create_index([("user_id", 1)])
+        await _db.sync_jobs.create_index([("connection_id", 1), ("user_id", 1), ("started_at", -1)])
+        # catalog_items: índice compuesto para queries con user_id + active
+        await _db.catalog_items.create_index([("user_id", 1), ("active", 1)])
+        # marketplace_connections
+        await _db.marketplace_connections.create_index([("user_id", 1)])
+
+        logger.info("MongoDB indexes ensured (incluidos índices de optimización)")
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB: {e}. Comprueba la URL de conexión y las credenciales.")
 
