@@ -775,16 +775,14 @@ def get_email_service(account_type: str = "transactional") -> EmailService:
         
         # Run async function
         try:
-            loop = asyncio.get_event_loop()
-            if loop.is_running():
-                # We're in an async context, create a new task
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(asyncio.run, get_email_config())
-                    email_config = future.result()
-            else:
-                email_config = loop.run_until_complete(get_email_config())
+            loop = asyncio.get_running_loop()
+            # We're in an async context — use a thread to avoid nesting event loops
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                future = executor.submit(asyncio.run, get_email_config())
+                email_config = future.result()
         except RuntimeError:
+            # No running loop — safe to use asyncio.run() directly
             email_config = asyncio.run(get_email_config())
         
         return EmailService(email_config)

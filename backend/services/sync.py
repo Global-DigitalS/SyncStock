@@ -7,6 +7,7 @@ import asyncio
 import zipfile
 import paramiko
 import requests
+from typing import Optional, List
 from datetime import datetime, timezone
 from openpyxl import load_workbook
 import xlrd
@@ -271,7 +272,9 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
     content = io.BytesIO()
     if schema == 'sftp':
         port = port or 22
-        transport = paramiko.Transport((host, port))
+        import socket
+        sock = socket.create_connection((host, port), timeout=30)
+        transport = paramiko.Transport(sock)
         transport.connect(username=user, password=password)
         transport.set_keepalive(30)
         sftp = paramiko.SFTPClient.from_transport(transport)
@@ -304,8 +307,14 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
 
 
 async def download_file_from_ftp(supplier: dict) -> bytes:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, download_file_from_ftp_sync, supplier)
+    loop = asyncio.get_running_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, download_file_from_ftp_sync, supplier),
+            timeout=300,  # 5 min max for FTP/SFTP downloads
+        )
+    except asyncio.TimeoutError:
+        raise Exception(f"Timeout descargando fichero FTP/SFTP del proveedor '{supplier.get('name', '?')}' (límite: 5 minutos)")
 
 
 def _build_browser_session(url: str, auth=None) -> tuple:
@@ -362,8 +371,14 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
 
 
 async def download_file_from_url(url: str, username: str = None, password: str = None) -> bytes:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, download_file_from_url_sync, url, username, password)
+    loop = asyncio.get_running_loop()
+    try:
+        return await asyncio.wait_for(
+            loop.run_in_executor(None, download_file_from_url_sync, url, username, password),
+            timeout=300,  # 5 min max for URL downloads
+        )
+    except asyncio.TimeoutError:
+        raise Exception(f"Timeout descargando desde URL (límite: 5 minutos): {url[:100]}")
 
 
 # ==================== FILE PARSING ====================
@@ -1113,7 +1128,7 @@ def format_file_size(size: int) -> str:
 
 
 async def browse_ftp_directory(config: dict, path: str = "/") -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, browse_ftp_sync, config, path)
 
 
@@ -1578,7 +1593,7 @@ def get_woocommerce_categories_sync(config: dict) -> list:
 
 
 async def get_woocommerce_categories(config: dict) -> list:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, get_woocommerce_categories_sync, config)
 
 
@@ -1602,7 +1617,7 @@ def create_woocommerce_category_sync(config: dict, category_data: dict) -> dict:
 
 
 async def create_woocommerce_category(config: dict, category_data: dict) -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, create_woocommerce_category_sync, config, category_data)
 
 

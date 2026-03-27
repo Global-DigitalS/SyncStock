@@ -13,6 +13,7 @@ from services.auth import (
     check_account_lockout, record_failed_login, reset_failed_logins,
     _DUMMY_HASH,
     create_access_token, create_refresh_token, verify_refresh_token,
+    verify_refresh_token_async, revoke_refresh_token,
     generate_csrf_token, REFRESH_TOKEN_DAYS,
 )
 from services.sanitizer import sanitize_string, sanitize_email, sanitize_password, sanitize_dict
@@ -253,8 +254,19 @@ async def login(request: Request, response: Response, credentials: UserLogin):
 
 
 @router.post("/auth/logout")
-async def logout(response: Response):
-    """Cierra sesión borrando todas las cookies de autenticación."""
+async def logout(request: Request, response: Response):
+    """Cierra sesión revocando el refresh token y borrando todas las cookies."""
+    # Revoke the refresh token so it cannot be reused
+    refresh_cookie = request.cookies.get("refresh_token")
+    if refresh_cookie:
+        try:
+            payload = verify_refresh_token(refresh_cookie)
+            jti = payload.get("jti")
+            if jti:
+                await revoke_refresh_token(jti)
+        except Exception:
+            pass  # Token may already be invalid; still clear cookies
+
     response.delete_cookie(key="auth_token", path="/")
     response.delete_cookie(key="refresh_token", path="/api/auth")
     response.delete_cookie(key="csrf_token", path="/")
@@ -268,7 +280,7 @@ async def refresh_token(request: Request, response: Response):
     if not token:
         raise HTTPException(status_code=401, detail="No hay refresh token")
 
-    payload = verify_refresh_token(token)
+    payload = await verify_refresh_token_async(token)  # checks revocation
     user_id = payload["user_id"]
 
     # Verify user still exists and is active
@@ -731,4 +743,4 @@ async def verify_reset_token(token: str):
     if datetime.now(timezone.utc) > expires_at:
         raise HTTPException(status_code=400, detail="Token expirado")
     
-    return {"valid": True, "email": reset_record["email"]}
+    return {"valid": True}

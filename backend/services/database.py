@@ -232,6 +232,9 @@ async def ensure_indexes():
         # --- login_attempts (for account lockout) ---
         await _db.login_attempts.create_index([("email", 1)])
         await _db.login_attempts.create_index([("locked_until", 1)], expireAfterSeconds=0)  # TTL index
+        # --- token_blacklist (revoked refresh tokens) ---
+        await _db.token_blacklist.create_index([("jti", 1)], unique=True)
+        await _db.token_blacklist.create_index([("expires_at", 1)], expireAfterSeconds=0)  # TTL auto-cleanup
         # --- competitors (monitorización de precios) ---
         await _db.competitors.create_index([("user_id", 1), ("id", 1)], unique=True)
         await _db.competitors.create_index([("user_id", 1), ("active", 1)])

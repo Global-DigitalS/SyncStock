@@ -19,6 +19,12 @@ Este archivo proporciona contexto para asistentes IA (Claude Code, etc.) que tra
 
 ---
 
+## Instrucciones Generales para Asistentes IA
+
+- **🇪🇸 Hablar siempre en español** — Todas las respuestas, explicaciones, comentarios y documentación deben estar en español. Esto incluye mensajes de error, logs, comentarios de código y comunicación con el usuario.
+
+---
+
 ## Estructura del Repositorio
 
 ```

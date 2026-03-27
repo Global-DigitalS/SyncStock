@@ -194,60 +194,54 @@ async def download_from_ftp_streaming(
     async def stream_generator():
         """Yield chunks from FTP/SFTP download"""
 
-        def ftp_download_sync():
-            """Synchronous FTP download (run in executor)"""
-            if schema == 'sftp':
-                # SFTP
-                transport = paramiko.Transport((host, port or 22))
-                transport.connect(username=user, password=password)
-                transport.set_keepalive(30)
-                sftp = paramiko.SFTPClient.from_transport(transport)
-                sftp.get_channel().settimeout(timeout_seconds)
+        def ftp_download_sync() -> bytes:
+            """Synchronous FTP download — returns full content (run in executor)."""
+            tmp_path = None
+            try:
+                with tempfile.NamedTemporaryFile(delete=False) as tmp:
+                    tmp_path = tmp.name
 
-                try:
-                    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                        sftp.get(file_path, tmp.name)
-                        tmp.flush()
-                        tmp.seek(0)
+                    if schema == 'sftp':
+                        import socket
+                        sock = socket.create_connection((host, port or 22), timeout=30)
+                        transport = paramiko.Transport(sock)
+                        transport.connect(username=user, password=password)
+                        transport.set_keepalive(30)
+                        sftp = paramiko.SFTPClient.from_transport(transport)
+                        sftp.get_channel().settimeout(timeout_seconds)
+                        try:
+                            sftp.get(file_path, tmp.name)
+                        finally:
+                            sftp.close()
+                            transport.close()
+                    else:
+                        ftp_cls = ftplib.FTP_TLS if schema == 'ftps' else ftplib.FTP
+                        ftp = ftp_cls()
+                        ftp.connect(host, port or 21, timeout=30)
+                        ftp.login(user or 'anonymous', password or '')
+                        if schema == 'ftps':
+                            ftp.prot_p()
+                        try:
+                            ftp.retrbinary(f'RETR {file_path}', tmp.write)
+                        finally:
+                            try:
+                                ftp.quit()
+                            except Exception:
+                                pass
 
-                        # Read and yield chunks
-                        while True:
-                            chunk = tmp.read(1024 * 1024)  # 1MB chunks
-                            if not chunk:
-                                break
-                            yield chunk
-                finally:
-                    sftp.close()
-                    transport.close()
-            else:
-                # FTP/FTPS
-                ftp_cls = ftplib.FTP_TLS if schema == 'ftps' else ftplib.FTP
-                ftp = ftp_cls()
-                ftp.connect(host, port or 21, timeout=30)
-                ftp.login(user or 'anonymous', password or '')
+                # Read file and return as bytes
+                with open(tmp_path, 'rb') as f:
+                    return f.read()
+            finally:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
 
-                if schema == 'ftps':
-                    ftp.prot_p()
-
-                try:
-                    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-                        ftp.retrbinary(f'RETR {file_path}', tmp.write)
-                        tmp.flush()
-                        tmp.seek(0)
-
-                        # Read and yield chunks
-                        while True:
-                            chunk = tmp.read(1024 * 1024)  # 1MB chunks
-                            if not chunk:
-                                break
-                            yield chunk
-                finally:
-                    ftp.quit()
-
-        # Run sync FTP operation in thread pool
-        loop = asyncio.get_event_loop()
-        async for chunk in loop.run_in_executor(None, ftp_download_sync):
-            yield chunk
+        # Run sync FTP download in thread pool, then yield in chunks
+        loop = asyncio.get_running_loop()
+        content = await loop.run_in_executor(None, ftp_download_sync)
+        chunk_size = 1024 * 1024  # 1 MB
+        for i in range(0, len(content), chunk_size):
+            yield content[i:i + chunk_size]
 
     return await download_file_streaming(
         stream_generator,
