@@ -56,6 +56,7 @@ import {
   Package,
   Percent,
   Search,
+  X,
   Star,
   Eye,
   RefreshCw,
@@ -78,6 +79,7 @@ const Catalogs = () => {
   const [formData, setFormData] = useState({ name: "", description: "", is_default: false });
   const [saving, setSaving] = useState(false);
   const [stores, setStores] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   
   // Rules state
   const [catalogRules, setCatalogRules] = useState([]);
@@ -374,6 +376,27 @@ const Catalogs = () => {
         </Card>
       </div>
 
+      {/* Search */}
+      {catalogs.length > 0 && (
+        <div className="relative mb-4 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+          <Input
+            placeholder="Buscar catálogo por nombre..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9 pr-9"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Catalogs Grid */}
       {catalogs.length === 0 ? (
         <div className="empty-state">
@@ -393,7 +416,7 @@ const Catalogs = () => {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {catalogs.map((catalog) => (
+          {catalogs.filter(c => !searchQuery || c.name?.toLowerCase().includes(searchQuery.toLowerCase()) || c.description?.toLowerCase().includes(searchQuery.toLowerCase())).map((catalog) => (
             <Card 
               key={catalog.id} 
               className={`border-slate-200 hover:shadow-md transition-shadow ${catalog.is_default ? 'ring-2 ring-indigo-500' : ''}`}

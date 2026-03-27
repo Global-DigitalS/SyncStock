@@ -50,6 +50,7 @@ import {
   Pencil,
   Trash2,
   FolderTree,
+  X,
 } from "lucide-react";
 import {
   Tooltip,
@@ -576,6 +577,17 @@ const Products = () => {
               <Filter className="w-4 h-4 mr-2" />
               Filtrar
             </Button>
+            {(searchTerm || categoryFilter || stockFilter) && (
+              <Button
+                variant="ghost"
+                onClick={() => { setSearchTerm(""); setCategoryFilter(""); setStockFilter(""); setCurrentPage(1); }}
+                className="text-slate-500 hover:text-slate-700"
+                data-testid="clear-filters-btn"
+              >
+                <X className="w-4 h-4 mr-1" />
+                Limpiar
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>

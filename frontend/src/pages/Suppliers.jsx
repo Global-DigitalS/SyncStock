@@ -40,7 +40,9 @@ import {
   Columns,
   Globe,
   ExternalLink,
-  Wifi
+  Wifi,
+  Search,
+  X
 } from "lucide-react";
 import ColumnMappingDialog from "../components/ColumnMappingDialog";
 import {
@@ -78,6 +80,7 @@ const defaultFormData = {
 
 const Suppliers = () => {
   const [suppliers, setSuppliers] = useState([]);
+  const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
@@ -516,9 +519,32 @@ const Suppliers = () => {
         </Button>
       </div>
 
+      {/* Barra de búsqueda */}
+      <div className="mb-6 relative max-w-md">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        <Input
+          placeholder="Buscar proveedores por nombre..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="pl-9 pr-9"
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery("")}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        )}
+      </div>
+
       {/* Suppliers Table */}
-      <SupplierTable 
-        suppliers={suppliers}
+      <SupplierTable
+        suppliers={suppliers.filter(s =>
+          !searchQuery || s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.ftp_host?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.file_url?.toLowerCase().includes(searchQuery.toLowerCase())
+        )}
         onEdit={openEdit}
         onMapping={openMapping}
         onDelete={openDelete}
