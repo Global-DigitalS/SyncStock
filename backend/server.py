@@ -9,6 +9,7 @@ from typing import Dict, Set
 
 from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -121,6 +122,48 @@ async def _purge_expired_security_records():
     )
 
 
+async def _purge_old_database_records():
+    """Scheduled job: limpieza de datos antiguos como complemento a los TTL indexes.
+    Los TTL indexes de MongoDB limpian automáticamente, pero este job sirve como respaldo
+    y para colecciones donde el campo de fecha no es 'Date' nativo de MongoDB."""
+    from datetime import datetime, timezone, timedelta
+    from services.database import db as _db
+
+    now = datetime.now(timezone.utc)
+    cutoff_90d = (now - timedelta(days=90)).isoformat()
+    cutoff_180d = (now - timedelta(days=180)).isoformat()
+    cutoff_30d = (now - timedelta(days=30)).isoformat()
+
+    totals = {}
+    try:
+        # notifications > 90 días
+        r = await _db.notifications.delete_many({"created_at": {"$lt": cutoff_90d}})
+        totals["notifications"] = r.deleted_count
+        # price_history > 180 días
+        r = await _db.price_history.delete_many({"created_at": {"$lt": cutoff_180d}})
+        totals["price_history"] = r.deleted_count
+        # price_snapshots > 90 días
+        r = await _db.price_snapshots.delete_many({"scraped_at": {"$lt": cutoff_90d}})
+        totals["price_snapshots"] = r.deleted_count
+        # sync_history > 90 días
+        r = await _db.sync_history.delete_many({"started_at": {"$lt": cutoff_90d}})
+        totals["sync_history"] = r.deleted_count
+        # sync_status > 30 días
+        r = await _db.sync_status.delete_many({"created_at": {"$lt": cutoff_30d}})
+        totals["sync_status"] = r.deleted_count
+        # sync_jobs > 90 días
+        r = await _db.sync_jobs.delete_many({"started_at": {"$lt": cutoff_90d}})
+        totals["sync_jobs"] = r.deleted_count
+
+        deleted_total = sum(totals.values())
+        if deleted_total > 0:
+            logger.info(f"DB cleanup: {deleted_total} docs eliminados - {totals}")
+        else:
+            logger.debug("DB cleanup: sin documentos antiguos que eliminar")
+    except Exception as e:
+        logger.error(f"Error en limpieza de BD: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -170,6 +213,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_purge_expired_security_records, 'interval', hours=6, id='security_purge', replace_existing=True)
     # Cache cleanup: remove expired entries every 10 minutes
     scheduler.add_job(cache.cleanup_expired, 'interval', minutes=10, id='cache_cleanup', replace_existing=True)
+    # Database cleanup: purge old data daily at 4 AM (complemento de TTL indexes)
+    scheduler.add_job(_purge_old_database_records, 'interval', hours=24, id='db_cleanup', replace_existing=True)
     # Competitor price scraping - runs every 8 hours for all users with active competitors
     from services.scrapers.scheduler import run_scheduled_crawls
     scheduler.add_job(run_scheduled_crawls, 'interval', hours=8, id='competitor_crawl', replace_existing=True)
@@ -483,6 +528,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=500)  # Comprimir respuestas > 500 bytes
 
 _cors_origins_env = os.environ.get('CORS_ORIGINS', '')
 if not _cors_origins_env or _cors_origins_env.strip() == '*':

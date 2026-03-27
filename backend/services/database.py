@@ -251,7 +251,54 @@ async def ensure_indexes():
         # --- pending_matches (matches de baja confianza pendientes de revisión) ---
         await _db.pending_matches.create_index([("user_id", 1), ("status", 1)])
         await _db.pending_matches.create_index([("sku", 1)])
-        logger.info("MongoDB indexes ensured")
+
+        # === ÍNDICES DE OPTIMIZACIÓN (rendimiento) ===
+        # products: búsqueda directa por SKU del usuario
+        await _db.products.create_index([("user_id", 1), ("sku", 1)])
+        # catalog_margin_rules: búsquedas por usuario y por catálogo+prioridad
+        await _db.catalog_margin_rules.create_index([("user_id", 1)])
+        await _db.catalog_margin_rules.create_index([("catalog_id", 1), ("priority", -1)])
+        # woocommerce_configs: filtro por conexión activa y por catálogo
+        await _db.woocommerce_configs.create_index([("user_id", 1), ("is_connected", 1)])
+        await _db.woocommerce_configs.create_index([("user_id", 1), ("catalog_id", 1)])
+        # store_configs: tiendas online multi-plataforma
+        await _db.store_configs.create_index([("user_id", 1)])
+        await _db.store_configs.create_index([("user_id", 1), ("is_connected", 1)])
+        # crm_connections y sync_jobs
+        await _db.crm_connections.create_index([("user_id", 1)])
+        await _db.sync_jobs.create_index([("connection_id", 1), ("user_id", 1), ("started_at", -1)])
+        # catalog_items: índice compuesto para queries con user_id + active
+        await _db.catalog_items.create_index([("user_id", 1), ("active", 1)])
+        # marketplace_connections
+        await _db.marketplace_connections.create_index([("user_id", 1)])
+
+        # === TTL INDEXES - Limpieza automática de datos antiguos ===
+        # price_history: eliminar registros > 180 días (6 meses)
+        await _db.price_history.create_index(
+            [("created_at", 1)], expireAfterSeconds=15552000, name="ttl_price_history_180d"
+        )
+        # notifications: eliminar notificaciones > 90 días
+        await _db.notifications.create_index(
+            [("created_at", 1)], expireAfterSeconds=7776000, name="ttl_notifications_90d"
+        )
+        # price_snapshots: eliminar snapshots > 90 días
+        await _db.price_snapshots.create_index(
+            [("scraped_at", 1)], expireAfterSeconds=7776000, name="ttl_price_snapshots_90d"
+        )
+        # sync_history: eliminar historial > 90 días
+        await _db.sync_history.create_index(
+            [("started_at", 1)], expireAfterSeconds=7776000, name="ttl_sync_history_90d"
+        )
+        # sync_status: eliminar estados > 30 días
+        await _db.sync_status.create_index(
+            [("created_at", 1)], expireAfterSeconds=2592000, name="ttl_sync_status_30d"
+        )
+        # sync_jobs: eliminar jobs > 90 días
+        await _db.sync_jobs.create_index(
+            [("started_at", 1)], expireAfterSeconds=7776000, name="ttl_sync_jobs_90d"
+        )
+
+        logger.info("MongoDB indexes ensured (incluidos índices de optimización y TTL)")
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB: {e}. Comprueba la URL de conexión y las credenciales.")
 

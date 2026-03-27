@@ -585,9 +585,14 @@ async def export_catalog(request: ExportRequest, user: dict = Depends(get_curren
         margin_rules = await db.catalog_margin_rules.find(
             {"catalog_id": {"$in": user_catalog_ids}}, {"_id": 0}
         ).sort("priority", -1).to_list(100) if user_catalog_ids else []
+    # Batch: cargar todos los productos de una vez en lugar de N queries
+    product_ids = [item["product_id"] for item in catalog_items]
+    products_cursor = db.products.find({"id": {"$in": product_ids}}, {"_id": 0, "user_id": 0})
+    products_map = {p["id"]: p async for p in products_cursor}
+
     rows = []
     for item in catalog_items:
-        product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0, "user_id": 0})
+        product = products_map.get(item["product_id"])
         if not product:
             continue
         base_price = item.get("custom_price") or product.get("price", 0)
