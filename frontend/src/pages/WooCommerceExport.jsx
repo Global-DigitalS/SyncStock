@@ -629,6 +629,16 @@ const StoresPage = () => {
                           </Button>
                           <Button
                             size="sm"
+                            onClick={() => openCreateCatalog(config)}
+                            className="btn-secondary"
+                            title="Importar productos desde esta tienda"
+                            data-testid={`import-btn-${config.id}`}
+                          >
+                            <Download className="w-3.5 h-3.5 mr-1" />
+                            Importar
+                          </Button>
+                          <Button
+                            size="sm"
                             onClick={() => openExport(config)}
                             className="btn-primary"
                             disabled={catalogs.length === 0}
@@ -647,10 +657,6 @@ const StoresPage = () => {
                               <DropdownMenuItem onClick={() => handleTestConnection(config)} disabled={testing}>
                                 <Wifi className="w-4 h-4 mr-2" strokeWidth={1.5} />
                                 Probar Conexión
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openCreateCatalog(config)}>
-                                <Download className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                                Crear Catálogo desde Tienda
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => openEdit(config)}>
                                 <Settings className="w-4 h-4 mr-2" strokeWidth={1.5} />
