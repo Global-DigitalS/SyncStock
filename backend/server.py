@@ -1,6 +1,8 @@
 import os
 import logging
 import json
+import asyncio
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Dict, Set
@@ -255,6 +257,13 @@ async def health_check():
 # WebSocket endpoint for real-time notifications
 @app.websocket("/ws/notifications/{user_id}")
 async def websocket_notifications(websocket: WebSocket, user_id: str):
+    """
+    WebSocket endpoint para notificaciones en tiempo real.
+    Implementa heartbeat automático para detectar conexiones muertas.
+
+    Timeout Nginx: 300s (5 minutos)
+    Heartbeat interval: 60s (dentro del timeout)
+    """
     # Authenticate before accepting the connection.
     # The JWT token is expected as a query parameter: ?token=<jwt>
     # (browsers cannot set custom headers on WebSocket connections).
@@ -280,17 +289,64 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
         return
 
     await ws_manager.connect(websocket, user_id)
+
+    # Heartbeat configuration
+    HEARTBEAT_INTERVAL = 60  # segundos (debe ser menor que el timeout de Nginx: 300s)
+    heartbeat_task = None
+
+    async def send_heartbeat():
+        """Envía heartbeat periódicamente para mantener la conexión viva."""
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL)
+                try:
+                    await websocket.send_text(json.dumps({"type": "heartbeat", "timestamp": time.time()}))
+                except Exception as e:
+                    logger.debug(f"Error sending heartbeat to {user_id}: {e}")
+                    break
+        except asyncio.CancelledError:
+            pass
+
     try:
+        # Start heartbeat task
+        heartbeat_task = asyncio.create_task(send_heartbeat())
+
         while True:
-            # Keep connection alive, listen for pings
+            # Listen for messages from client
             data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
+
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                # Si no es JSON válido, tratar como ping simple
+                if data == "ping":
+                    await websocket.send_text("pong")
+                continue
+
+            # Handle different message types
+            if message.get("type") == "ping":
+                await websocket.send_text(json.dumps({"type": "pong", "timestamp": time.time()}))
+            elif message.get("type") == "heartbeat_ack":
+                # Acknowledge heartbeat - no es necesario responder
+                logger.debug(f"Heartbeat ACK from {user_id}")
+            else:
+                # Otros mensajes se ignoran, pero mantienen la conexión viva
+                logger.debug(f"Received message from {user_id}: {message.get('type')}")
+
     except WebSocketDisconnect:
+        logger.info(f"Client {user_id} disconnected normally")
         ws_manager.disconnect(websocket, user_id)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error for {user_id}: {e}")
         ws_manager.disconnect(websocket, user_id)
+    finally:
+        # Cancel heartbeat task on disconnect
+        if heartbeat_task and not heartbeat_task.done():
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
 
 
 app.include_router(api_router)
