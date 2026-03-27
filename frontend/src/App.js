@@ -217,9 +217,27 @@ const AuthProvider = ({ children }) => {
       };
 
       ws.onmessage = (event) => {
+        // Handle server heartbeat
         if (event.data === "pong") return;
+
         try {
           const data = JSON.parse(event.data);
+
+          // Handle server-sent heartbeats
+          if (data.type === "heartbeat") {
+            // Send acknowledgment for heartbeat
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "heartbeat_ack", timestamp: Date.now() }));
+            }
+            return;
+          }
+
+          // Handle ping-pong messages
+          if (data.type === "pong") {
+            return;
+          }
+
+          // Handle actual notifications
           if (data.type === "notification") {
             const notif = data.data;
             if (notif.type === "sync_progress") {

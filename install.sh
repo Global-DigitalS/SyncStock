@@ -474,9 +474,27 @@ EOF
     mkdir -p "$PERSISTENT_CONFIG_DIR"
     chown -R $SERVICE_USER:$SERVICE_GROUP "$PERSISTENT_CONFIG_DIR" 2>/dev/null || true
     chmod 755 "$PERSISTENT_CONFIG_DIR"
-    
+
+    # Configurar permisos del archivo de configuración (solo lectura para el servicio)
+    if [ -f "$PERSISTENT_CONFIG_DIR/config.json" ]; then
+        chmod 600 "$PERSISTENT_CONFIG_DIR/config.json"
+        chown $SERVICE_USER:$SERVICE_GROUP "$PERSISTENT_CONFIG_DIR/config.json"
+    fi
+
     # Ajustar permisos del backend
     chown -R $SERVICE_USER:$SERVICE_GROUP "$APP_DIR/backend"
+
+    # Establecer permisos seguros en directorios del backend
+    # Directorios: 755 (rwxr-xr-x - propietario: leer+escribir+ejecutar, otros: solo lectura)
+    find "$APP_DIR/backend" -type d -exec chmod 755 {} \; 2>/dev/null || true
+    # Archivos: 644 (rw-r--r-- - propietario: leer+escribir, otros: solo lectura)
+    find "$APP_DIR/backend" -type f -exec chmod 644 {} \; 2>/dev/null || true
+
+    # Directorio de uploads: 755 (necesita escribir nuevos archivos)
+    if [ -d "$APP_DIR/backend/uploads" ]; then
+        chmod 755 "$APP_DIR/backend/uploads"
+        chown $SERVICE_USER:$SERVICE_GROUP "$APP_DIR/backend/uploads"
+    fi
     
     # Habilitar e iniciar servicio
     systemctl daemon-reload
@@ -520,7 +538,12 @@ EOF
         print_error "Error al compilar el frontend"
         exit 1
     fi
-    
+
+    # Establecer permisos en el directorio de build (legible por nginx)
+    chmod 755 "build"
+    find "build" -type d -exec chmod 755 {} \; 2>/dev/null || true
+    find "build" -type f -exec chmod 644 {} \; 2>/dev/null || true
+
     print_success "Frontend compilado correctamente"
 }
 
