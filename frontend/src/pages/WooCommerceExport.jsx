@@ -630,9 +630,7 @@ const StoresPage = () => {
                           <Button
                             size="sm"
                             onClick={() => openCreateCatalog(config)}
-                            className="btn-secondary whitespace-nowrap"
-                            title="Importar productos desde esta tienda"
-                            data-testid={`import-btn-${config.id}`}
+                            className="btn-secondary"
                           >
                             <Download className="w-3.5 h-3.5 mr-1" />
                             Importar
