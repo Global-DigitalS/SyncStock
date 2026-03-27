@@ -614,14 +614,14 @@ const StoresPage = () => {
                       <TableCell className="text-sm text-slate-500">
                         {formatDate(config.last_sync)}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => handleSyncPriceStock(config)}
                             disabled={!config.catalog_id || syncing[config.id]}
-                            className="btn-secondary"
+                            className="btn-secondary whitespace-nowrap"
                             title="Sincronizar precio y stock"
                             data-testid={`sync-btn-${config.id}`}
                           >
@@ -630,7 +630,7 @@ const StoresPage = () => {
                           <Button
                             size="sm"
                             onClick={() => openCreateCatalog(config)}
-                            className="btn-secondary"
+                            className="btn-secondary whitespace-nowrap"
                             title="Importar productos desde esta tienda"
                             data-testid={`import-btn-${config.id}`}
                           >
@@ -640,7 +640,7 @@ const StoresPage = () => {
                           <Button
                             size="sm"
                             onClick={() => openExport(config)}
-                            className="btn-primary"
+                            className="btn-primary whitespace-nowrap"
                             disabled={catalogs.length === 0}
                             data-testid={`export-btn-${config.id}`}
                           >
