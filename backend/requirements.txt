@@ -76,6 +76,7 @@ oauthlib==3.3.1
 PyYAML==6.0.3
 pillow==12.1.1
 aiofiles==25.1.0
+cachetools==5.3.2
 six==1.17.0
 python-dateutil==2.9.0.post0
 packaging==26.0
