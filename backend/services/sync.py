@@ -7,6 +7,7 @@ import asyncio
 import zipfile
 import paramiko
 import requests
+from typing import Optional, List
 from datetime import datetime, timezone
 from openpyxl import load_workbook
 import xlrd
