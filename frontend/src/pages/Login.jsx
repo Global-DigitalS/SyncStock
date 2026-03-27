@@ -7,6 +7,9 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Package, Mail, Lock, ArrowRight, Eye, EyeOff, AlertCircle, UserPlus, KeyRound } from "lucide-react";
 import axios from "axios";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { loginSchema } from "../schemas";
 import { sanitizeEmail } from "../utils/sanitizer";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -16,12 +19,9 @@ const axiosInstance = axios.create({
 });
 
 const Login = () => {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorType, setErrorType] = useState(null);
-  const [brandingLoaded, setBrandingLoaded] = useState(false);
   const [branding, setBranding] = useState({
     app_name: "StockHub",
     app_slogan: "Gestión de Catálogos",
@@ -34,6 +34,17 @@ const Login = () => {
   });
   const { login, user } = useAuth();
   const navigate = useNavigate();
+
+  // React Hook Form + Zod validation
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    reset,
+  } = useForm({
+    resolver: zodResolver(loginSchema),
+    mode: "onBlur",
+  });
 
   // Load branding on mount
   useEffect(() => {
@@ -65,22 +76,17 @@ const Login = () => {
     return null;
   }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const onSubmit = async (data) => {
     setErrorType(null);
-    
-    if (!email || !password) {
-      toast.error("Por favor complete todos los campos");
-      return;
-    }
 
     // Sanitize email before sending
-    const sanitizedEmail = sanitizeEmail(email);
+    const sanitizedEmail = sanitizeEmail(data.email);
 
     setLoading(true);
     try {
-      await login(sanitizedEmail, password);
+      await login(sanitizedEmail, data.password);
       toast.success("Bienvenido de vuelta");
+      reset();
       navigate("/");
     } catch (error) {
       console.error("Login error:", error);
@@ -151,7 +157,7 @@ const Login = () => {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             <div className="space-y-2">
               <Label htmlFor="email" className="text-slate-700 font-medium">
                 Correo electrónico
@@ -161,13 +167,15 @@ const Login = () => {
                 <Input
                   id="email"
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  {...register("email")}
                   placeholder="tu@email.com"
-                  className="pl-10 h-12 input-base"
+                  className={`pl-10 h-12 input-base ${errors.email ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
                   data-testid="login-email"
                 />
               </div>
+              {errors.email && (
+                <p className="text-sm text-red-600 mt-1">{errors.email.message}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -184,10 +192,9 @@ const Login = () => {
                 <Input
                   id="password"
                   type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  {...register("password")}
                   placeholder="••••••••"
-                  className="pl-10 pr-10 h-12 input-base"
+                  className={`pl-10 pr-10 h-12 input-base ${errors.password ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
                   data-testid="login-password"
                 />
                 <button
@@ -203,6 +210,9 @@ const Login = () => {
                   )}
                 </button>
               </div>
+              {errors.password && (
+                <p className="text-sm text-red-600 mt-1">{errors.password.message}</p>
+              )}
             </div>
 
             <Button

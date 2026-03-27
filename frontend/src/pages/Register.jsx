@@ -7,6 +7,9 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Package, Mail, Lock, User, Building2, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Crown, Sparkles, FileText, MapPin, CreditCard } from "lucide-react";
 import axios from "axios";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { registerSchema } from "../schemas";
 import { sanitizeEmail, sanitizeString } from "../utils/sanitizer";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
@@ -16,13 +19,6 @@ const Register = () => {
   const [plans, setPlans] = useState([]);
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [stripeEnabled, setStripeEnabled] = useState(false);
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    company: ""
-  });
   const [billingData, setBillingData] = useState({
     company_name: "",
     tax_id: "",
@@ -47,6 +43,18 @@ const Register = () => {
   });
   const { register, user } = useAuth();
   const navigate = useNavigate();
+
+  // React Hook Form + Zod validation
+  const {
+    register: registerField,
+    handleSubmit,
+    formState: { errors },
+    watch,
+    reset,
+  } = useForm({
+    resolver: zodResolver(registerSchema),
+    mode: "onBlur",
+  });
 
   // Load branding, plans and stripe status on mount
   useEffect(() => {
@@ -102,10 +110,6 @@ const Register = () => {
     return null;
   }
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
   const handleBillingChange = (e) => {
     setBillingData({ ...billingData, [e.target.name]: e.target.value });
   };
@@ -116,49 +120,47 @@ const Register = () => {
     setStep(2);
   };
 
-  const handleContinueFromStep2 = () => {
-    if (!formData.name || !formData.email || !formData.password) {
-      toast.error("Por favor complete los campos obligatorios");
-      return;
-    }
-    if (formData.password !== formData.confirmPassword) {
-      toast.error("Las contraseñas no coinciden");
-      return;
-    }
-    if (formData.password.length < 6) {
-      toast.error("La contraseña debe tener al menos 6 caracteres");
-      return;
-    }
+  // Watch form data to use in step handlers
+  const watchFormData = watch();
 
-    // If paid plan, go to billing step
-    if (isPaidPlan) {
-      // Pre-fill billing company from registration
-      if (formData.company && !billingData.company_name) {
-        setBillingData(prev => ({ ...prev, company_name: formData.company }));
-      }
-      setStep(3);
-    } else {
-      // Free plan - complete registration
-      handleFreeRegistration();
+  const handleContinueFromStep2 = async () => {
+    // Validate the form data against the schema
+    try {
+      // This will trigger validation
+      const isValid = await handleSubmit(async (data) => {
+        if (isPaidPlan) {
+          // Pre-fill billing company from registration
+          if (data.name && !billingData.company_name) {
+            setBillingData(prev => ({ ...prev, company_name: data.name }));
+          }
+          setStep(3);
+        } else {
+          // Free plan - complete registration
+          await handleFreeRegistration(data);
+        }
+      })();
+    } catch (error) {
+      // Validation errors are displayed by react-hook-form
     }
   };
 
-  const handleFreeRegistration = async () => {
+  const handleFreeRegistration = async (formData) => {
     setLoading(true);
     try {
       await register({
         name: sanitizeString(formData.name),
         email: sanitizeEmail(formData.email),
         password: formData.password,
-        company: formData.company ? sanitizeString(formData.company) : null,
+        company: null,
         plan_id: selectedPlan?.id || null
       });
-      
+
       if (selectedPlan?.trial_days > 0) {
         toast.success(`¡Cuenta creada! Disfruta de ${selectedPlan.trial_days} días de prueba premium`);
       } else {
         toast.success("Cuenta creada exitosamente");
       }
+      reset();
       navigate("/");
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al crear la cuenta");
@@ -167,9 +169,9 @@ const Register = () => {
     }
   };
 
-  const handlePaidRegistration = async () => {
+  const handlePaidRegistration = async (formData) => {
     // Validate billing data
-    if (!billingData.company_name || !billingData.tax_id || !billingData.address || 
+    if (!billingData.company_name || !billingData.tax_id || !billingData.address ||
         !billingData.city || !billingData.postal_code) {
       toast.error("Por favor complete todos los datos de facturación");
       return;
@@ -187,12 +189,12 @@ const Register = () => {
         name: sanitizeString(formData.name),
         email: sanitizeEmail(formData.email),
         password: formData.password,
-        company: formData.company ? sanitizeString(formData.company) : null,
+        company: null,
         plan_id: selectedPlan?.id
       });
 
       const token = registerRes.data.token;
-      
+
       // Step 2: Save billing information
       await axios.post(
         `${BACKEND_URL}/api/subscriptions/billing-info`,
@@ -216,8 +218,8 @@ const Register = () => {
 
       if (checkoutRes.data?.checkout_url) {
         toast.success("Redirigiendo a la pasarela de pago...");
-        // Store token temporarily for when user returns
-        localStorage.setItem("pending_token", token);
+        // Store token temporarily for when user returns (will be replaced with sessionStorage in FIX 3)
+        sessionStorage.setItem("pending_token", token);
         // Redirect to Stripe Checkout
         window.location.href = checkoutRes.data.checkout_url;
       } else {
@@ -437,27 +439,36 @@ const Register = () => {
           <Label htmlFor="name" className="text-slate-700 font-medium">Nombre completo *</Label>
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <Input id="name" name="name" type="text" value={formData.name} onChange={handleChange}
-              placeholder="Tu nombre" className="pl-10 h-12 input-base" data-testid="register-name" />
+            <Input
+              id="name"
+              type="text"
+              {...registerField("name")}
+              placeholder="Tu nombre"
+              className={`pl-10 h-12 input-base ${errors.name ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
+              data-testid="register-name"
+            />
           </div>
+          {errors.name && (
+            <p className="text-sm text-red-600 mt-1">{errors.name.message}</p>
+          )}
         </div>
 
         <div className="space-y-2">
           <Label htmlFor="email" className="text-slate-700 font-medium">Correo electrónico *</Label>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <Input id="email" name="email" type="email" value={formData.email} onChange={handleChange}
-              placeholder="tu@email.com" className="pl-10 h-12 input-base" data-testid="register-email" />
+            <Input
+              id="email"
+              type="email"
+              {...registerField("email")}
+              placeholder="tu@email.com"
+              className={`pl-10 h-12 input-base ${errors.email ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
+              data-testid="register-email"
+            />
           </div>
-        </div>
-
-        <div className="space-y-2">
-          <Label htmlFor="company" className="text-slate-700 font-medium">Empresa (opcional)</Label>
-          <div className="relative">
-            <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-            <Input id="company" name="company" type="text" value={formData.company} onChange={handleChange}
-              placeholder="Nombre de tu empresa" className="pl-10 h-12 input-base" data-testid="register-company" />
-          </div>
+          {errors.email && (
+            <p className="text-sm text-red-600 mt-1">{errors.email.message}</p>
+          )}
         </div>
 
         <div className="grid grid-cols-2 gap-4">
@@ -465,23 +476,42 @@ const Register = () => {
             <Label htmlFor="password" className="text-slate-700 font-medium">Contraseña *</Label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <Input id="password" name="password" type={showPassword ? "text" : "password"}
-                value={formData.password} onChange={handleChange} placeholder="••••••••"
-                className="pl-10 pr-10 h-12 input-base" data-testid="register-password" />
-              <button type="button" onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+              <Input
+                id="password"
+                type={showPassword ? "text" : "password"}
+                {...registerField("password")}
+                placeholder="••••••••"
+                className={`pl-10 pr-10 h-12 input-base ${errors.password ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
+                data-testid="register-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
                 {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
+            {errors.password && (
+              <p className="text-sm text-red-600 mt-1">{errors.password.message}</p>
+            )}
           </div>
           <div className="space-y-2">
             <Label htmlFor="confirmPassword" className="text-slate-700 font-medium">Confirmar *</Label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <Input id="confirmPassword" name="confirmPassword" type={showPassword ? "text" : "password"}
-                value={formData.confirmPassword} onChange={handleChange} placeholder="••••••••"
-                className="pl-10 h-12 input-base" data-testid="register-confirm-password" />
+              <Input
+                id="confirmPassword"
+                type={showPassword ? "text" : "password"}
+                {...registerField("confirmPassword")}
+                placeholder="••••••••"
+                className={`pl-10 h-12 input-base ${errors.confirmPassword ? "border-red-500 focus:border-red-500 focus:ring-red-500" : ""}`}
+                data-testid="register-confirm-password"
+              />
             </div>
+            {errors.confirmPassword && (
+              <p className="text-sm text-red-600 mt-1">{errors.confirmPassword.message}</p>
+            )}
           </div>
         </div>
 
@@ -534,7 +564,7 @@ const Register = () => {
         </p>
       </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); handlePaidRegistration(); }} className="space-y-4">
+      <form onSubmit={(e) => { e.preventDefault(); handleSubmit(async (data) => await handlePaidRegistration(data))(); }} className="space-y-4">
         <div className="space-y-2">
           <Label htmlFor="company_name" className="text-slate-700 font-medium">Nombre / Razón Social *</Label>
           <div className="relative">
