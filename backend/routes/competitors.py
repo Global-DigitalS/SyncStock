@@ -506,7 +506,7 @@ async def export_competitor_prices_csv(
 
     snapshots = await db.price_snapshots.find(
         query, {"_id": 0}
-    ).sort("scraped_at", -1).to_list(50000)
+    ).sort("scraped_at", -1).to_list(10000)
 
     # Enriquecer con nombres de competidor
     comp_ids = list({s["competitor_id"] for s in snapshots})
@@ -574,7 +574,7 @@ async def get_positioning_report(
         {"$replaceRoot": {"newRoot": "$latest"}},
         {"$project": {"_id": 0}},
     ]
-    all_snapshots = await db.price_snapshots.aggregate(pipeline).to_list(50000)
+    all_snapshots = await db.price_snapshots.aggregate(pipeline).to_list(10000)
 
     # Agrupar snapshots por producto (SKU o EAN)
     product_snapshots = {}
@@ -594,7 +594,7 @@ async def get_positioning_report(
     my_products = await db.products.find(
         product_query,
         {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1, "category": 1, "supplier_name": 1},
-    ).to_list(50000)
+    ).to_list(10000)
 
     # Nombres de competidores
     comp_ids = list({s["competitor_id"] for snaps in product_snapshots.values() for s in snaps})
@@ -897,7 +897,7 @@ async def simulate_automation(
             }
         },
     ]
-    competitor_data = await db.price_snapshots.aggregate(pipeline).to_list(50000)
+    competitor_data = await db.price_snapshots.aggregate(pipeline).to_list(10000)
 
     comp_best = {}
     for cd in competitor_data:
@@ -909,7 +909,7 @@ async def simulate_automation(
         {"user_id": user["id"]},
         {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1,
          "category": 1, "supplier_id": 1, "supplier_name": 1},
-    ).to_list(50000)
+    ).to_list(10000)
 
     changes = []
     for product in my_products:
@@ -1003,7 +1003,7 @@ async def apply_automation(
             }
         },
     ]
-    competitor_data = await db.price_snapshots.aggregate(pipeline).to_list(50000)
+    competitor_data = await db.price_snapshots.aggregate(pipeline).to_list(10000)
     comp_best = {}
     for cd in competitor_data:
         key = cd["_id"].get("sku") or cd["_id"].get("ean")
@@ -1014,7 +1014,7 @@ async def apply_automation(
         {"user_id": user["id"]},
         {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1,
          "category": 1, "supplier_id": 1},
-    ).to_list(50000)
+    ).to_list(10000)
 
     applied = 0
     now = datetime.now(timezone.utc).isoformat()
