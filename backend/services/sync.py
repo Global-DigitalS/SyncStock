@@ -662,7 +662,22 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             prices_merge_key = None
             prices_lookup = {}
             if prices_data:
-                prices_merge_key = list(prices_data[0].keys())[0] if prices_data else None
+                # Try to find a common merge key (SKU, Matnr, etc.) instead of just first column
+                sample_product = products_data[0] if products_data else {}
+                product_keys = list(sample_product.keys())
+
+                # Buscar una columna común entre productos y precios
+                common_merge_key = None
+                for pk in product_keys:
+                    if pk in prices_data[0]:
+                        common_merge_key = pk
+                        break
+
+                # Si no hay columna común, usar la primera
+                prices_merge_key = common_merge_key or list(prices_data[0].keys())[0]
+
+                logger.info(f"ZIP prices merge_key: {prices_merge_key} (common={common_merge_key is not None})")
+
                 if prices_merge_key:
                     for row in prices_data:
                         k = str(row.get(prices_merge_key, '')).strip()
@@ -672,14 +687,27 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             stock_merge_key = None
             stock_lookup = {}
             if stock_data:
-                stock_merge_key = list(stock_data[0].keys())[0] if stock_data else None
+                # Try to find a common merge key for stock too
+                sample_product = products_data[0] if products_data else {}
+                product_keys = list(sample_product.keys())
+
+                common_merge_key = None
+                for pk in product_keys:
+                    if pk in stock_data[0]:
+                        common_merge_key = pk
+                        break
+
+                stock_merge_key = common_merge_key or list(stock_data[0].keys())[0]
+
+                logger.info(f"ZIP stock merge_key: {stock_merge_key} (common={common_merge_key is not None})")
+
                 if stock_merge_key:
                     for row in stock_data:
                         k = str(row.get(stock_merge_key, '')).strip()
                         if k:
                             stock_lookup[k] = row
 
-            logger.info(f"ZIP merge: {len(products_data)} productos, {len(prices_lookup)} precios, {len(stock_lookup)} stock")
+            logger.info(f"ZIP merge: {len(products_data)} productos, {len(prices_lookup)} precios (key={prices_merge_key}), {len(stock_lookup)} stock (key={stock_merge_key})")
 
             # Build detected_columns from a sample merged row (product + prefixed prices/stock)
             # so the ColumnMappingDialog shows the real available columns
