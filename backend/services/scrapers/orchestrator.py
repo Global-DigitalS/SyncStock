@@ -1,12 +1,15 @@
 """
 Orquestador de scraping de precios de competidores.
 Coordina: selección de productos → scraping → matching → almacenamiento → alertas.
+OPTIMIZADO: Búsquedas paralelas, alertas diferidas, caché de precios.
 """
 import asyncio
 import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Dict
+from functools import lru_cache
+from cachetools import TTLCache
 
 from services.database import db
 from services.scrapers import get_scraper
@@ -15,11 +18,17 @@ from services.scrapers.matcher import match_product, AUTO_ACCEPT_THRESHOLD, Matc
 
 logger = logging.getLogger(__name__)
 
+# Caché de precios recientes (user_id:sku/ean:competitor_id → price, maxsize=10k, TTL=3600s)
+_price_cache: Dict = TTLCache(maxsize=10000, ttl=3600)
+
 # Máximo de productos a scrapear por ejecución (para no sobrecargar)
 MAX_PRODUCTS_PER_RUN = 200
 
 # Máximo de competidores simultáneos
-MAX_CONCURRENT_COMPETITORS = 3
+MAX_CONCURRENT_COMPETITORS = 5
+
+# Máximo de búsquedas paralelas por competidor
+MAX_CONCURRENT_SEARCHES_PER_COMPETITOR = 4
 
 
 async def _get_user_products(user_id: str, limit: int = MAX_PRODUCTS_PER_RUN) -> List[dict]:
@@ -293,6 +302,7 @@ async def crawl_competitor(
 ) -> dict:
     """
     Ejecuta el scraping de un competidor para todos los productos del usuario.
+    OPTIMIZADO: Búsquedas paralelas por producto.
 
     Returns:
         dict con estadísticas: {found, matched, stored, errors, pending_review}
@@ -307,55 +317,87 @@ async def crawl_competitor(
 
     stats = {"found": 0, "matched": 0, "stored": 0, "errors": 0, "pending_review": 0}
 
-    for product in user_products:
-        try:
-            # Buscar el producto en el competidor
-            result = await scraper.search_product(
-                ean=product.get("ean"),
-                sku=product.get("sku"),
-                name=product.get("name"),
-            )
+    # Paralelizar búsquedas de productos
+    semaphore = asyncio.Semaphore(MAX_CONCURRENT_SEARCHES_PER_COMPETITOR)
 
-            if result.error or not result.products:
-                continue
+    async def _search_product_in_competitor(product: dict) -> tuple:
+        """Busca un producto en el competidor. Retorna (found_count, matched_count, stored_count, errors_count, pending_count)."""
+        async with semaphore:
+            try:
+                # Verificar caché: si tenemos un precio reciente, saltar búsqueda
+                cache_key = f"{user_id}:{product.get('sku') or product.get('ean')}:{competitor_id}"
+                if cache_key in _price_cache:
+                    logger.debug(f"Precio cachéado encontrado para {cache_key}")
+                    return (0, 0, 0, 0, 0)
 
-            stats["found"] += len(result.products)
+                result = await scraper.search_product(
+                    ean=product.get("ean"),
+                    sku=product.get("sku"),
+                    name=product.get("name"),
+                )
 
-            # Intentar match con el mejor resultado
-            for scraped in result.products[:3]:  # Top 3 resultados
-                match = await match_product(scraped, [product])
+                if result.error or not result.products:
+                    return (0, 0, 0, 0, 0)
 
-                if match.matched:
-                    stats["matched"] += 1
+                found_count = len(result.products)
+                matched_count = 0
+                stored_count = 0
+                pending_count = 0
 
-                    # Almacenar snapshot
-                    snapshot_id = await _store_snapshot(
-                        user_id, competitor_id, scraped, match,
-                    )
-                    stats["stored"] += 1
+                # Intentar match con el mejor resultado
+                for scraped in result.products[:3]:  # Top 3 resultados
+                    match = await match_product(scraped, [product])
 
-                    # Si la confianza es baja, guardar para revisión
-                    if match.needs_review:
-                        await _store_pending_match(
-                            user_id, competitor_id, scraped, match, snapshot_id,
+                    if match.matched:
+                        matched_count += 1
+
+                        # Almacenar snapshot
+                        snapshot_id = await _store_snapshot(
+                            user_id, competitor_id, scraped, match,
                         )
-                        stats["pending_review"] += 1
+                        stored_count += 1
 
-                    # Evaluar alertas (solo si confianza suficiente)
-                    if match.confidence >= AUTO_ACCEPT_THRESHOLD:
-                        await _evaluate_alerts(
-                            user_id,
-                            match.product_sku,
-                            match.product_ean,
-                            scraped.price,
-                            competitor.get("name", "Competidor"),
-                        )
+                        # Cachear el precio encontrado
+                        cache_key = f"{user_id}:{match.product_sku or match.product_ean}:{competitor_id}"
+                        _price_cache[cache_key] = scraped.price
 
-                    break  # Usar solo el mejor match
+                        # Si la confianza es baja, guardar para revisión
+                        if match.needs_review:
+                            await _store_pending_match(
+                                user_id, competitor_id, scraped, match, snapshot_id,
+                            )
+                            pending_count += 1
 
-        except Exception as e:
-            stats["errors"] += 1
-            logger.error(f"Error scraping {product.get('sku')} en {channel}: {e}")
+                        # Evaluar alertas (solo si confianza suficiente)
+                        # OPTIMIZADO: Diferir alertas a background
+                        if match.confidence >= AUTO_ACCEPT_THRESHOLD:
+                            asyncio.create_task(_evaluate_alerts(
+                                user_id,
+                                match.product_sku,
+                                match.product_ean,
+                                scraped.price,
+                                competitor.get("name", "Competidor"),
+                            ))
+
+                        break  # Usar solo el mejor match
+
+                return (found_count, matched_count, stored_count, 0, pending_count)
+
+            except Exception as e:
+                logger.error(f"Error scraping {product.get('sku')} en {channel}: {e}")
+                return (0, 0, 0, 1, 0)
+
+    # Ejecutar todas las búsquedas en paralelo
+    tasks = [_search_product_in_competitor(product) for product in user_products]
+    results = await asyncio.gather(*tasks, return_exceptions=False)
+
+    # Agregar resultados
+    for found, matched, stored, errors, pending in results:
+        stats["found"] += found
+        stats["matched"] += matched
+        stats["stored"] += stored
+        stats["errors"] += errors
+        stats["pending_review"] += pending
 
     return stats
 

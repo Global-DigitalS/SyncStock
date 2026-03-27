@@ -243,6 +243,10 @@ async def ensure_indexes():
         await _db.price_snapshots.create_index([("ean", 1), ("competitor_id", 1), ("scraped_at", -1)])
         await _db.price_snapshots.create_index([("competitor_id", 1), ("scraped_at", -1)])
         await _db.price_snapshots.create_index([("user_id", 1), ("scraped_at", -1)])
+        # OPTIMIZADOS: búsquedas comunes en scraping y análisis de precios
+        await _db.price_snapshots.create_index([("user_id", 1), ("sku", 1), ("competitor_id", 1), ("scraped_at", -1)])
+        await _db.price_snapshots.create_index([("user_id", 1), ("ean", 1), ("competitor_id", 1), ("scraped_at", -1)])
+        await _db.price_snapshots.create_index([("user_id", 1), ("competitor_id", 1), ("scraped_at", -1)])
         # --- price_alerts (alertas de precio configuradas por el usuario) ---
         await _db.price_alerts.create_index([("user_id", 1), ("id", 1)], unique=True)
         await _db.price_alerts.create_index([("user_id", 1), ("active", 1)])
