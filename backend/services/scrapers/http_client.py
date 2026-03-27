@@ -1,11 +1,12 @@
 """
 Base HTTP client para scraping con rate limiting y respeto a robots.txt.
-Diseñado para ser legal y respetuoso con los sitios objetivo.
+Optimizado para ser invisible: User-Agents reales, headers realistas, delays aleatorios.
 """
 import asyncio
 import hashlib
 import logging
 import time
+import random
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict
 from urllib.parse import urlparse, urljoin
@@ -15,21 +16,60 @@ import aiohttp
 
 logger = logging.getLogger(__name__)
 
-# User-Agent transparente que identifica el bot
-_USER_AGENT = "SyncStockPriceBot/1.0 (+https://syncstock.app/bot; precio-comparador)"
+# User-Agents reales de navegadores (para parecer invisible)
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+]
 
-# Headers por defecto para peticiones
-_DEFAULT_HEADERS = {
-    "User-Agent": _USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate",
-    "DNT": "1",
-    "Connection": "keep-alive",
-}
+def _get_random_user_agent() -> str:
+    """Obtiene un User-Agent aleatorio de navegador real."""
+    return random.choice(_USER_AGENTS)
+
+# Headers realistas que imitan un navegador real
+def _get_realistic_headers(user_agent: Optional[str] = None) -> dict:
+    """Genera headers realistas que parecen un navegador de verdad."""
+    ua = user_agent or _get_random_user_agent()
+
+    # Determinar el navegador para headers más específicos
+    is_firefox = "Firefox" in ua
+    is_safari = "Safari" in ua and "Chrome" not in ua
+
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
+
+    # Headers específicos por navegador
+    if is_firefox:
+        headers["Sec-GPC"] = "1"
+
+    if not is_safari:  # Chrome/Edge/Firefox
+        headers["sec-ch-ua"] = '"Not_A Brand";v="8", "Chromium";v="120"'
+        headers["sec-ch-ua-mobile"] = "?0"
+        headers["sec-ch-ua-platform"] = '"Windows"'
+
+    return headers
 
 # Tiempo mínimo entre peticiones al mismo dominio (segundos)
 _DEFAULT_DELAY = 2.0
+
+# Rango de delays aleatorios (segundos) para parecer más humano
+_DELAY_RANGE = (1.0, 5.0)  # Entre 1 y 5 segundos
 
 # Timeout por petición
 _REQUEST_TIMEOUT = 15
@@ -46,6 +86,8 @@ class RobotsCache:
 
     def __init__(self):
         self._cache: Dict[str, tuple] = {}  # domain -> (parser, fetched_at)
+        # User-Agent genérico para robots.txt (los servidores suelen permitir */)
+        self._robots_ua = "*"
 
     async def is_allowed(self, url: str, session: aiohttp.ClientSession) -> bool:
         """Comprueba si la URL está permitida por robots.txt."""
@@ -59,7 +101,7 @@ class RobotsCache:
         if domain in self._cache:
             parser, fetched_at = self._cache[domain]
             if now - fetched_at < _ROBOTS_CACHE_TTL:
-                return parser.can_fetch(_USER_AGENT, url)
+                return parser.can_fetch(self._robots_ua, url)
 
         # Fetch robots.txt
         parser = RobotFileParser()
@@ -67,7 +109,7 @@ class RobotsCache:
             async with session.get(
                 robots_url,
                 timeout=aiohttp.ClientTimeout(total=5),
-                headers={"User-Agent": _USER_AGENT},
+                headers=_get_realistic_headers(),  # Use realistic headers for robots.txt too
             ) as resp:
                 if resp.status == 200:
                     text = await resp.text()
@@ -81,13 +123,13 @@ class RobotsCache:
             parser.parse([])
 
         self._cache[domain] = (parser, now)
-        return parser.can_fetch(_USER_AGENT, url)
+        return parser.can_fetch(self._robots_ua, url)
 
     def get_crawl_delay(self, domain: str) -> Optional[float]:
         """Obtiene el Crawl-delay definido en robots.txt."""
         if domain in self._cache:
             parser, _ = self._cache[domain]
-            delay = parser.crawl_delay(_USER_AGENT)
+            delay = parser.crawl_delay(self._robots_ua)
             return float(delay) if delay else None
         return None
 
@@ -106,16 +148,29 @@ class RateLimiter:
         return self._locks[domain]
 
     async def wait(self, domain: str, crawl_delay: Optional[float] = None):
-        """Espera el tiempo necesario antes de hacer una petición al dominio."""
+        """Espera el tiempo necesario antes de hacer una petición al dominio.
+        Usa delays aleatorios para parecer más humano."""
         lock = self._get_lock(domain)
         async with lock:
-            delay = crawl_delay if crawl_delay else self._default_delay
+            # Obtener delay base
+            base_delay = crawl_delay if crawl_delay else self._default_delay
+
+            # Añadir jitter aleatorio para parecer humano
+            # Si base_delay < 2, usar el rango de delays aleatorios
+            if base_delay < 2:
+                actual_delay = random.uniform(_DELAY_RANGE[0], _DELAY_RANGE[1])
+            else:
+                # Si el servidor especifica un delay, respetar + pequeño jitter
+                actual_delay = base_delay + random.uniform(0, 0.5)
+
             now = time.monotonic()
             last = self._last_request.get(domain, 0)
-            wait_time = delay - (now - last)
+            wait_time = actual_delay - (now - last)
+
             if wait_time > 0:
-                logger.debug(f"Rate limit: esperando {wait_time:.1f}s para {domain}")
+                logger.debug(f"Rate limit: esperando {wait_time:.2f}s para {domain}")
                 await asyncio.sleep(wait_time)
+
             self._last_request[domain] = time.monotonic()
 
 
@@ -145,10 +200,12 @@ class ScraperHttpClient:
                 limit_per_host=2,  # máx por host
                 ttl_dns_cache=300,
             )
+            # Usar headers realistas aleatorios para parecer invisible
+            headers = _get_realistic_headers()
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
                 connector=connector,
-                headers=_DEFAULT_HEADERS,
+                headers=headers,
             )
         return self._session
 
@@ -184,7 +241,8 @@ class ScraperHttpClient:
         await _rate_limiter.wait(domain, crawl_delay)
 
         # 3. Fetch con reintentos
-        headers = dict(_DEFAULT_HEADERS)
+        # Usar headers realistas aleatorios para cada petición
+        headers = _get_realistic_headers()
         if extra_headers:
             headers.update(extra_headers)
 
