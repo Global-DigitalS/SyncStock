@@ -301,6 +301,16 @@ async def ensure_indexes():
         await _db.sync_jobs.create_index(
             [("started_at", 1)], expireAfterSeconds=7776000, name="ttl_sync_jobs_90d"
         )
+        # --- crawl_jobs (scraper scheduler) ---
+        await _db.crawl_jobs.create_index([("_id", 1)], unique=True)
+        await _db.crawl_jobs.create_index([("user_id", 1), ("created_at", -1)])
+        await _db.crawl_jobs.create_index([("user_id", 1), ("status", 1)])
+        await _db.crawl_jobs.create_index([("competitor_id", 1), ("user_id", 1)])
+        await _db.crawl_jobs.create_index([("status", 1), ("next_retry_at", 1)])
+        # TTL para limpieza automática de jobs completados/fallidos > 30 días
+        await _db.crawl_jobs.create_index(
+            [("created_at", 1)], expireAfterSeconds=2592000, name="ttl_crawl_jobs_30d"
+        )
 
         logger.info("MongoDB indexes ensured (incluidos índices de optimización y TTL)")
     except Exception as e:

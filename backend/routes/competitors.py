@@ -1555,3 +1555,138 @@ async def reset_proxy(host: str, user: dict = Depends(get_current_user)):
     if not ok:
         raise HTTPException(status_code=404, detail=f"Proxy '{host}' no encontrado")
     return {"message": f"Proxy '{host}' reseteado correctamente"}
+
+
+# ==================== JOB SCHEDULING ====================
+
+@router.post("/competitors/jobs/schedule")
+async def schedule_crawl_job(
+    competitor_id: str = Body(...),
+    immediate: bool = Body(False, description="Si True, ejecutar inmediatamente"),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Programa un trabajo de scraping para un competidor.
+    Si immediate=True, se ejecuta en cuanto haya recursos disponibles.
+    """
+    from services.scrapers.scraper_scheduler import create_crawl_job
+    from datetime import timezone, datetime
+
+    user_id = user["id"]
+
+    # Verificar que el competidor existe y pertenece al usuario
+    competitor = await db.competitors.find_one({"id": competitor_id, "user_id": user_id})
+    if not competitor:
+        raise HTTPException(status_code=404, detail="Competidor no encontrado")
+
+    try:
+        scheduled_for = None if immediate else datetime.now(timezone.utc)
+        job = await create_crawl_job(user_id, competitor_id, scheduled_for)
+
+        return {
+            "job_id": job.id,
+            "status": job.status.value,
+            "competitor_id": competitor_id,
+            "scheduled_at": scheduled_for.isoformat() if scheduled_for else None,
+            "message": "Trabajo de scraping programado" if not immediate else "Trabajo encolado para ejecución inmediata",
+        }
+    except Exception as e:
+        logger.error(f"Error scheduling job: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/competitors/jobs")
+async def list_crawl_jobs(
+    status: Optional[str] = Query(None, description="pending, running, completed, failed"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(get_current_user),
+):
+    """Lista trabajos de scraping del usuario con filtrado por estado."""
+    user_id = user["id"]
+
+    query = {"user_id": user_id}
+    if status:
+        query["status"] = status
+
+    # Contar total
+    total = await db.crawl_jobs.count_documents(query)
+
+    # Obtener jobs paginados
+    jobs = await db.crawl_jobs.find(
+        query,
+        {"_id": 0, "created_at": 0, "updated_at": 0}
+    ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
+
+    return {
+        "jobs": jobs,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
+
+
+@router.get("/competitors/jobs/{job_id}")
+async def get_crawl_job_details(job_id: str, user: dict = Depends(get_current_user)):
+    """Obtiene detalles completos de un trabajo de scraping."""
+    from services.scrapers.scraper_scheduler import get_job
+
+    user_id = user["id"]
+
+    job = await get_job(job_id)
+    if not job or job.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Trabajo no encontrado")
+
+    return job.to_dict()
+
+
+@router.post("/competitors/jobs/{job_id}/cancel")
+async def cancel_crawl_job(job_id: str, user: dict = Depends(get_current_user)):
+    """Cancela un trabajo de scraping pendiente o en ejecución."""
+    from services.scrapers.scraper_scheduler import get_job, update_job_status, JobStatus
+    from services.scrapers.job_executor import cancel_job
+
+    user_id = user["id"]
+
+    job = await get_job(job_id)
+    if not job or job.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Trabajo no encontrado")
+
+    if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede cancelar un trabajo en estado {job.status.value}"
+        )
+
+    # Intentar cancelar
+    cancelled = await cancel_job(job_id)
+
+    if not cancelled:
+        # Marcar como cancelado en la DB
+        await update_job_status(job_id, JobStatus.CANCELLED)
+
+    return {
+        "job_id": job_id,
+        "status": JobStatus.CANCELLED.value,
+        "message": "Trabajo cancelado correctamente",
+    }
+
+
+@router.get("/competitors/jobs/stats/summary")
+async def get_job_statistics(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Obtiene estadísticas de trabajos de scraping (tasa de éxito, duración, etc).
+    """
+    from services.scrapers.scraper_scheduler import get_job_stats
+
+    user_id = user["id"]
+
+    try:
+        stats = await get_job_stats(user_id, days=days)
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting job stats: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

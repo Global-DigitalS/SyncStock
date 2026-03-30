@@ -93,11 +93,18 @@ _DEFAULT_DELAY = 2.0
 # Rango de delays aleatorios (segundos) para parecer más humano
 _DELAY_RANGE = (1.0, 5.0)  # Entre 1 y 5 segundos
 
-# Timeout por petición
-_REQUEST_TIMEOUT = 15
+# Timeout por petición (segundos)
+# Increased from 15 to 45 for slower sources (FTP, large files, etc.)
+_REQUEST_TIMEOUT = 45
+
+# Timeout específico para conexiones FTP/SFTP (más lentas)
+_FTP_TIMEOUT = 120
+
+# Timeout específico para conexiones de URL normales (más rápidas)
+_URL_TIMEOUT = 30
 
 # Máximo de reintentos por petición
-_MAX_RETRIES = 2
+_MAX_RETRIES = 3
 
 # Cache de robots.txt (TTL 1 hora)
 _ROBOTS_CACHE_TTL = 3600
@@ -364,11 +371,22 @@ class ProxyAwareHttpClient(ScraperHttpClient):
         super().__init__()
         self._proxy_sessions: Dict[str, aiohttp.ClientSession] = {}
 
-    async def _get_session_for_proxy(self, proxy_url: Optional[str]) -> aiohttp.ClientSession:
-        """Obtiene (o crea) una sesión aiohttp para el proxy indicado."""
+    async def _get_session_for_proxy(
+        self,
+        proxy_url: Optional[str],
+        timeout_seconds: Optional[int] = None
+    ) -> aiohttp.ClientSession:
+        """
+        Obtiene (o crea) una sesión aiohttp para el proxy indicado.
+
+        Args:
+            proxy_url: URL del proxy (None para conexión directa)
+            timeout_seconds: Timeout personalizado en segundos (None para usar default)
+        """
         key = proxy_url or "direct"
         if key not in self._proxy_sessions or self._proxy_sessions[key].closed:
-            timeout = aiohttp.ClientTimeout(total=_REQUEST_TIMEOUT)
+            timeout_val = timeout_seconds or _REQUEST_TIMEOUT
+            timeout = aiohttp.ClientTimeout(total=timeout_val)
             connector = aiohttp.TCPConnector(
                 limit=5,
                 limit_per_host=2,
@@ -380,6 +398,23 @@ class ProxyAwareHttpClient(ScraperHttpClient):
                 headers=_get_realistic_headers(),
             )
         return self._proxy_sessions[key]
+
+    def get_timeout_for_source(self, source_type: str) -> int:
+        """
+        Obtiene el timeout recomendado para un tipo de fuente.
+
+        Args:
+            source_type: 'ftp', 'sftp', 'url' u otro
+
+        Returns:
+            Timeout en segundos
+        """
+        source_timeouts = {
+            'ftp': _FTP_TIMEOUT,
+            'sftp': _FTP_TIMEOUT,
+            'url': _URL_TIMEOUT,
+        }
+        return source_timeouts.get(source_type.lower(), _REQUEST_TIMEOUT)
 
     async def close(self):
         for session in self._proxy_sessions.values():
