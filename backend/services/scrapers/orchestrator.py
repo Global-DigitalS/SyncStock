@@ -113,10 +113,13 @@ async def _evaluate_alerts(
     ean: Optional[str],
     competitor_price: float,
     competitor_name: str,
+    competitor_id: str = "",
 ) -> None:
-    """Evalúa las alertas de precio del usuario para este producto."""
+    """
+    Evalúa las alertas de precio del usuario para este producto.
+    Usa AlertAnalyzer para generar contexto enriquecido (tendencia, posición, margen).
+    """
     query = {"user_id": user_id, "active": True}
-    # Buscar alertas que coincidan por SKU o EAN
     or_conditions = []
     if sku:
         or_conditions.append({"sku": sku})
@@ -126,26 +129,46 @@ async def _evaluate_alerts(
         return
 
     query["$or"] = or_conditions
-
     alerts = await db.price_alerts.find(query, {"_id": 0}).to_list(50)
+    if not alerts:
+        return
+
+    # Generar contexto enriquecido UNA sola vez para todas las alertas del producto
+    enriched = None
+    try:
+        from services.scrapers.alert_analyzer import analyze_price_alert
+        enriched = await analyze_price_alert(
+            user_id=user_id,
+            sku=sku,
+            ean=ean,
+            competitor_id=competitor_id,
+            competitor_name=competitor_name,
+            new_price=competitor_price,
+            db=db,
+        )
+    except Exception as ae:
+        logger.debug(f"AlertAnalyzer error (no crítico): {ae}")
 
     for alert in alerts:
         triggered = False
         message = ""
 
+        # Usar mensaje enriquecido si disponible
+        base_msg = enriched.message_short if enriched else f"Nuevo precio en {competitor_name}: {competitor_price}€"
+
         if alert["alert_type"] == "any_change":
-            # Siempre se dispara con nuevo snapshot
             triggered = True
-            message = f"Nuevo precio detectado en {competitor_name}: {competitor_price}€"
+            message = base_msg
 
         elif alert["alert_type"] == "price_below":
             threshold = alert.get("threshold", 0)
             if competitor_price <= threshold:
                 triggered = True
-                message = f"Precio en {competitor_name} ({competitor_price}€) por debajo de {threshold}€"
+                message = base_msg if enriched else (
+                    f"Precio en {competitor_name} ({competitor_price}€) por debajo de {threshold}€"
+                )
 
         elif alert["alert_type"] == "competitor_cheaper":
-            # Comparar con nuestro precio
             product_query = {"user_id": user_id}
             if sku:
                 product_query["sku"] = sku
@@ -154,22 +177,16 @@ async def _evaluate_alerts(
 
             my_product = await db.products.find_one(product_query, {"_id": 0, "price": 1})
             if my_product and competitor_price < my_product["price"]:
-                diff = round(my_product["price"] - competitor_price, 2)
                 triggered = True
-                message = (
+                message = enriched.message_long if enriched else (
                     f"{competitor_name} tiene mejor precio ({competitor_price}€) "
-                    f"que el tuyo ({my_product['price']}€). Diferencia: {diff}€"
+                    f"que el tuyo ({my_product['price']}€)"
                 )
 
         elif alert["alert_type"] == "price_drop":
             threshold_pct = alert.get("threshold", 0)
-            # Obtener el snapshot anterior más reciente
             prev_snapshot = await db.price_snapshots.find_one(
-                {
-                    "user_id": user_id,
-                    "sku": sku,
-                    "scraped_at": {"$lt": datetime.now(timezone.utc).isoformat()},
-                },
+                {"user_id": user_id, "sku": sku, "scraped_at": {"$lt": datetime.now(timezone.utc).isoformat()}},
                 {"_id": 0, "price": 1},
                 sort=[("scraped_at", -1)],
             )
@@ -177,54 +194,53 @@ async def _evaluate_alerts(
                 drop_pct = ((prev_snapshot["price"] - competitor_price) / prev_snapshot["price"]) * 100
                 if drop_pct >= threshold_pct:
                     triggered = True
-                    message = (
+                    message = enriched.message_long if enriched else (
                         f"Bajada de precio en {competitor_name}: "
-                        f"{prev_snapshot['price']}€ → {competitor_price}€ "
-                        f"(-{drop_pct:.1f}%)"
+                        f"{prev_snapshot['price']}€ → {competitor_price}€ (-{drop_pct:.1f}%)"
                     )
 
         if triggered:
             now = datetime.now(timezone.utc).isoformat()
-            # Actualizar alerta
             await db.price_alerts.update_one(
                 {"id": alert["id"]},
-                {
-                    "$set": {"last_triggered_at": now},
-                    "$inc": {"trigger_count": 1},
-                },
+                {"$set": {"last_triggered_at": now}, "$inc": {"trigger_count": 1}},
             )
 
             channel = alert.get("channel", "app")
 
-            # Crear notificación en la app + push WebSocket
             if channel in ("app", "email"):
                 notification = {
                     "id": str(uuid.uuid4()),
                     "user_id": user_id,
                     "type": "competitor_price",
                     "message": message,
+                    # Adjuntar contexto enriquecido si disponible
+                    "context": {
+                        "trend": enriched.context.trend.value if enriched else None,
+                        "your_position": enriched.context.your_position if enriched else None,
+                        "action": enriched.context.action.value if enriched else None,
+                        "suggested_price": enriched.context.suggested_price if enriched else None,
+                        "alert_level": enriched.context.alert_level.value if enriched else "INFO",
+                    } if enriched else {},
                     "read": False,
                     "created_at": now,
                 }
                 await db.notifications.insert_one(notification)
-                # Push en tiempo real por WebSocket
                 try:
                     from services.sync import send_realtime_notification
                     await send_realtime_notification(user_id, notification)
                 except Exception as ws_err:
                     logger.debug(f"WebSocket push falló: {ws_err}")
 
-            # Enviar email si el canal es email
             if channel == "email":
                 try:
                     await _send_alert_email(user_id, alert, message, competitor_name, competitor_price, sku, ean)
                 except Exception as email_err:
                     logger.warning(f"Error enviando email de alerta: {email_err}")
 
-            # Enviar webhook si el canal es webhook
             if channel == "webhook" and alert.get("webhook_url"):
                 try:
-                    await _send_alert_webhook(alert["webhook_url"], {
+                    webhook_payload = {
                         "alert_id": alert["id"],
                         "alert_type": alert["alert_type"],
                         "message": message,
@@ -233,7 +249,19 @@ async def _evaluate_alerts(
                         "sku": sku,
                         "ean": ean,
                         "triggered_at": now,
-                    })
+                    }
+                    if enriched:
+                        webhook_payload["context"] = {
+                            "trend": enriched.context.trend.value,
+                            "your_position": enriched.context.your_position,
+                            "your_price": enriched.context.your_price,
+                            "best_competitor_price": enriched.context.best_competitor_price,
+                            "action": enriched.context.action.value,
+                            "suggested_price": enriched.context.suggested_price,
+                            "margin_current_percent": enriched.context.margin_current_percent,
+                            "margin_if_copy_percent": enriched.context.margin_if_copy_percent,
+                        }
+                    await _send_alert_webhook(alert["webhook_url"], webhook_payload)
                 except Exception as wh_err:
                     logger.warning(f"Error enviando webhook: {wh_err}")
 
@@ -377,6 +405,7 @@ async def crawl_competitor(
                                 match.product_ean,
                                 scraped.price,
                                 competitor.get("name", "Competidor"),
+                                competitor_id=competitor_id,
                             ))
 
                         break  # Usar solo el mejor match
