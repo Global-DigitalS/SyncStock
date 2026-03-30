@@ -1701,3 +1701,154 @@ async def cancel_crawl_job(job_id: str, user: dict = Depends(get_current_user)):
         "status": JobStatus.CANCELLED.value,
         "message": "Trabajo cancelado correctamente",
     }
+
+
+# ==================== CONFIGURATION ====================
+
+@router.get("/competitors/config/monitoring-catalog")
+async def get_monitoring_catalog_config(user: dict = Depends(get_current_user)):
+    """
+    Obtiene el catálogo configurado para monitoreo de precios de competidores.
+    El monitoreo usa el "precio final" (con márgenes) de este catálogo para comparar con competidores.
+    """
+    user_id = user["id"]
+
+    # Obtener el catálogo configurado para monitoreo
+    user_config = await db.users.find_one(
+        {"id": user_id},
+        {"_id": 0, "competitor_monitoring_catalog_id": 1}
+    )
+
+    catalog_id = user_config.get("competitor_monitoring_catalog_id") if user_config else None
+
+    # Si no hay configurado, intentar usar el catálogo predeterminado
+    if not catalog_id:
+        default_catalog = await db.catalogs.find_one(
+            {"user_id": user_id, "is_default": True},
+            {"_id": 0, "id": 1, "name": 1}
+        )
+        if default_catalog:
+            catalog_id = default_catalog["id"]
+        else:
+            # Si no hay predeterminado, usar el primero disponible
+            first_catalog = await db.catalogs.find_one(
+                {"user_id": user_id},
+                {"_id": 0, "id": 1, "name": 1}
+            )
+            if first_catalog:
+                catalog_id = first_catalog["id"]
+
+    # Si hay un catálogo válido, obtener sus detalles
+    if catalog_id:
+        catalog = await db.catalogs.find_one(
+            {"user_id": user_id, "id": catalog_id},
+            {"_id": 0, "id": 1, "name": 1, "is_default": 1}
+        )
+        if catalog:
+            return {
+                "catalog_id": catalog_id,
+                "catalog_name": catalog["name"],
+                "is_default": catalog.get("is_default", False),
+            }
+
+    # Si no hay catálogos, devolver vacío
+    return {
+        "catalog_id": None,
+        "catalog_name": None,
+        "is_default": False,
+        "message": "No hay catálogos configurados. Por favor, crea uno primero.",
+    }
+
+
+@router.put("/competitors/config/monitoring-catalog")
+async def set_monitoring_catalog_config(
+    request_body: dict = Body(...),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Configura el catálogo a usar para monitoreo de precios de competidores.
+    El monitoreo comparará precios usando el "precio final" (con márgenes) de este catálogo.
+
+    Body:
+        {
+            "catalog_id": "uuid-del-catalogo"
+        }
+    """
+    user_id = user["id"]
+    catalog_id = request_body.get("catalog_id")
+
+    if not catalog_id:
+        raise HTTPException(status_code=400, detail="catalog_id es requerido")
+
+    # Verificar que el catálogo existe y pertenece al usuario
+    catalog = await db.catalogs.find_one(
+        {"user_id": user_id, "id": catalog_id},
+        {"_id": 0, "id": 1, "name": 1}
+    )
+
+    if not catalog:
+        raise HTTPException(
+            status_code=404,
+            detail="Catálogo no encontrado o no tiene permiso para acceder"
+        )
+
+    # Actualizar la configuración del usuario
+    result = await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"competitor_monitoring_catalog_id": catalog_id}}
+    )
+
+    if result.modified_count == 0 and result.matched_count == 0:
+        raise HTTPException(status_code=500, detail="Error al actualizar la configuración")
+
+    logger.info(f"Usuario {user_id} configuró catálogo de monitoreo: {catalog_id}")
+
+    return {
+        "catalog_id": catalog_id,
+        "catalog_name": catalog["name"],
+        "message": "Catálogo de monitoreo configurado correctamente",
+    }
+
+
+@router.get("/competitors/config/available-catalogs")
+async def list_available_catalogs_for_monitoring(user: dict = Depends(get_current_user)):
+    """
+    Lista todos los catálogos disponibles para configurar en monitoreo de competidores.
+    Devuelve nombre, ID e indicador de si está configurado actualmente.
+    """
+    user_id = user["id"]
+
+    # Obtener catálogo actualmente configurado
+    user_config = await db.users.find_one(
+        {"id": user_id},
+        {"_id": 0, "competitor_monitoring_catalog_id": 1}
+    )
+    current_catalog_id = user_config.get("competitor_monitoring_catalog_id") if user_config else None
+
+    # Obtener todos los catálogos del usuario
+    catalogs = await db.catalogs.find(
+        {"user_id": user_id},
+        {"_id": 0, "id": 1, "name": 1, "is_default": 1}
+    ).to_list(None)
+
+    if not catalogs:
+        return {
+            "catalogs": [],
+            "message": "No hay catálogos disponibles",
+        }
+
+    # Enriquecer con información de selección
+    enriched = [
+        {
+            "catalog_id": c["id"],
+            "catalog_name": c["name"],
+            "is_default": c.get("is_default", False),
+            "is_selected": c["id"] == current_catalog_id,
+        }
+        for c in catalogs
+    ]
+
+    return {
+        "catalogs": enriched,
+        "current_catalog_id": current_catalog_id,
+    }

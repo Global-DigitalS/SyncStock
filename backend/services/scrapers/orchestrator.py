@@ -33,33 +33,42 @@ MAX_CONCURRENT_SEARCHES_PER_COMPETITOR = 4
 
 async def _get_user_products(user_id: str, limit: int = MAX_PRODUCTS_PER_RUN) -> List[dict]:
     """
-    Obtiene los productos del usuario desde el catálogo activo/predeterminado.
+    Obtiene los productos del usuario desde el catálogo configurado para monitoreo.
     Incluye el precio final (con margen aplicado) para comparación con competidores.
     """
     from services.sync import calculate_final_price
 
-    # Obtener catálogo predeterminado del usuario
-    default_catalog = await db.catalogs.find_one(
-        {"user_id": user_id, "is_default": True},
-        {"_id": 0, "id": 1}
+    # Obtener catálogo configurado por el usuario para monitoreo
+    user_config = await db.users.find_one(
+        {"id": user_id},
+        {"_id": 0, "competitor_monitoring_catalog_id": 1}
     )
 
-    if not default_catalog:
-        # Si no hay catálogo predeterminado, usar el primero disponible
-        catalogs = await db.catalogs.find(
-            {"user_id": user_id},
+    catalog_id = user_config.get("competitor_monitoring_catalog_id") if user_config else None
+
+    # Si no hay configurado, intentar usar el catálogo predeterminado
+    if not catalog_id:
+        default_catalog = await db.catalogs.find_one(
+            {"user_id": user_id, "is_default": True},
             {"_id": 0, "id": 1}
-        ).limit(1).to_list(1)
+        )
 
-        if not catalogs:
-            logger.warning(f"Usuario {user_id} no tiene catálogos configurados")
-            return []
+        if not default_catalog:
+            # Si no hay predeterminado, usar el primero disponible
+            catalogs = await db.catalogs.find(
+                {"user_id": user_id},
+                {"_id": 0, "id": 1}
+            ).limit(1).to_list(1)
 
-        catalog_id = catalogs[0]["id"]
-    else:
-        catalog_id = default_catalog["id"]
+            if not catalogs:
+                logger.warning(f"Usuario {user_id} no tiene catálogos configurados")
+                return []
 
-    logger.debug(f"Usando catálogo {catalog_id} para usuario {user_id}")
+            catalog_id = catalogs[0]["id"]
+        else:
+            catalog_id = default_catalog["id"]
+
+    logger.debug(f"Usando catálogo {catalog_id} para usuario {user_id} (monitoreo de precios)")
 
     # Obtener items activos del catálogo con productos asociados
     pipeline = [
