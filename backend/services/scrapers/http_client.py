@@ -31,10 +31,27 @@ def _get_random_user_agent() -> str:
     """Obtiene un User-Agent aleatorio de navegador real."""
     return random.choice(_USER_AGENTS)
 
+# Referers realistas (simular que vienes de búsquedas, otros sitios, etc.)
+_REFERERS = [
+    "https://www.google.com/",
+    "https://www.google.es/",
+    "https://www.bing.com/",
+    "https://www.duckduckgo.com/",
+    "https://www.ecosia.org/",
+    # Sin referer (navegación directa)
+    None,
+    None,  # Más probabilidad de sin referer (comportamiento real)
+]
+
+def _get_random_referer() -> Optional[str]:
+    """Obtiene un Referer aleatorio realista."""
+    return random.choice(_REFERERS)
+
 # Headers realistas que imitan un navegador real
-def _get_realistic_headers(user_agent: Optional[str] = None) -> dict:
+def _get_realistic_headers(user_agent: Optional[str] = None, referer: Optional[str] = None) -> dict:
     """Genera headers realistas que parecen un navegador de verdad."""
     ua = user_agent or _get_random_user_agent()
+    ref = referer if referer is not None else _get_random_referer()
 
     # Determinar el navegador para headers más específicos
     is_firefox = "Firefox" in ua
@@ -47,12 +64,16 @@ def _get_realistic_headers(user_agent: Optional[str] = None) -> dict:
         "Accept-Encoding": "gzip, deflate, br",
         "Sec-Fetch-Dest": "document",
         "Sec-Fetch-Mode": "navigate",
-        "Sec-Fetch-Site": "none",
+        "Sec-Fetch-Site": "none" if ref is None else "cross-site",
         "Sec-Fetch-User": "?1",
         "Cache-Control": "max-age=0",
         "Connection": "keep-alive",
         "Upgrade-Insecure-Requests": "1",
     }
+
+    # Añadir Referer si existe
+    if ref:
+        headers["Referer"] = ref
 
     # Headers específicos por navegador
     if is_firefox:
@@ -79,6 +100,39 @@ _MAX_RETRIES = 2
 
 # Cache de robots.txt (TTL 1 hora)
 _ROBOTS_CACHE_TTL = 3600
+
+# Cache de ETags (para HTTP 304 Not Modified)
+class CacheHeadersStore:
+    """Almacena ETags y Last-Modified para caching HTTP."""
+
+    def __init__(self):
+        self._cache: Dict[str, Dict[str, str]] = {}  # url -> {etag, last_modified}
+
+    def get_cache_headers(self, url: str) -> Dict[str, str]:
+        """Obtiene headers de caché para una URL."""
+        if url in self._cache:
+            headers = {}
+            cache = self._cache[url]
+            if "etag" in cache:
+                headers["If-None-Match"] = cache["etag"]
+            if "last_modified" in cache:
+                headers["If-Modified-Since"] = cache["last_modified"]
+            return headers
+        return {}
+
+    def store_cache_headers(self, url: str, response_headers: aiohttp.ClientResponse):
+        """Almacena ETag y Last-Modified de una respuesta."""
+        cache = {}
+        if "etag" in response_headers:
+            cache["etag"] = response_headers["etag"]
+        if "last-modified" in response_headers:
+            cache["last_modified"] = response_headers["last-modified"]
+        if cache:
+            self._cache[url] = cache
+
+
+# Instancia global de caché de headers
+_cache_headers_store = CacheHeadersStore()
 
 
 class RobotsCache:
@@ -185,12 +239,15 @@ class ScraperHttpClient:
     - Rate limiting por dominio
     - Respeto a robots.txt
     - Reintentos con backoff exponencial
-    - Headers transparentes (identifica al bot)
+    - Headers realistas (parecer invisible)
     - Timeout configurado
+    - Cookies por sesión (comportamiento de navegador)
+    - ETag caching (HTTP 304 Not Modified)
     """
 
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
+        self._domain_cookies: Dict[str, aiohttp.CookieJar] = {}  # Cookies por dominio
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -241,8 +298,14 @@ class ScraperHttpClient:
         await _rate_limiter.wait(domain, crawl_delay)
 
         # 3. Fetch con reintentos
-        # Usar headers realistas aleatorios para cada petición
-        headers = _get_realistic_headers()
+        # Usar headers realistas aleatorios + referer aleatorio para cada petición
+        referer = _get_random_referer()
+        headers = _get_realistic_headers(referer=referer)
+
+        # Añadir headers de caché (If-None-Match, If-Modified-Since)
+        cache_headers = _cache_headers_store.get_cache_headers(url)
+        headers.update(cache_headers)
+
         if extra_headers:
             headers.update(extra_headers)
 
@@ -251,7 +314,15 @@ class ScraperHttpClient:
             try:
                 async with session.get(url, headers=headers, allow_redirects=True) as resp:
                     if resp.status == 200:
-                        return await resp.text()
+                        # Guardar caché headers para la próxima vez
+                        _cache_headers_store.store_cache_headers(url, resp.headers)
+                        html = await resp.text()
+                        logger.debug(f"✓ Descargado {url} (200 OK)")
+                        return html
+                    elif resp.status == 304:
+                        # Not Modified - usar caché local (aunque no lo tengamos aquí)
+                        logger.debug(f"✓ {url} no modificado (304 Not Modified) - usando caché del servidor")
+                        return ""  # Retornar vacío, el servidor dice que no cambió
                     elif resp.status == 429:
                         # Too Many Requests: esperar y reintentar
                         retry_after = int(resp.headers.get("Retry-After", 10))
