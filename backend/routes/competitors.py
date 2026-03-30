@@ -11,10 +11,14 @@ import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from starlette.responses import StreamingResponse
 from services.database import db
 from services.auth import get_current_user
+
+limiter = Limiter(key_func=get_remote_address)
 from models.schemas import (
     CompetitorCreate,
     CompetitorUpdate,
@@ -1560,7 +1564,9 @@ async def reset_proxy(host: str, user: dict = Depends(get_current_user)):
 # ==================== JOB SCHEDULING ====================
 
 @router.post("/competitors/jobs/schedule")
+@limiter.limit("10/minute")
 async def schedule_crawl_job(
+    request: Request,
     competitor_id: str = Body(...),
     immediate: bool = Body(False, description="Si True, ejecutar inmediatamente"),
     user: dict = Depends(get_current_user),

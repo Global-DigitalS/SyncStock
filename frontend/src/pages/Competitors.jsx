@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { api } from "../App";
 import { toast } from "sonner";
 import { Button } from "../components/ui/button";
@@ -323,13 +323,25 @@ const Competitors = () => {
   }, [fetchCompetitors, fetchAlerts, fetchCrawlStatus, fetchPendingMatches]);
 
   // Load dashboard data when tab is active
+  const searchTimerRef = useRef(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+
+  // Debounce de búsqueda: esperar 400ms tras última pulsación
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(dashboardSearch);
+    }, 400);
+    return () => clearTimeout(searchTimerRef.current);
+  }, [dashboardSearch]);
+
   useEffect(() => {
     if (activeTab === "dashboard") {
       fetchDashboardOverview();
-      fetchDashboardTable(dashboardPage, dashboardSearch);
+      fetchDashboardTable(dashboardPage, debouncedSearch);
       fetchEnrichedAlerts();
     }
-  }, [activeTab, dashboardPage, dashboardSearch, fetchDashboardOverview, fetchDashboardTable, fetchEnrichedAlerts]);
+  }, [activeTab, dashboardPage, debouncedSearch, fetchDashboardOverview, fetchDashboardTable, fetchEnrichedAlerts]);
 
   // ==================== COMPETITOR CRUD ====================
 
