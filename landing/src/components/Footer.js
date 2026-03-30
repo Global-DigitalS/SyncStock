@@ -43,70 +43,70 @@ export default function Footer() {
 
           {/* Brand */}
           <div className="col-span-2 md:col-span-1">
-            <Link to="/" className="flex items-center gap-2 mb-4">
+            <Link to="/" className="flex items-center gap-3 mb-5">
               {logoSrc ? (
-                <img src={logoSrc} alt={branding.app_name} className="h-8 w-auto object-contain" />
+                <img src={logoSrc} alt={branding.app_name} className="h-10 w-auto object-contain" />
               ) : (
-                <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-lg flex items-center justify-center">
-                  <span className="text-white font-bold text-sm">{branding.app_name?.[0] || "S"}</span>
+                <div className="w-10 h-10 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-lg flex items-center justify-center shadow-md">
+                  <span className="text-white font-bold text-base">{branding.app_name?.[0] || "S"}</span>
                 </div>
               )}
               <span className={cn("font-bold text-lg", dark ? "text-white" : "text-slate-900")}>
                 {branding.app_name}
               </span>
             </Link>
-            <p className={cn("text-sm leading-relaxed mb-4", dark ? "text-slate-400" : "text-slate-500")}>
+            <p className={cn("text-sm leading-relaxed mb-6 font-medium", dark ? "text-slate-400" : "text-slate-600")}>
               {companyDesc}
             </p>
             {/* Social links */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
               {social.twitter && (
                 <a href={social.twitter} target="_blank" rel="noopener noreferrer"
-                  className={cn("p-2 rounded-lg transition-colors", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-500 hover:text-slate-700 hover:bg-slate-100")}>
-                  <Twitter size={16} />
+                  className={cn("p-2.5 rounded-lg transition-all hover:scale-110", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-50")}>
+                  <Twitter size={18} />
                 </a>
               )}
               {social.linkedin && (
                 <a href={social.linkedin} target="_blank" rel="noopener noreferrer"
-                  className={cn("p-2 rounded-lg transition-colors", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-500 hover:text-slate-700 hover:bg-slate-100")}>
-                  <Linkedin size={16} />
+                  className={cn("p-2.5 rounded-lg transition-all hover:scale-110", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-50")}>
+                  <Linkedin size={18} />
                 </a>
               )}
               {social.facebook && (
                 <a href={social.facebook} target="_blank" rel="noopener noreferrer"
-                  className={cn("p-2 rounded-lg transition-colors", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-500 hover:text-slate-700 hover:bg-slate-100")}>
-                  <Facebook size={16} />
+                  className={cn("p-2.5 rounded-lg transition-all hover:scale-110", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-50")}>
+                  <Facebook size={18} />
                 </a>
               )}
               <a href="/contacto"
-                className={cn("p-2 rounded-lg transition-colors", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-500 hover:text-slate-700 hover:bg-slate-100")}>
-                <Mail size={16} />
+                className={cn("p-2.5 rounded-lg transition-all hover:scale-110", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-50")}>
+                <Mail size={18} />
               </a>
             </div>
           </div>
 
           {/* Producto */}
           <div>
-            <h3 className={cn("font-semibold text-sm mb-4", dark ? "text-white" : "text-slate-900")}>
+            <h3 className={cn("font-bold text-base mb-5", dark ? "text-white" : "text-slate-900")}>
               Producto
             </h3>
-            <ul className="space-y-2.5">
+            <ul className="space-y-3">
               {PRODUCT_LINKS.map(link => (
                 <li key={link.href}>
                   {link.href.startsWith("/#") ? (
-                    <a href={link.href} className={cn("text-sm transition-colors", dark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")}>
+                    <a href={link.href} className={cn("text-sm font-medium transition-colors hover:text-indigo-600", dark ? "text-slate-400" : "text-slate-600")}>
                       {link.label}
                     </a>
                   ) : (
-                    <Link to={link.href} className={cn("text-sm transition-colors", dark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")}>
+                    <Link to={link.href} className={cn("text-sm font-medium transition-colors hover:text-indigo-600", dark ? "text-slate-400" : "text-slate-600")}>
                       {link.label}
                     </Link>
                   )}
                 </li>
               ))}
               <li>
-                <a href={`${APP_URL}/#/register`} className={cn("text-sm transition-colors flex items-center gap-1", dark ? "text-indigo-400 hover:text-indigo-300" : "text-indigo-600 hover:text-indigo-700")}>
-                  Prueba gratuita <ExternalLink size={12} />
+                <a href={`${APP_URL}/#/register`} className={cn("text-sm font-semibold transition-colors flex items-center gap-2 text-indigo-600 hover:text-indigo-700", dark ? "text-indigo-400 hover:text-indigo-300" : "")}>
+                  Prueba Gratuita <ExternalLink size={14} />
                 </a>
               </li>
             </ul>
@@ -114,13 +114,13 @@ export default function Footer() {
 
           {/* Empresa */}
           <div>
-            <h3 className={cn("font-semibold text-sm mb-4", dark ? "text-white" : "text-slate-900")}>
+            <h3 className={cn("font-bold text-base mb-5", dark ? "text-white" : "text-slate-900")}>
               Empresa
             </h3>
-            <ul className="space-y-2.5">
+            <ul className="space-y-3">
               {COMPANY_LINKS.map(link => (
                 <li key={link.href}>
-                  <Link to={link.href} className={cn("text-sm transition-colors", dark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")}>
+                  <Link to={link.href} className={cn("text-sm font-medium transition-colors hover:text-indigo-600", dark ? "text-slate-400" : "text-slate-600")}>
                     {link.label}
                   </Link>
                 </li>
@@ -130,13 +130,13 @@ export default function Footer() {
 
           {/* Legal */}
           <div>
-            <h3 className={cn("font-semibold text-sm mb-4", dark ? "text-white" : "text-slate-900")}>
+            <h3 className={cn("font-bold text-base mb-5", dark ? "text-white" : "text-slate-900")}>
               Legal
             </h3>
-            <ul className="space-y-2.5">
+            <ul className="space-y-3">
               {LEGAL_LINKS.map(link => (
                 <li key={link.href}>
-                  <Link to={link.href} className={cn("text-sm transition-colors", dark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-slate-900")}>
+                  <Link to={link.href} className={cn("text-sm font-medium transition-colors hover:text-indigo-600", dark ? "text-slate-400" : "text-slate-600")}>
                     {link.label}
                   </Link>
                 </li>
