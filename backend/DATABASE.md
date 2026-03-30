@@ -22,12 +22,13 @@
 # Se usa autenticación JWT con hash bcrypt para contraseñas.
 #
 # Campos:
-#   id          (str)  UUID v4 - Identificador único del usuario
-#   email       (str)  Email del usuario (único, se usa para login)
-#   password    (str)  Hash bcrypt de la contraseña
-#   name        (str)  Nombre del usuario
-#   company     (str)  Nombre de la empresa (opcional)
-#   created_at  (str)  Fecha ISO 8601 de creación
+#   id                                (str)  UUID v4 - Identificador único del usuario
+#   email                             (str)  Email del usuario (único, se usa para login)
+#   password                          (str)  Hash bcrypt de la contraseña
+#   name                              (str)  Nombre del usuario
+#   company                           (str)  Nombre de la empresa (opcional)
+#   competitor_monitoring_catalog_id  (str)  ID del catálogo usado para monitoreo de precios (opcional)
+#   created_at                        (str)  Fecha ISO 8601 de creación
 #
 # Índices recomendados:
 #   { "email": 1 }           único
