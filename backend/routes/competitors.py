@@ -1580,7 +1580,7 @@ async def schedule_crawl_job(
         raise HTTPException(status_code=404, detail="Competidor no encontrado")
 
     try:
-        scheduled_for = None if immediate else datetime.now(timezone.utc)
+        scheduled_for = None if immediate else None
         job = await create_crawl_job(user_id, competitor_id, scheduled_for)
 
         return {
@@ -1588,11 +1588,11 @@ async def schedule_crawl_job(
             "status": job.status.value,
             "competitor_id": competitor_id,
             "scheduled_at": scheduled_for.isoformat() if scheduled_for else None,
-            "message": "Trabajo de scraping programado" if not immediate else "Trabajo encolado para ejecución inmediata",
+            "message": "Trabajo encolado para ejecución inmediata" if immediate else "Trabajo de scraping programado",
         }
     except Exception as e:
         logger.error(f"Error scheduling job: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Error al programar el trabajo de scraping")
 
 
 @router.get("/competitors/jobs")
@@ -1605,8 +1605,12 @@ async def list_crawl_jobs(
     """Lista trabajos de scraping del usuario con filtrado por estado."""
     user_id = user["id"]
 
+    # Validar status si se proporciona
+    valid_statuses = {"pending", "running", "completed", "failed", "retrying", "cancelled"}
     query = {"user_id": user_id}
     if status:
+        if status not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Estado inválido. Valores permitidos: {', '.join(valid_statuses)}")
         query["status"] = status
 
     # Contar total
@@ -1615,7 +1619,7 @@ async def list_crawl_jobs(
     # Obtener jobs paginados
     jobs = await db.crawl_jobs.find(
         query,
-        {"_id": 0, "created_at": 0, "updated_at": 0}
+        {"_id": 0}
     ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
 
     return {
@@ -1624,6 +1628,27 @@ async def list_crawl_jobs(
         "offset": offset,
         "limit": limit,
     }
+
+
+# IMPORTANTE: Rutas estáticas ANTES de las dinámicas para que FastAPI no las confunda
+@router.get("/competitors/jobs/stats/summary")
+async def get_job_statistics(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Obtiene estadísticas de trabajos de scraping (tasa de éxito, duración, etc).
+    """
+    from services.scrapers.scraper_scheduler import get_job_stats
+
+    user_id = user["id"]
+
+    try:
+        stats = await get_job_stats(user_id, days=days)
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting job stats: {e}")
+        raise HTTPException(status_code=500, detail="Error al obtener estadísticas de trabajos")
 
 
 @router.get("/competitors/jobs/{job_id}")
@@ -1670,23 +1695,3 @@ async def cancel_crawl_job(job_id: str, user: dict = Depends(get_current_user)):
         "status": JobStatus.CANCELLED.value,
         "message": "Trabajo cancelado correctamente",
     }
-
-
-@router.get("/competitors/jobs/stats/summary")
-async def get_job_statistics(
-    days: int = Query(7, ge=1, le=90),
-    user: dict = Depends(get_current_user),
-):
-    """
-    Obtiene estadísticas de trabajos de scraping (tasa de éxito, duración, etc).
-    """
-    from services.scrapers.scraper_scheduler import get_job_stats
-
-    user_id = user["id"]
-
-    try:
-        stats = await get_job_stats(user_id, days=days)
-        return stats
-    except Exception as e:
-        logger.error(f"Error getting job stats: {e}")
-        raise HTTPException(status_code=500, detail=str(e))

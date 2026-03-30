@@ -308,9 +308,48 @@ async def _send_alert_email(
     logger.info(f"Email de alerta enviado a {user['email']}")
 
 
+def _is_safe_webhook_url(url: str) -> bool:
+    """Valida que la URL del webhook no apunte a redes internas (prevención SSRF)."""
+    from urllib.parse import urlparse
+    import ipaddress
+
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+
+        # Solo permitir HTTPS en producción (HTTP para desarrollo)
+        if parsed.scheme not in ("https", "http"):
+            return False
+
+        # Bloquear hosts internos/reservados
+        blocked_hosts = {"localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]"}
+        if host.lower() in blocked_hosts:
+            return False
+
+        # Bloquear rangos de IP privados
+        try:
+            ip = ipaddress.ip_address(host)
+            if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+                return False
+        except ValueError:
+            # Es un hostname, no una IP - verificar patrones internos comunes
+            internal_patterns = (".local", ".internal", ".lan", ".corp", ".intranet")
+            if any(host.lower().endswith(p) for p in internal_patterns):
+                return False
+
+        return True
+    except Exception:
+        return False
+
+
 async def _send_alert_webhook(webhook_url: str, payload: dict) -> None:
     """Envía un POST al webhook configurado con los datos de la alerta."""
     import aiohttp
+
+    # Validar URL para prevenir SSRF
+    if not _is_safe_webhook_url(webhook_url):
+        logger.warning(f"Webhook URL bloqueada por política SSRF: {webhook_url}")
+        return
 
     timeout = aiohttp.ClientTimeout(total=10)
     async with aiohttp.ClientSession(timeout=timeout) as session:

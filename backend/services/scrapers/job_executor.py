@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from services.database import db
-from services.scrapers.orchestrator import crawl_competitor
+from services.scrapers.orchestrator import run_crawl_for_user
 from services.scrapers.scraper_scheduler import (
     get_pending_jobs,
     can_start_crawl,
@@ -61,7 +61,7 @@ async def execute_job(job_id: str, competitor_id: str, user_id: str) -> bool:
         # Marcar como ejecutándose
         await mark_job_running(job_id)
 
-        # Obtener competidor
+        # Verificar que el competidor existe y está activo
         competitor = await db.competitors.find_one({"id": competitor_id, "user_id": user_id})
         if not competitor:
             await mark_job_failed(job_id, "Competidor no encontrado")
@@ -71,21 +71,21 @@ async def execute_job(job_id: str, competitor_id: str, user_id: str) -> bool:
             await mark_job_failed(job_id, "Competidor inactivo")
             return False
 
-        # Ejecutar scraping
+        # Ejecutar scraping usando run_crawl_for_user (que acepta competitor_id)
         logger.info(f"Starting crawl job {job_id} for competitor {competitor_id}")
         start_time = datetime.now(timezone.utc)
 
-        result = await crawl_competitor(user_id, competitor_id)
+        result = await run_crawl_for_user(user_id, competitor_id=competitor_id)
 
         end_time = datetime.now(timezone.utc)
         duration_seconds = (end_time - start_time).total_seconds()
 
-        if result.get("status") == "success":
-            products_found = result.get("products_found", 0)
-            products_matched = result.get("products_matched", 0)
-            products_alerts = result.get("alerts_generated", 0)
+        status = result.get("status", "error")
+        if status in ("success", "partial"):
+            products_found = result.get("total_found", 0)
+            products_matched = result.get("total_matched", 0)
+            products_alerts = result.get("total_stored", 0)
 
-            # Marcar como completado
             await mark_job_completed(
                 job_id,
                 products_found=products_found,
@@ -96,12 +96,12 @@ async def execute_job(job_id: str, competitor_id: str, user_id: str) -> bool:
 
             logger.info(
                 f"Job {job_id} completed: {products_found} found, "
-                f"{products_matched} matched, {products_alerts} alerts in {duration_seconds}s"
+                f"{products_matched} matched in {duration_seconds}s"
             )
             return True
 
         else:
-            error_msg = result.get("error", "Error desconocido en scraping")
+            error_msg = result.get("message", result.get("error", "Error desconocido en scraping"))
             logger.error(f"Job {job_id} failed: {error_msg}")
             await mark_job_failed(job_id, error_msg)
             return False

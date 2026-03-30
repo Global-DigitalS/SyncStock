@@ -18,12 +18,14 @@ logger = logging.getLogger(__name__)
 
 
 def _clean_model(model: str) -> str:
-    """Normaliza modelo eliminando variantes de marketing."""
+    """Normaliza modelo eliminando variantes de marketing (fabricante/cooler).
+    NO elimina sufijos técnicos como Ti, SUPER, XT, XTX que indican
+    productos diferentes con especificaciones distintas."""
     if not model:
         return ""
     m = model.upper().strip()
-    # Eliminar sufijos de fábrica conocidos que no cambian la categoría
-    m = re.sub(r'\s*(OC|GAMING|STRIX|AORUS|EAGLE|VISION|WINDFORCE|TRIO|X|XT|XTX)\b', '', m)
+    # Solo eliminar sufijos de fabricante/cooler que NO cambian el chip
+    m = re.sub(r'\s*(OC|GAMING|STRIX|AORUS|EAGLE|VISION|WINDFORCE|TRIO)\b', '', m)
     return m.strip()
 
 

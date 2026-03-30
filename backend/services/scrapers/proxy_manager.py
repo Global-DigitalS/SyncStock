@@ -77,15 +77,26 @@ class ProxyEntry:
 
     @property
     def is_available(self) -> bool:
+        """Comprueba si el proxy está disponible (sin mutar estado)."""
         now = time.monotonic()
         if self.state == CircuitState.CLOSED:
             return True
         if self.state == CircuitState.OPEN:
-            # Comprobar si ya pasó el cooldown
+            return now - self.opened_at >= self.current_cooldown
+        if self.state == CircuitState.HALF_OPEN:
+            return True
+        return False
+
+    def try_transition_to_half_open(self) -> bool:
+        """Transiciona de OPEN a HALF_OPEN si el cooldown ha expirado. Retorna True si disponible."""
+        now = time.monotonic()
+        if self.state == CircuitState.CLOSED:
+            return True
+        if self.state == CircuitState.OPEN:
             if now - self.opened_at >= self.current_cooldown:
                 self.state = CircuitState.HALF_OPEN
                 self.half_open_at = now
-                self.failure_count = 0  # Resetear conteo para prueba
+                self.failure_count = 0
                 logger.info(f"Proxy {self.host} pasó a HALF_OPEN (cooldown completado)")
                 return True
             return False
@@ -147,7 +158,8 @@ class ProxyManager:
         Returns:
             ProxyEntry con el mejor proxy disponible, o None si ninguno disponible.
         """
-        available = [p for p in self._proxies if p.is_available]
+        # Transicionar proxies que hayan completado su cooldown
+        available = [p for p in self._proxies if p.try_transition_to_half_open()]
 
         if not available:
             # Todos bloqueados: usar el que tenga el cooldown más próximo a vencer
@@ -155,7 +167,7 @@ class ProxyManager:
                 now = time.monotonic()
                 closest = min(
                     self._proxies,
-                    key=lambda p: (now - p.opened_at) - p.current_cooldown
+                    key=lambda p: max(0, p.current_cooldown - (now - p.opened_at))
                 )
                 logger.warning(
                     f"Todos los proxies bloqueados. Usando {closest.host} (más próximo a recuperarse)"

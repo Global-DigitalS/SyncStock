@@ -17,7 +17,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict
 from enum import Enum
 from dataclasses import dataclass, asdict
-import json
 
 from services.database import db
 
@@ -62,12 +61,29 @@ class CrawlJob:
 
     def to_dict(self) -> dict:
         """Convert to dict for MongoDB storage."""
-        return asdict(self)
+        d = asdict(self)
+        # Serialize enum values
+        if isinstance(d.get("status"), JobStatus):
+            d["status"] = d["status"].value
+        return d
 
-    @staticmethod
-    def from_dict(data: dict) -> "CrawlJob":
+    # Campos válidos del dataclass (para filtrar datos de MongoDB)
+    _VALID_FIELDS = {
+        "id", "user_id", "competitor_id", "status", "attempts", "max_retries",
+        "started_at", "completed_at", "error_message", "products_found",
+        "products_matched", "products_alerts", "duration_seconds",
+        "next_retry_at", "scheduled_for",
+    }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "CrawlJob":
         """Create from MongoDB document."""
-        return CrawlJob(**{k: v for k, v in data.items() if k in asdict(CrawlJob())})
+        filtered = {k: v for k, v in data.items() if k in cls._VALID_FIELDS}
+        # Ensure required fields have defaults
+        filtered.setdefault("id", "")
+        filtered.setdefault("user_id", "")
+        filtered.setdefault("competitor_id", "")
+        return cls(**filtered)
 
 
 async def create_crawl_job(
