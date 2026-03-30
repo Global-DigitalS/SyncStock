@@ -1,6 +1,7 @@
 """
 Base HTTP client para scraping con rate limiting y respeto a robots.txt.
 Optimizado para ser invisible: User-Agents reales, headers realistas, delays aleatorios.
+Integra ProxyManager con circuit breaker para resiliencia ante bloqueos.
 """
 import asyncio
 import hashlib
@@ -92,11 +93,18 @@ _DEFAULT_DELAY = 2.0
 # Rango de delays aleatorios (segundos) para parecer más humano
 _DELAY_RANGE = (1.0, 5.0)  # Entre 1 y 5 segundos
 
-# Timeout por petición
-_REQUEST_TIMEOUT = 15
+# Timeout por petición (segundos)
+# Increased from 15 to 45 for slower sources (FTP, large files, etc.)
+_REQUEST_TIMEOUT = 45
+
+# Timeout específico para conexiones FTP/SFTP (más lentas)
+_FTP_TIMEOUT = 120
+
+# Timeout específico para conexiones de URL normales (más rápidas)
+_URL_TIMEOUT = 30
 
 # Máximo de reintentos por petición
-_MAX_RETRIES = 2
+_MAX_RETRIES = 3
 
 # Cache de robots.txt (TTL 1 hora)
 _ROBOTS_CACHE_TTL = 3600
@@ -353,5 +361,177 @@ class ScraperHttpClient:
         return None
 
 
-# Instancia global reutilizable
-scraper_client = ScraperHttpClient()
+class ProxyAwareHttpClient(ScraperHttpClient):
+    """
+    Extensión del cliente HTTP que usa ProxyManager con circuit breaker.
+    Selecciona automáticamente el mejor proxy y registra éxitos/fallos.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._proxy_sessions: Dict[str, aiohttp.ClientSession] = {}
+
+    async def _get_session_for_proxy(
+        self,
+        proxy_url: Optional[str],
+        timeout_seconds: Optional[int] = None
+    ) -> aiohttp.ClientSession:
+        """
+        Obtiene (o crea) una sesión aiohttp para el proxy indicado.
+
+        Args:
+            proxy_url: URL del proxy (None para conexión directa)
+            timeout_seconds: Timeout personalizado en segundos (None para usar default)
+        """
+        key = proxy_url or "direct"
+        if key not in self._proxy_sessions or self._proxy_sessions[key].closed:
+            timeout_val = timeout_seconds or _REQUEST_TIMEOUT
+            timeout = aiohttp.ClientTimeout(total=timeout_val)
+            connector = aiohttp.TCPConnector(
+                limit=5,
+                limit_per_host=2,
+                ttl_dns_cache=300,
+            )
+            self._proxy_sessions[key] = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector,
+                headers=_get_realistic_headers(),
+            )
+        return self._proxy_sessions[key]
+
+    def get_timeout_for_source(self, source_type: str) -> int:
+        """
+        Obtiene el timeout recomendado para un tipo de fuente.
+
+        Args:
+            source_type: 'ftp', 'sftp', 'url' u otro
+
+        Returns:
+            Timeout en segundos
+        """
+        source_timeouts = {
+            'ftp': _FTP_TIMEOUT,
+            'sftp': _FTP_TIMEOUT,
+            'url': _URL_TIMEOUT,
+        }
+        return source_timeouts.get(source_type.lower(), _REQUEST_TIMEOUT)
+
+    async def close(self):
+        for session in self._proxy_sessions.values():
+            if not session.closed:
+                await session.close()
+        self._proxy_sessions.clear()
+        await super().close()
+
+    async def fetch(
+        self,
+        url: str,
+        respect_robots: bool = True,
+        extra_headers: Optional[Dict[str, str]] = None,
+    ) -> Optional[str]:
+        """
+        Obtiene HTML usando el mejor proxy disponible según ProxyManager.
+        Registra éxitos y fallos automáticamente para el circuit breaker.
+        """
+        from services.scrapers.proxy_manager import proxy_manager
+
+        parsed = urlparse(url)
+        domain = parsed.netloc
+
+        # 1. Comprobar robots.txt (con sesión directa)
+        if respect_robots:
+            direct_session = await self._get_session()
+            allowed = await _robots_cache.is_allowed(url, direct_session)
+            if not allowed:
+                logger.info(f"Bloqueado por robots.txt: {url}")
+                return None
+
+        # 2. Rate limiting
+        crawl_delay = _robots_cache.get_crawl_delay(domain)
+        await _rate_limiter.wait(domain, crawl_delay)
+
+        # 3. Seleccionar proxy
+        proxy_entry = proxy_manager.get_proxy()
+        proxy_url = proxy_entry.url if proxy_entry else None
+        session = await self._get_session_for_proxy(proxy_url)
+
+        # 4. Preparar headers
+        referer = _get_random_referer()
+        headers = _get_realistic_headers(referer=referer)
+        cache_headers = _cache_headers_store.get_cache_headers(url)
+        headers.update(cache_headers)
+        if extra_headers:
+            headers.update(extra_headers)
+
+        last_error = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                kwargs = {"headers": headers, "allow_redirects": True}
+                if proxy_url:
+                    kwargs["proxy"] = proxy_url
+
+                async with session.get(url, **kwargs) as resp:
+                    if resp.status == 200:
+                        _cache_headers_store.store_cache_headers(url, resp.headers)
+                        html = await resp.text()
+                        # Detectar CAPTCHA aunque status sea 200
+                        from services.scrapers.proxy_manager import ProxyManager as _PM
+                        if _PM._detect_captcha(html):
+                            logger.warning(f"CAPTCHA detectado en {url}")
+                            proxy_manager.record_failure(proxy_entry, status_code=200, html_content=html)
+                            return None
+                        proxy_manager.record_success(proxy_entry)
+                        logger.debug(f"✓ {url} (200 OK, proxy={proxy_entry.host if proxy_entry else 'direct'})")
+                        return html
+
+                    elif resp.status == 304:
+                        proxy_manager.record_success(proxy_entry)
+                        return ""
+
+                    elif resp.status == 429:
+                        retry_after = int(resp.headers.get("Retry-After", 30))
+                        logger.warning(f"429 en {domain} (proxy={proxy_entry.host if proxy_entry else 'direct'}). Esperando {retry_after}s")
+                        proxy_manager.record_failure(proxy_entry, status_code=429)
+                        await asyncio.sleep(min(retry_after, 60))
+                        # Rotar proxy para el reintento
+                        proxy_entry = proxy_manager.get_proxy()
+                        proxy_url = proxy_entry.url if proxy_entry else None
+                        session = await self._get_session_for_proxy(proxy_url)
+                        continue
+
+                    elif resp.status in (403, 451):
+                        logger.warning(f"Acceso denegado ({resp.status}) para {url}")
+                        proxy_manager.record_failure(proxy_entry, status_code=resp.status)
+                        return None
+
+                    elif resp.status >= 500:
+                        last_error = f"HTTP {resp.status}"
+                        logger.warning(f"Error servidor ({resp.status}) para {url}")
+
+                    else:
+                        logger.warning(f"HTTP {resp.status} para {url}")
+                        return None
+
+            except asyncio.TimeoutError:
+                last_error = "timeout"
+                proxy_manager.record_failure(proxy_entry, error="timeout")
+                logger.warning(f"Timeout para {url} (proxy={proxy_entry.host if proxy_entry else 'direct'}, intento {attempt + 1})")
+
+            except aiohttp.ClientError as e:
+                last_error = str(e)
+                proxy_manager.record_failure(proxy_entry, error=str(e))
+                logger.warning(f"Error conexión para {url}: {e} (intento {attempt + 1})")
+
+            if attempt < _MAX_RETRIES:
+                # Rotar proxy en cada reintento
+                proxy_entry = proxy_manager.get_proxy()
+                proxy_url = proxy_entry.url if proxy_entry else None
+                session = await self._get_session_for_proxy(proxy_url)
+                await asyncio.sleep(2 ** (attempt + 1))
+
+        logger.error(f"Fallo definitivo para {url} tras {_MAX_RETRIES + 1} intentos: {last_error}")
+        return None
+
+
+# Instancia global reutilizable (con soporte de proxies)
+scraper_client = ProxyAwareHttpClient()

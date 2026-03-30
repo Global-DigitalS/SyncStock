@@ -1302,15 +1302,396 @@ async def delete_competitor(
     if not competitor:
         raise HTTPException(status_code=404, detail="Competidor no encontrado")
 
-    # Eliminar snapshots asociados
     deleted_snapshots = await db.price_snapshots.delete_many(
         {"competitor_id": competitor_id, "user_id": user["id"]}
     )
-
-    # Eliminar el competidor
     await db.competitors.delete_one({"id": competitor_id, "user_id": user["id"]})
 
     return {
         "message": "Competidor eliminado correctamente",
         "deleted_snapshots": deleted_snapshots.deleted_count,
+    }
+
+
+# ==================== DASHBOARD ENDPOINTS ====================
+
+@router.get("/competitors/dashboard/overview")
+async def get_dashboard_overview(user: dict = Depends(get_current_user)):
+    """
+    Resumen general del dashboard de competidores.
+    Devuelve KPIs principales: productos monitorizados, alertas activas, posición promedio.
+    """
+    user_id = user["id"]
+
+    competitors_count = await db.competitors.count_documents({"user_id": user_id, "active": True})
+    alerts_count = await db.price_alerts.count_documents({"user_id": user_id, "active": True})
+
+    since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    snapshots_7d = await db.price_snapshots.count_documents({"user_id": user_id, "scraped_at": {"$gte": since_7d}})
+
+    # SKUs únicos monitorizados
+    unique_skus = await db.price_snapshots.distinct("sku", {"user_id": user_id})
+    monitored_skus = len([s for s in unique_skus if s])
+
+    # Productos donde el competidor es más barato (últimos 24h)
+    since_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    pipeline_cheaper = [
+        {"$match": {"user_id": user_id, "scraped_at": {"$gte": since_24h}}},
+        {"$sort": {"scraped_at": -1}},
+        {"$group": {"_id": "$sku", "comp_price": {"$first": "$price"}, "sku": {"$first": "$sku"}}},
+    ]
+    cheaper_snapshots = await db.price_snapshots.aggregate(pipeline_cheaper).to_list(500)
+
+    cheaper_count = 0
+    for s in cheaper_snapshots:
+        if not s.get("sku"):
+            continue
+        my_prod = await db.products.find_one({"user_id": user_id, "sku": s["sku"]}, {"_id": 0, "price": 1})
+        if my_prod and my_prod.get("price") and s.get("comp_price") and s["comp_price"] < my_prod["price"]:
+            cheaper_count += 1
+
+    return {
+        "active_competitors": competitors_count,
+        "active_alerts": alerts_count,
+        "snapshots_last_7d": snapshots_7d,
+        "monitored_skus": monitored_skus,
+        "competitors_cheaper_24h": cheaper_count,
+    }
+
+
+@router.get("/competitors/dashboard/table")
+async def get_dashboard_price_table(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    search: Optional[str] = Query(None),
+    sort_by: str = Query("gap", description="Campo de ordenación: gap, price, sku"),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Tabla completa de precios por SKU con posicionamiento.
+    Devuelve: SKU | Nuestro precio | Mejor competidor | Gap | Cambio 24h
+    """
+    user_id = user["id"]
+    skip = (page - 1) * page_size
+
+    # Obtener productos propios
+    product_query: dict = {"user_id": user_id}
+    if search:
+        product_query["$or"] = [
+            {"sku": {"$regex": search, "$options": "i"}},
+            {"name": {"$regex": search, "$options": "i"}},
+        ]
+
+    products = await db.products.find(
+        product_query, {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1, "cost": 1}
+    ).skip(skip).limit(page_size).to_list(page_size)
+
+    total = await db.products.count_documents(product_query)
+
+    if not products:
+        return {"items": [], "total": total, "page": page, "page_size": page_size}
+
+    # Para cada producto, obtener último precio de cada competidor
+    since_48h = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
+    since_96h = (datetime.now(timezone.utc) - timedelta(hours=96)).isoformat()
+
+    result_items = []
+    for prod in products:
+        sku = prod.get("sku")
+        ean = prod.get("ean")
+        my_price = prod.get("price")
+
+        # Último precio por competidor
+        match_q: dict = {"user_id": user_id, "scraped_at": {"$gte": since_96h}}
+        if sku:
+            match_q["sku"] = sku
+        elif ean:
+            match_q["ean"] = ean
+        else:
+            continue
+
+        pipeline = [
+            {"$match": match_q},
+            {"$sort": {"scraped_at": -1}},
+            {"$group": {
+                "_id": "$competitor_id",
+                "price": {"$first": "$price"},
+                "scraped_at": {"$first": "$scraped_at"},
+                "availability": {"$first": "$availability"},
+            }},
+        ]
+        comp_prices = await db.price_snapshots.aggregate(pipeline).to_list(20)
+
+        if not comp_prices:
+            continue
+
+        # Nombre de competidores
+        comp_ids = [c["_id"] for c in comp_prices]
+        comp_names = {}
+        async for comp in db.competitors.find(
+            {"id": {"$in": comp_ids}, "user_id": user_id},
+            {"_id": 0, "id": 1, "name": 1, "channel": 1},
+        ):
+            comp_names[comp["id"]] = {"name": comp["name"], "channel": comp.get("channel")}
+
+        competitors_data = []
+        prices_list = []
+        for cp in comp_prices:
+            cp_info = comp_names.get(cp["_id"], {})
+            price = cp.get("price")
+            if price and price > 0:
+                prices_list.append(price)
+            competitors_data.append({
+                "competitor_id": cp["_id"],
+                "competitor_name": cp_info.get("name", "N/A"),
+                "channel": cp_info.get("channel"),
+                "price": price,
+                "scraped_at": cp.get("scraped_at"),
+                "availability": cp.get("availability"),
+            })
+
+        best_price = min(prices_list) if prices_list else None
+        gap = round(my_price - best_price, 2) if my_price and best_price else None
+        gap_pct = round((gap / best_price) * 100, 2) if gap is not None and best_price else None
+
+        # Cambio de precio 24h
+        price_change_24h = None
+        old_snapshot = await db.price_snapshots.find_one(
+            {**match_q, "scraped_at": {"$lt": since_48h, "$gte": since_96h}},
+            {"_id": 0, "price": 1},
+            sort=[("scraped_at", -1)],
+        )
+        if old_snapshot and best_price and old_snapshot.get("price"):
+            price_change_24h = round(
+                ((best_price - old_snapshot["price"]) / old_snapshot["price"]) * 100, 2
+            )
+
+        # Calcular margen actual
+        margin = None
+        if my_price and prod.get("cost") and prod["cost"] > 0:
+            margin = round(((my_price - prod["cost"]) / my_price) * 100, 1)
+
+        result_items.append({
+            "sku": sku,
+            "ean": ean,
+            "name": prod.get("name"),
+            "my_price": my_price,
+            "best_competitor_price": best_price,
+            "gap_eur": gap,
+            "gap_percent": gap_pct,
+            "margin_percent": margin,
+            "price_change_24h_percent": price_change_24h,
+            "competitors": competitors_data,
+            "position": (
+                "cheaper" if gap is not None and gap < -0.01 else
+                "equal" if gap is not None and abs(gap) <= 0.01 else
+                "expensive" if gap is not None and gap > 0.01 else
+                "no_data"
+            ),
+        })
+
+    # Ordenación
+    if sort_by == "gap":
+        result_items.sort(key=lambda x: x.get("gap_eur") or 999, reverse=True)
+    elif sort_by == "price":
+        result_items.sort(key=lambda x: x.get("my_price") or 0, reverse=True)
+
+    return {
+        "items": result_items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+@router.get("/competitors/dashboard/alerts/enriched")
+async def get_enriched_alerts(
+    limit: int = Query(20, ge=1, le=100),
+    status: Optional[str] = Query(None, description="PENDING, ACTED, IGNORED"),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Obtiene alertas de precio con contexto enriquecido (tendencia, posición, recomendación).
+    Devuelve las alertas más recientes con análisis contextual completo.
+    """
+    user_id = user["id"]
+
+    # Buscar notificaciones de competidores recientes con contexto
+    query: dict = {"user_id": user_id, "type": "competitor_price"}
+    if status:
+        query["status"] = status.upper()
+
+    notifications = await db.notifications.find(
+        query, {"_id": 0}
+    ).sort("created_at", -1).limit(limit).to_list(limit)
+
+    return {
+        "alerts": notifications,
+        "total": len(notifications),
+    }
+
+
+@router.get("/competitors/proxy/stats")
+async def get_proxy_stats(user: dict = Depends(get_current_user)):
+    """Devuelve estadísticas del ProxyManager (solo para admin/superadmin)."""
+    if user.get("role") not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Sin permisos")
+
+    try:
+        from services.scrapers.proxy_manager import proxy_manager
+        return {"proxies": proxy_manager.get_stats()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/competitors/proxy/reset/{host}")
+async def reset_proxy(host: str, user: dict = Depends(get_current_user)):
+    """Resetea manualmente el estado de un proxy (solo admin)."""
+    if user.get("role") not in ("admin", "superadmin"):
+        raise HTTPException(status_code=403, detail="Sin permisos")
+
+    from services.scrapers.proxy_manager import proxy_manager
+    ok = proxy_manager.reset_proxy(host)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Proxy '{host}' no encontrado")
+    return {"message": f"Proxy '{host}' reseteado correctamente"}
+
+
+# ==================== JOB SCHEDULING ====================
+
+@router.post("/competitors/jobs/schedule")
+async def schedule_crawl_job(
+    competitor_id: str = Body(...),
+    immediate: bool = Body(False, description="Si True, ejecutar inmediatamente"),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Programa un trabajo de scraping para un competidor.
+    Si immediate=True, se ejecuta en cuanto haya recursos disponibles.
+    """
+    from services.scrapers.scraper_scheduler import create_crawl_job
+    from datetime import timezone, datetime
+
+    user_id = user["id"]
+
+    # Verificar que el competidor existe y pertenece al usuario
+    competitor = await db.competitors.find_one({"id": competitor_id, "user_id": user_id})
+    if not competitor:
+        raise HTTPException(status_code=404, detail="Competidor no encontrado")
+
+    try:
+        scheduled_for = None if immediate else None
+        job = await create_crawl_job(user_id, competitor_id, scheduled_for)
+
+        return {
+            "job_id": job.id,
+            "status": job.status.value,
+            "competitor_id": competitor_id,
+            "scheduled_at": scheduled_for.isoformat() if scheduled_for else None,
+            "message": "Trabajo encolado para ejecución inmediata" if immediate else "Trabajo de scraping programado",
+        }
+    except Exception as e:
+        logger.error(f"Error scheduling job: {e}")
+        raise HTTPException(status_code=500, detail="Error al programar el trabajo de scraping")
+
+
+@router.get("/competitors/jobs")
+async def list_crawl_jobs(
+    status: Optional[str] = Query(None, description="pending, running, completed, failed"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    user: dict = Depends(get_current_user),
+):
+    """Lista trabajos de scraping del usuario con filtrado por estado."""
+    user_id = user["id"]
+
+    # Validar status si se proporciona
+    valid_statuses = {"pending", "running", "completed", "failed", "retrying", "cancelled"}
+    query = {"user_id": user_id}
+    if status:
+        if status not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Estado inválido. Valores permitidos: {', '.join(valid_statuses)}")
+        query["status"] = status
+
+    # Contar total
+    total = await db.crawl_jobs.count_documents(query)
+
+    # Obtener jobs paginados
+    jobs = await db.crawl_jobs.find(
+        query,
+        {"_id": 0}
+    ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
+
+    return {
+        "jobs": jobs,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
+
+
+# IMPORTANTE: Rutas estáticas ANTES de las dinámicas para que FastAPI no las confunda
+@router.get("/competitors/jobs/stats/summary")
+async def get_job_statistics(
+    days: int = Query(7, ge=1, le=90),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Obtiene estadísticas de trabajos de scraping (tasa de éxito, duración, etc).
+    """
+    from services.scrapers.scraper_scheduler import get_job_stats
+
+    user_id = user["id"]
+
+    try:
+        stats = await get_job_stats(user_id, days=days)
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting job stats: {e}")
+        raise HTTPException(status_code=500, detail="Error al obtener estadísticas de trabajos")
+
+
+@router.get("/competitors/jobs/{job_id}")
+async def get_crawl_job_details(job_id: str, user: dict = Depends(get_current_user)):
+    """Obtiene detalles completos de un trabajo de scraping."""
+    from services.scrapers.scraper_scheduler import get_job
+
+    user_id = user["id"]
+
+    job = await get_job(job_id)
+    if not job or job.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Trabajo no encontrado")
+
+    return job.to_dict()
+
+
+@router.post("/competitors/jobs/{job_id}/cancel")
+async def cancel_crawl_job(job_id: str, user: dict = Depends(get_current_user)):
+    """Cancela un trabajo de scraping pendiente o en ejecución."""
+    from services.scrapers.scraper_scheduler import get_job, update_job_status, JobStatus
+    from services.scrapers.job_executor import cancel_job
+
+    user_id = user["id"]
+
+    job = await get_job(job_id)
+    if not job or job.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Trabajo no encontrado")
+
+    if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede cancelar un trabajo en estado {job.status.value}"
+        )
+
+    # Intentar cancelar
+    cancelled = await cancel_job(job_id)
+
+    if not cancelled:
+        # Marcar como cancelado en la DB
+        await update_job_status(job_id, JobStatus.CANCELLED)
+
+    return {
+        "job_id": job_id,
+        "status": JobStatus.CANCELLED.value,
+        "message": "Trabajo cancelado correctamente",
     }
