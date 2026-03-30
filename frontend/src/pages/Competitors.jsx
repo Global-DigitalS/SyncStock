@@ -206,6 +206,12 @@ const Competitors = () => {
   const [dashboardTotal, setDashboardTotal] = useState(0);
   const [enrichedAlerts, setEnrichedAlerts] = useState([]);
 
+  // Configuration state
+  const [monitoringCatalog, setMonitoringCatalog] = useState(null);
+  const [availableCatalogs, setAvailableCatalogs] = useState([]);
+  const [configLoading, setConfigLoading] = useState(false);
+  const [savingConfig, setSavingConfig] = useState(false);
+
   // Active tab
   const [activeTab, setActiveTab] = useState("competitors");
 
@@ -315,12 +321,51 @@ const Competitors = () => {
     }
   }, []);
 
+  // Configuration functions
+  const fetchMonitoringCatalog = useCallback(async () => {
+    try {
+      setConfigLoading(true);
+      const res = await api.get("/competitors/config/monitoring-catalog");
+      setMonitoringCatalog(res.data);
+    } catch (error) {
+      console.error("Error al cargar configuración de monitoreo:", error);
+    } finally {
+      setConfigLoading(false);
+    }
+  }, []);
+
+  const fetchAvailableCatalogs = useCallback(async () => {
+    try {
+      const res = await api.get("/competitors/config/available-catalogs");
+      setAvailableCatalogs(res.data.catalogs || []);
+    } catch (error) {
+      console.error("Error al cargar catálogos disponibles:", error);
+    }
+  }, []);
+
+  const saveMonitoringCatalog = async (catalogId) => {
+    try {
+      setSavingConfig(true);
+      const res = await api.put("/competitors/config/monitoring-catalog", {
+        catalog_id: catalogId,
+      });
+      setMonitoringCatalog(res.data);
+      toast.success("Catálogo de monitoreo actualizado");
+    } catch (error) {
+      toast.error("Error al actualizar catálogo de monitoreo");
+    } finally {
+      setSavingConfig(false);
+    }
+  };
+
   useEffect(() => {
     fetchCompetitors();
     fetchAlerts();
     fetchCrawlStatus();
     fetchPendingMatches();
-  }, [fetchCompetitors, fetchAlerts, fetchCrawlStatus, fetchPendingMatches]);
+    fetchMonitoringCatalog();
+    fetchAvailableCatalogs();
+  }, [fetchCompetitors, fetchAlerts, fetchCrawlStatus, fetchPendingMatches, fetchMonitoringCatalog, fetchAvailableCatalogs]);
 
   // Load dashboard data when tab is active
   const searchTimerRef = useRef(null);
@@ -721,6 +766,10 @@ const Competitors = () => {
           <TabsTrigger value="dashboard">
             <BarChart3 className="h-4 w-4 mr-2" />
             Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="config">
+            <Settings2 className="h-4 w-4 mr-2" />
+            Configuración
           </TabsTrigger>
         </TabsList>
 
@@ -1590,6 +1639,89 @@ const Competitors = () => {
               </div>
             )}
           </div>
+        </TabsContent>
+
+        {/* ==================== TAB: CONFIGURATION ==================== */}
+        <TabsContent value="config" className="space-y-6">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+            <p className="text-sm text-blue-900 dark:text-blue-300">
+              <strong>Catálogo de Monitoreo:</strong> Este catálogo se usa para obtener los "Precios Finales" (con márgenes aplicados) que se comparan con los precios de los competidores.
+            </p>
+          </div>
+
+          {configLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Current Configuration */}
+              {monitoringCatalog && monitoringCatalog.catalog_id && (
+                <div className="border rounded-lg p-6 space-y-4">
+                  <h3 className="font-semibold">Catálogo Actual</h3>
+                  <div className="flex items-center justify-between p-4 bg-muted rounded">
+                    <div>
+                      <p className="font-medium">{monitoringCatalog.catalog_name}</p>
+                      {monitoringCatalog.is_default && (
+                        <Badge variant="secondary" className="mt-2">
+                          Predeterminado
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Available Catalogs */}
+              <div className="border rounded-lg p-6 space-y-4">
+                <h3 className="font-semibold">Seleccionar Catálogo</h3>
+                {availableCatalogs.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p>No hay catálogos disponibles</p>
+                    <p className="text-sm mt-2">
+                      Crea un catálogo primero para poder usarlo en el monitoreo de precios.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {availableCatalogs.map((catalog) => (
+                      <button
+                        key={catalog.catalog_id}
+                        onClick={() => saveMonitoringCatalog(catalog.catalog_id)}
+                        disabled={savingConfig || catalog.is_selected}
+                        className={`w-full text-left p-4 border rounded-lg transition-colors ${
+                          catalog.is_selected
+                            ? "bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800"
+                            : "hover:bg-muted cursor-pointer"
+                        } ${savingConfig ? "opacity-50" : ""}`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium">{catalog.catalog_name}</p>
+                            {catalog.is_default && (
+                              <Badge variant="secondary" className="mt-2">
+                                Predeterminado
+                              </Badge>
+                            )}
+                          </div>
+                          {catalog.is_selected && (
+                            <CheckCircle2 className="h-5 w-5 text-green-600" />
+                          )}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Info */}
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                <p className="text-sm text-amber-900 dark:text-amber-300">
+                  <strong>Nota:</strong> El cambio de catálogo afectará a los próximos monitoreos de precios. Los precios históricos seguirán siendo válidos.
+                </p>
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
