@@ -307,25 +307,54 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
 
 
 async def download_file_from_ftp(supplier: dict) -> bytes:
+    """Download file from FTP/SFTP with retry logic and exponential backoff."""
     loop = asyncio.get_running_loop()
-    try:
-        return await asyncio.wait_for(
-            loop.run_in_executor(None, download_file_from_ftp_sync, supplier),
-            timeout=300,  # 5 min max for FTP/SFTP downloads
-        )
-    except asyncio.TimeoutError:
-        raise Exception(f"Timeout descargando fichero FTP/SFTP del proveedor '{supplier.get('name', '?')}' (límite: 5 minutos)")
+    max_retries = 3
+    timeout = 900  # 15 min max for FTP/SFTP downloads
+
+    for attempt in range(max_retries):
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, download_file_from_ftp_sync, supplier),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)  # Exponential backoff: 2s, 4s
+                logger.warning(f"FTP/SFTP timeout para '{supplier.get('name', '?')}' (intento {attempt + 1}/{max_retries}), esperando {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise Exception(f"Timeout descargando fichero FTP/SFTP del proveedor '{supplier.get('name', '?')}' tras {max_retries} intentos (límite: {timeout/60:.0f} minutos)")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                logger.warning(f"Error FTP/SFTP para '{supplier.get('name', '?')}': {e} (intento {attempt + 1}/{max_retries}), reintentando en {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
 
 
 def _build_browser_session(url: str, auth=None) -> tuple:
-    """Build a requests Session with full browser-like headers to avoid 403 blocks."""
+    """Build a requests Session with realistic browser headers to avoid 403 blocks."""
     from urllib.parse import urlparse
+    import random
+
     parsed = urlparse(url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Realistic User-Agents (same as in http_client.py)
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+    ]
+
     session = requests.Session()
     session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'User-Agent': random.choice(user_agents),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
@@ -335,6 +364,7 @@ def _build_browser_session(url: str, auth=None) -> tuple:
         'Sec-Fetch-Site': 'none',
         'Sec-Fetch-User': '?1',
         'Referer': origin,
+        'Cache-Control': 'max-age=0',
     })
     if auth:
         session.auth = auth
@@ -371,14 +401,31 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
 
 
 async def download_file_from_url(url: str, username: str = None, password: str = None) -> bytes:
+    """Download file from URL with retry logic and exponential backoff."""
     loop = asyncio.get_running_loop()
-    try:
-        return await asyncio.wait_for(
-            loop.run_in_executor(None, download_file_from_url_sync, url, username, password),
-            timeout=300,  # 5 min max for URL downloads
-        )
-    except asyncio.TimeoutError:
-        raise Exception(f"Timeout descargando desde URL (límite: 5 minutos): {url[:100]}")
+    max_retries = 3
+    timeout = 900  # 15 min max for URL downloads
+
+    for attempt in range(max_retries):
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, download_file_from_url_sync, url, username, password),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)  # Exponential backoff: 2s, 4s
+                logger.warning(f"Timeout descargando URL {url[:50]}... (intento {attempt + 1}/{max_retries}), esperando {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise Exception(f"Timeout descargando desde URL tras {max_retries} intentos (límite: {timeout/60:.0f} minutos): {url[:100]}")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                logger.warning(f"Error descargando URL {url[:50]}...: {e} (intento {attempt + 1}/{max_retries}), reintentando en {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
 
 
 # ==================== FILE PARSING ====================
