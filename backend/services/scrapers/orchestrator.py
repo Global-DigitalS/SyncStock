@@ -32,20 +32,113 @@ MAX_CONCURRENT_SEARCHES_PER_COMPETITOR = 4
 
 
 async def _get_user_products(user_id: str, limit: int = MAX_PRODUCTS_PER_RUN) -> List[dict]:
-    """Obtiene los productos del usuario para matching."""
-    products = await db.products.find(
-        {"user_id": user_id, "is_selected": True},
-        {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1},
-    ).to_list(limit)
+    """
+    Obtiene los productos del usuario desde el catálogo configurado para monitoreo.
+    Incluye el precio final (con margen aplicado) para comparación con competidores.
+    """
+    from services.sync import calculate_final_price
 
-    # Si no hay productos seleccionados, usar todos
-    if not products:
-        products = await db.products.find(
-            {"user_id": user_id},
-            {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1},
-        ).to_list(limit)
+    # Obtener catálogo configurado por el usuario para monitoreo
+    user_config = await db.users.find_one(
+        {"id": user_id},
+        {"_id": 0, "competitor_monitoring_catalog_id": 1}
+    )
 
-    return products
+    catalog_id = user_config.get("competitor_monitoring_catalog_id") if user_config else None
+
+    # Si no hay configurado, intentar usar el catálogo predeterminado
+    if not catalog_id:
+        default_catalog = await db.catalogs.find_one(
+            {"user_id": user_id, "is_default": True},
+            {"_id": 0, "id": 1}
+        )
+
+        if not default_catalog:
+            # Si no hay predeterminado, usar el primero disponible
+            catalogs = await db.catalogs.find(
+                {"user_id": user_id},
+                {"_id": 0, "id": 1}
+            ).limit(1).to_list(1)
+
+            if not catalogs:
+                logger.warning(f"Usuario {user_id} no tiene catálogos configurados")
+                return []
+
+            catalog_id = catalogs[0]["id"]
+        else:
+            catalog_id = default_catalog["id"]
+
+    logger.debug(f"Usando catálogo {catalog_id} para usuario {user_id} (monitoreo de precios)")
+
+    # Obtener items activos del catálogo con productos asociados
+    pipeline = [
+        {
+            "$match": {
+                "catalog_id": catalog_id,
+                "active": True,
+                "user_id": user_id,
+            }
+        },
+        {
+            "$lookup": {
+                "from": "products",
+                "localField": "product_id",
+                "foreignField": "id",
+                "as": "product_data",
+            }
+        },
+        {
+            "$unwind": "$product_data"
+        },
+        {
+            "$project": {
+                "_id": 0,
+                "id": "$product_data.id",
+                "sku": "$product_data.sku",
+                "ean": "$product_data.ean",
+                "name": {"$ifNull": ["$custom_name", "$product_data.name"]},
+                "base_price": {"$ifNull": ["$custom_price", "$product_data.price"]},
+                "supplier_id": "$product_data.supplier_id",
+                "category": "$product_data.category",
+                "brand": "$product_data.brand",
+            }
+        },
+        {
+            "$limit": limit
+        },
+    ]
+
+    items = await db.catalog_items.aggregate(pipeline).to_list(limit)
+
+    if not items:
+        logger.warning(f"Catálogo {catalog_id} no tiene productos activos")
+        return []
+
+    # Obtener reglas de margen para el catálogo
+    margin_rules = await db.catalog_margin_rules.find(
+        {"catalog_id": catalog_id, "user_id": user_id},
+        {"_id": 0}
+    ).sort("priority", -1).to_list(50)
+
+    # Calcular precio final para cada producto
+    products_with_final_price = []
+    for item in items:
+        # Calcular precio final aplicando reglas de margen
+        final_price = calculate_final_price(item["base_price"], item, margin_rules)
+
+        products_with_final_price.append({
+            "id": item["id"],
+            "sku": item["sku"],
+            "ean": item["ean"],
+            "name": item["name"],
+            "price": final_price,  # Usar precio final para comparación
+            "base_price": item["base_price"],
+            "supplier_id": item.get("supplier_id"),
+            "category": item.get("category"),
+        })
+
+    logger.info(f"Obtenidos {len(products_with_final_price)} productos con precio final del catálogo {catalog_id}")
+    return products_with_final_price
 
 
 async def _store_snapshot(

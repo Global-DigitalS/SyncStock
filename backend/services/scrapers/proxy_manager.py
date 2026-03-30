@@ -9,10 +9,10 @@ Arquitectura:
 Cooldown exponencial: 1min → 5min → 30min → 1h
 Detección automática de bloqueos por HTTP 429, 403, timeouts, CAPTCHAs.
 """
-import asyncio
 import logging
 import time
 import random
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, List, Dict
@@ -126,7 +126,7 @@ class ProxyManager:
                         se usa una entrada "direct" (sin proxy).
         """
         self._proxies: List[ProxyEntry] = []
-        self._lock = asyncio.Lock()
+        self._lock = threading.Lock()
 
         if proxy_urls:
             for url in proxy_urls:
@@ -154,52 +154,55 @@ class ProxyManager:
         """
         Devuelve el proxy disponible con mejor success rate.
         Siempre retorna un proxy (incluido 'direct' si no hay proxies).
+        Thread-safe mediante lock.
 
         Returns:
             ProxyEntry con el mejor proxy disponible, o None si ninguno disponible.
         """
-        # Transicionar proxies que hayan completado su cooldown
-        available = [p for p in self._proxies if p.try_transition_to_half_open()]
+        with self._lock:
+            # Transicionar proxies que hayan completado su cooldown
+            available = [p for p in self._proxies if p.try_transition_to_half_open()]
 
-        if not available:
-            # Todos bloqueados: usar el que tenga el cooldown más próximo a vencer
-            if self._proxies:
-                now = time.monotonic()
-                closest = min(
-                    self._proxies,
-                    key=lambda p: max(0, p.current_cooldown - (now - p.opened_at))
-                )
-                logger.warning(
-                    f"Todos los proxies bloqueados. Usando {closest.host} (más próximo a recuperarse)"
-                )
-                return closest
-            return None
+            if not available:
+                # Todos bloqueados: usar el que tenga el cooldown más próximo a vencer
+                if self._proxies:
+                    now = time.monotonic()
+                    closest = min(
+                        self._proxies,
+                        key=lambda p: max(0, p.current_cooldown - (now - p.opened_at))
+                    )
+                    logger.warning(
+                        f"Todos los proxies bloqueados. Usando {closest.host} (más próximo a recuperarse)"
+                    )
+                    return closest
+                return None
 
-        # Ordenar por: estado CLOSED > HALF_OPEN, luego por success rate
-        def proxy_score(p: ProxyEntry) -> float:
-            base = 1.0 if p.state == CircuitState.CLOSED else 0.5
-            return base * p.success_rate
+            # Ordenar por: estado CLOSED > HALF_OPEN, luego por success rate
+            def proxy_score(p: ProxyEntry) -> float:
+                base = 1.0 if p.state == CircuitState.CLOSED else 0.5
+                return base * p.success_rate
 
-        best = max(available, key=proxy_score)
-        best.last_used_at = time.monotonic()
-        best.total_requests += 1
-        return best
+            best = max(available, key=proxy_score)
+            best.last_used_at = time.monotonic()
+            best.total_requests += 1
+            return best
 
     def record_success(self, proxy: Optional[ProxyEntry]) -> None:
-        """Registra un éxito para un proxy."""
+        """Registra un éxito para un proxy. Thread-safe."""
         if proxy is None:
             return
 
-        proxy.total_successes += 1
-        proxy.success_count += 1
+        with self._lock:
+            proxy.total_successes += 1
+            proxy.success_count += 1
 
-        if proxy.state == CircuitState.HALF_OPEN:
-            if proxy.success_count >= RECOVERY_THRESHOLD:
-                proxy.state = CircuitState.CLOSED
-                proxy.failure_count = 0
-                proxy.success_count = 0
-                proxy.cooldown_level = max(0, proxy.cooldown_level - 1)  # Reducir nivel de cooldown
-                logger.info(f"Proxy {proxy.host} recuperado → CLOSED (success rate: {proxy.success_rate:.1%})")
+            if proxy.state == CircuitState.HALF_OPEN:
+                if proxy.success_count >= RECOVERY_THRESHOLD:
+                    proxy.state = CircuitState.CLOSED
+                    proxy.failure_count = 0
+                    proxy.success_count = 0
+                    proxy.cooldown_level = max(0, proxy.cooldown_level - 1)
+                    logger.info(f"Proxy {proxy.host} recuperado → CLOSED (success rate: {proxy.success_rate:.1%})")
 
         logger.debug(f"✓ Proxy {proxy.host}: success (rate: {proxy.success_rate:.1%})")
 
@@ -212,6 +215,7 @@ class ProxyManager:
     ) -> None:
         """
         Registra un fallo para un proxy y activa el circuit breaker si necesario.
+        Thread-safe.
 
         Args:
             proxy: El proxy que falló
@@ -222,10 +226,7 @@ class ProxyManager:
         if proxy is None:
             return
 
-        proxy.total_failures += 1
-        proxy.last_error = error or f"HTTP {status_code}"
-
-        # Determinar si es un bloqueo severo
+        # Detectar CAPTCHA fuera del lock (operación de solo lectura)
         is_hard_block = (
             status_code in BLOCKED_STATUS_CODES or
             self._detect_captcha(html_content) or
@@ -233,19 +234,21 @@ class ProxyManager:
             "blocked" in error.lower()
         )
 
-        if is_hard_block:
-            # Bloqueo duro: abrir circuito inmediatamente
-            self._open_circuit(proxy, reason=f"Hard block (HTTP {status_code})")
-        else:
-            # Fallo suave: incrementar contador
-            proxy.failure_count += 1
-            logger.debug(
-                f"Proxy {proxy.host}: fallo #{proxy.failure_count}/{FAILURE_THRESHOLD} "
-                f"(error: {proxy.last_error})"
-            )
+        with self._lock:
+            proxy.total_failures += 1
+            proxy.last_error = error or f"HTTP {status_code}"
 
-            if proxy.failure_count >= FAILURE_THRESHOLD:
-                self._open_circuit(proxy, reason=f"Demasiados fallos ({proxy.failure_count})")
+            if is_hard_block:
+                self._open_circuit(proxy, reason=f"Hard block (HTTP {status_code})")
+            else:
+                proxy.failure_count += 1
+                logger.debug(
+                    f"Proxy {proxy.host}: fallo #{proxy.failure_count}/{FAILURE_THRESHOLD} "
+                    f"(error: {proxy.last_error})"
+                )
+
+                if proxy.failure_count >= FAILURE_THRESHOLD:
+                    self._open_circuit(proxy, reason=f"Demasiados fallos ({proxy.failure_count})")
 
     def _open_circuit(self, proxy: ProxyEntry, reason: str = "") -> None:
         """Abre el circuit breaker para un proxy."""
