@@ -7,6 +7,8 @@ import asyncio
 import zipfile
 import paramiko
 import requests
+import re
+import json
 from typing import Optional, List
 from datetime import datetime, timezone
 from openpyxl import load_workbook
@@ -1778,7 +1780,6 @@ async def fetch_all_store_products(store_config: dict) -> list:
     Fetch ALL products from a store using paginated API calls.
     Supports WooCommerce, PrestaShop, Shopify, Magento, and Wix.
     """
-    import json
     from services.platforms import get_platform_client
 
     platform = store_config.get("platform", "woocommerce")
@@ -1834,7 +1835,6 @@ async def fetch_all_store_products(store_config: dict) -> list:
                                 try:
                                     # Try to fix invalid escape sequences
                                     # Replace invalid escapes like \x, \', etc. with their actual characters
-                                    import re
                                     # Match backslash followed by invalid escape
                                     sanitized = re.sub(r'\\([^"\\/bfnrtu])', r'\1', text)
                                     parsed_data = json.loads(sanitized)
