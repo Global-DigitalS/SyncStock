@@ -62,7 +62,8 @@ import {
   RefreshCw,
   Settings,
   ArrowRight,
-  FolderTree
+  FolderTree,
+  Bell
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import CatalogCategories from "../components/CatalogCategories";
@@ -75,6 +76,7 @@ const Catalogs = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showRulesDialog, setShowRulesDialog] = useState(false);
   const [showCategoriesDialog, setShowCategoriesDialog] = useState(false);
+  const [showMonitoringDialog, setShowMonitoringDialog] = useState(false);
   const [selectedCatalog, setSelectedCatalog] = useState(null);
   const [formData, setFormData] = useState({ name: "", description: "", is_default: false });
   const [saving, setSaving] = useState(false);
@@ -97,6 +99,13 @@ const Catalogs = () => {
   });
   const [editingRule, setEditingRule] = useState(null);
   const [savingRule, setSavingRule] = useState(false);
+
+  // Monitoring state
+  const [monitoringProducts, setMonitoringProducts] = useState([]);
+  const [selectedForMonitoring, setSelectedForMonitoring] = useState(new Set());
+  const [monitoringLoading, setMonitoringLoading] = useState(false);
+  const [savingMonitoring, setSavingMonitoring] = useState(false);
+  const [monitoringMode, setMonitoringMode] = useState("specific"); // "all" o "specific"
 
   const fetchCatalogs = useCallback(async () => {
     try {
@@ -174,6 +183,47 @@ const Catalogs = () => {
   const openCategories = (catalog) => {
     setSelectedCatalog(catalog);
     setShowCategoriesDialog(true);
+  };
+
+  const openMonitoring = async (catalog) => {
+    setSelectedCatalog(catalog);
+    setMonitoringMode("specific");
+    setSelectedForMonitoring(new Set());
+    setMonitoringLoading(true);
+
+    try {
+      // Obtener productos del catálogo
+      const res = await api.get(`/catalogs/${catalog.id}/items?limit=1000`);
+      setMonitoringProducts(res.data.items || []);
+    } catch (error) {
+      toast.error("Error al cargar productos del catálogo");
+    } finally {
+      setMonitoringLoading(false);
+      setShowMonitoringDialog(true);
+    }
+  };
+
+  const saveMonitoringSelection = async () => {
+    if (!selectedCatalog) return;
+
+    setSavingMonitoring(true);
+    try {
+      // Guardar selección de productos para monitoreo
+      const payload = {
+        mode: monitoringMode,
+        product_ids: monitoringMode === "specific" ? Array.from(selectedForMonitoring) : [],
+      };
+
+      // Por ahora solo mostramos confirmación
+      // En el futuro: await api.put(`/catalogs/${selectedCatalog.id}/monitoring`, payload);
+
+      toast.success("Configuración de monitoreo guardada");
+      setShowMonitoringDialog(false);
+    } catch (error) {
+      toast.error("Error al guardar configuración");
+    } finally {
+      setSavingMonitoring(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -458,6 +508,10 @@ const Catalogs = () => {
                       <DropdownMenuItem onClick={() => openCategories(catalog)}>
                         <FolderTree className="w-4 h-4 mr-2" strokeWidth={1.5} />
                         Categorías
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => openMonitoring(catalog)}>
+                        <Bell className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                        Monitoreo de Competidores
                       </DropdownMenuItem>
                       <DropdownMenuItem onClick={() => openEdit(catalog)}>
                         <Pencil className="w-4 h-4 mr-2" strokeWidth={1.5} />
@@ -951,6 +1005,116 @@ const Catalogs = () => {
               />
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Monitoring Dialog */}
+      <Dialog open={showMonitoringDialog} onOpenChange={setShowMonitoringDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Bell className="w-5 h-5 text-amber-600" />
+              Monitoreo de Competidores - {selectedCatalog?.name}
+            </DialogTitle>
+            <DialogDescription>
+              Selecciona qué productos de este catálogo deseas monitorear para detectar cambios de precio en competidores
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Mode Selection */}
+            <div className="border rounded-lg p-4 space-y-3">
+              <Label className="font-semibold">Selecciona los productos a monitorear:</Label>
+
+              <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="mode-all"
+                    name="monitoring-mode"
+                    value="all"
+                    checked={monitoringMode === "all"}
+                    onChange={(e) => setMonitoringMode(e.target.value)}
+                    className="w-4 h-4"
+                  />
+                  <Label htmlFor="mode-all" className="font-normal cursor-pointer">
+                    Todo el catálogo ({monitoringProducts.length} productos)
+                  </Label>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="radio"
+                    id="mode-specific"
+                    name="monitoring-mode"
+                    value="specific"
+                    checked={monitoringMode === "specific"}
+                    onChange={(e) => setMonitoringMode(e.target.value)}
+                    className="w-4 h-4"
+                  />
+                  <Label htmlFor="mode-specific" className="font-normal cursor-pointer">
+                    Productos específicos ({selectedForMonitoring.size} seleccionados)
+                  </Label>
+                </div>
+              </div>
+            </div>
+
+            {/* Products List */}
+            {monitoringMode === "specific" && (
+              <div className="border rounded-lg p-4 space-y-2 max-h-96 overflow-y-auto">
+                {monitoringLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Cargando productos...</div>
+                ) : monitoringProducts.length === 0 ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    No hay productos en este catálogo
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {monitoringProducts.map((item) => (
+                      <div key={item.product_id} className="flex items-center space-x-3 p-2 hover:bg-slate-50 rounded">
+                        <input
+                          type="checkbox"
+                          id={`product-${item.product_id}`}
+                          checked={selectedForMonitoring.has(item.product_id)}
+                          onChange={(e) => {
+                            const newSet = new Set(selectedForMonitoring);
+                            if (e.target.checked) {
+                              newSet.add(item.product_id);
+                            } else {
+                              newSet.delete(item.product_id);
+                            }
+                            setSelectedForMonitoring(newSet);
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <Label htmlFor={`product-${item.product_id}`} className="font-normal cursor-pointer flex-1">
+                          {item.custom_name || item.product_name || "Producto sin nombre"}
+                        </Label>
+                        <Badge variant="outline" className="text-xs">
+                          €{(item.custom_price || 0).toFixed(2)}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Info Message */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-900">
+              <strong>Nota:</strong> El monitoreo utilizará el "Precio Final" (con márgenes aplicados) de este catálogo para comparar con los precios de los competidores.
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setShowMonitoringDialog(false)}>
+              Cancelar
+            </Button>
+            <Button onClick={saveMonitoringSelection} disabled={savingMonitoring || monitoringMode === "specific" && selectedForMonitoring.size === 0}>
+              {savingMonitoring ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Bell className="w-4 h-4 mr-2" />}
+              Guardar Configuración
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

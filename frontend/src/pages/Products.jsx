@@ -161,21 +161,11 @@ const Products = () => {
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showAlertDialog, setShowAlertDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [editProduct, setEditProduct] = useState(null);
   const [productsToAdd, setProductsToAdd] = useState([]);
   const [addingToCatalog, setAddingToCatalog] = useState(false);
   const [deletingProducts, setDeletingProducts] = useState(false);
-  const [savingAlert, setSavingAlert] = useState(false);
-
-  // Alert form states
-  const [alertForm, setAlertForm] = useState({
-    alert_type: "competitor_cheaper",
-    threshold: "",
-    channel: "app",
-    webhook_url: "",
-  });
   
   // Category selection for catalog
   const [catalogCategories, setCatalogCategories] = useState([]);
@@ -448,40 +438,6 @@ const Products = () => {
     setShowDetailDialog(true);
   };
 
-  const openAlertDialog = (product) => {
-    setSelectedProduct(product);
-    setAlertForm({
-      alert_type: "competitor_cheaper",
-      threshold: "",
-      channel: "app",
-      webhook_url: "",
-    });
-    setShowAlertDialog(true);
-  };
-
-  const handleCreateAlert = async () => {
-    if (!selectedProduct) return;
-
-    const alertData = {
-      sku: selectedProduct.sku || null,
-      ean: selectedProduct.ean || null,
-      alert_type: alertForm.alert_type,
-      threshold: alertForm.threshold ? parseFloat(alertForm.threshold) : null,
-      channel: alertForm.channel,
-      webhook_url: alertForm.channel === "webhook" ? alertForm.webhook_url : null,
-    };
-
-    setSavingAlert(true);
-    try {
-      await api.post("/competitors/alerts", alertData);
-      toast.success(`Alerta creada para ${selectedProduct.name}`);
-      setShowAlertDialog(false);
-    } catch (err) {
-      toast.error(err.response?.data?.detail || "Error al crear la alerta");
-    } finally {
-      setSavingAlert(false);
-    }
-  };
 
   // File upload handlers
   const handleFileUpload = async (file) => {
@@ -776,9 +732,6 @@ const Products = () => {
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => openCatalogSelector([product.ean])} className="h-8 w-8 p-0 text-indigo-600" data-testid={`catalog-${product.ean}`}>
                           <BookOpen className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" onClick={() => openAlertDialog(product)} className="h-8 w-8 p-0 text-amber-600" data-testid={`alert-${product.ean}`}>
-                          <Bell className="w-4 h-4" />
                         </Button>
                       </div>
                     </TableCell>
@@ -1129,92 +1082,6 @@ const Products = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Alert Dialog */}
-      <Dialog open={showAlertDialog} onOpenChange={setShowAlertDialog}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Bell className="w-5 h-5 text-amber-600" />
-              Nueva Alerta de Precio
-            </DialogTitle>
-            <DialogDescription>
-              {selectedProduct?.name}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            {/* Alert Type */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Tipo de alerta</label>
-              <Select value={alertForm.alert_type} onValueChange={(v) => setAlertForm({ ...alertForm, alert_type: v, threshold: "" })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="competitor_cheaper">Competidor más barato</SelectItem>
-                  <SelectItem value="price_below">Precio por debajo de...</SelectItem>
-                  <SelectItem value="price_drop">Bajada de precio (%)</SelectItem>
-                  <SelectItem value="any_change">Cualquier cambio</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Threshold - conditionally shown */}
-            {(alertForm.alert_type === "price_below" || alertForm.alert_type === "price_drop") && (
-              <div>
-                <label className="block text-sm font-medium mb-2">
-                  {alertForm.alert_type === "price_below" ? "Precio umbral (€)" : "Porcentaje de bajada (%)"}
-                </label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={alertForm.threshold}
-                  onChange={(e) => setAlertForm({ ...alertForm, threshold: e.target.value })}
-                  placeholder="0.00"
-                />
-              </div>
-            )}
-
-            {/* Notification Channel */}
-            <div>
-              <label className="block text-sm font-medium mb-2">Canal de notificación</label>
-              <Select value={alertForm.channel} onValueChange={(v) => setAlertForm({ ...alertForm, channel: v, webhook_url: "" })}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="app">Notificación en la app</SelectItem>
-                  <SelectItem value="email">Email</SelectItem>
-                  <SelectItem value="webhook">Webhook</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Webhook URL - conditionally shown */}
-            {alertForm.channel === "webhook" && (
-              <div>
-                <label className="block text-sm font-medium mb-2">URL del Webhook</label>
-                <Input
-                  type="url"
-                  value={alertForm.webhook_url}
-                  onChange={(e) => setAlertForm({ ...alertForm, webhook_url: e.target.value })}
-                  placeholder="https://..."
-                />
-              </div>
-            )}
-          </div>
-
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setShowAlertDialog(false)}>
-              Cancelar
-            </Button>
-            <Button onClick={handleCreateAlert} disabled={savingAlert}>
-              {savingAlert ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Bell className="w-4 h-4 mr-2" />}
-              Crear Alerta
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };
