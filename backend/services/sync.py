@@ -7,6 +7,8 @@ import asyncio
 import zipfile
 import paramiko
 import requests
+import re
+import json
 from typing import Optional, List
 from datetime import datetime, timezone
 from openpyxl import load_workbook
@@ -1778,7 +1780,6 @@ async def fetch_all_store_products(store_config: dict) -> list:
     Fetch ALL products from a store using paginated API calls.
     Supports WooCommerce, PrestaShop, Shopify, Magento, and Wix.
     """
-    import json
     from services.platforms import get_platform_client
 
     platform = store_config.get("platform", "woocommerce")
@@ -1797,27 +1798,69 @@ async def fetch_all_store_products(store_config: dict) -> list:
                 try:
                     # First try: use requests' automatic encoding detection
                     batch = batch.json()
-                except (json.JSONDecodeError, ValueError) as e:
-                    # Fallback: manually handle encoding if auto-detection failed
+                except Exception as e:
+                    # Fallback: manually handle encoding and JSON structure issues
+                    logger.warning(f"JSON decode error on page {page}: {type(e).__name__}: {str(e)[:150]}")
+
                     try:
-                        logger.warning(f"JSON decode error on page {page}, attempting manual encoding: {str(e)[:100]}")
-                        # Get raw bytes and try different encodings
+                        # Get raw content with explicit encoding handling
                         if hasattr(batch, 'content'):
+                            raw_bytes = batch.content
+                            logger.info(f"Response size: {len(raw_bytes)} bytes on page {page}")
+
+                            # Try different encodings
+                            parsed_data = None
+                            text = None
+
                             for encoding in ['utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1', 'cp1252']:
                                 try:
-                                    text = batch.content.decode(encoding)
-                                    batch = json.loads(text)
-                                    logger.info(f"Successfully parsed with encoding: {encoding}")
+                                    text = raw_bytes.decode(encoding)
+                                    parsed_data = json.loads(text)
+                                    logger.info(f"Successfully parsed page {page} with {encoding} encoding")
+                                    batch = parsed_data
                                     break
-                                except (json.JSONDecodeError, UnicodeDecodeError):
+                                except (json.JSONDecodeError, UnicodeDecodeError) as encode_error:
+                                    logger.debug(f"  {encoding}: {type(encode_error).__name__}")
+                                    # Keep the text from UTF-8 for later sanitization
+                                    if encoding == 'utf-8' and text is None:
+                                        try:
+                                            text = raw_bytes.decode('utf-8', errors='replace')
+                                        except:
+                                            pass
                                     continue
-                            else:
-                                # If all encodings fail, raise the original error
-                                raise e
+
+                            # If standard parsing failed and we have text, try sanitizing
+                            if parsed_data is None and text:
+                                logger.warning(f"Standard parsing failed on page {page}, attempting JSON sanitization")
+                                try:
+                                    # Try to fix invalid escape sequences
+                                    # Replace invalid escapes like \x, \', etc. with their actual characters
+                                    # Match backslash followed by invalid escape
+                                    sanitized = re.sub(r'\\([^"\\/bfnrtu])', r'\1', text)
+                                    parsed_data = json.loads(sanitized)
+                                    logger.info(f"Successfully parsed page {page} after sanitization")
+                                    batch = parsed_data
+                                except Exception as sanitize_error:
+                                    logger.warning(f"Sanitization failed: {type(sanitize_error).__name__}")
+                                    # Last resort: try with errors='replace'
+                                    if text:
+                                        try:
+                                            # Re-encode with errors='replace' and try again
+                                            text_replaced = raw_bytes.decode('utf-8', errors='replace')
+                                            parsed_data = json.loads(text_replaced)
+                                            logger.info(f"Successfully parsed page {page} with utf-8 errors='replace'")
+                                            batch = parsed_data
+                                        except Exception as last_error:
+                                            logger.error(f"All parsing strategies failed on page {page}")
+                                            raise last_error
+
+                            if parsed_data is None:
+                                raise ValueError(f"Could not parse JSON response on page {page}")
                         else:
+                            logger.error(f"Response object has no 'content' attribute on page {page}")
                             raise e
                     except Exception as fallback_error:
-                        logger.error(f"Failed to parse WooCommerce response on page {page}: {fallback_error}")
+                        logger.error(f"Failed to parse WooCommerce response on page {page}: {type(fallback_error).__name__}: {fallback_error}")
                         raise
 
             if isinstance(batch, dict) and "body" in batch:
