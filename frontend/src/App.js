@@ -8,6 +8,7 @@ import posthog from "posthog-js";
 // Pages — lazy loaded for code splitting
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
+const CheckoutSuccess = lazy(() => import("./pages/CheckoutSuccess"));
 const Setup = lazy(() => import("./pages/Setup"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -390,6 +391,7 @@ function App() {
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/checkout-success" element={<CheckoutSuccess />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ForgotPassword />} />
 

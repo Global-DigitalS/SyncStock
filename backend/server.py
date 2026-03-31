@@ -434,7 +434,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     _EXEMPT_PREFIXES = (
         "/api/auth/login", "/api/auth/register", "/api/auth/refresh",
         "/api/auth/forgot-password", "/api/auth/reset-password",
-        "/api/webhooks", "/api/stripe/webhook", "/api/stripe/create-checkout-new-user", "/api/csp-report",
+        "/api/webhooks", "/api/stripe/webhook", "/api/stripe/create-checkout-new-user",
+        "/api/stripe/checkout-status", "/api/csp-report",
         "/api/setup",
     )
     _MUTATING_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
