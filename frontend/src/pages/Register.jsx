@@ -188,17 +188,42 @@ const Register = () => {
 
       const token = registerRes.data.token;
 
+      // Get CSRF token from response headers (if available) or wait for it to be set
+      // This ensures the CSRF token is available for subsequent requests
+      let csrfToken = null;
+      try {
+        // Try to get CSRF token from cookies after successful registration
+        const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
+        csrfToken = match ? match[2] : null;
+      } catch (e) {
+        // CSRF token might not be immediately available
+      }
+
       // Step 2: Save billing information
+      const billingConfig = {
+        headers: { Authorization: `Bearer ${token}` }
+      };
+      if (csrfToken) {
+        billingConfig.headers['X-CSRF-Token'] = csrfToken;
+      }
+
       await axios.post(
         `${BACKEND_URL}/api/subscriptions/billing-info`,
         {
           ...billingData,
           billing_email: formData.email
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        billingConfig
       );
 
       // Step 3: Create Stripe checkout session
+      const stripeConfig = {
+        headers: { Authorization: `Bearer ${token}` }
+      };
+      if (csrfToken) {
+        stripeConfig.headers['X-CSRF-Token'] = csrfToken;
+      }
+
       const checkoutRes = await axios.post(
         `${BACKEND_URL}/api/stripe/create-checkout`,
         {
@@ -206,7 +231,7 @@ const Register = () => {
           origin_url: window.location.origin,
           billing_cycle: "monthly"
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        stripeConfig
       );
 
       if (checkoutRes.data?.checkout_url) {
