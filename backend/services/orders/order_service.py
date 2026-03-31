@@ -188,9 +188,76 @@ async def _sync_to_dolibarr(order: Order, crm_client, user_id: str) -> Tuple[boo
 async def _sync_to_odoo(order: Order, crm_client, user_id: str) -> Tuple[bool, Optional[str], Optional[Dict]]:
     """Sync order to Odoo CRM"""
     try:
-        # Similar logic for Odoo
-        # For now, return not implemented
-        return False, "Odoo sync not yet implemented", None
+        # Get or create customer in Odoo
+        partners = crm_client.get_suppliers(limit=10000)  # Get all customers/suppliers
+        odoo_customer_id = None
+
+        # Search for existing customer by email
+        for partner in partners:
+            if partner.get("email") == order.customer["email"]:
+                odoo_customer_id = partner.get("id")
+                break
+
+        # Create customer if not found
+        if not odoo_customer_id:
+            create_result = crm_client.create_supplier({
+                "name": order.customer["name"],
+                "email": order.customer["email"],
+                "phone": order.customer.get("phone", ""),
+                "address": order.addresses["shipping"].get("street", ""),
+                "city": order.addresses["shipping"].get("city", "")
+            })
+
+            if create_result.get("status") != "success":
+                return False, f"Failed to create customer in Odoo: {create_result.get('message')}", None
+
+            odoo_customer_id = create_result.get("supplier_id")
+
+        # Prepare order lines
+        lines = []
+        for item in order.items:
+            if item.product_id:
+                lines.append({
+                    "product_id": item.product_id,
+                    "product_qty": item.quantity,
+                    "price_unit": item.price,
+                    "name": item.name
+                })
+
+        if not lines:
+            logger.warning(f"Order {order.id} has no valid products to sync to Odoo")
+            return False, "No valid products to sync", None
+
+        # Create sales order in Odoo
+        order_payload = {
+            "partner_id": odoo_customer_id,
+            "order_line": lines,
+            "client_order_ref": f"{order.source.upper()}-{order.source_order_id}",
+            "note": f"Order from {order.source} (ID: {order.source_order_id})\nTotal: {order.total_amount}"
+        }
+
+        # Make POST request to create order (using requests directly)
+        import requests
+        headers = crm_client.headers if hasattr(crm_client, 'headers') else {}
+        response = requests.post(
+            f"{crm_client.base_url}/api/sale.order",
+            json=order_payload,
+            headers=headers,
+            timeout=30
+        )
+
+        if response.status_code not in [200, 201]:
+            error_msg = response.text[:200] if response.text else f"Status {response.status_code}"
+            return False, f"Failed to create order in Odoo: {error_msg}", None
+
+        result = response.json()
+        odoo_order_id = result.get("id") if isinstance(result, dict) else result
+
+        return True, None, {
+            "odoo_order_id": odoo_order_id,
+            "odoo_customer_id": odoo_customer_id,
+            "crm": "odoo"
+        }
 
     except Exception as e:
         logger.error(f"Error syncing to Odoo: {e}")
