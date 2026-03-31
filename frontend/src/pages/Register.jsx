@@ -508,6 +508,22 @@ const Register = () => {
           </div>
         </div>
 
+        <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+          <input
+            id="acceptTerms"
+            type="checkbox"
+            {...registerField("acceptTerms")}
+            className="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 mt-0.5 cursor-pointer"
+            data-testid="register-terms"
+          />
+          <label htmlFor="acceptTerms" className="text-sm text-slate-700 cursor-pointer flex-1">
+            Acepto los <a href="#" className="text-indigo-600 font-medium hover:underline">términos y condiciones</a> y la <a href="#" className="text-indigo-600 font-medium hover:underline">política de privacidad</a>
+          </label>
+        </div>
+        {errors.acceptTerms && (
+          <p className="text-sm text-red-600 mt-1">{errors.acceptTerms.message}</p>
+        )}
+
         <div className="flex gap-3">
           <Button type="button" variant="outline" onClick={() => setStep(1)} className="flex-1">
             <ArrowLeft className="w-4 h-4 mr-2" /> Atrás
