@@ -177,20 +177,19 @@ const Register = () => {
 
     setLoading(true);
     try {
-      // IMPORTANT: For paid plans, we do NOT register the user yet.
-      // We first validate and process payment, THEN register.
-      // This ensures the user is only created if ALL steps are successful.
+      // IMPORTANT: For paid plans, we do NOT register the user YET.
+      // We ONLY create the Stripe checkout session, save temporary registration data,
+      // then redirect to Stripe. The user is created ONLY AFTER payment is confirmed
+      // (via webhook or success page verification).
 
-      // Step 1: Validate payment by creating Stripe checkout session (PUBLIC endpoint)
-      // This validates that the plan exists and everything is ready BEFORE registering the user
-      // Uses the public endpoint since user hasn't registered yet
+      // Step 1: Create Stripe checkout session (validates plan and everything is ready)
       const stripeRes = await axios.post(
         `${BACKEND_URL}/api/stripe/create-checkout-new-user`,
         {
           plan_id: selectedPlan.id,
           origin_url: window.location.origin,
           billing_cycle: "monthly",
-          billing_email: formData.email  // Required for new user registration
+          billing_email: formData.email
         }
       );
 
@@ -198,49 +197,26 @@ const Register = () => {
         throw new Error("No se pudo crear la sesión de pago");
       }
 
-      // Step 2: ONLY NOW register the user (after payment setup is confirmed)
-      const registerRes = await axios.post(`${BACKEND_URL}/api/auth/register`, {
-        name: sanitizeString(formData.name),
-        email: sanitizeEmail(formData.email),
+      // Step 2: Save registration data to sessionStorage (will be used after payment)
+      sessionStorage.setItem("pending_registration", JSON.stringify({
+        name: formData.name,
+        email: formData.email,
         password: formData.password,
-        company: null,
-        plan_id: selectedPlan?.id
-      });
+        plan_id: selectedPlan.id
+      }));
 
-      const token = registerRes.data.token;
+      // Save billing data
+      sessionStorage.setItem("pending_billing", JSON.stringify(billingData));
 
-      // Get CSRF token
-      let csrfToken = null;
-      try {
-        const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
-        csrfToken = match ? match[2] : null;
-      } catch (e) {
-        // CSRF token might not be immediately available
-      }
+      // Save session ID for verification after Stripe redirects back
+      sessionStorage.setItem("stripe_session_id", stripeRes.data.session_id);
 
-      // Step 3: Save billing information (now that user is registered)
-      const billingConfig = {
-        headers: { Authorization: `Bearer ${token}` }
-      };
-      if (csrfToken) {
-        billingConfig.headers['X-CSRF-Token'] = csrfToken;
-      }
-
-      await axios.post(
-        `${BACKEND_URL}/api/subscriptions/billing-info`,
-        {
-          ...billingData,
-          billing_email: formData.email
-        },
-        billingConfig
-      );
-
-      // Step 4: Redirect to Stripe Checkout
+      // Step 3: Redirect to Stripe Checkout
+      // User will be created AFTER confirming payment (on success_url)
       toast.success("Redirigiendo a la pasarela de pago...");
-      sessionStorage.setItem("pending_token", token);
       window.location.href = stripeRes.data.checkout_url;
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error al procesar el registro");
+      toast.error(error.response?.data?.detail || "Error al procesar la solicitud de pago");
     } finally {
       setLoading(false);
     }

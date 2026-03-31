@@ -325,8 +325,9 @@ async def create_checkout_session_new_user(
         raise HTTPException(status_code=400, detail="origin_url no permitida")
 
     origin = raw_origin
-    success_url = f"{origin}/#/subscriptions?session_id={{CHECKOUT_SESSION_ID}}&success=true"
-    cancel_url = f"{origin}/#/subscriptions?canceled=true"
+    # For new user registrations, redirect to checkout-success page for verification
+    success_url = f"{origin}/#/checkout-success?session_id={{CHECKOUT_SESSION_ID}}&success=true"
+    cancel_url = f"{origin}/#/register"
 
     # Get customer email from request (for new users during registration)
     customer_email = getattr(checkout_request, 'billing_email', None) or getattr(checkout_request, 'email', None)
@@ -393,6 +394,40 @@ async def create_checkout_session_new_user(
 
 
 @router.get("/stripe/checkout-status/{session_id}")
+async def get_checkout_status_public(session_id: str, request: Request):
+    """
+    Get the status of a checkout session (PUBLIC - for new user registration verification)
+    Returns payment status without requiring authentication.
+    Used during registration flow to verify payment before creating user.
+    """
+
+    config = await get_configured_stripe()
+
+    try:
+        # Retrieve session from Stripe
+        session = stripe.checkout.Session.retrieve(session_id)
+
+        # Map Stripe status to our status
+        status = session.status  # complete, expired, open
+        payment_status = session.payment_status  # paid, unpaid, no_payment_required
+
+        return {
+            "status": status,
+            "payment_status": payment_status,
+            "amount_total": session.amount_total / 100 if session.amount_total else 0,  # Convert from cents
+            "currency": session.currency,
+            "customer_email": session.customer_email
+        }
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error retrieving checkout status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
+    except Exception as e:
+        logger.error(f"Error retrieving checkout status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al verificar estado: {str(e)}")
+
+
+@router.get("/stripe/checkout-status-auth/{session_id}")
 async def get_checkout_status(session_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Get the status of a checkout session and update user subscription if paid"""
     
