@@ -123,25 +123,23 @@ const Register = () => {
   // Watch form data to use in step handlers
   const watchFormData = watch();
 
-  const handleContinueFromStep2 = async () => {
-    // Validate the form data against the schema
-    try {
-      // This will trigger validation
-      const isValid = await handleSubmit(async (data) => {
-        if (isPaidPlan) {
-          // Pre-fill billing company from registration
-          if (data.name && !billingData.company_name) {
-            setBillingData(prev => ({ ...prev, company_name: data.name }));
-          }
-          setStep(3);
-        } else {
-          // Free plan - complete registration
-          await handleFreeRegistration(data);
-        }
-      })();
-    } catch (error) {
-      // Validation errors are displayed by react-hook-form
+  // Create submit handler for react-hook-form
+  const onRegistrationSubmit = handleSubmit(async (data) => {
+    if (isPaidPlan) {
+      // Pre-fill billing company from registration
+      if (data.name && !billingData.company_name) {
+        setBillingData(prev => ({ ...prev, company_name: data.name }));
+      }
+      setStep(3);
+    } else {
+      // Free plan - complete registration
+      await handleFreeRegistration(data);
     }
+  });
+
+  const handleContinueFromStep2 = (e) => {
+    e.preventDefault();
+    onRegistrationSubmit(e);
   };
 
   const handleFreeRegistration = async (formData) => {
