@@ -159,9 +159,10 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
         product_ids = [item.get("product_id") for item in catalog_items if item.get("product_id")]
         if not product_ids:
             return {"status": "warning", "message": "El catálogo no tiene productos válidos", "created": 0, "updated": 0}
-        
-        # Create map of product_id -> catalog_item for custom prices
-        catalog_items_map = {item.get("product_id"): item for item in catalog_items}
+
+        # Remove duplicates - a catalog can have multiple items pointing to same product
+        # We want to sync each unique product only ONCE
+        product_ids = list(set(product_ids))
         
         # Get margin rules for this catalog (sorted by priority descending)
         margin_rules = await db.catalog_margin_rules.find(
@@ -271,7 +272,13 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
             
             # Sync stock
             if sync_settings.get("stock", True):
-                product_data["stock"] = product.get("stock", 0)
+                stock_value = product.get("stock", 0)
+                # Validate stock value - prevent absurdly large numbers (likely corruption)
+                # Stock shouldn't exceed 1 million units per product
+                if isinstance(stock_value, (int, float)) and stock_value > 1000000:
+                    logger.warning(f"Stock value suspiciously large for {sku}: {stock_value}. Capping at 1000000.")
+                    stock_value = 1000000
+                product_data["stock"] = max(0, int(stock_value) if isinstance(stock_value, (int, float)) else 0)
             
             # Sync descriptions
             if sync_settings.get("descriptions", True):
