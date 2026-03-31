@@ -1778,6 +1778,7 @@ async def fetch_all_store_products(store_config: dict) -> list:
     Fetch ALL products from a store using paginated API calls.
     Supports WooCommerce, PrestaShop, Shopify, Magento, and Wix.
     """
+    import json
     from services.platforms import get_platform_client
 
     platform = store_config.get("platform", "woocommerce")
@@ -1790,8 +1791,35 @@ async def fetch_all_store_products(store_config: dict) -> list:
             batch = await asyncio.to_thread(
                 wc.get, "products", params={"per_page": 100, "page": page}
             )
+
+            # Parse JSON with proper encoding handling
             if hasattr(batch, 'json'):
-                batch = batch.json()
+                try:
+                    # First try: use requests' automatic encoding detection
+                    batch = batch.json()
+                except (json.JSONDecodeError, ValueError) as e:
+                    # Fallback: manually handle encoding if auto-detection failed
+                    try:
+                        logger.warning(f"JSON decode error on page {page}, attempting manual encoding: {str(e)[:100]}")
+                        # Get raw bytes and try different encodings
+                        if hasattr(batch, 'content'):
+                            for encoding in ['utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1', 'cp1252']:
+                                try:
+                                    text = batch.content.decode(encoding)
+                                    batch = json.loads(text)
+                                    logger.info(f"Successfully parsed with encoding: {encoding}")
+                                    break
+                                except (json.JSONDecodeError, UnicodeDecodeError):
+                                    continue
+                            else:
+                                # If all encodings fail, raise the original error
+                                raise e
+                        else:
+                            raise e
+                    except Exception as fallback_error:
+                        logger.error(f"Failed to parse WooCommerce response on page {page}: {fallback_error}")
+                        raise
+
             if isinstance(batch, dict) and "body" in batch:
                 batch = batch["body"]
             if not batch or not isinstance(batch, list):
