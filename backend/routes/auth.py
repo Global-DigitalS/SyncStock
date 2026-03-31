@@ -598,20 +598,97 @@ async def update_user_limits(user_id: str, limits: UserLimits, superadmin: dict 
 
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str, admin: dict = Depends(get_admin_user)):
-    """Delete user (admin/superadmin only)"""
+    """Delete user and ALL associated data (cascading delete)"""
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="No puedes eliminarte a ti mismo")
-    
+
     # Only superadmin can delete admins
     target_user = await db.users.find_one({"id": user_id})
     if target_user and target_user.get("role") in ["admin", "superadmin"] and admin.get("role") != "superadmin":
         raise HTTPException(status_code=403, detail="Solo SuperAdmin puede eliminar administradores")
-    
-    result = await db.users.delete_one({"id": user_id})
-    if result.deleted_count == 0:
+
+    if not target_user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
-    return {"message": "Usuario eliminado"}
+
+    # Delete all user-associated data in cascading order
+    # (respect foreign key relationships)
+    deletion_stats = {}
+
+    try:
+        # 1. Delete catalog items (references products)
+        result = await db.catalog_items.delete_many({"user_id": user_id})
+        deletion_stats["catalog_items"] = result.deleted_count
+
+        # 2. Delete price history
+        result = await db.price_history.delete_many({"user_id": user_id})
+        deletion_stats["price_history"] = result.deleted_count
+
+        # 3. Delete catalog margin rules
+        result = await db.catalog_margin_rules.delete_many({"user_id": user_id})
+        deletion_stats["catalog_margin_rules"] = result.deleted_count
+
+        # 4. Delete catalogs
+        result = await db.catalogs.delete_many({"user_id": user_id})
+        deletion_stats["catalogs"] = result.deleted_count
+
+        # 5. Delete products
+        result = await db.products.delete_many({"user_id": user_id})
+        deletion_stats["products"] = result.deleted_count
+
+        # 6. Delete suppliers
+        result = await db.suppliers.delete_many({"user_id": user_id})
+        deletion_stats["suppliers"] = result.deleted_count
+
+        # 7. Delete WooCommerce configs
+        result = await db.woocommerce_configs.delete_many({"user_id": user_id})
+        deletion_stats["woocommerce_configs"] = result.deleted_count
+
+        # 8. Delete store configs
+        result = await db.store_configs.delete_many({"user_id": user_id})
+        deletion_stats["store_configs"] = result.deleted_count
+
+        # 9. Delete CRM connections
+        result = await db.crm_connections.delete_many({"user_id": user_id})
+        deletion_stats["crm_connections"] = result.deleted_count
+
+        # 10. Delete notifications
+        result = await db.notifications.delete_many({"user_id": user_id})
+        deletion_stats["notifications"] = result.deleted_count
+
+        # 11. Delete subscriptions
+        result = await db.subscriptions.delete_many({"user_id": user_id})
+        deletion_stats["subscriptions"] = result.deleted_count
+
+        # 12. Delete user subscription/payment info
+        result = await db.user_subscriptions.delete_many({"user_id": user_id})
+        deletion_stats["user_subscriptions"] = result.deleted_count
+
+        # 13. Delete billing info
+        result = await db.billing_info.delete_many({"user_id": user_id})
+        deletion_stats["billing_info"] = result.deleted_count
+
+        # 14. Delete password reset tokens
+        result = await db.password_resets.delete_many({"user_id": user_id})
+        deletion_stats["password_resets"] = result.deleted_count
+
+        # 15. Delete the user itself (last)
+        result = await db.users.delete_one({"id": user_id})
+        deletion_stats["users"] = result.deleted_count
+
+        # Log the comprehensive deletion
+        logger.warning(
+            f"User {target_user.get('email')} (ID: {user_id}) and ALL associated data "
+            f"deleted by SuperAdmin {admin.get('email')}. Stats: {deletion_stats}"
+        )
+
+        return {
+            "message": f"Usuario {target_user.get('email')} y todos sus datos han sido eliminados",
+            "deleted_stats": deletion_stats
+        }
+
+    except Exception as e:
+        logger.error(f"Error during cascading user deletion for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al eliminar usuario y datos: {str(e)}")
 
 
 
