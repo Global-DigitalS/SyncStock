@@ -2162,11 +2162,35 @@ async def create_catalog_from_store_products(
 
         # Bulk insert new products (unmatched, when skip_unmatched=False)
         if products_to_create:
-            await db.products.insert_many(products_to_create)
+            try:
+                await db.products.insert_many(products_to_create, ordered=False)
+            except Exception as e:
+                logger.warning(f"Some products failed to insert (ignoring): {str(e)[:100]}")
 
-        # Insert catalog items in bulk
+        # Insert catalog items in bulk (with duplicate handling)
         if catalog_items:
-            await db.catalog_items.insert_many(catalog_items)
+            try:
+                await db.catalog_items.insert_many(catalog_items, ordered=False)
+            except Exception as e:
+                # Handle duplicate key errors gracefully
+                if "duplicate" in str(e).lower() or "11000" in str(e):
+                    logger.warning(f"Some catalog items have duplicate keys, attempting individual inserts: {str(e)[:100]}")
+                    # Try inserting individually to skip duplicates
+                    inserted = 0
+                    for item in catalog_items:
+                        try:
+                            await db.catalog_items.insert_one(item)
+                            inserted += 1
+                        except Exception as item_error:
+                            if "duplicate" in str(item_error).lower() or "11000" in str(item_error):
+                                # Skip this item (it's a duplicate)
+                                logger.debug(f"Skipping duplicate catalog item: {item['id']}")
+                            else:
+                                logger.error(f"Error inserting catalog item {item['id']}: {item_error}")
+                    logger.info(f"Inserted {inserted}/{len(catalog_items)} catalog items (skipped duplicates)")
+                else:
+                    # Re-raise if it's not a duplicate key error
+                    raise
 
         # Step 5: Notify — complete
         await send_realtime_notification(user_id, {
