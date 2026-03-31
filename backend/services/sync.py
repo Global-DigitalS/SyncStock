@@ -1883,15 +1883,31 @@ async def fetch_all_store_products(store_config: dict) -> list:
 
 def extract_store_product_info(store_prod: dict, platform: str) -> dict:
     """
-    Extract ONLY matching fields (SKU, EAN, name) from a store product.
-    Price, stock, and other fields are determined by SyncStock from supplier products.
+    Extract matching fields from store product.
+    Price and stock come from SyncStock supplier products, not the store.
+
+    Fields extracted: SKU, EAN, name, description, image, category, brand
     """
-    info = {"sku": "", "ean": "", "name": ""}
+    info = {
+        "sku": "",
+        "ean": "",
+        "name": "",
+        "description": "",
+        "image_url": "",
+        "category": "",
+        "brand": ""
+    }
 
     if platform == "woocommerce":
         info["sku"] = (store_prod.get("sku") or "").strip()
         info["ean"] = (store_prod.get("ean") or "").strip()
         info["name"] = (store_prod.get("name") or "").strip()
+        info["description"] = store_prod.get("description") or store_prod.get("short_description") or ""
+        images = store_prod.get("images") or []
+        info["image_url"] = images[0].get("src", "") if images else ""
+        cats = store_prod.get("categories") or []
+        info["category"] = cats[0].get("name", "") if cats else ""
+        info["brand"] = store_prod.get("brands", [{}])[0].get("name", "") if store_prod.get("brands") else ""
     elif platform == "prestashop":
         info["sku"] = (store_prod.get("reference") or "").strip()
         info["ean"] = (store_prod.get("ean13") or "").strip()
@@ -1901,20 +1917,36 @@ def extract_store_product_info(store_prod: dict, platform: str) -> dict:
         elif isinstance(name_val, dict):
             name_val = name_val.get("value", "") or name_val.get("language", "")
         info["name"] = str(name_val).strip()
+        info["description"] = store_prod.get("description") or store_prod.get("description_short") or ""
+        info["category"] = store_prod.get("id_category_default", "")
+        info["brand"] = ""
     elif platform == "shopify":
         variants = store_prod.get("variants") or []
         first_variant = variants[0] if variants else {}
         info["sku"] = (first_variant.get("sku") or "").strip()
         info["ean"] = (first_variant.get("barcode") or "").strip()
         info["name"] = (store_prod.get("title") or "").strip()
+        info["description"] = store_prod.get("body_html") or ""
+        info["brand"] = store_prod.get("vendor") or ""
+        info["category"] = store_prod.get("product_type") or ""
+        images = store_prod.get("images") or []
+        info["image_url"] = images[0].get("src", "") if images else ""
     elif platform == "magento":
         info["sku"] = (store_prod.get("sku") or "").strip()
         info["name"] = (store_prod.get("name") or "").strip()
-        info["ean"] = ""  # Magento doesn't always have EAN
+        info["description"] = store_prod.get("description") or ""
+        info["ean"] = ""
+        info["brand"] = ""
+        info["category"] = ""
     elif platform == "wix":
         info["sku"] = (store_prod.get("sku") or "").strip()
         info["name"] = (store_prod.get("name") or "").strip()
-        info["ean"] = ""  # Wix doesn't always have EAN
+        info["description"] = store_prod.get("description") or ""
+        info["ean"] = ""
+        media = store_prod.get("media", {}).get("items") or []
+        info["image_url"] = media[0].get("url", "") if media else ""
+        info["category"] = ""
+        info["brand"] = ""
 
     return info
 
