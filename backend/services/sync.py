@@ -1882,21 +1882,32 @@ async def fetch_all_store_products(store_config: dict) -> list:
 
 
 def extract_store_product_info(store_prod: dict, platform: str) -> dict:
-    """Extract normalized SKU, EAN, name, price, stock from a store product."""
-    info = {"sku": "", "ean": "", "name": "", "price": 0, "stock": 0,
-            "description": "", "image_url": "", "category": "", "brand": ""}
+    """
+    Extract matching fields from store product.
+    Price and stock come from SyncStock supplier products, not the store.
+
+    Fields extracted: SKU, EAN, name, description, image, category, brand
+    """
+    info = {
+        "sku": "",
+        "ean": "",
+        "name": "",
+        "description": "",
+        "image_url": "",
+        "category": "",
+        "brand": ""
+    }
 
     if platform == "woocommerce":
         info["sku"] = (store_prod.get("sku") or "").strip()
         info["ean"] = (store_prod.get("ean") or "").strip()
         info["name"] = (store_prod.get("name") or "").strip()
-        info["price"] = float(store_prod.get("price") or store_prod.get("regular_price") or 0)
-        info["stock"] = int(store_prod.get("stock_quantity") or 0)
         info["description"] = store_prod.get("description") or store_prod.get("short_description") or ""
         images = store_prod.get("images") or []
         info["image_url"] = images[0].get("src", "") if images else ""
         cats = store_prod.get("categories") or []
         info["category"] = cats[0].get("name", "") if cats else ""
+        info["brand"] = store_prod.get("brands", [{}])[0].get("name", "") if store_prod.get("brands") else ""
     elif platform == "prestashop":
         info["sku"] = (store_prod.get("reference") or "").strip()
         info["ean"] = (store_prod.get("ean13") or "").strip()
@@ -1906,15 +1917,15 @@ def extract_store_product_info(store_prod: dict, platform: str) -> dict:
         elif isinstance(name_val, dict):
             name_val = name_val.get("value", "") or name_val.get("language", "")
         info["name"] = str(name_val).strip()
-        info["price"] = float(store_prod.get("price") or 0)
+        info["description"] = store_prod.get("description") or store_prod.get("description_short") or ""
+        info["category"] = store_prod.get("id_category_default", "")
+        info["brand"] = ""
     elif platform == "shopify":
         variants = store_prod.get("variants") or []
         first_variant = variants[0] if variants else {}
         info["sku"] = (first_variant.get("sku") or "").strip()
         info["ean"] = (first_variant.get("barcode") or "").strip()
         info["name"] = (store_prod.get("title") or "").strip()
-        info["price"] = float(first_variant.get("price") or 0)
-        info["stock"] = int(first_variant.get("inventory_quantity") or 0)
         info["description"] = store_prod.get("body_html") or ""
         info["brand"] = store_prod.get("vendor") or ""
         info["category"] = store_prod.get("product_type") or ""
@@ -1923,17 +1934,19 @@ def extract_store_product_info(store_prod: dict, platform: str) -> dict:
     elif platform == "magento":
         info["sku"] = (store_prod.get("sku") or "").strip()
         info["name"] = (store_prod.get("name") or "").strip()
-        info["price"] = float(store_prod.get("price") or 0)
-        ext = store_prod.get("extension_attributes") or {}
-        stock_item = ext.get("stock_item") or {}
-        info["stock"] = int(stock_item.get("qty") or 0)
+        info["description"] = store_prod.get("description") or ""
+        info["ean"] = ""
+        info["brand"] = ""
+        info["category"] = ""
     elif platform == "wix":
         info["sku"] = (store_prod.get("sku") or "").strip()
         info["name"] = (store_prod.get("name") or "").strip()
-        info["price"] = float(store_prod.get("price", {}).get("amount") or store_prod.get("price") or 0) if isinstance(store_prod.get("price"), (dict, int, float)) else 0
         info["description"] = store_prod.get("description") or ""
+        info["ean"] = ""
         media = store_prod.get("media", {}).get("items") or []
         info["image_url"] = media[0].get("url", "") if media else ""
+        info["category"] = ""
+        info["brand"] = ""
 
     return info
 
@@ -1948,6 +1961,10 @@ async def create_catalog_from_store_products(
 ) -> dict:
     """
     Create a catalog with products from a store by matching them with supplier products.
+
+    IMPORTANT: Only products that match supplier products are added to the catalog.
+    The price is always determined from the matched supplier product, not the store.
+
     Supports pagination for large stores and sends WebSocket progress notifications.
 
     Args:
@@ -1956,8 +1973,7 @@ async def create_catalog_from_store_products(
         catalog_name: Name for the new catalog (if creating new)
         catalog_id: Use existing catalog instead of creating new one
         match_by: List of fields to match by (sku, ean, name)
-        skip_unmatched: If True, skip products not found in suppliers.
-                        If False, create them as standalone products.
+        skip_unmatched: (Deprecated - always True) Skip products not found in suppliers
 
     Returns:
         dict with creation results
@@ -2113,40 +2129,8 @@ async def create_catalog_from_store_products(
                 added_items += 1
             else:
                 unmatched += 1
-                if not skip_unmatched and info["name"]:
-                    # Create product without supplier
-                    product_id = str(uuid.uuid4())
-                    new_product = {
-                        "id": product_id,
-                        "sku": info["sku"] or f"STORE-{product_id[:8]}",
-                        "name": info["name"],
-                        "description": info["description"],
-                        "price": info["price"],
-                        "stock": info["stock"],
-                        "category": info["category"],
-                        "brand": info["brand"],
-                        "ean": info["ean"],
-                        "image_url": info["image_url"],
-                        "supplier_id": "store_import",
-                        "supplier_name": store_name,
-                        "user_id": user_id,
-                        "is_selected": False,
-                        "created_at": now,
-                        "updated_at": now,
-                    }
-                    products_to_create.append(new_product)
-                    catalog_items.append({
-                        "id": str(uuid.uuid4()),
-                        "catalog_id": catalog_id,
-                        "product_id": product_id,
-                        "custom_price": None,
-                        "custom_name": None,
-                        "active": True,
-                        "category_ids": [],
-                        "created_at": now
-                    })
-                    added_items += 1
-                    created_products += 1
+                # No crear productos nuevos - solo hacer matching con proveedores
+                # El precio debe venir siempre de los productos del proveedor
 
             # Send progress every 50 products
             if (i + 1) % 50 == 0 or (i + 1) == total_store:
@@ -2160,12 +2144,8 @@ async def create_catalog_from_store_products(
                     "total": total_store,
                 })
 
-        # Bulk insert new products (unmatched, when skip_unmatched=False)
-        if products_to_create:
-            try:
-                await db.products.insert_many(products_to_create, ordered=False)
-            except Exception as e:
-                logger.warning(f"Some products failed to insert (ignoring): {str(e)[:100]}")
+        # Note: No new products are created during store import
+        # All products must come from existing suppliers to ensure proper pricing
 
         # Insert catalog items in bulk (with duplicate handling)
         if catalog_items:
