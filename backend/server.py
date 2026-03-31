@@ -46,6 +46,7 @@ from routes.crm import router as crm_router
 from routes.support import router as support_router
 from routes.marketplaces import router as marketplaces_router
 from routes.competitors import router as competitors_router
+from routes.orders import router as orders_router
 
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
@@ -260,6 +261,7 @@ api_router.include_router(dashboard_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(stores_router)
 api_router.include_router(webhooks_router)
+api_router.include_router(orders_router)
 api_router.include_router(setup_router)
 api_router.include_router(email_router)
 api_router.include_router(admin_router)
