@@ -181,22 +181,16 @@ const Register = () => {
       // We first validate and process payment, THEN register.
       // This ensures the user is only created if ALL steps are successful.
 
-      // Step 1: Validate payment by creating Stripe checkout session
-      // (This validates that the plan exists and everything is ready)
+      // Step 1: Validate payment by creating Stripe checkout session (PUBLIC endpoint)
+      // This validates that the plan exists and everything is ready BEFORE registering the user
+      // Uses the public endpoint since user hasn't registered yet
       const stripeRes = await axios.post(
-        `${BACKEND_URL}/api/stripe/create-checkout`,
+        `${BACKEND_URL}/api/stripe/create-checkout-new-user`,
         {
           plan_id: selectedPlan.id,
           origin_url: window.location.origin,
           billing_cycle: "monthly",
-          // Pass billing info for pre-fill in Stripe
-          billing_email: formData.email,
-          company_name: billingData.company_name,
-          tax_id: billingData.tax_id,
-          address: billingData.address,
-          city: billingData.city,
-          postal_code: billingData.postal_code,
-          country: billingData.country
+          billing_email: formData.email  // Required for new user registration
         }
       );
 
