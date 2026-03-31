@@ -54,9 +54,6 @@ async def get_user_sync_settings(user_id: str) -> dict:
         "enabled": sync_enabled,
         "intervals": allowed_intervals,
         "current_interval": sync_config.get("interval", None),
-        "sync_suppliers": sync_config.get("sync_suppliers", True),
-        "sync_stores": sync_config.get("sync_stores", True),
-        "sync_crm": sync_config.get("sync_crm", True),
         "last_sync": sync_config.get("last_sync"),
         "next_sync": sync_config.get("next_sync")
     }
@@ -85,9 +82,6 @@ async def update_user_sync_settings(user_id: str, settings: dict) -> dict:
     
     sync_config = {
         "interval": interval,
-        "sync_suppliers": settings.get("sync_suppliers", True),
-        "sync_stores": settings.get("sync_stores", True),
-        "sync_crm": settings.get("sync_crm", True),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -309,17 +303,18 @@ async def run_user_sync(user_id: str, queue_task: Optional['SyncTask'] = None) -
         "crm": None
     }
 
-    # Build concurrent tasks based on settings
+    # Build concurrent tasks - always sync all configured items
+    # Individual modules (CRM, Suppliers, Stores) manage their own enablement
     tasks = []
 
-    if settings.get("sync_suppliers", True):
-        tasks.append(("suppliers", sync_user_suppliers(user_id, queue_task)))
+    # Suppliers sync
+    tasks.append(("suppliers", sync_user_suppliers(user_id, queue_task)))
 
-    if settings.get("sync_stores", True):
-        tasks.append(("stores", sync_user_stores(user_id, queue_task)))
+    # Stores sync
+    tasks.append(("stores", sync_user_stores(user_id, queue_task)))
 
-    if settings.get("sync_crm", True):
-        tasks.append(("crm", sync_user_crm(user_id, queue_task)))
+    # CRM sync
+    tasks.append(("crm", sync_user_crm(user_id, queue_task)))
 
     # Execute all syncs concurrently
     if tasks:

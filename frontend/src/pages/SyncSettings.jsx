@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
-import { Switch } from "../components/ui/switch";
 import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Badge } from "../components/ui/badge";
@@ -10,9 +9,6 @@ import { api } from "../App";
 import {
   RefreshCw,
   Clock,
-  Truck,
-  Store,
-  Building2,
   AlertCircle,
   CheckCircle,
   Settings,
@@ -36,9 +32,6 @@ const SyncSettings = () => {
   
   // Form state
   const [syncInterval, setSyncInterval] = useState(null);
-  const [syncSuppliers, setSyncSuppliers] = useState(true);
-  const [syncStores, setSyncStores] = useState(true);
-  const [syncCrm, setSyncCrm] = useState(true);
 
   useEffect(() => {
     fetchSettings();
@@ -49,9 +42,6 @@ const SyncSettings = () => {
       const res = await api.get("/sync/settings");
       setSettings(res.data);
       setSyncInterval(res.data.current_interval);
-      setSyncSuppliers(res.data.sync_suppliers ?? true);
-      setSyncStores(res.data.sync_stores ?? true);
-      setSyncCrm(res.data.sync_crm ?? true);
     } catch (error) {
       toast.error("Error al cargar configuración");
     } finally {
@@ -63,10 +53,7 @@ const SyncSettings = () => {
     setSaving(true);
     try {
       await api.put("/sync/settings", {
-        interval: syncInterval,
-        sync_suppliers: syncSuppliers,
-        sync_stores: syncStores,
-        sync_crm: syncCrm
+        interval: syncInterval
       });
       toast.success("Configuración guardada");
       fetchSettings();
@@ -100,11 +87,7 @@ const SyncSettings = () => {
     );
   }
 
-  const hasChanges = 
-    syncInterval !== settings?.current_interval ||
-    syncSuppliers !== (settings?.sync_suppliers ?? true) ||
-    syncStores !== (settings?.sync_stores ?? true) ||
-    syncCrm !== (settings?.sync_crm ?? true);
+  const hasChanges = syncInterval !== settings?.current_interval;
 
   return (
     <div className="space-y-6">
@@ -113,10 +96,10 @@ const SyncSettings = () => {
         <div>
           <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
             <RefreshCw className="w-6 h-6 text-blue-600" />
-            Sincronización Automática
+            Configuración de Sincronización
           </h2>
           <p className="text-slate-600 mt-1">
-            Configura la sincronización automática de proveedores, tiendas y CRM
+            Establece el intervalo de sincronización automática. Cada módulo (CRM, Proveedores, Tiendas) tiene sus propios controles de habilitación.
           </p>
         </div>
         <Button 
@@ -201,67 +184,17 @@ const SyncSettings = () => {
             )}
           </div>
 
-          {/* Services Selection */}
+          {/* Info Box */}
           <div className="space-y-4 pt-4 border-t">
-            <Label className="text-base font-medium">Servicios a sincronizar</Label>
-            
-            <div className="space-y-3">
-              {/* Suppliers */}
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-slate-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
-                    <Truck className="w-5 h-5 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Proveedores</p>
-                    <p className="text-sm text-slate-500">Catálogos de proveedores (FTP/URL)</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={syncSuppliers}
-                  onCheckedChange={setSyncSuppliers}
-                  disabled={!settings?.enabled || !syncInterval}
-                  data-testid="sync-suppliers-switch"
-                />
-              </div>
-
-              {/* Stores */}
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-slate-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                    <Store className="w-5 h-5 text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Tiendas</p>
-                    <p className="text-sm text-slate-500">Tiendas online (WooCommerce, PrestaShop, Shopify...)</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={syncStores}
-                  onCheckedChange={setSyncStores}
-                  disabled={!settings?.enabled || !syncInterval}
-                  data-testid="sync-stores-switch"
-                />
-              </div>
-
-              {/* CRM */}
-              <div className="flex items-center justify-between p-3 rounded-lg border bg-slate-50/50">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <Building2 className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="font-medium">CRM</p>
-                    <p className="text-sm text-slate-500">Dolibarr y otros CRM conectados</p>
-                  </div>
-                </div>
-                <Switch
-                  checked={syncCrm}
-                  onCheckedChange={setSyncCrm}
-                  disabled={!settings?.enabled || !syncInterval}
-                  data-testid="sync-crm-switch"
-                />
-              </div>
+            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+              <p className="text-sm text-blue-800">
+                <strong>Nota:</strong> La habilitación de sincronización automática para cada módulo se configura en:
+              </p>
+              <ul className="text-sm text-blue-700 mt-2 space-y-1 list-disc list-inside">
+                <li><strong>CRM:</strong> En la página de CRM, para cada conexión</li>
+                <li><strong>Proveedores:</strong> En la página de Proveedores</li>
+                <li><strong>Tiendas:</strong> En la página de Tiendas/Marketplaces</li>
+              </ul>
             </div>
           </div>
 
