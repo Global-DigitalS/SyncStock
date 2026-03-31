@@ -1797,27 +1797,40 @@ async def fetch_all_store_products(store_config: dict) -> list:
                 try:
                     # First try: use requests' automatic encoding detection
                     batch = batch.json()
-                except (json.JSONDecodeError, ValueError) as e:
+                except Exception as e:
                     # Fallback: manually handle encoding if auto-detection failed
+                    logger.warning(f"JSON decode error on page {page}: {type(e).__name__}: {str(e)[:150]}")
+
                     try:
-                        logger.warning(f"JSON decode error on page {page}, attempting manual encoding: {str(e)[:100]}")
-                        # Get raw bytes and try different encodings
+                        # Get raw content with explicit encoding handling
                         if hasattr(batch, 'content'):
+                            raw_bytes = batch.content
+                            logger.info(f"Response size: {len(raw_bytes)} bytes on page {page}")
+
+                            # Try different encodings
+                            parsed_data = None
                             for encoding in ['utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1', 'cp1252']:
                                 try:
-                                    text = batch.content.decode(encoding)
-                                    batch = json.loads(text)
-                                    logger.info(f"Successfully parsed with encoding: {encoding}")
+                                    text = raw_bytes.decode(encoding)
+                                    parsed_data = json.loads(text)
+                                    logger.info(f"Successfully parsed page {page} with {encoding} encoding")
+                                    batch = parsed_data
                                     break
-                                except (json.JSONDecodeError, UnicodeDecodeError):
+                                except (json.JSONDecodeError, UnicodeDecodeError) as encode_error:
+                                    logger.debug(f"  {encoding}: {type(encode_error).__name__}")
                                     continue
-                            else:
-                                # If all encodings fail, raise the original error
-                                raise e
+
+                            if parsed_data is None:
+                                # If standard encodings failed, try with error='replace' parameter
+                                logger.warning(f"Standard encodings failed, trying with error='replace' on page {page}")
+                                text = raw_bytes.decode('utf-8', errors='replace')
+                                batch = json.loads(text)
+                                logger.info(f"Successfully parsed page {page} with utf-8 error='replace'")
                         else:
+                            logger.error(f"Response object has no 'content' attribute on page {page}")
                             raise e
                     except Exception as fallback_error:
-                        logger.error(f"Failed to parse WooCommerce response on page {page}: {fallback_error}")
+                        logger.error(f"Failed to parse WooCommerce response on page {page}: {type(fallback_error).__name__}: {fallback_error}")
                         raise
 
             if isinstance(batch, dict) and "body" in batch:
