@@ -177,7 +177,34 @@ const Register = () => {
 
     setLoading(true);
     try {
-      // Step 1: Create the user account first (with pending status)
+      // IMPORTANT: For paid plans, we do NOT register the user yet.
+      // We first validate and process payment, THEN register.
+      // This ensures the user is only created if ALL steps are successful.
+
+      // Step 1: Validate payment by creating Stripe checkout session
+      // (This validates that the plan exists and everything is ready)
+      const stripeRes = await axios.post(
+        `${BACKEND_URL}/api/stripe/create-checkout`,
+        {
+          plan_id: selectedPlan.id,
+          origin_url: window.location.origin,
+          billing_cycle: "monthly",
+          // Pass billing info for pre-fill in Stripe
+          billing_email: formData.email,
+          company_name: billingData.company_name,
+          tax_id: billingData.tax_id,
+          address: billingData.address,
+          city: billingData.city,
+          postal_code: billingData.postal_code,
+          country: billingData.country
+        }
+      );
+
+      if (!stripeRes.data?.checkout_url) {
+        throw new Error("No se pudo crear la sesión de pago");
+      }
+
+      // Step 2: ONLY NOW register the user (after payment setup is confirmed)
       const registerRes = await axios.post(`${BACKEND_URL}/api/auth/register`, {
         name: sanitizeString(formData.name),
         email: sanitizeEmail(formData.email),
@@ -188,36 +215,36 @@ const Register = () => {
 
       const token = registerRes.data.token;
 
-      // Step 2: Save billing information
+      // Get CSRF token
+      let csrfToken = null;
+      try {
+        const match = document.cookie.match(new RegExp('(^| )csrf_token=([^;]+)'));
+        csrfToken = match ? match[2] : null;
+      } catch (e) {
+        // CSRF token might not be immediately available
+      }
+
+      // Step 3: Save billing information (now that user is registered)
+      const billingConfig = {
+        headers: { Authorization: `Bearer ${token}` }
+      };
+      if (csrfToken) {
+        billingConfig.headers['X-CSRF-Token'] = csrfToken;
+      }
+
       await axios.post(
         `${BACKEND_URL}/api/subscriptions/billing-info`,
         {
           ...billingData,
           billing_email: formData.email
         },
-        { headers: { Authorization: `Bearer ${token}` } }
+        billingConfig
       );
 
-      // Step 3: Create Stripe checkout session
-      const checkoutRes = await axios.post(
-        `${BACKEND_URL}/api/stripe/create-checkout`,
-        {
-          plan_id: selectedPlan.id,
-          origin_url: window.location.origin,
-          billing_cycle: "monthly"
-        },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      if (checkoutRes.data?.checkout_url) {
-        toast.success("Redirigiendo a la pasarela de pago...");
-        // Store token temporarily for when user returns (will be replaced with sessionStorage in FIX 3)
-        sessionStorage.setItem("pending_token", token);
-        // Redirect to Stripe Checkout
-        window.location.href = checkoutRes.data.checkout_url;
-      } else {
-        throw new Error("No se pudo crear la sesión de pago");
-      }
+      // Step 4: Redirect to Stripe Checkout
+      toast.success("Redirigiendo a la pasarela de pago...");
+      sessionStorage.setItem("pending_token", token);
+      window.location.href = stripeRes.data.checkout_url;
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al procesar el registro");
     } finally {
