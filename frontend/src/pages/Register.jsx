@@ -137,11 +137,6 @@ const Register = () => {
     }
   });
 
-  const handleContinueFromStep2 = (e) => {
-    e.preventDefault();
-    onRegistrationSubmit(e);
-  };
-
   const handleFreeRegistration = async (formData) => {
     setLoading(true);
     try {
@@ -432,7 +427,7 @@ const Register = () => {
         </p>
       </div>
 
-      <form onSubmit={(e) => { e.preventDefault(); handleContinueFromStep2(); }} className="space-y-5">
+      <form onSubmit={onRegistrationSubmit} className="space-y-5">
         <div className="space-y-2">
           <Label htmlFor="name" className="text-slate-700 font-medium">Nombre completo *</Label>
           <div className="relative">
