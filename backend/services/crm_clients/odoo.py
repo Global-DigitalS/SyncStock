@@ -4,6 +4,7 @@ Odoo ERP/CRM API Client.
 import logging
 import requests
 import base64
+import asyncio
 from typing import Dict, List, Optional
 
 from .base import _validate_crm_url
@@ -130,6 +131,15 @@ class OdooClient:
         except Exception as e:
             logger.error(f"Odoo get_product_by_sku error: {e}")
             return None
+
+    def get_products_by_skus_batch(self, skus: List[str]) -> Dict[str, Dict]:
+        """Get multiple products by SKU in batch - returns dict of sku -> product"""
+        result = {}
+        for sku in skus:
+            product = self.get_product_by_sku(sku)
+            if product:
+                result[sku] = product
+        return result
 
     def create_product(self, product_data: Dict) -> Dict:
         """Create a new product in Odoo"""
@@ -514,3 +524,20 @@ class OdooClient:
         except Exception as e:
             logger.error(f"Odoo get_stats error: {e}")
             return {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
+
+    # ==================== ASYNC METHODS (FASE 2) ====================
+
+    async def create_product_async(self, product_data: Dict) -> Dict:
+        """Async wrapper for create_product - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.create_product, product_data)
+
+    async def update_product_async(self, product_id: int, product_data: Dict) -> Dict:
+        """Async wrapper for update_product - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.update_product, product_id, product_data)
+
+    async def update_stock_async(self, product_id: int, stock_value: int) -> Dict:
+        """Async wrapper for update_stock - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.update_stock, product_id, stock_value)

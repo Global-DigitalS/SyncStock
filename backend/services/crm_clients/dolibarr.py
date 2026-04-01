@@ -4,6 +4,7 @@ Dolibarr ERP/CRM API Client.
 import logging
 import requests
 import base64
+import asyncio
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
@@ -882,3 +883,25 @@ class DolibarrClient:
         except Exception as e:
             logger.error(f"Dolibarr get_stats error: {e}")
             return {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
+
+    # ==================== ASYNC METHODS (FASE 2) ====================
+
+    async def create_product_async(self, product_data: Dict) -> Dict:
+        """Async wrapper for create_product - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.create_product, product_data)
+
+    async def update_product_async(self, product_id: int, product_data: Dict) -> Dict:
+        """Async wrapper for update_product - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.update_product, product_id, product_data)
+
+    async def update_stock_async(self, product_id: int, stock_value: int) -> Dict:
+        """Async wrapper for update_stock - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.update_stock, product_id, stock_value)
+
+    async def upload_product_image_async(self, product_id: int, image_url: str) -> Dict:
+        """Async wrapper for upload_product_image - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self.upload_product_image, product_id, image_url)

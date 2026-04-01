@@ -3,8 +3,10 @@ CRM sync functions for all supported platforms.
 Handles product, supplier, and order synchronization with Dolibarr, Odoo, and generic CRMs.
 """
 import logging
+import asyncio
+import time
 from datetime import datetime, timezone
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 from services.database import db
 from services.sync import calculate_final_price
@@ -14,6 +16,34 @@ from services.crm_clients import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ==================== FASE 2-6: GLOBAL RATE LIMITER ====================
+
+class GlobalRateLimiter:
+    """Global rate limiter for CRM API calls to prevent exceeding rate limits"""
+
+    def __init__(self, max_concurrent: int = 5, min_delay: float = 0.1):
+        """
+        Initialize rate limiter.
+
+        Args:
+            max_concurrent: Maximum concurrent operations
+            min_delay: Minimum delay between operations (seconds)
+        """
+        self.semaphore = asyncio.Semaphore(max_concurrent)
+        self.min_delay = min_delay
+        self.last_call = time.time()
+        self.lock = asyncio.Lock()
+
+    async def acquire(self):
+        """Acquire the rate limiter - respects both concurrency and delay"""
+        async with self.semaphore:
+            async with self.lock:
+                elapsed = time.time() - self.last_call
+                if elapsed < self.min_delay:
+                    await asyncio.sleep(self.min_delay - elapsed)
+                self.last_call = time.time()
 
 async def run_sync_in_background(
     sync_job_id: str,
@@ -131,31 +161,100 @@ async def run_sync_in_background(
         )
 
 
+# ==================== HELPER FUNCTIONS FOR FASE 2 (PARALLELISM) ====================
+
+async def _sync_product_create_dolibarr(
+    client: DolibarrClient,
+    product: Dict,
+    product_data: Dict,
+    image_url: str,
+    sync_settings: Dict,
+    limiter: GlobalRateLimiter
+) -> Dict:
+    """Create a single product with rate limiting"""
+    try:
+        await limiter.acquire()
+        result = await client.create_product_async(product_data)
+
+        if result.get("status") == "success":
+            # Image is uploaded in create_product if image_url is provided
+            if image_url and sync_settings.get("images", True):
+                product_id = result.get("product_id")
+                await limiter.acquire()
+                await client.upload_product_image_async(product_id, image_url)
+
+            return {"status": "success", "sku": product.get("sku")}
+        else:
+            return {"status": "error", "sku": product.get("sku"), "message": result.get("message")}
+    except Exception as e:
+        logger.error(f"Error creating product {product.get('sku')}: {e}")
+        return {"status": "error", "sku": product.get("sku"), "message": str(e)}
+
+
+async def _sync_product_update_dolibarr(
+    client: DolibarrClient,
+    product: Dict,
+    existing: Dict,
+    product_data: Dict,
+    image_url: str,
+    sync_settings: Dict,
+    limiter: GlobalRateLimiter
+) -> Dict:
+    """Update a single product with rate limiting"""
+    try:
+        sku = product.get("sku")
+        product_id = int(existing.get("id"))
+
+        await limiter.acquire()
+        result = await client.update_product_async(product_id, product_data)
+
+        if result.get("status") == "success":
+            # Sync stock using stock movements for accurate tracking
+            if sync_settings.get("stock", True):
+                validated_stock = product_data.get("stock", 0)
+                await limiter.acquire()
+                stock_result = await client.update_stock_async(product_id, validated_stock)
+                if stock_result.get("status") != "success":
+                    logger.warning(f"Stock warning for {sku}: {stock_result.get('message')}")
+
+            # Upload image separately for better handling
+            if image_url and sync_settings.get("images", True):
+                await limiter.acquire()
+                await client.upload_product_image_async(product_id, image_url)
+
+            return {"status": "success", "sku": sku}
+        else:
+            return {"status": "error", "sku": sku, "message": result.get("message")}
+    except Exception as e:
+        logger.error(f"Error updating product {product.get('sku')}: {e}")
+        return {"status": "error", "sku": product.get("sku"), "message": str(e)}
+
+
 async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> Dict:
     """Sync products from our catalog to Dolibarr with full data including purchase price, stock and images"""
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
-    
+
     # Build query filter
     query = {"user_id": user_id, "is_selected": True}
     catalog_items_map = {}  # product_id -> catalog_item data
     margin_rules = []  # Margin rules for price calculation
-    
+
     # If catalog_id is provided, get only products from that catalog
     if catalog_id:
         catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user_id})
         if not catalog:
             return {"status": "error", "message": "Catálogo no encontrado", "created": 0, "updated": 0}
-        
+
         # Get catalog_items with custom prices
         catalog_items = await db.catalog_items.find(
             {"catalog_id": catalog_id},
             {"_id": 0}
         ).to_list(10000)
-        
+
         if not catalog_items:
             return {"status": "warning", "message": "El catálogo no tiene productos", "created": 0, "updated": 0}
-        
+
         product_ids = [item.get("product_id") for item in catalog_items if item.get("product_id")]
         if not product_ids:
             return {"status": "warning", "message": "El catálogo no tiene productos válidos", "created": 0, "updated": 0}
@@ -163,24 +262,24 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
         # Remove duplicates - a catalog can have multiple items pointing to same product
         # We want to sync each unique product only ONCE
         product_ids = list(set(product_ids))
-        
+
         # Get margin rules for this catalog (sorted by priority descending)
         margin_rules = await db.catalog_margin_rules.find(
             {"catalog_id": catalog_id},
             {"_id": 0}
         ).sort("priority", -1).to_list(100)
-        
+
         logger.info(f"Found {len(margin_rules)} margin rules for catalog {catalog_id}")
-        
+
         # Change query to filter by product IDs instead of is_selected
         query = {"user_id": user_id, "id": {"$in": product_ids}}
-    
+
     # Get products based on query
     products = await db.products.find(query, {"_id": 0}).to_list(10000)
-    
+
     if not products:
         return {"status": "warning", "message": "No hay productos para sincronizar", "created": 0, "updated": 0}
-    
+
     # Update sync job with total items
     total_products = len(products)
     if sync_job_id:
@@ -191,170 +290,140 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 "current_step": f"Sincronizando {total_products} productos..."
             }}
         )
-    
+
     # Get all suppliers for this user to map supplier names
     suppliers = await db.suppliers.find({"user_id": user_id}, {"_id": 0}).to_list(1000)
     suppliers_map = {s["id"]: s for s in suppliers}
-    
+
+    # ========== FASE 1 OPTIMIZATION: Batch detection ==========
+    # Extract all SKUs and do BATCH detection in ONE call instead of N calls in the loop
+    skus = [p.get("sku") for p in products if p.get("sku")]
+    if skus:
+        logger.info(f"Fase 1: Batch detection de {len(skus)} productos (1 API call en lugar de {len(skus)})")
+        existing_products_batch = client.get_products_by_refs_batch(skus)  # Single batch call
+    else:
+        existing_products_batch = {}
+
     created = 0
     updated = 0
     errors = 0
     images_synced = 0
     stock_synced = 0
-    processed = 0
-    
-    for product in products:
-        try:
-            processed += 1
-            sku = product.get("sku", "")
-            
-            # Update progress every 5 products or on first/last
-            if sync_job_id and (processed % 5 == 0 or processed == 1 or processed == total_products):
-                progress = int((processed / total_products) * 90)  # Reserve 10% for final steps
-                await db.sync_jobs.update_one(
-                    {"id": sync_job_id},
-                    {"$set": {
-                        "progress": progress,
-                        "processed_items": processed,
-                        "created": created,
-                        "updated": updated,
-                        "errors": errors,
-                        "current_step": f"Procesando {processed}/{total_products}: {product.get('name', sku)[:30]}..."
-                    }}
-                )
-            
-            if not sku:
-                errors += 1
-                continue
 
-            # Check if product exists in Dolibarr by SKU
-            # Try up to 2 times in case of temporary API issues
-            existing = None
-            for attempt in range(2):
-                try:
-                    existing = client.get_product_by_ref(sku)
-                    if existing is not None:
-                        # Found it, break out of retry loop
-                        logger.debug(f"Product {sku} found in Dolibarr on attempt {attempt + 1}")
-                        break
-                    else:
-                        # Not found (404), no need to retry
-                        logger.debug(f"Product {sku} not found in Dolibarr")
-                        break
-                except Exception as e:
-                    if attempt < 1:
-                        logger.warning(f"Attempt {attempt + 1} to check if product {sku} exists failed: {e}. Retrying...")
-                        continue
-                    else:
-                        logger.error(f"Failed to check if product {sku} exists after 2 attempts: {e}")
-                        errors += 1
-                        break
-            
-            product_data = {
-                "sku": sku,
-                "name": product.get("name", ""),
-            }
-            
-            # Add prices - differentiate between purchase price and sale price
-            if sync_settings.get("prices", True):
-                # Purchase/cost price = price from supplier
-                purchase_price = float(product.get("price", 0) or 0)
-                product_data["cost_price"] = purchase_price
-                
-                # Get catalog item if syncing from a catalog (may have custom price)
-                catalog_item = catalog_items_map.get(product.get("id"))
-                
-                # Sale price calculation:
-                # 1. If custom_price exists in catalog_item, use it
-                # 2. Otherwise, calculate using margin rules from catalog
-                # 3. Fallback to product's pvp/final_price
-                # 4. Last resort: use purchase price
-                sale_price = None
-                
-                if catalog_item and catalog_item.get("custom_price"):
-                    # Custom price set manually in catalog
-                    sale_price = float(catalog_item.get("custom_price"))
-                    logger.debug(f"Using custom_price for {sku}: {sale_price}")
-                elif margin_rules and purchase_price > 0:
-                    # Calculate price using catalog margin rules
-                    sale_price = calculate_final_price(purchase_price, product, margin_rules)
-                    logger.debug(f"Calculated sale_price for {sku}: {purchase_price} -> {sale_price} (margin rules applied)")
-                
-                # Fallback to product's own final_price or pvp
-                if not sale_price:
-                    sale_price = product.get("final_price") or product.get("pvp") or product.get("custom_price")
-                
-                # Last fallback: use purchase price
-                if not sale_price and purchase_price:
-                    sale_price = purchase_price
-                
-                product_data["price"] = round(float(sale_price or 0), 2)
-            
-            # Sync stock
-            if sync_settings.get("stock", True):
-                stock_value = product.get("stock", 0)
-                # Validate stock value - prevent absurdly large numbers (likely corruption)
-                # Stock shouldn't exceed 1 million units per product
-                if isinstance(stock_value, (int, float)) and stock_value > 1000000:
-                    logger.warning(f"Stock value suspiciously large for {sku}: {stock_value}. Capping at 1000000.")
-                    stock_value = 1000000
-                product_data["stock"] = max(0, int(stock_value) if isinstance(stock_value, (int, float)) else 0)
-            
-            # Sync descriptions
-            if sync_settings.get("descriptions", True):
-                product_data["description"] = product.get("description", "")
-                product_data["short_description"] = product.get("short_description", "")
-                product_data["long_description"] = product.get("long_description", "")
-                product_data["brand"] = product.get("brand", "")
-                
-                # Add supplier name to notes
-                supplier = suppliers_map.get(product.get("supplier_id"))
-                if supplier:
-                    product_data["supplier_name"] = supplier.get("name", "")
-            
-            product_data["ean"] = product.get("ean", "")
-            product_data["weight"] = product.get("weight", 0)
-            
-            # Handle image URL
-            image_url = product.get("image_url", "") if sync_settings.get("images", True) else ""
-            if image_url:
-                product_data["image_url"] = image_url
-            
-            if existing:
-                product_id = int(existing.get("id"))
-                result = client.update_product(product_id, product_data)
-                if result["status"] == "success":
-                    updated += 1
-                    
-                    # Sync stock using stock movements for accurate tracking
-                    if sync_settings.get("stock", True):
-                        # Use the validated stock value from product_data, NOT raw product data
-                        validated_stock = product_data.get("stock", 0)
-                        stock_result = client.update_stock(product_id, validated_stock)
-                        if stock_result.get("status") == "success":
-                            stock_synced += 1
-                        elif stock_result.get("status") == "warning":
-                            logger.warning(f"Stock warning for {sku}: {stock_result.get('message')}")
-                    
-                    # Upload image separately for better handling
-                    if image_url and sync_settings.get("images", True):
-                        img_result = client.upload_product_image(product_id, image_url)
-                        if img_result.get("status") == "success":
-                            images_synced += 1
-                else:
-                    errors += 1
-            else:
-                result = client.create_product(product_data)
-                if result["status"] == "success":
-                    created += 1
-                    # Image is uploaded in create_product if image_url is provided
-                    if image_url:
-                        images_synced += 1
-                else:
-                    errors += 1
-        except Exception as e:
-            logger.error(f"Error syncing product {product.get('sku', 'unknown')} to Dolibarr: {e}")
+    # ========== FASE 2 OPTIMIZATION: Parallelism with chunking ==========
+    # Phase 2A: Prepare all product data without making API calls
+    logger.info(f"Fase 2: Preparando {len(products)} productos para sincronización paralela...")
+
+    to_create = []  # Products without existing CRM entry
+    to_update = []  # Products with existing CRM entry
+
+    for product in products:
+        sku = product.get("sku", "")
+        if not sku:
             errors += 1
+            continue
+
+        # Use batch result to check if product exists
+        existing = existing_products_batch.get(sku)
+
+        # Build product_data
+        product_data = {
+            "sku": sku,
+            "name": product.get("name", ""),
+        }
+
+        # Add prices - differentiate between purchase price and sale price
+        if sync_settings.get("prices", True):
+            # Purchase/cost price = price from supplier
+            purchase_price = float(product.get("price", 0) or 0)
+            product_data["cost_price"] = purchase_price
+
+            # Get catalog item if syncing from a catalog (may have custom price)
+            catalog_item = catalog_items_map.get(product.get("id"))
+
+            # Sale price calculation
+            sale_price = None
+
+            if catalog_item and catalog_item.get("custom_price"):
+                sale_price = float(catalog_item.get("custom_price"))
+                logger.debug(f"Using custom_price for {sku}: {sale_price}")
+            elif margin_rules and purchase_price > 0:
+                sale_price = calculate_final_price(purchase_price, product, margin_rules)
+                logger.debug(f"Calculated sale_price for {sku}: {purchase_price} -> {sale_price}")
+
+            if not sale_price:
+                sale_price = product.get("final_price") or product.get("pvp") or product.get("custom_price")
+
+            if not sale_price and purchase_price:
+                sale_price = purchase_price
+
+            product_data["price"] = round(float(sale_price or 0), 2)
+
+        # Sync stock
+        if sync_settings.get("stock", True):
+            stock_value = product.get("stock", 0)
+            if isinstance(stock_value, (int, float)) and stock_value > 1000000:
+                logger.warning(f"Stock value suspiciously large for {sku}: {stock_value}. Capping at 1000000.")
+                stock_value = 1000000
+            product_data["stock"] = max(0, int(stock_value) if isinstance(stock_value, (int, float)) else 0)
+
+        # Sync descriptions
+        if sync_settings.get("descriptions", True):
+            product_data["description"] = product.get("description", "")
+            product_data["short_description"] = product.get("short_description", "")
+            product_data["long_description"] = product.get("long_description", "")
+            product_data["brand"] = product.get("brand", "")
+
+            supplier = suppliers_map.get(product.get("supplier_id"))
+            if supplier:
+                product_data["supplier_name"] = supplier.get("name", "")
+
+        product_data["ean"] = product.get("ean", "")
+        product_data["weight"] = product.get("weight", 0)
+
+        # Handle image URL
+        image_url = product.get("image_url", "") if sync_settings.get("images", True) else ""
+
+        # Separate into create/update groups
+        if existing:
+            to_update.append({"product": product, "existing": existing, "product_data": product_data, "image_url": image_url})
+        else:
+            to_create.append({"product": product, "product_data": product_data, "image_url": image_url})
+
+    # Phase 2B: Process creates and updates in parallel
+    logger.info(f"Fase 2: Procesando en paralelo: {len(to_create)} creaciones, {len(to_update)} actualizaciones")
+
+    limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
+    tasks = []
+
+    for item in to_create:
+        task = _sync_product_create_dolibarr(
+            client, item["product"], item["product_data"], item["image_url"], sync_settings, limiter
+        )
+        tasks.append(task)
+
+    for item in to_update:
+        task = _sync_product_update_dolibarr(
+            client, item["product"], item["existing"], item["product_data"], item["image_url"], sync_settings, limiter
+        )
+        tasks.append(task)
+
+    # Execute all tasks in parallel
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Process results
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"Task failed with exception: {result}")
+            errors += 1
+        elif isinstance(result, dict):
+            if result.get("status") == "success":
+                if result.get("sku") in [p.get("sku") for p in [item["product"] for item in to_create]]:
+                    created += 1
+                else:
+                    updated += 1
+            else:
+                errors += 1
     
     # Final progress update
     if sync_job_id:
@@ -579,103 +648,184 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
     }
 
 
+# ==================== HELPER FUNCTIONS FOR ODOO PARALLELISM ====================
+
+async def _sync_product_create_odoo(
+    client: OdooClient,
+    product: Dict,
+    product_data: Dict,
+    sync_settings: Dict,
+    limiter: GlobalRateLimiter
+) -> Dict:
+    """Create a single Odoo product with rate limiting"""
+    try:
+        await limiter.acquire()
+        result = await client.create_product_async(product_data)
+
+        if result.get("status") == "success":
+            product_id = result.get("product_id")
+
+            # Update stock if enabled
+            if sync_settings.get("stock") and product.get("stock"):
+                await limiter.acquire()
+                await client.update_stock_async(product_id, int(product.get("stock", 0)))
+
+            return {"status": "success", "sku": product.get("sku")}
+        else:
+            return {"status": "error", "sku": product.get("sku"), "message": result.get("message")}
+    except Exception as e:
+        logger.error(f"Error creating Odoo product {product.get('sku')}: {e}")
+        return {"status": "error", "sku": product.get("sku"), "message": str(e)}
+
+
+async def _sync_product_update_odoo(
+    client: OdooClient,
+    product: Dict,
+    product_data: Dict,
+    sync_settings: Dict,
+    limiter: GlobalRateLimiter
+) -> Dict:
+    """Update a single Odoo product with rate limiting"""
+    try:
+        sku = product.get("sku")
+        await limiter.acquire()
+        result = await client.update_product_async(product.get("id"), product_data)
+
+        if result.get("status") == "success":
+            return {"status": "success", "sku": sku}
+        else:
+            return {"status": "error", "sku": sku, "message": result.get("message")}
+    except Exception as e:
+        logger.error(f"Error updating Odoo product {product.get('sku')}: {e}")
+        return {"status": "error", "sku": product.get("sku"), "message": str(e)}
+
+
 # ==================== ODOO SYNC FUNCTIONS ====================
 
 async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> Dict:
     """Sync products from our catalog to Odoo with full data including purchase price, stock and images"""
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
-    
+
     # Build query filter
     query = {"user_id": user_id, "is_selected": True}
     catalog_items_map = {}
     margin_rules = []
-    
+
     # If catalog_id is provided, get only products from that catalog
     if catalog_id:
         catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user_id})
         if not catalog:
             return {"status": "error", "message": "Catálogo no encontrado", "created": 0, "updated": 0}
-        
+
         catalog_items = await db.catalog_items.find(
             {"catalog_id": catalog_id},
             {"_id": 0}
         ).to_list(10000)
-        
+
         if not catalog_items:
             return {"status": "warning", "message": "El catálogo no tiene productos", "created": 0, "updated": 0}
-        
+
         product_ids = [item.get("product_id") for item in catalog_items if item.get("product_id")]
         if not product_ids:
             return {"status": "warning", "message": "El catálogo no tiene productos válidos", "created": 0, "updated": 0}
-        
+
         catalog_items_map = {item.get("product_id"): item for item in catalog_items}
-        
+
         margin_rules = await db.catalog_margin_rules.find(
             {"catalog_id": catalog_id},
             {"_id": 0}
         ).sort("priority", -1).to_list(100)
-        
+
         query["_id"] = {"$in": product_ids}
-    
+
     # Get products
     products = await db.products.find(query, {"_id": 0}).to_list(10000)
-    
+
     if not products:
         return {"status": "warning", "message": "No hay productos para sincronizar", "created": 0, "updated": 0}
-    
+
+    # ========== FASE 1 OPTIMIZATION: Batch detection ==========
+    # Extract all SKUs and do BATCH detection in ONE call instead of N calls in the loop
+    skus = [p.get("sku") for p in products if p.get("sku")]
+    if skus:
+        logger.info(f"Fase 1: Batch detection de {len(skus)} productos en Odoo (1 API call en lugar de {len(skus)})")
+        existing_products_batch = client.get_products_by_skus_batch(skus)  # Single batch call
+    else:
+        existing_products_batch = {}
+
     created = 0
     updated = 0
     errors = 0
-    
+
+    # ========== FASE 2 OPTIMIZATION: Parallelism with chunking for Odoo ==========
+    logger.info(f"Fase 2: Preparando {len(products)} productos en Odoo para sincronización paralela...")
+
+    to_create = []
+    to_update = []
+
     for product in products:
-        try:
-            # Prepare product data for Odoo
-            product_sku = product.get("sku", "")
-            if not product_sku:
-                logger.warning(f"Producto sin SKU: {product.get('name')}")
-                errors += 1
-                continue
-            
-            # Check if product exists in Odoo
-            existing_product = client.get_product_by_sku(product_sku)
-            
-            product_data = {
-                "name": product.get("name", ""),
-                "sku": product_sku,
-                "ean": product.get("ean", ""),
-                "price": float(product.get("price", 0)),
-                "cost_price": float(product.get("cost_price", 0)),
-                "description": product.get("description", ""),
-            }
-            
-            # Add image if available
-            if sync_settings.get("images") and product.get("image_url"):
-                product_data["image_url"] = product.get("image_url")
-            
-            if existing_product:
-                # Update existing product
-                result = client.update_product(existing_product.get("id"), product_data)
-                if result.get("status") == "success":
-                    updated += 1
-                else:
-                    errors += 1
-            else:
-                # Create new product
-                result = client.create_product(product_data)
-                if result.get("status") == "success":
-                    created += 1
-                    product_id = result.get("product_id")
-                    
-                    # Update stock if enabled
-                    if sync_settings.get("stock") and product.get("stock"):
-                        client.update_stock(product_id, int(product.get("stock", 0)))
-                else:
-                    errors += 1
-        
-        except Exception as e:
-            logger.error(f"Error syncing product {product.get('sku', 'Unknown')}: {e}")
+        product_sku = product.get("sku", "")
+        if not product_sku:
+            logger.warning(f"Producto sin SKU: {product.get('name')}")
             errors += 1
+            continue
+
+        existing_product = existing_products_batch.get(product_sku)
+
+        product_data = {
+            "name": product.get("name", ""),
+            "sku": product_sku,
+            "ean": product.get("ean", ""),
+            "price": float(product.get("price", 0)),
+            "cost_price": float(product.get("cost_price", 0)),
+            "description": product.get("description", ""),
+        }
+
+        if sync_settings.get("images") and product.get("image_url"):
+            product_data["image_url"] = product.get("image_url")
+
+        if existing_product:
+            to_update.append({"product": product, "existing_product": existing_product, "product_data": product_data})
+        else:
+            to_create.append({"product": product, "product_data": product_data})
+
+    # Phase 2B: Process in parallel
+    logger.info(f"Fase 2: Procesando en paralelo Odoo: {len(to_create)} creaciones, {len(to_update)} actualizaciones")
+
+    limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
+    tasks = []
+
+    for item in to_create:
+        task = _sync_product_create_odoo(
+            client, item["product"], item["product_data"], sync_settings, limiter
+        )
+        tasks.append(task)
+
+    for item in to_update:
+        # Need to update the product_data with the product_id
+        item["product_data"]["id"] = item["existing_product"].get("id")
+        task = _sync_product_update_odoo(
+            client, item["product"], item["product_data"], sync_settings, limiter
+        )
+        tasks.append(task)
+
+    # Execute all tasks in parallel
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Process results
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"Odoo task failed with exception: {result}")
+            errors += 1
+        elif isinstance(result, dict):
+            if result.get("status") == "success":
+                if result.get("sku") in [p.get("sku") for p in [item["product"] for item in to_create]]:
+                    created += 1
+                else:
+                    updated += 1
+            else:
+                errors += 1
     
     return {
         "status": "success" if errors == 0 else "partial",
