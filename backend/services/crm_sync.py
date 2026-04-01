@@ -226,9 +226,29 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
             if not sku:
                 errors += 1
                 continue
-            
+
             # Check if product exists in Dolibarr by SKU
-            existing = client.get_product_by_ref(sku)
+            # Try up to 2 times in case of temporary API issues
+            existing = None
+            for attempt in range(2):
+                try:
+                    existing = client.get_product_by_ref(sku)
+                    if existing is not None:
+                        # Found it, break out of retry loop
+                        logger.debug(f"Product {sku} found in Dolibarr on attempt {attempt + 1}")
+                        break
+                    else:
+                        # Not found (404), no need to retry
+                        logger.debug(f"Product {sku} not found in Dolibarr")
+                        break
+                except Exception as e:
+                    if attempt < 1:
+                        logger.warning(f"Attempt {attempt + 1} to check if product {sku} exists failed: {e}. Retrying...")
+                        continue
+                    else:
+                        logger.error(f"Failed to check if product {sku} exists after 2 attempts: {e}")
+                        errors += 1
+                        break
             
             product_data = {
                 "sku": sku,
