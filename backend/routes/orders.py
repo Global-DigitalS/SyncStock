@@ -1,13 +1,18 @@
 """
 Order management routes
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from typing import List, Optional
 from datetime import datetime, timezone
 
 from services.auth import get_current_user
 from services.database import db
 from services.orders.retry_manager import RetryManager
+from services.orders.order_sync import (
+    update_order_status_from_crm,
+    sync_order_to_online_store,
+    get_order_sync_status
+)
 
 router = APIRouter()
 
@@ -272,3 +277,205 @@ async def process_failed_orders_retries(user: dict = Depends(get_current_user)):
         "failed": failed_count,
         "total_eligible": len(retryable_orders)
     }
+
+
+# ==================== BIDIRECTIONAL SYNC ====================
+
+@router.post("/orders/{order_id}/sync-status-from-crm")
+async def sync_order_status_from_crm(
+    order_id: str,
+    user: dict = Depends(get_current_user),
+    crm_status_data: Optional[dict] = None
+):
+    """
+    Manually trigger status update from CRM for an order
+
+    Body:
+    {
+        "crm": "dolibarr" | "odoo",
+        "status": <crm-specific status>,
+        "crm_order_id": <optional>,
+        "metadata": {}
+    }
+    """
+    if not crm_status_data:
+        raise HTTPException(status_code=400, detail="Se requiere información de estado del CRM")
+
+    success, error = await update_order_status_from_crm(
+        order_id,
+        user["id"],
+        crm_status_data
+    )
+
+    if not success:
+        raise HTTPException(status_code=400, detail=error)
+
+    return {
+        "status": "success",
+        "message": "Estado actualizado desde CRM",
+        "order_id": order_id
+    }
+
+
+@router.post("/orders/{order_id}/sync-to-store")
+async def sync_order_to_store(
+    order_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Sync order status to online store"""
+    success, error = await sync_order_to_online_store(order_id, user["id"])
+
+    if not success:
+        raise HTTPException(status_code=400, detail=error)
+
+    return {
+        "status": "success",
+        "message": "Pedido sincronizado a la tienda",
+        "order_id": order_id
+    }
+
+
+@router.get("/orders/{order_id}/sync-status")
+async def get_order_sync_status_endpoint(
+    order_id: str,
+    user: dict = Depends(get_current_user)
+):
+    """Get bidirectional sync status for an order"""
+    status = await get_order_sync_status(order_id, user["id"])
+
+    if "error" in status:
+        raise HTTPException(status_code=404, detail=status["error"])
+
+    return status
+
+
+@router.post("/webhooks/crm/dolibarr/order-status")
+async def handle_dolibarr_order_webhook(request: Request):
+    """
+    Webhook endpoint for Dolibarr order status updates
+
+    Expected webhook body:
+    {
+        "event_type": "order_status_updated",
+        "object_type": "order",
+        "object_id": <dolibarr_order_id>,
+        "user_id": <user_id>,
+        "new_status": <status_code>,
+        "timestamp": <timestamp>
+    }
+    """
+    try:
+        payload = await request.json()
+
+        # Verify webhook (in production, verify signature)
+        user_id = payload.get("user_id")
+        object_id = payload.get("object_id")
+        new_status = payload.get("new_status")
+
+        if not all([user_id, object_id, new_status is not None]):
+            return {"status": "error", "message": "Invalid payload"}
+
+        # Find order by CRM order ID
+        order = await db.orders.find_one({
+            "userId": user_id,
+            "crmData.dolibarr_order_id": int(object_id)
+        })
+
+        if not order:
+            return {
+                "status": "warning",
+                "message": "Order not found for Dolibarr webhook"
+            }
+
+        # Update order status
+        success, error = await update_order_status_from_crm(
+            order["id"],
+            user_id,
+            {
+                "crm": "dolibarr",
+                "status": new_status,
+                "crm_order_id": object_id
+            }
+        )
+
+        if success:
+            # Sync updated status to online store
+            await sync_order_to_online_store(order["id"], user_id)
+
+        return {
+            "status": "success" if success else "error",
+            "message": error if error else "Order status updated"
+        }
+
+    except Exception as e:
+        logger.error(f"Error handling Dolibarr webhook: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
+
+
+@router.post("/webhooks/crm/odoo/order-status")
+async def handle_odoo_order_webhook(request: Request):
+    """
+    Webhook endpoint for Odoo order status updates
+
+    Expected webhook body:
+    {
+        "event_type": "sale_order_status_changed",
+        "object_type": "sale.order",
+        "object_id": <odoo_order_id>,
+        "user_id": <user_id>,
+        "state": <order_state>,
+        "timestamp": <timestamp>
+    }
+    """
+    try:
+        payload = await request.json()
+
+        # Verify webhook (in production, verify signature)
+        user_id = payload.get("user_id")
+        object_id = payload.get("object_id")
+        state = payload.get("state")
+
+        if not all([user_id, object_id, state]):
+            return {"status": "error", "message": "Invalid payload"}
+
+        # Find order by CRM order ID
+        order = await db.orders.find_one({
+            "userId": user_id,
+            "crmData.odoo_order_id": int(object_id)
+        })
+
+        if not order:
+            return {
+                "status": "warning",
+                "message": "Order not found for Odoo webhook"
+            }
+
+        # Update order status
+        success, error = await update_order_status_from_crm(
+            order["id"],
+            user_id,
+            {
+                "crm": "odoo",
+                "status": state,
+                "crm_order_id": object_id
+            }
+        )
+
+        if success:
+            # Sync updated status to online store
+            await sync_order_to_online_store(order["id"], user_id)
+
+        return {
+            "status": "success" if success else "error",
+            "message": error if error else "Order status updated"
+        }
+
+    except Exception as e:
+        logger.error(f"Error handling Odoo webhook: {e}")
+        return {
+            "status": "error",
+            "message": str(e)
+        }
