@@ -18,7 +18,7 @@ from services.crm_clients import (
 logger = logging.getLogger(__name__)
 
 
-# ==================== FASE 2-6: GLOBAL RATE LIMITER ====================
+# ==================== FASE 2-3: GLOBAL RATE LIMITER & CACHING ====================
 
 class GlobalRateLimiter:
     """Global rate limiter for CRM API calls to prevent exceeding rate limits"""
@@ -44,6 +44,101 @@ class GlobalRateLimiter:
                 if elapsed < self.min_delay:
                     await asyncio.sleep(self.min_delay - elapsed)
                 self.last_call = time.time()
+
+
+class SyncCache:
+    """In-memory cache for CRM data with TTL support (FASE 3)"""
+
+    def __init__(self, ttl_seconds: int = 1800):
+        """
+        Initialize cache.
+
+        Args:
+            ttl_seconds: Time-to-live for cached entries (default 30 minutes)
+        """
+        self.cache = {}
+        self.timestamps = {}
+        self.ttl = ttl_seconds
+
+    def get(self, key: str):
+        """Get value from cache if not expired"""
+        if key not in self.cache:
+            return None
+
+        elapsed = time.time() - self.timestamps.get(key, 0)
+        if elapsed > self.ttl:
+            # Entry expired
+            del self.cache[key]
+            del self.timestamps[key]
+            return None
+
+        return self.cache[key]
+
+    def set(self, key: str, value):
+        """Store value in cache with current timestamp"""
+        self.cache[key] = value
+        self.timestamps[key] = time.time()
+        logger.debug(f"Cached {key}: TTL in {self.ttl}s")
+
+    def clear_expired(self):
+        """Remove all expired entries"""
+        current_time = time.time()
+        expired_keys = [
+            key for key, ts in self.timestamps.items()
+            if current_time - ts > self.ttl
+        ]
+        for key in expired_keys:
+            del self.cache[key]
+            del self.timestamps[key]
+
+    def size(self) -> int:
+        """Get current cache size"""
+        return len(self.cache)
+
+
+def build_differential_update_payload(local_product: Dict, crm_product: Dict, fields_to_check: List[str] = None) -> Dict:
+    """
+    Build update payload with only changed fields (FASE 3: Differential Updates).
+
+    This reduces bandwidth and API calls by only sending fields that actually changed.
+
+    Args:
+        local_product: Product data from our system
+        crm_product: Product data from CRM system
+        fields_to_check: List of fields to compare (if None, uses predefined list)
+
+    Returns:
+        Dict with only changed fields, or empty dict if no changes
+    """
+    if fields_to_check is None:
+        fields_to_check = ["name", "price", "cost_price", "description", "short_description", "stock", "ean", "weight"]
+
+    payload = {}
+
+    for field in fields_to_check:
+        local_val = local_product.get(field)
+        crm_val = crm_product.get(field)
+
+        # Normalize types for comparison (str vs None, 0 vs empty string, etc.)
+        local_normalized = str(local_val).strip() if local_val else None
+        crm_normalized = str(crm_val).strip() if crm_val else None
+
+        # For numeric fields, compare as floats
+        if field in ["price", "cost_price", "weight", "stock"]:
+            try:
+                local_num = float(local_val) if local_val else 0
+                crm_num = float(crm_val) if crm_val else 0
+                if abs(local_num - crm_num) > 0.01:  # Allow small floating point differences
+                    payload[field] = local_val
+            except (ValueError, TypeError):
+                if local_normalized != crm_normalized:
+                    payload[field] = local_val
+        else:
+            # String comparison
+            if local_normalized != crm_normalized:
+                payload[field] = local_val
+
+    return payload
 
 async def run_sync_in_background(
     sync_job_id: str,
@@ -169,7 +264,8 @@ async def _sync_product_create_dolibarr(
     product_data: Dict,
     image_url: str,
     sync_settings: Dict,
-    limiter: GlobalRateLimiter
+    limiter: GlobalRateLimiter,
+    cache: SyncCache = None
 ) -> Dict:
     """Create a single product with rate limiting"""
     try:
@@ -177,13 +273,19 @@ async def _sync_product_create_dolibarr(
         result = await client.create_product_async(product_data)
 
         if result.get("status") == "success":
+            sku = product.get("sku")
+
+            # Cache the new product data if cache is available
+            if cache:
+                cache.set(sku, product_data)
+
             # Image is uploaded in create_product if image_url is provided
             if image_url and sync_settings.get("images", True):
                 product_id = result.get("product_id")
                 await limiter.acquire()
                 await client.upload_product_image_async(product_id, image_url)
 
-            return {"status": "success", "sku": product.get("sku")}
+            return {"status": "success", "sku": sku}
         else:
             return {"status": "error", "sku": product.get("sku"), "message": result.get("message")}
     except Exception as e:
@@ -198,33 +300,49 @@ async def _sync_product_update_dolibarr(
     product_data: Dict,
     image_url: str,
     sync_settings: Dict,
-    limiter: GlobalRateLimiter
+    limiter: GlobalRateLimiter,
+    cache: SyncCache = None
 ) -> Dict:
-    """Update a single product with rate limiting"""
+    """Update a single product with rate limiting and differential updates"""
     try:
         sku = product.get("sku")
         product_id = int(existing.get("id"))
 
-        await limiter.acquire()
-        result = await client.update_product_async(product_id, product_data)
+        # ========== FASE 3: Differential Updates ==========
+        # Only send fields that actually changed
+        update_payload = build_differential_update_payload(product_data, existing)
 
-        if result.get("status") == "success":
-            # Sync stock using stock movements for accurate tracking
-            if sync_settings.get("stock", True):
-                validated_stock = product_data.get("stock", 0)
-                await limiter.acquire()
-                stock_result = await client.update_stock_async(product_id, validated_stock)
-                if stock_result.get("status") != "success":
-                    logger.warning(f"Stock warning for {sku}: {stock_result.get('message')}")
-
-            # Upload image separately for better handling
-            if image_url and sync_settings.get("images", True):
-                await limiter.acquire()
-                await client.upload_product_image_async(product_id, image_url)
-
+        if not update_payload and not image_url:
+            # No changes needed
+            logger.debug(f"Producto {sku} sin cambios, omitiendo actualización")
             return {"status": "success", "sku": sku}
-        else:
-            return {"status": "error", "sku": sku, "message": result.get("message")}
+
+        # Only update if there are actual changes
+        if update_payload:
+            await limiter.acquire()
+            result = await client.update_product_async(product_id, update_payload)
+
+            if result.get("status") != "success":
+                return {"status": "error", "sku": sku, "message": result.get("message")}
+
+            # Cache the updated product data if cache is available
+            if cache:
+                cache.set(sku, {**existing, **update_payload})
+
+        # Sync stock using stock movements for accurate tracking
+        if sync_settings.get("stock", True) and "stock" in update_payload:
+            validated_stock = product_data.get("stock", 0)
+            await limiter.acquire()
+            stock_result = await client.update_stock_async(product_id, validated_stock)
+            if stock_result.get("status") != "success":
+                logger.warning(f"Stock warning for {sku}: {stock_result.get('message')}")
+
+        # Upload image separately for better handling
+        if image_url and sync_settings.get("images", True):
+            await limiter.acquire()
+            await client.upload_product_image_async(product_id, image_url)
+
+        return {"status": "success", "sku": sku}
     except Exception as e:
         logger.error(f"Error updating product {product.get('sku')}: {e}")
         return {"status": "error", "sku": product.get("sku"), "message": str(e)}
@@ -393,18 +511,23 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     # Phase 2B: Process creates and updates in parallel
     logger.info(f"Fase 2: Procesando en paralelo: {len(to_create)} creaciones, {len(to_update)} actualizaciones")
 
+    # ========== FASE 3 OPTIMIZATION: In-memory cache with TTL ==========
+    # Cache products for repeated lookups during sync or future syncs
+    cache = SyncCache(ttl_seconds=1800)  # 30 minutes TTL
+    logger.info(f"Fase 3: Caché de productos inicializada (TTL: 30 min)")
+
     limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
     tasks = []
 
     for item in to_create:
         task = _sync_product_create_dolibarr(
-            client, item["product"], item["product_data"], item["image_url"], sync_settings, limiter
+            client, item["product"], item["product_data"], item["image_url"], sync_settings, limiter, cache
         )
         tasks.append(task)
 
     for item in to_update:
         task = _sync_product_update_dolibarr(
-            client, item["product"], item["existing"], item["product_data"], item["image_url"], sync_settings, limiter
+            client, item["product"], item["existing"], item["product_data"], item["image_url"], sync_settings, limiter, cache
         )
         tasks.append(task)
 
@@ -655,7 +778,8 @@ async def _sync_product_create_odoo(
     product: Dict,
     product_data: Dict,
     sync_settings: Dict,
-    limiter: GlobalRateLimiter
+    limiter: GlobalRateLimiter,
+    cache: SyncCache = None
 ) -> Dict:
     """Create a single Odoo product with rate limiting"""
     try:
@@ -663,14 +787,19 @@ async def _sync_product_create_odoo(
         result = await client.create_product_async(product_data)
 
         if result.get("status") == "success":
+            sku = product.get("sku")
             product_id = result.get("product_id")
+
+            # Cache the new product data if cache is available
+            if cache:
+                cache.set(sku, product_data)
 
             # Update stock if enabled
             if sync_settings.get("stock") and product.get("stock"):
                 await limiter.acquire()
                 await client.update_stock_async(product_id, int(product.get("stock", 0)))
 
-            return {"status": "success", "sku": product.get("sku")}
+            return {"status": "success", "sku": sku}
         else:
             return {"status": "error", "sku": product.get("sku"), "message": result.get("message")}
     except Exception as e:
@@ -681,17 +810,31 @@ async def _sync_product_create_odoo(
 async def _sync_product_update_odoo(
     client: OdooClient,
     product: Dict,
+    existing_product: Dict,
     product_data: Dict,
     sync_settings: Dict,
-    limiter: GlobalRateLimiter
+    limiter: GlobalRateLimiter,
+    cache: SyncCache = None
 ) -> Dict:
-    """Update a single Odoo product with rate limiting"""
+    """Update a single Odoo product with rate limiting and differential updates"""
     try:
         sku = product.get("sku")
+
+        # ========== FASE 3: Differential Updates ==========
+        update_payload = build_differential_update_payload(product_data, existing_product)
+
+        if not update_payload:
+            # No changes needed
+            logger.debug(f"Producto Odoo {sku} sin cambios, omitiendo actualización")
+            return {"status": "success", "sku": sku}
+
         await limiter.acquire()
-        result = await client.update_product_async(product.get("id"), product_data)
+        result = await client.update_product_async(product.get("id"), update_payload)
 
         if result.get("status") == "success":
+            # Cache the updated product data if cache is available
+            if cache:
+                cache.set(sku, {**existing_product, **update_payload})
             return {"status": "success", "sku": sku}
         else:
             return {"status": "error", "sku": sku, "message": result.get("message")}
@@ -793,20 +936,23 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
     # Phase 2B: Process in parallel
     logger.info(f"Fase 2: Procesando en paralelo Odoo: {len(to_create)} creaciones, {len(to_update)} actualizaciones")
 
+    # ========== FASE 3 OPTIMIZATION: In-memory cache with TTL ==========
+    cache = SyncCache(ttl_seconds=1800)  # 30 minutes TTL
+    logger.info(f"Fase 3: Caché de productos Odoo inicializado (TTL: 30 min)")
+
     limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
     tasks = []
 
     for item in to_create:
         task = _sync_product_create_odoo(
-            client, item["product"], item["product_data"], sync_settings, limiter
+            client, item["product"], item["product_data"], sync_settings, limiter, cache
         )
         tasks.append(task)
 
     for item in to_update:
-        # Need to update the product_data with the product_id
-        item["product_data"]["id"] = item["existing_product"].get("id")
+        existing_product = item["existing_product"]
         task = _sync_product_update_odoo(
-            client, item["product"], item["product_data"], sync_settings, limiter
+            client, item["product"], existing_product, item["product_data"], sync_settings, limiter, cache
         )
         tasks.append(task)
 
