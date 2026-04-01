@@ -99,7 +99,13 @@ class DolibarrClient:
             return []
 
     def get_product_by_ref(self, ref: str) -> Optional[Dict]:
-        """Get a product by reference (SKU)"""
+        """Get a product by reference (SKU)
+
+        Returns:
+            Product dict if found
+            None if not found (404)
+            None if error (with logging)
+        """
         try:
             response = self._rate_limited_request(
                 'GET',
@@ -108,10 +114,45 @@ class DolibarrClient:
             )
             if response.status_code == 200:
                 return response.json()
-            return None
+            elif response.status_code == 404:
+                # Product not found - this is expected, return None
+                logger.debug(f"Product with ref={ref} not found in Dolibarr (404)")
+                return None
+            else:
+                # Unexpected status code
+                logger.warning(f"Unexpected status getting product ref={ref}: {response.status_code}")
+                return None
         except Exception as e:
-            logger.error(f"Dolibarr get_product_by_ref error: {e}")
+            logger.error(f"Dolibarr get_product_by_ref error for ref={ref}: {e}")
             return None
+
+    def product_exists_by_ref(self, ref: str) -> bool:
+        """Check if a product exists by reference (SKU) - simpler method"""
+        return self.get_product_by_ref(ref) is not None
+
+    def search_products_by_name(self, name: str, limit: int = 10) -> List[Dict]:
+        """Search for products by name (useful as fallback if SKU lookup fails)"""
+        try:
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/products",
+                params={
+                    'limit': limit,
+                    'sqlfilters': f"t.label like '%{name}%'"
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                results = response.json()
+                if isinstance(results, list):
+                    return results
+                elif isinstance(results, dict):
+                    # Some versions return {"data": [...]}
+                    return results.get("data", [])
+            return []
+        except Exception as e:
+            logger.warning(f"Error searching products by name '{name}': {e}")
+            return []
 
     def get_products_by_refs_batch(self, refs: List[str]) -> Dict[str, Dict]:
         """Get multiple products by reference in batch - returns dict of ref -> product"""
