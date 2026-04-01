@@ -425,8 +425,6 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     created = 0
     updated = 0
     errors = 0
-    images_synced = 0
-    stock_synced = 0
 
     # ========== FASE 2 OPTIMIZATION: Parallelism with chunking ==========
     # Phase 2A: Prepare all product data without making API calls
@@ -550,26 +548,25 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     
     # Final progress update
     if sync_job_id:
+        processed_items = len(to_create) + len(to_update)
         await db.sync_jobs.update_one(
             {"id": sync_job_id},
             {"$set": {
                 "progress": 95,
-                "processed_items": processed,
+                "processed_items": processed_items,
                 "created": created,
                 "updated": updated,
                 "errors": errors,
                 "current_step": "Finalizando sincronización de productos..."
             }}
         )
-    
+
     return {
         "status": "success" if errors == 0 else "partial",
-        "message": f"{created} creados, {updated} actualizados, {errors} errores, {images_synced} imágenes, {stock_synced} stocks",
+        "message": f"{created} creados, {updated} actualizados, {errors} errores",
         "created": created,
         "updated": updated,
-        "errors": errors,
-        "images_synced": images_synced,
-        "stock_synced": stock_synced
+        "errors": errors
     }
 
 
