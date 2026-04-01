@@ -5,6 +5,7 @@ Handles product, supplier, and order synchronization with Dolibarr, Odoo, and ge
 import logging
 import asyncio
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional, List
 

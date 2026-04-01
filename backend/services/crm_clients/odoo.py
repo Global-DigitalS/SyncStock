@@ -163,10 +163,19 @@ class OdooClient:
             # Add image if available
             if product_data.get("image_url"):
                 try:
-                    img_response = requests.get(product_data["image_url"], timeout=10)
-                    if img_response.status_code == 200:
-                        img_base64 = base64.b64encode(img_response.content).decode('utf-8')
-                        payload["image_1920"] = img_base64
+                    img_response = requests.get(product_data["image_url"], timeout=10, stream=True)
+                    try:
+                        # FIXED: Check Content-Length BEFORE downloading to prevent DoS
+                        content_length = int(img_response.headers.get("Content-Length", 0))
+                        MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB limit
+
+                        if content_length > MAX_IMAGE_SIZE:
+                            logger.warning(f"Image too large: {content_length} > {MAX_IMAGE_SIZE}")
+                        elif img_response.status_code == 200:
+                            img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+                            payload["image_1920"] = img_base64
+                    finally:
+                        img_response.close()  # FIXED: Always close to prevent resource leak
                 except Exception as img_err:
                     logger.warning(f"Failed to download product image: {img_err}")
 
@@ -529,15 +538,15 @@ class OdooClient:
 
     async def create_product_async(self, product_data: Dict) -> Dict:
         """Async wrapper for create_product - runs in thread pool to avoid blocking"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.create_product, product_data)
 
     async def update_product_async(self, product_id: int, product_data: Dict) -> Dict:
         """Async wrapper for update_product - runs in thread pool to avoid blocking"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.update_product, product_id, product_data)
 
     async def update_stock_async(self, product_id: int, stock_value: int) -> Dict:
         """Async wrapper for update_stock - runs in thread pool to avoid blocking"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.update_stock, product_id, stock_value)
