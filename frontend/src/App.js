@@ -34,6 +34,7 @@ const SyncSettings = lazy(() => import("./pages/SyncSettings"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Support = lazy(() => import("./pages/Support"));
 const Landing = lazy(() => import("./pages/Landing"));
+const Orders = lazy(() => import("./pages/Orders"));
 
 // Admin Pages — lazy loaded
 const AdminBranding = lazy(() => import("./pages/AdminBranding"));
@@ -530,6 +531,16 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <SyncHistory />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Orders />
                 </MainLayout>
               </ProtectedRoute>
             }
