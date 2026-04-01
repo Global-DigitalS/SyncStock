@@ -80,6 +80,12 @@ class Order:
         self.error = None
         self.crm_data = {}  # Will store CRM-specific data (CRM ID, etc.)
 
+        # Retry tracking for failed orders
+        self.retry_count = 0
+        self.max_retries = 5
+        self.next_retry_at = None
+        self.retry_history = []  # List of previous retry attempts with timestamps and errors
+
     def to_dict(self):
         """Convert to MongoDB document"""
         return {
@@ -98,7 +104,11 @@ class Order:
             "processedAt": self.processed_at,
             "completedAt": self.completed_at,
             "error": self.error,
-            "history": []
+            "history": [],
+            "retryCount": self.retry_count,
+            "maxRetries": self.max_retries,
+            "nextRetryAt": self.next_retry_at,
+            "retryHistory": self.retry_history
         }
 
 

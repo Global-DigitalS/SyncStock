@@ -8,6 +8,7 @@ from services.database import db
 from services.crm_clients.factory import create_crm_client
 from .models import Order
 from .normalizer import normalize_order, validate_order_data
+from .retry_manager import RetryManager
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +266,8 @@ async def _sync_to_odoo(order: Order, crm_client, user_id: str) -> Tuple[bool, O
 
 
 async def save_order_to_db(order: Order, user_id: str, crm_data: Optional[Dict] = None,
-                          status: str = "completed", error: Optional[Dict] = None) -> bool:
+                          status: str = "completed", error: Optional[Dict] = None,
+                          retry_info: Optional[Dict] = None) -> bool:
     """Save order to MongoDB"""
     try:
         doc = order.to_dict()
@@ -278,6 +280,11 @@ async def save_order_to_db(order: Order, user_id: str, crm_data: Optional[Dict] 
 
         if error:
             doc["error"] = error
+
+        if retry_info:
+            doc["retryCount"] = retry_info.get("retryCount", 0)
+            doc["nextRetryAt"] = retry_info.get("nextRetryAt")
+            doc["retryHistory"] = retry_info.get("retryHistory", [])
 
         # Add history entry
         doc["history"].append({
@@ -332,13 +339,28 @@ async def process_order_webhook(data: Dict, platform: str, user_id: str, store_i
 
             if not success:
                 logger.error(f"Failed to sync to CRM: {crm_error}")
-                # Save with error
+
+                # Record retry attempt
+                order_doc = order.to_dict()
+                order_doc = RetryManager.record_retry_attempt(order_doc, crm_error)
+
+                # Save with error and retry info
                 await save_order_to_db(
                     order, user_id,
-                    status="error",
-                    error={"code": "CRM_SYNC_ERROR", "message": crm_error}
+                    status=order_doc["status"],
+                    error=order_doc.get("error", {"code": "CRM_SYNC_ERROR", "message": crm_error}),
+                    retry_info={
+                        "retryCount": order_doc["retryCount"],
+                        "nextRetryAt": order_doc["nextRetryAt"],
+                        "retryHistory": order_doc["retryHistory"]
+                    }
                 )
-                return {"status": "error", "message": f"CRM sync failed: {crm_error}"}
+                return {
+                    "status": "error",
+                    "message": f"CRM sync failed: {crm_error}",
+                    "retryCount": order_doc["retryCount"],
+                    "nextRetryAt": order_doc["nextRetryAt"]
+                }
         else:
             logger.info(f"No CRM configured for user {user_id}")
 
