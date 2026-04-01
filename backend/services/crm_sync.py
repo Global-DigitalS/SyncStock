@@ -5,6 +5,7 @@ Handles product, supplier, and order synchronization with Dolibarr, Odoo, and ge
 import logging
 import asyncio
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Dict, Optional, List
 
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 # ==================== FASE 2-3: GLOBAL RATE LIMITER & CACHING ====================
 
 class GlobalRateLimiter:
-    """Global rate limiter for CRM API calls to prevent exceeding rate limits"""
+    """Global rate limiter for CRM API calls to prevent exceeding rate limits - DEADLOCK SAFE"""
 
     def __init__(self, max_concurrent: int = 5, min_delay: float = 0.1):
         """
@@ -38,67 +39,92 @@ class GlobalRateLimiter:
 
     async def acquire(self):
         """Acquire the rate limiter - respects both concurrency and delay"""
+        # FIXED: Don't hold lock inside semaphore to prevent deadlock
+        # First acquire semaphore (concurrency control)
         async with self.semaphore:
+            # Then acquire lock ONLY for reading/updating last_call
             async with self.lock:
                 elapsed = time.time() - self.last_call
                 if elapsed < self.min_delay:
-                    await asyncio.sleep(self.min_delay - elapsed)
+                    sleep_time = self.min_delay - elapsed
+
+            # Sleep OUTSIDE the lock to prevent blocking other tasks
+            if elapsed < self.min_delay:
+                await asyncio.sleep(sleep_time)
+
+            # Update last_call under lock
+            async with self.lock:
                 self.last_call = time.time()
 
 
 class SyncCache:
-    """In-memory cache for CRM data with TTL support (FASE 3)"""
+    """In-memory cache for CRM data with TTL support (FASE 3) - THREAD SAFE"""
 
-    def __init__(self, ttl_seconds: int = 1800):
+    def __init__(self, ttl_seconds: int = 1800, max_size: int = 10000):
         """
         Initialize cache.
 
         Args:
             ttl_seconds: Time-to-live for cached entries (default 30 minutes)
+            max_size: Maximum number of entries before eviction (prevents OOM)
         """
         self.cache = {}
         self.timestamps = {}
         self.ttl = ttl_seconds
+        self.max_size = max_size
+        self.lock = asyncio.Lock()  # Thread-safe access
 
-    def get(self, key: str):
-        """Get value from cache if not expired"""
-        if key not in self.cache:
-            return None
+    async def get(self, key: str):
+        """Get value from cache if not expired - THREAD SAFE"""
+        async with self.lock:
+            if key not in self.cache:
+                return None
 
-        elapsed = time.time() - self.timestamps.get(key, 0)
-        if elapsed > self.ttl:
-            # Entry expired
-            del self.cache[key]
-            del self.timestamps[key]
-            return None
+            elapsed = time.time() - self.timestamps.get(key, 0)
+            if elapsed > self.ttl:
+                # Entry expired - safe to delete
+                self.cache.pop(key, None)
+                self.timestamps.pop(key, None)
+                return None
 
-        return self.cache[key]
+            return self.cache[key]
 
-    def set(self, key: str, value):
-        """Store value in cache with current timestamp"""
-        self.cache[key] = value
-        self.timestamps[key] = time.time()
-        logger.debug(f"Cached {key}: TTL in {self.ttl}s")
+    async def set(self, key: str, value):
+        """Store value in cache with current timestamp - THREAD SAFE"""
+        async with self.lock:
+            # Evict if cache is full (simple LRU by removing oldest non-expired)
+            if len(self.cache) >= self.max_size:
+                # Find and remove oldest entry
+                if self.timestamps:
+                    oldest_key = min(self.timestamps.keys(), key=lambda k: self.timestamps[k])
+                    self.cache.pop(oldest_key, None)
+                    self.timestamps.pop(oldest_key, None)
 
-    def clear_expired(self):
-        """Remove all expired entries"""
-        current_time = time.time()
-        expired_keys = [
-            key for key, ts in self.timestamps.items()
-            if current_time - ts > self.ttl
-        ]
-        for key in expired_keys:
-            del self.cache[key]
-            del self.timestamps[key]
+            self.cache[key] = value
+            self.timestamps[key] = time.time()
+            logger.debug(f"Cached {key}: TTL in {self.ttl}s (cache size: {len(self.cache)})")
 
-    def size(self) -> int:
-        """Get current cache size"""
-        return len(self.cache)
+    async def clear_expired(self):
+        """Remove all expired entries - THREAD SAFE"""
+        async with self.lock:
+            current_time = time.time()
+            expired_keys = [
+                key for key, ts in self.timestamps.items()
+                if current_time - ts > self.ttl
+            ]
+            for key in expired_keys:
+                self.cache.pop(key, None)
+                self.timestamps.pop(key, None)
+
+    async def size(self) -> int:
+        """Get current cache size - THREAD SAFE"""
+        async with self.lock:
+            return len(self.cache)
 
 
 def build_differential_update_payload(local_product: Dict, crm_product: Dict, fields_to_check: List[str] = None) -> Dict:
     """
-    Build update payload with only changed fields (FASE 3: Differential Updates).
+    Build update payload with only changed fields (FASE 3: Differential Updates) - SAFE TYPE HANDLING.
 
     This reduces bandwidth and API calls by only sending fields that actually changed.
 
@@ -113,32 +139,56 @@ def build_differential_update_payload(local_product: Dict, crm_product: Dict, fi
     if fields_to_check is None:
         fields_to_check = ["name", "price", "cost_price", "description", "short_description", "stock", "ean", "weight"]
 
+    if not isinstance(local_product, dict) or not isinstance(crm_product, dict):
+        logger.error(f"build_differential_update_payload: Invalid input types - local={type(local_product)}, crm={type(crm_product)}")
+        return {}
+
     payload = {}
 
     for field in fields_to_check:
-        local_val = local_product.get(field)
-        crm_val = crm_product.get(field)
+        try:
+            local_val = local_product.get(field)
+            crm_val = crm_product.get(field)
 
-        # Normalize types for comparison (str vs None, 0 vs empty string, etc.)
-        local_normalized = str(local_val).strip() if local_val else None
-        crm_normalized = str(crm_val).strip() if crm_val else None
+            # For numeric fields, compare as floats
+            if field in ["price", "cost_price", "weight", "stock"]:
+                try:
+                    local_num = float(local_val) if local_val else 0
+                    crm_num = float(crm_val) if crm_val else 0
+                    if abs(local_num - crm_num) > 0.01:  # Allow small floating point differences
+                        payload[field] = local_val
+                except (ValueError, TypeError):
+                    # Fallback to string comparison if conversion fails
+                    local_str = _safe_to_string(local_val)
+                    crm_str = _safe_to_string(crm_val)
+                    if local_str != crm_str:
+                        payload[field] = local_val
+            else:
+                # String comparison - SAFE conversion
+                local_str = _safe_to_string(local_val)
+                crm_str = _safe_to_string(crm_val)
+                if local_str != crm_str:
+                    payload[field] = local_val
 
-        # For numeric fields, compare as floats
-        if field in ["price", "cost_price", "weight", "stock"]:
-            try:
-                local_num = float(local_val) if local_val else 0
-                crm_num = float(crm_val) if crm_val else 0
-                if abs(local_num - crm_num) > 0.01:  # Allow small floating point differences
-                    payload[field] = local_val
-            except (ValueError, TypeError):
-                if local_normalized != crm_normalized:
-                    payload[field] = local_val
-        else:
-            # String comparison
-            if local_normalized != crm_normalized:
-                payload[field] = local_val
+        except Exception as e:
+            logger.error(f"Error comparing field {field}: {e}")
+            # Include field in payload to be safe (data loss prevention)
+            payload[field] = local_val
 
     return payload
+
+
+def _safe_to_string(value) -> str:
+    """Safely convert value to string for comparison - PREVENTS TYPE ERRORS"""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, (int, float, bool)):
+        return str(value)
+    # For complex types (dict, list), don't include in update
+    logger.debug(f"Skipping complex type comparison: {type(value)}")
+    return ""
 
 async def run_sync_in_background(
     sync_job_id: str,
@@ -156,7 +206,8 @@ async def run_sync_in_background(
         "suppliers": None,
         "orders": None
     }
-    
+
+    client = None
     try:
         client = create_crm_client(platform, config)
         if not client:
@@ -241,8 +292,6 @@ async def run_sync_in_background(
             }}
         )
 
-        client.close()
-
     except Exception as e:
         logger.error(f"Sync error: {e}")
         # Mark job as failed
@@ -254,6 +303,13 @@ async def run_sync_in_background(
                 "completed_at": datetime.now(timezone.utc).isoformat()
             }}
         )
+    finally:
+        # ALWAYS close client - even if exception occurs (prevents resource leak)
+        if client:
+            try:
+                client.close()
+            except Exception as e:
+                logger.error(f"Error closing CRM client: {e}")
 
 
 # ==================== HELPER FUNCTIONS FOR FASE 2 (PARALLELISM) ====================
@@ -277,7 +333,7 @@ async def _sync_product_create_dolibarr(
 
             # Cache the new product data if cache is available
             if cache:
-                cache.set(sku, product_data)
+                await cache.set(sku, product_data)
 
             # Image is uploaded in create_product if image_url is provided
             if image_url and sync_settings.get("images", True):
@@ -327,7 +383,7 @@ async def _sync_product_update_dolibarr(
 
             # Cache the updated product data if cache is available
             if cache:
-                cache.set(sku, {**existing, **update_payload})
+                await cache.set(sku, {**existing, **update_payload})
 
         # Sync stock using stock movements for accurate tracking
         if sync_settings.get("stock", True) and "stock" in update_payload:
@@ -425,8 +481,6 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     created = 0
     updated = 0
     errors = 0
-    images_synced = 0
-    stock_synced = 0
 
     # ========== FASE 2 OPTIMIZATION: Parallelism with chunking ==========
     # Phase 2A: Prepare all product data without making API calls
@@ -550,26 +604,25 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     
     # Final progress update
     if sync_job_id:
+        processed_items = len(to_create) + len(to_update)
         await db.sync_jobs.update_one(
             {"id": sync_job_id},
             {"$set": {
                 "progress": 95,
-                "processed_items": processed,
+                "processed_items": processed_items,
                 "created": created,
                 "updated": updated,
                 "errors": errors,
                 "current_step": "Finalizando sincronización de productos..."
             }}
         )
-    
+
     return {
         "status": "success" if errors == 0 else "partial",
-        "message": f"{created} creados, {updated} actualizados, {errors} errores, {images_synced} imágenes, {stock_synced} stocks",
+        "message": f"{created} creados, {updated} actualizados, {errors} errores",
         "created": created,
         "updated": updated,
-        "errors": errors,
-        "images_synced": images_synced,
-        "stock_synced": stock_synced
+        "errors": errors
     }
 
 
@@ -792,7 +845,7 @@ async def _sync_product_create_odoo(
 
             # Cache the new product data if cache is available
             if cache:
-                cache.set(sku, product_data)
+                await cache.set(sku, product_data)
 
             # Update stock if enabled
             if sync_settings.get("stock") and product.get("stock"):

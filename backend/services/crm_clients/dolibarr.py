@@ -13,6 +13,19 @@ from .base import _validate_crm_url
 logger = logging.getLogger(__name__)
 
 
+def _escape_sql_string(value: str) -> str:
+    """Safely escape SQL string values to prevent SQL injection - CRITICAL FIX"""
+    if not isinstance(value, str):
+        return str(value)
+    # Escape single quotes by doubling them (SQL standard)
+    escaped = value.replace("'", "''")
+    # Remove any SQL comment sequences
+    escaped = escaped.replace("--", "")
+    escaped = escaped.replace("/*", "")
+    escaped = escaped.replace("*/", "")
+    return escaped.strip()
+
+
 class DolibarrClient:
     """Dolibarr ERP/CRM API Client - Optimized with connection pooling and rate limiting"""
 
@@ -139,7 +152,7 @@ class DolibarrClient:
                 f"{self.base_url}/products",
                 params={
                     'limit': limit,
-                    'sqlfilters': f"t.label like '%{name}%'"
+                    'sqlfilters': f"t.label like '%{_escape_sql_string(name)}%'"  # FIXED: SQL injection prevention
                 },
                 timeout=30
             )
@@ -698,7 +711,7 @@ class DolibarrClient:
                 response = self._rate_limited_request(
                     'GET',
                     f"{self.base_url}/thirdparties",
-                    params={'sqlfilters': f"(t.nom:=:'{name}')"},
+                    params={'sqlfilters': f"(t.nom:=:'{_escape_sql_string(name)}')"},  # FIXED: SQL injection prevention
                     timeout=30
                 )
                 if response.status_code == 200:
@@ -888,20 +901,20 @@ class DolibarrClient:
 
     async def create_product_async(self, product_data: Dict) -> Dict:
         """Async wrapper for create_product - runs in thread pool to avoid blocking"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.create_product, product_data)
 
     async def update_product_async(self, product_id: int, product_data: Dict) -> Dict:
         """Async wrapper for update_product - runs in thread pool to avoid blocking"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.update_product, product_id, product_data)
 
     async def update_stock_async(self, product_id: int, stock_value: int) -> Dict:
         """Async wrapper for update_stock - runs in thread pool to avoid blocking"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.update_stock, product_id, stock_value)
 
     async def upload_product_image_async(self, product_id: int, image_url: str) -> Dict:
         """Async wrapper for upload_product_image - runs in thread pool to avoid blocking"""
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.upload_product_image, product_id, image_url)
