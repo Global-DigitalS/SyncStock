@@ -308,9 +308,13 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                     
                     # Sync stock using stock movements for accurate tracking
                     if sync_settings.get("stock", True):
-                        stock_result = client.update_stock(product_id, product.get("stock", 0))
+                        # Use the validated stock value from product_data, NOT raw product data
+                        validated_stock = product_data.get("stock", 0)
+                        stock_result = client.update_stock(product_id, validated_stock)
                         if stock_result.get("status") == "success":
                             stock_synced += 1
+                        elif stock_result.get("status") == "warning":
+                            logger.warning(f"Stock warning for {sku}: {stock_result.get('message')}")
                     
                     # Upload image separately for better handling
                     if image_url and sync_settings.get("images", True):

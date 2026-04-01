@@ -324,8 +324,68 @@ class DolibarrClient:
             logger.error(f"Dolibarr upload_product_image error: {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
+    def _get_warehouse_stock(self, product_id: int, warehouse_id: int) -> Optional[int]:
+        """
+        Get the REAL stock of a product in a specific warehouse using the stock endpoint.
+        This is more reliable than stock_reel from GET /products/{id} which can be stale/null.
+        """
+        try:
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/products/{product_id}/stock",
+                timeout=30
+            )
+            if response.status_code == 200:
+                stock_data = response.json()
+                # stock_data contains warehouse stock info
+                # Structure: {"stock_warehouses": {"warehouse_id": {"real": X, ...}}} or similar
+                # Dolibarr API returns stock info differently depending on version
+                if isinstance(stock_data, dict):
+                    # Try to find stock for our specific warehouse
+                    warehouses = stock_data.get("stock_warehouses") or stock_data.get("stock_warehouse") or {}
+
+                    # Dolibarr returns warehouse IDs as string keys
+                    wh_key = str(warehouse_id)
+                    if wh_key in warehouses:
+                        wh_stock = warehouses[wh_key]
+                        real_stock = wh_stock.get("real") if isinstance(wh_stock, dict) else wh_stock
+                        if real_stock is not None:
+                            result = int(float(real_stock))
+                            logger.debug(f"Warehouse stock for product {product_id} in WH {warehouse_id}: {result}")
+                            return result
+
+                    # Fallback: sum all warehouse stock
+                    total = 0
+                    for wh_id, wh_info in warehouses.items():
+                        if isinstance(wh_info, dict):
+                            total += int(float(wh_info.get("real") or 0))
+                        else:
+                            total += int(float(wh_info or 0))
+
+                    if total > 0 or warehouses:
+                        logger.debug(f"Total warehouse stock for product {product_id}: {total}")
+                        return total
+
+                    # Also check stock_reel at top level of stock response
+                    stock_reel = stock_data.get("stock_reel")
+                    if stock_reel is not None:
+                        return int(float(stock_reel))
+
+            logger.debug(f"Could not get warehouse stock for product {product_id}, response: {response.status_code}")
+            return None
+
+        except Exception as e:
+            logger.warning(f"Error getting warehouse stock for product {product_id}: {e}")
+            return None
+
     def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> Dict:
-        """Update product stock in Dolibarr"""
+        """Update product stock in Dolibarr using absolute stock value.
+
+        IMPORTANT: This method sets stock to an absolute value by calculating
+        the difference with current stock. To avoid accumulation bugs, it uses
+        multiple methods to determine the REAL current stock before creating
+        any stock movement.
+        """
         try:
             # First get or create a warehouse
             if warehouse_id is None:
@@ -334,20 +394,50 @@ class DolibarrClient:
                     logger.warning("No warehouse available, cannot update stock")
                     return {"status": "warning", "message": "No hay almacén configurado en Dolibarr"}
 
-            # Get current stock
-            product = self.get_product_by_id(product_id)
-            if not product:
-                return {"status": "error", "message": "Producto no encontrado"}
+            # === CRITICAL: Get current stock reliably ===
+            # Method 1: Use the dedicated stock endpoint (most reliable)
+            current_stock = self._get_warehouse_stock(product_id, warehouse_id)
 
-            current_stock = int(float(product.get("stock_reel") or 0))
+            # Method 2: Fallback to product's stock_reel field
+            if current_stock is None:
+                product = self.get_product_by_id(product_id)
+                if not product:
+                    return {"status": "error", "message": "Producto no encontrado"}
+
+                stock_reel = product.get("stock_reel")
+
+                # SAFETY CHECK: if stock_reel is null/None/empty, we CANNOT safely
+                # determine current stock. Creating a movement would be dangerous
+                # because we'd assume current=0 and add the full desired stock.
+                if stock_reel is None or stock_reel == "" or stock_reel == "null":
+                    logger.warning(
+                        f"Product {product_id}: stock_reel is null/empty. "
+                        f"SKIPPING stock update to prevent accumulation. "
+                        f"Desired stock: {stock}"
+                    )
+                    return {
+                        "status": "warning",
+                        "message": f"No se pudo determinar el stock actual en Dolibarr (stock_reel vacío). "
+                                   f"Actualización de stock omitida para evitar acumulación."
+                    }
+
+                current_stock = int(float(stock_reel))
+                logger.info(f"Product {product_id}: using stock_reel={current_stock} (fallback)")
+
+            # Calculate difference
             diff = stock - current_stock
 
             if diff == 0:
                 return {"status": "success", "message": "Stock sin cambios"}
 
-            # Dolibarr does not allow stock movements with qty = 0
-            if abs(diff) == 0:
-                return {"status": "success", "message": "Stock sin cambios"}
+            # SAFETY: Log detailed info for debugging stock issues
+            logger.info(
+                f"Stock sync product {product_id}: "
+                f"current_in_dolibarr={current_stock}, "
+                f"desired={stock}, "
+                f"diff={diff}, "
+                f"action={'ENTRADA' if diff > 0 else 'SALIDA'}"
+            )
 
             # Create stock movement
             payload = {
@@ -355,10 +445,8 @@ class DolibarrClient:
                 "warehouse_id": warehouse_id,
                 "qty": abs(diff),
                 "type": 0 if diff > 0 else 1,  # 0 = entrada, 1 = salida
-                "label": "Sincronización desde catálogo"
+                "label": f"Sync SyncStock: {current_stock} → {stock}"
             }
-
-            logger.info(f"Creating stock movement for product {product_id}: {current_stock} -> {stock} (diff: {diff})")
 
             response = self._rate_limited_request(
                 'POST',
@@ -368,11 +456,18 @@ class DolibarrClient:
             )
 
             if response.status_code in [200, 201]:
+                # VERIFICATION: After creating movement, verify the new stock
+                new_stock = self._get_warehouse_stock(product_id, warehouse_id)
+                if new_stock is not None and new_stock != stock:
+                    logger.warning(
+                        f"Stock verification mismatch for product {product_id}: "
+                        f"expected={stock}, actual_after_movement={new_stock}"
+                    )
+
                 logger.info(f"Stock updated successfully: {current_stock} → {stock}")
                 return {"status": "success", "message": f"Stock actualizado: {current_stock} → {stock}"}
             else:
                 logger.warning(f"Stock movement failed: {response.status_code} - {response.text[:200]}")
-                # Fallback: try to update product directly (won't work if stock is managed)
                 return {"status": "warning", "message": f"No se pudo crear movimiento: {response.text[:100]}"}
         except Exception as e:
             logger.error(f"update_stock error: {e}")
