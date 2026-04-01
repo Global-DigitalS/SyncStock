@@ -271,31 +271,46 @@ async def process_inventory_update(user_id: str, store_id: str, platform: str, d
 
 
 async def process_order_event(user_id: str, store_id: str, platform: str, data: dict):
-    """Process order event from webhook"""
+    """Process order event from webhook - enhanced with CRM sync"""
+    from services.orders import process_order_webhook
+
     order_id = data.get("order_id") or data.get("id")
     items = data.get("line_items") or data.get("items") or []
-    
-    logger.info(f"Order event received: {order_id} with {len(items)} items")
-    
-    # Optionally update stock based on order items
-    for item in items:
-        sku = item.get("sku") or item.get("product_sku")
-        quantity = item.get("quantity", 1)
-        
-        if sku:
-            # Find product and potentially reduce stock
-            product = await db.products.find_one({"user_id": user_id, "sku": sku})
-            if product:
-                await db.notifications.insert_one({
-                    "id": str(uuid.uuid4()),
-                    "type": "order_item",
-                    "message": f"Pedido #{order_id}: {quantity}x {product.get('name', sku)}",
-                    "product_id": product["id"],
-                    "product_name": product.get("name"),
-                    "user_id": user_id,
-                    "read": False,
-                    "created_at": datetime.now(timezone.utc).isoformat()
-                })
+
+    logger.info(f"Order event received: {order_id} with {len(items)} items from {platform}")
+
+    # Use new order service to process the order
+    result = await process_order_webhook(data, platform, user_id, store_id)
+
+    # Log based on result
+    if result["status"] == "success":
+        logger.info(f"Order processed successfully: {result.get('order_id')}")
+
+        # Create notification
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": "order_processed",
+            "message": f"Pedido #{order_id} procesado y sincronizado con CRM",
+            "order_id": result.get("order_id"),
+            "user_id": user_id,
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+    elif result["status"] == "duplicate":
+        logger.warning(f"Duplicate order detected: {order_id}")
+    else:
+        logger.error(f"Failed to process order: {result.get('message')}")
+
+        # Create error notification
+        await db.notifications.insert_one({
+            "id": str(uuid.uuid4()),
+            "type": "order_error",
+            "message": f"Error procesando pedido #{order_id}: {result.get('message')}",
+            "order_id": order_id,
+            "user_id": user_id,
+            "read": False,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
 
 
 async def process_product_update(user_id: str, store_id: str, platform: str, data: dict):
