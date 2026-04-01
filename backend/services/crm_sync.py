@@ -481,6 +481,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     created = 0
     updated = 0
     errors = 0
+    error_details = {}  # NEW: Track error details {sku: "error message"}
 
     # ========== FASE 2 OPTIMIZATION: Parallelism with chunking ==========
     # Phase 2A: Prepare all product data without making API calls
@@ -493,6 +494,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
         sku = product.get("sku", "")
         if not sku:
             errors += 1
+            error_details[f"producto_{len(error_details)}"] = "Producto sin SKU"
             continue
 
         # Use batch result to check if product exists
@@ -588,11 +590,12 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     # Execute all tasks in parallel
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Process results
+    # Process results and collect error details
     for result in results:
         if isinstance(result, Exception):
             logger.error(f"Task failed with exception: {result}")
             errors += 1
+            error_details[f"exception_{errors}"] = str(result)
         elif isinstance(result, dict):
             if result.get("status") == "success":
                 if result.get("sku") in [p.get("sku") for p in [item["product"] for item in to_create]]:
@@ -601,6 +604,11 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                     updated += 1
             else:
                 errors += 1
+                # NEW: Store detailed error message for this product
+                sku = result.get("sku", f"unknown_{errors}")
+                error_msg = result.get("message", "Error desconocido")
+                error_details[sku] = error_msg
+                logger.error(f"Product {sku} sync error: {error_msg}")
     
     # Final progress update
     if sync_job_id:
@@ -613,6 +621,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 "created": created,
                 "updated": updated,
                 "errors": errors,
+                "error_details": error_details,  # NEW: Store detailed error information
                 "current_step": "Finalizando sincronización de productos..."
             }}
         )
@@ -953,6 +962,7 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
     created = 0
     updated = 0
     errors = 0
+    error_details = {}  # NEW: Track error details {sku: "error message"}
 
     # ========== FASE 2 OPTIMIZATION: Parallelism with chunking for Odoo ==========
     logger.info(f"Fase 2: Preparando {len(products)} productos en Odoo para sincronización paralela...")
@@ -965,6 +975,7 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
         if not product_sku:
             logger.warning(f"Producto sin SKU: {product.get('name')}")
             errors += 1
+            error_details[f"producto_{len(error_details)}"] = "Producto sin SKU"
             continue
 
         existing_product = existing_products_batch.get(product_sku)
@@ -1012,11 +1023,12 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
     # Execute all tasks in parallel
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Process results
+    # Process results and collect error details
     for result in results:
         if isinstance(result, Exception):
             logger.error(f"Odoo task failed with exception: {result}")
             errors += 1
+            error_details[f"exception_{errors}"] = str(result)
         elif isinstance(result, dict):
             if result.get("status") == "success":
                 if result.get("sku") in [p.get("sku") for p in [item["product"] for item in to_create]]:
@@ -1025,7 +1037,28 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
                     updated += 1
             else:
                 errors += 1
-    
+                # NEW: Store detailed error message for this product
+                sku = result.get("sku", f"unknown_{errors}")
+                error_msg = result.get("message", "Error desconocido")
+                error_details[sku] = error_msg
+                logger.error(f"Product {sku} sync error: {error_msg}")
+
+    # Final progress update
+    if sync_job_id:
+        processed_items = len(to_create) + len(to_update)
+        await db.sync_jobs.update_one(
+            {"id": sync_job_id},
+            {"$set": {
+                "progress": 95,
+                "processed_items": processed_items,
+                "created": created,
+                "updated": updated,
+                "errors": errors,
+                "error_details": error_details,  # NEW: Store detailed error information
+                "current_step": "Finalizando sincronización de productos..."
+            }}
+        )
+
     return {
         "status": "success" if errors == 0 else "partial",
         "message": f"{created} creados, {updated} actualizados, {errors} errores",
