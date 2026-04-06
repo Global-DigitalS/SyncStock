@@ -4,11 +4,12 @@ Tests for:
 1. Setup page - MongoDB connection check and SuperAdmin status
 2. Product selection flow - Select/deselect products from suppliers
 """
-import pytest
-import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL').rstrip('/')
+import pytest
+import requests
+
+BASE_URL = (os.environ.get('REACT_APP_BACKEND_URL') or 'http://localhost:8001').rstrip('/')
 
 class TestSetupEndpoints:
     """Tests for /api/setup/* endpoints"""

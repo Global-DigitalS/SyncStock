@@ -2024,7 +2024,7 @@ async def create_catalog_from_store_products(
     store_config_id: str,
     catalog_name: str | None = None,
     catalog_id: str | None = None,
-    match_by: List[str] = None,
+    match_by: list[str] | None = None,
     skip_unmatched: bool = True
 ) -> dict:
     """

@@ -188,7 +188,7 @@ class SyncCache:
             logger.info(f"Cleared entire cache ({size} entries)")
 
 
-def build_differential_update_payload(local_product: dict, crm_product: dict, fields_to_check: List[str] = None) -> dict:
+def build_differential_update_payload(local_product: dict, crm_product: dict, fields_to_check: list[str] | None = None) -> dict:
     """
     Build update payload with only changed fields (FASE 3: Differential Updates) - SAFE TYPE HANDLING.
 
@@ -356,7 +356,7 @@ async def validate_and_cleanup_sync_jobs(user_id: str, max_age_days: int = 30):
         logger.error(f"Error in validate_and_cleanup_sync_jobs: {e}")
 
 
-def validate_margin_rules(rules: List[dict]) -> List[dict]:
+def validate_margin_rules(rules: list[dict]) -> list[dict]:
     """Validate margin rules before use - MEDIUM #20
 
     Filters out invalid rules that would cause calculation errors.
