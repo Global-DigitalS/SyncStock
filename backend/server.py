@@ -323,8 +323,16 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
 
     from services.auth import JWT_ALGORITHM, JWT_SECRET
 
-    # Accept token from query parameter or from the httpOnly auth_token cookie
-    token = websocket.query_params.get("token") or websocket.cookies.get("auth_token")
+    # Priorizar cookie httpOnly sobre query parameter (más seguro)
+    token = websocket.cookies.get("auth_token")
+    if not token:
+        token = websocket.query_params.get("token")
+        if token:
+            logger.warning(
+                "WebSocket auth via query parameter (inseguro, se registra en logs/proxies). "
+                "Migrar a cookie httpOnly. IP: %s",
+                websocket.client.host if websocket.client else "unknown",
+            )
     if not token:
         await websocket.close(code=4001)
         return
