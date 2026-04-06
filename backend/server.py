@@ -55,8 +55,13 @@ from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
 from services.sync_queue import SyncType, get_sync_queue
 from services.unified_sync import run_scheduled_syncs
 
-# Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
+# Initialize rate limiter with default limits for all endpoints
+# Endpoints individuales pueden sobrescribir con @limiter.limit()
+limiter = Limiter(
+    key_func=get_remote_address,
+    default_limits=["60/minute"],
+    storage_uri="memory://",
+)
 
 # Initialize scheduler
 scheduler = AsyncIOScheduler()
