@@ -13,16 +13,69 @@ from .base import _validate_crm_url
 logger = logging.getLogger(__name__)
 
 
+def _sanitize_error_message(error_text: str, max_length: int = 100) -> str:
+    """Sanitize error messages to prevent information leakage - MEDIUM #15
+
+    Removes sensitive details like internal paths, database info, etc.
+    Only shows safe, generic error information.
+    """
+    if not error_text:
+        return "Error en operación CRM"
+
+    # Remove potentially sensitive patterns
+    sanitized = error_text
+    sensitive_patterns = [
+        r'/home/\S+',  # File paths
+        r'/var/\S+',   # System paths
+        r'localhost:\d+',  # Local IPs
+        r'192\.168\.\S+',  # Private IPs
+        r'SELECT \*.*FROM',  # SQL queries
+        r'UPDATE.*SET',  # SQL queries
+        r'INSERT INTO',  # SQL queries
+    ]
+
+    import re
+    for pattern in sensitive_patterns:
+        sanitized = re.sub(pattern, '[REDACTED]', sanitized, flags=re.IGNORECASE)
+
+    # Truncate to safe length
+    sanitized = sanitized[:max_length]
+
+    # If result is empty or all redacted, return generic message
+    if not sanitized.strip() or sanitized == '[REDACTED]':
+        return "Error en operación CRM"
+
+    return sanitized
+
+
 def _escape_sql_string(value: str) -> str:
-    """Safely escape SQL string values to prevent SQL injection - CRITICAL FIX"""
+    """Safely escape SQL string values to prevent SQL injection - MEDIUM #12
+
+    Handles both standard SQL and MySQL comment sequences.
+    """
     if not isinstance(value, str):
         return str(value)
-    # Escape single quotes by doubling them (SQL standard)
+
+    # 1. Escape single quotes by doubling them (SQL standard)
     escaped = value.replace("'", "''")
-    # Remove any SQL comment sequences
+
+    # 2. Remove SQL comment sequences (multiple methods)
+    # SQL Standard comments
     escaped = escaped.replace("--", "")
+    # SQL Standard block comments
     escaped = escaped.replace("/*", "")
     escaped = escaped.replace("*/", "")
+    # MySQL-specific comments
+    escaped = escaped.replace("//", "")
+    escaped = escaped.replace("#", "")  # MySQL single-line comment
+    escaped = escaped.replace(";", "")  # Prevent statement termination
+
+    # 3. Remove null bytes
+    escaped = escaped.replace("\x00", "")
+
+    # 4. Limit length to prevent buffer overflow
+    escaped = escaped[:1000]
+
     return escaped.strip()
 
 
@@ -85,7 +138,9 @@ class DolibarrClient:
             elif response.status_code == 403:
                 return {"status": "error", "message": "Acceso denegado - verifica permisos del usuario API"}
             else:
-                return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+                # MEDIUM #15: Sanitize error message
+                safe_msg = _sanitize_error_message(response.text)
+                return {"status": "error", "message": f"Error de conexión ({response.status_code}): {safe_msg}"}
         except requests.exceptions.ConnectionError:
             return {"status": "error", "message": "No se puede conectar al servidor. Verifica la URL."}
         except requests.exceptions.Timeout:
