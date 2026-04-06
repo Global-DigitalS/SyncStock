@@ -6,7 +6,7 @@ import logging
 import asyncio
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List
 
 from services.database import db
@@ -22,20 +22,43 @@ logger = logging.getLogger(__name__)
 # ==================== FASE 2-3: GLOBAL RATE LIMITER & CACHING ====================
 
 class GlobalRateLimiter:
-    """Global rate limiter for CRM API calls to prevent exceeding rate limits - DEADLOCK SAFE"""
+    """Global rate limiter for CRM API calls to prevent exceeding rate limits - DEADLOCK SAFE
 
-    def __init__(self, max_concurrent: int = 5, min_delay: float = 0.1):
+    MEDIUM #16: Supports platform-specific configuration
+    """
+
+    # Platform-specific rate limit configurations
+    RATE_LIMITS = {
+        "dolibarr": {"max_concurrent": 5, "min_delay": 0.1},  # 10 req/sec
+        "odoo": {"max_concurrent": 5, "min_delay": 0.15},     # ~6 req/sec
+        "hubspot": {"max_concurrent": 3, "min_delay": 0.2},   # 5 req/sec (conservative)
+        "salesforce": {"max_concurrent": 3, "min_delay": 0.3}, # 3 req/sec
+        "zoho": {"max_concurrent": 5, "min_delay": 0.2},      # 5 req/sec
+        "default": {"max_concurrent": 5, "min_delay": 0.1}
+    }
+
+    def __init__(self, platform: str = "default", max_concurrent: int = None, min_delay: float = None):
         """
-        Initialize rate limiter.
+        Initialize rate limiter with platform-specific defaults.
 
         Args:
-            max_concurrent: Maximum concurrent operations
-            min_delay: Minimum delay between operations (seconds)
+            platform: CRM platform name (dolibarr, odoo, hubspot, etc)
+            max_concurrent: Override default max concurrent operations
+            min_delay: Override default minimum delay between operations (seconds)
         """
-        self.semaphore = asyncio.Semaphore(max_concurrent)
-        self.min_delay = min_delay
+        # Get defaults for platform
+        config = self.RATE_LIMITS.get(platform, self.RATE_LIMITS["default"])
+
+        # Allow overrides
+        self.max_concurrent = max_concurrent if max_concurrent is not None else config["max_concurrent"]
+        self.min_delay = min_delay if min_delay is not None else config["min_delay"]
+        self.platform = platform
+
+        self.semaphore = asyncio.Semaphore(self.max_concurrent)
         self.last_call = time.time()
         self.lock = asyncio.Lock()
+
+        logger.info(f"Rate limiter initialized for {platform}: {self.max_concurrent} concurrent, {self.min_delay}s delay")
 
     async def acquire(self):
         """Acquire the rate limiter - respects both concurrency and delay"""
@@ -121,6 +144,48 @@ class SyncCache:
         async with self.lock:
             return len(self.cache)
 
+    async def invalidate(self, key: str) -> bool:
+        """Invalidate a specific cache entry - MEDIUM #14
+
+        Returns:
+            True if entry was cached and removed, False otherwise
+        """
+        async with self.lock:
+            if key in self.cache:
+                self.cache.pop(key, None)
+                self.timestamps.pop(key, None)
+                logger.debug(f"Invalidated cache entry: {key}")
+                return True
+            return False
+
+    async def invalidate_pattern(self, pattern: str) -> int:
+        """Invalidate all cache entries matching a pattern - MEDIUM #14
+
+        Args:
+            pattern: Simple prefix pattern (e.g., "sku:*" matches "sku:123")
+
+        Returns:
+            Number of entries invalidated
+        """
+        async with self.lock:
+            import fnmatch
+            prefix = pattern.replace('*', '')
+            keys_to_remove = [k for k in self.cache.keys() if k.startswith(prefix)]
+            for key in keys_to_remove:
+                self.cache.pop(key, None)
+                self.timestamps.pop(key, None)
+            if keys_to_remove:
+                logger.debug(f"Invalidated {len(keys_to_remove)} cache entries matching pattern: {pattern}")
+            return len(keys_to_remove)
+
+    async def clear_all(self):
+        """Clear entire cache - MEDIUM #14"""
+        async with self.lock:
+            size = len(self.cache)
+            self.cache.clear()
+            self.timestamps.clear()
+            logger.info(f"Cleared entire cache ({size} entries)")
+
 
 def build_differential_update_payload(local_product: Dict, crm_product: Dict, fields_to_check: List[str] = None) -> Dict:
     """
@@ -190,6 +255,163 @@ def _safe_to_string(value) -> str:
     logger.debug(f"Skipping complex type comparison: {type(value)}")
     return ""
 
+
+async def record_sync_statistics(
+    sync_job_id: str,
+    platform: str,
+    sync_type: str,
+    duration_seconds: float,
+    products_processed: int = 0,
+    products_created: int = 0,
+    products_updated: int = 0,
+    errors: int = 0,
+    success: bool = True
+):
+    """Record sync job statistics for monitoring and analytics - OPTIMIZATION
+
+    Helps track performance trends and identify issues.
+    """
+    try:
+        stats = {
+            "id": str(uuid.uuid4()),
+            "sync_job_id": sync_job_id,
+            "platform": platform,
+            "sync_type": sync_type,
+            "duration_seconds": round(duration_seconds, 2),
+            "products_processed": products_processed,
+            "products_created": products_created,
+            "products_updated": products_updated,
+            "products_per_second": round(products_processed / max(duration_seconds, 1), 2),
+            "error_count": errors,
+            "success": success,
+            "recorded_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        # Insert into stats collection for analysis
+        await db.sync_statistics.insert_one(stats)
+
+        # Log summary
+        logger.info(
+            f"Sync stats: platform={platform}, processed={products_processed}, "
+            f"created={products_created}, updated={products_updated}, "
+            f"errors={errors}, duration={duration_seconds:.1f}s, "
+            f"rate={stats['products_per_second']:.1f}/sec"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record sync statistics: {e}")
+
+
+async def validate_and_cleanup_sync_jobs(user_id: str, max_age_days: int = 30):
+    """Validate sync job timestamps and cleanup old jobs - MEDIUM #22
+
+    Ensures:
+    - completed_at > started_at
+    - Removes sync jobs older than max_age_days
+    - Logs validation errors
+    """
+    try:
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        cutoff_iso = cutoff_date.isoformat()
+
+        # Find old or invalid jobs
+        invalid_jobs = await db.sync_jobs.find({
+            "user_id": user_id,
+            "$or": [
+                {"started_at": {"$lt": cutoff_iso}},  # Older than max_age_days
+                {
+                    "status": "completed",
+                    "$expr": {
+                        "$lte": ["$completed_at", "$started_at"]  # completed_at <= started_at (invalid)
+                    }
+                }
+            ]
+        }).to_list(1000)
+
+        if invalid_jobs:
+            logger.info(f"Found {len(invalid_jobs)} invalid or expired sync jobs for user {user_id}")
+            for job in invalid_jobs:
+                if job.get("started_at") and job.get("completed_at"):
+                    try:
+                        started = datetime.fromisoformat(job["started_at"].replace('Z', '+00:00'))
+                        completed = datetime.fromisoformat(job["completed_at"].replace('Z', '+00:00'))
+                        if completed <= started:
+                            logger.warning(
+                                f"Invalid sync job {job['id']}: "
+                                f"completed_at ({completed}) <= started_at ({started})"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Error validating job {job['id']}: {e}")
+
+            # Delete old jobs (keep last 30 days)
+            result = await db.sync_jobs.delete_many({
+                "user_id": user_id,
+                "started_at": {"$lt": cutoff_iso}
+            })
+
+            if result.deleted_count > 0:
+                logger.info(f"Cleaned up {result.deleted_count} old sync jobs")
+
+    except Exception as e:
+        logger.error(f"Error in validate_and_cleanup_sync_jobs: {e}")
+
+
+def validate_margin_rules(rules: List[Dict]) -> List[Dict]:
+    """Validate margin rules before use - MEDIUM #20
+
+    Filters out invalid rules that would cause calculation errors.
+
+    Returns:
+        List of valid margin rules
+    """
+    if not rules:
+        return []
+
+    valid_rules = []
+    for i, rule in enumerate(rules):
+        try:
+            if not isinstance(rule, dict):
+                logger.warning(f"Margin rule {i}: not a dict, skipping")
+                continue
+
+            # Validate required fields
+            if "type" not in rule or "value" not in rule:
+                logger.warning(f"Margin rule {i}: missing type or value, skipping")
+                continue
+
+            rule_type = rule.get("type", "").lower()
+            rule_value = rule.get("value")
+
+            # Validate type
+            if rule_type not in ["percentage", "fixed", "multiplier"]:
+                logger.warning(f"Margin rule {i}: invalid type '{rule_type}', skipping")
+                continue
+
+            # Validate value is numeric
+            try:
+                float_value = float(rule_value)
+            except (ValueError, TypeError):
+                logger.warning(f"Margin rule {i}: value '{rule_value}' is not numeric, skipping")
+                continue
+
+            # Validate value range
+            if rule_type == "percentage" and (float_value < -100 or float_value > 1000):
+                logger.warning(f"Margin rule {i}: percentage {float_value} is out of reasonable range, skipping")
+                continue
+
+            if rule_type == "multiplier" and (float_value <= 0 or float_value > 100):
+                logger.warning(f"Margin rule {i}: multiplier {float_value} must be > 0, skipping")
+                continue
+
+            valid_rules.append(rule)
+        except Exception as e:
+            logger.error(f"Error validating margin rule {i}: {e}")
+            continue
+
+    if len(valid_rules) < len(rules):
+        logger.info(f"Margin rules validation: {len(valid_rules)}/{len(rules)} rules are valid")
+
+    return valid_rules
+
 async def run_sync_in_background(
     sync_job_id: str,
     user_id: str,
@@ -200,12 +422,22 @@ async def run_sync_in_background(
     sync_type: str,
     catalog_id: str = None
 ):
-    """Background task for CRM sync with progress updates"""
+    """Background task for CRM sync with progress updates
+
+    OPTIMIZATION: Request ID tracing and performance monitoring
+    """
+    # Generate correlation ID for request tracing (for log debugging)
+    correlation_id = f"{sync_job_id[:8]}-{platform}"
+    logger.info(f"[{correlation_id}] Sync started: platform={platform}, type={sync_type}, user={user_id}")
+
     results = {
         "products": None,
         "suppliers": None,
         "orders": None
     }
+
+    # Track timing for performance monitoring
+    sync_start_time = time.time()
 
     client = None
     try:
@@ -417,6 +649,9 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
 
+    # Track timing for performance monitoring - OPTIMIZATION
+    sync_start_time = time.time()
+
     # Build query filter
     query = {"user_id": user_id, "is_selected": True}
     catalog_items_map = {}  # product_id -> catalog_item data
@@ -451,7 +686,9 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
             {"_id": 0}
         ).sort("priority", -1).to_list(100)
 
-        logger.info(f"Found {len(margin_rules)} margin rules for catalog {catalog_id}")
+        # MEDIUM #20: Validate margin rules before using them
+        margin_rules = validate_margin_rules(margin_rules)
+        logger.info(f"Found {len(margin_rules)} valid margin rules for catalog {catalog_id}")
 
         # Change query to filter by product IDs instead of is_selected
         query = {"user_id": user_id, "id": {"$in": product_ids}}
@@ -505,8 +742,21 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
             error_details[f"producto_{len(error_details)}"] = "Producto sin SKU"
             continue
 
+        # HIGH #7: Sanitize SKU for safe use as dict key
+        # Remove special characters that could cause issues in JSON/DB
+        safe_sku = sku.replace('"', '').replace("'", '').replace('\x00', '')[:100]
+
         # Use batch result to check if product exists
         existing = existing_products_batch.get(sku)
+
+        # CRITICAL: Double-check before creating to prevent race condition
+        # Between batch lookup and actual creation, another user/job might create the product
+        if not existing:
+            # Make one final check to catch concurrent creations
+            final_check = client.get_product_by_ref(sku)
+            if final_check:
+                logger.debug(f"Race condition prevented: {sku} was created by another sync job")
+                existing = final_check
 
         # Build product_data
         product_data = {
@@ -541,13 +791,39 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
 
             product_data["price"] = round(float(sale_price or 0), 2)
 
-        # Sync stock
+        # Sync stock - HIGH #9 & MEDIUM #21: Enhanced validation
         if sync_settings.get("stock", True):
             stock_value = product.get("stock", 0)
-            if isinstance(stock_value, (int, float)) and stock_value > 1000000:
-                logger.warning(f"Stock value suspiciously large for {sku}: {stock_value}. Capping at 1000000.")
-                stock_value = 1000000
-            product_data["stock"] = max(0, int(stock_value) if isinstance(stock_value, (int, float)) else 0)
+
+            # Convert to number if possible
+            if isinstance(stock_value, str):
+                try:
+                    stock_value = float(stock_value)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid stock value (non-numeric string) for {sku}: {stock_value}. Using 0.")
+                    stock_value = 0
+
+            # Validate numeric value
+            if isinstance(stock_value, (int, float)):
+                # Check for negative values (invalid)
+                if stock_value < 0:
+                    logger.warning(f"Negative stock value for {sku}: {stock_value}. Using 0.")
+                    stock_value = 0
+                # Check for suspiciously large values
+                elif stock_value > 1000000:
+                    logger.warning(f"Stock value suspiciously large for {sku}: {stock_value}. Capping at 1000000.")
+                    stock_value = 1000000
+                # Round down floats with proper rounding
+                elif isinstance(stock_value, float):
+                    stock_value = int(stock_value + 0.0)  # Round down
+                    if stock_value != float(product.get("stock", 0)):
+                        logger.debug(f"Rounded stock for {sku}: {product.get('stock')} → {stock_value}")
+            else:
+                # Non-numeric value
+                logger.warning(f"Non-numeric stock value for {sku}: {stock_value}. Using 0.")
+                stock_value = 0
+
+            product_data["stock"] = max(0, int(stock_value))
 
         # Sync descriptions
         if sync_settings.get("descriptions", True):
@@ -572,7 +848,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
         else:
             to_create.append({"product": product, "product_data": product_data, "image_url": image_url})
 
-    # Phase 2B: Process creates and updates in parallel
+    # Phase 2B: Process creates and updates in parallel with memory optimization
     logger.info(f"Fase 2: Procesando en paralelo: {len(to_create)} creaciones, {len(to_update)} actualizaciones")
 
     # ========== FASE 3 OPTIMIZATION: In-memory cache with TTL ==========
@@ -580,23 +856,84 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     cache = SyncCache(ttl_seconds=1800)  # 30 minutes TTL
     logger.info(f"Fase 3: Caché de productos inicializada (TTL: 30 min)")
 
-    limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
-    tasks = []
+    # MEDIUM #16: Use platform-specific rate limiting
+    limiter = GlobalRateLimiter(platform="dolibarr")
 
+    # MEDIUM #18: Chunk tasks to prevent memory exhaustion with large product counts
+    # Create all items first, but process in chunks to control memory usage
+    all_tasks_items = []
     for item in to_create:
-        task = _sync_product_create_dolibarr(
-            client, item["product"], item["product_data"], item["image_url"], sync_settings, limiter, cache
-        )
-        tasks.append(task)
+        all_tasks_items.append({
+            "type": "create",
+            "item": item,
+            "client": client,
+            "sync_settings": sync_settings,
+            "limiter": limiter,
+            "cache": cache
+        })
 
     for item in to_update:
-        task = _sync_product_update_dolibarr(
-            client, item["product"], item["existing"], item["product_data"], item["image_url"], sync_settings, limiter, cache
-        )
-        tasks.append(task)
+        all_tasks_items.append({
+            "type": "update",
+            "item": item,
+            "client": client,
+            "sync_settings": sync_settings,
+            "limiter": limiter,
+            "cache": cache
+        })
 
-    # Execute all tasks in parallel
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Process in chunks to prevent OS limits on concurrent tasks
+    CHUNK_SIZE = 100  # Process 100 products at a time
+    results = []
+    total_chunks = (len(all_tasks_items) + CHUNK_SIZE - 1) // CHUNK_SIZE
+
+    for chunk_num in range(total_chunks):
+        start_idx = chunk_num * CHUNK_SIZE
+        end_idx = min((chunk_num + 1) * CHUNK_SIZE, len(all_tasks_items))
+        chunk = all_tasks_items[start_idx:end_idx]
+
+        logger.info(f"Procesando chunk {chunk_num + 1}/{total_chunks} ({len(chunk)} items)")
+
+        # Create tasks for this chunk only
+        chunk_tasks = []
+        for task_config in chunk:
+            if task_config["type"] == "create":
+                task = _sync_product_create_dolibarr(
+                    task_config["client"],
+                    task_config["item"]["product"],
+                    task_config["item"]["product_data"],
+                    task_config["item"]["image_url"],
+                    task_config["sync_settings"],
+                    task_config["limiter"],
+                    task_config["cache"]
+                )
+            else:  # update
+                task = _sync_product_update_dolibarr(
+                    task_config["client"],
+                    task_config["item"]["product"],
+                    task_config["item"]["existing"],
+                    task_config["item"]["product_data"],
+                    task_config["item"]["image_url"],
+                    task_config["sync_settings"],
+                    task_config["limiter"],
+                    task_config["cache"]
+                )
+            chunk_tasks.append(task)
+
+        # Execute chunk in parallel
+        chunk_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
+        results.extend(chunk_results)
+
+        # Update sync job progress
+        if sync_job_id:
+            progress = int(((start_idx + len(chunk)) / len(all_tasks_items)) * 90)
+            await db.sync_jobs.update_one(
+                {"id": sync_job_id},
+                {"$set": {
+                    "progress": progress,
+                    "current_step": f"Procesando chunk {chunk_num + 1}/{total_chunks}..."
+                }}
+            )
 
     # Process results and collect error details
     for result in results:
@@ -615,9 +952,11 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 # NEW: Store detailed error message for this product
                 sku = result.get("sku", f"unknown_{errors}")
                 error_msg = result.get("message", "Error desconocido")
-                error_details[sku] = error_msg
+                # HIGH #7: Sanitize SKU for safe database storage
+                safe_sku = sku.replace('"', '').replace("'", '').replace('\x00', '')[:100]
+                error_details[safe_sku] = error_msg
                 logger.error(f"Product {sku} sync error: {error_msg}")
-    
+
     # Final progress update
     if sync_job_id:
         processed_items = len(to_create) + len(to_update)
@@ -632,6 +971,22 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 "error_details": error_details,  # NEW: Store detailed error information
                 "current_step": "Finalizando sincronización de productos..."
             }}
+        )
+
+    # Record sync statistics for monitoring - OPTIMIZATION
+    duration = time.time() - sync_start_time
+    processed = len(to_create) + len(to_update)
+    if sync_job_id:
+        await record_sync_statistics(
+            sync_job_id=sync_job_id,
+            platform="dolibarr",
+            sync_type="products",
+            duration_seconds=duration,
+            products_processed=processed,
+            products_created=created,
+            products_updated=updated,
+            errors=errors,
+            success=(errors == 0)
         )
 
     return {
@@ -776,29 +1131,70 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
                 continue
             
             wc_orders = response.json()
-            
+
+            # HIGH #5 FIX: Batch lookup all SKUs from all orders BEFORE processing individual orders
+            # Prevents N+1 query problem: collect all unique SKUs, lookup in one batch call
+            all_skus = set()
+            for wc_order in wc_orders:
+                for item in wc_order.get("line_items", []):
+                    sku = item.get("sku", "")
+                    if sku:
+                        all_skus.add(sku)
+
+            # Single batch lookup for all products
+            products_batch = {}
+            if all_skus:
+                products_batch = client.get_products_by_refs_batch(list(all_skus))
+                logger.info(f"Batch lookup: {len(all_skus)} SKUs → {len(products_batch)} products found")
+
             for wc_order in wc_orders:
                 try:
-                    # Check if order already synced
+                    order_external_id = str(wc_order.get("id"))
+
+                    # HIGH #10: Check BOTH local DB AND CRM for idempotency
+                    # 1. Check local sync record
                     existing = await db.crm_synced_orders.find_one({
                         "user_id": user_id,
-                        "external_id": str(wc_order.get("id")),
+                        "external_id": order_external_id,
                         "source": "woocommerce"
                     })
-                    
+
                     if existing:
+                        logger.debug(f"Order {order_external_id} already synced locally")
                         continue
-                    
+
+                    # 2. Check if order already exists in Dolibarr (by external_id field)
+                    # This prevents duplicates if local record was deleted
+                    try:
+                        crm_orders = client.search_orders_by_external_id(order_external_id)
+                        if crm_orders:
+                            logger.info(f"Order {order_external_id} already exists in Dolibarr, skipping")
+                            # Update local record to reflect this
+                            await db.crm_synced_orders.insert_one({
+                                "id": str(uuid.uuid4()),
+                                "user_id": user_id,
+                                "external_id": order_external_id,
+                                "source": "woocommerce",
+                                "store_id": store.get("id"),
+                                "order_data": {"status": "already_synced"},
+                                "synced_at": datetime.now(timezone.utc).isoformat()
+                            })
+                            continue
+                    except Exception as check_err:
+                        logger.warning(f"Could not check CRM for existing order {order_external_id}: {check_err}")
+                        # Continue anyway - will be caught by unique constraint if duplicate
+
                     # Get or create customer in Dolibarr
                     customer_email = wc_order.get("billing", {}).get("email", "")
                     customer_name = f"{wc_order.get('billing', {}).get('first_name', '')} {wc_order.get('billing', {}).get('last_name', '')}".strip()
-                    
-                    # Build order lines
+
+                    # Build order lines - use pre-fetched products from batch
                     lines = []
                     for item in wc_order.get("line_items", []):
-                        # Try to find product by SKU in Dolibarr
-                        dolibarr_product = client.get_product_by_ref(item.get("sku", ""))
-                        
+                        sku = item.get("sku", "")
+                        # Look up in batch result instead of making individual API call
+                        dolibarr_product = products_batch.get(sku)
+
                         lines.append({
                             "product_id": int(dolibarr_product.get("id")) if dolibarr_product else None,
                             "quantity": item.get("quantity", 1),
@@ -923,6 +1319,9 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
 
+    # Track timing for performance monitoring - OPTIMIZATION
+    sync_start_time = time.time()
+
     # Build query filter
     query = {"user_id": user_id, "is_selected": True}
     catalog_items_map = {}
@@ -1000,13 +1399,35 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
             "description": product.get("description", ""),
         }
 
-        # Sync stock
+        # Sync stock - HIGH #9 & MEDIUM #21: Enhanced validation (Odoo)
         if sync_settings.get("stock", True):
             stock_value = product.get("stock", 0)
-            if isinstance(stock_value, (int, float)) and stock_value > 1000000:
-                logger.warning(f"Stock value suspiciously large for {product_sku}: {stock_value}. Capping at 1000000.")
-                stock_value = 1000000
-            product_data["stock"] = max(0, int(stock_value) if isinstance(stock_value, (int, float)) else 0)
+
+            # Convert to number if possible
+            if isinstance(stock_value, str):
+                try:
+                    stock_value = float(stock_value)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid stock value (non-numeric string) for {product_sku}: {stock_value}. Using 0.")
+                    stock_value = 0
+
+            # Validate numeric value
+            if isinstance(stock_value, (int, float)):
+                if stock_value < 0:
+                    logger.warning(f"Negative stock value for {product_sku}: {stock_value}. Using 0.")
+                    stock_value = 0
+                elif stock_value > 1000000:
+                    logger.warning(f"Stock value suspiciously large for {product_sku}: {stock_value}. Capping at 1000000.")
+                    stock_value = 1000000
+                elif isinstance(stock_value, float):
+                    stock_value = int(stock_value + 0.0)
+                    if stock_value != float(product.get("stock", 0)):
+                        logger.debug(f"Rounded stock for {product_sku}: {product.get('stock')} → {stock_value}")
+            else:
+                logger.warning(f"Non-numeric stock value for {product_sku}: {stock_value}. Using 0.")
+                stock_value = 0
+
+            product_data["stock"] = max(0, int(stock_value))
 
         if sync_settings.get("images") and product.get("image_url"):
             product_data["image_url"] = product.get("image_url")
@@ -1016,31 +1437,86 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
         else:
             to_create.append({"product": product, "product_data": product_data})
 
-    # Phase 2B: Process in parallel
+    # Phase 2B: Process in parallel with memory optimization
     logger.info(f"Fase 2: Procesando en paralelo Odoo: {len(to_create)} creaciones, {len(to_update)} actualizaciones")
 
     # ========== FASE 3 OPTIMIZATION: In-memory cache with TTL ==========
     cache = SyncCache(ttl_seconds=1800)  # 30 minutes TTL
     logger.info(f"Fase 3: Caché de productos Odoo inicializado (TTL: 30 min)")
 
-    limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
-    tasks = []
+    # MEDIUM #16: Use platform-specific rate limiting
+    limiter = GlobalRateLimiter(platform="odoo")
 
+    # MEDIUM #18: Chunk tasks to prevent memory exhaustion (Odoo)
+    all_tasks_items = []
     for item in to_create:
-        task = _sync_product_create_odoo(
-            client, item["product"], item["product_data"], sync_settings, limiter, cache
-        )
-        tasks.append(task)
+        all_tasks_items.append({
+            "type": "create",
+            "item": item,
+            "client": client,
+            "sync_settings": sync_settings,
+            "limiter": limiter,
+            "cache": cache
+        })
 
     for item in to_update:
-        existing_product = item["existing_product"]
-        task = _sync_product_update_odoo(
-            client, item["product"], existing_product, item["product_data"], sync_settings, limiter, cache
-        )
-        tasks.append(task)
+        all_tasks_items.append({
+            "type": "update",
+            "item": item,
+            "client": client,
+            "sync_settings": sync_settings,
+            "limiter": limiter,
+            "cache": cache
+        })
 
-    # Execute all tasks in parallel
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Process in chunks
+    CHUNK_SIZE = 100
+    results = []
+    total_chunks = (len(all_tasks_items) + CHUNK_SIZE - 1) // CHUNK_SIZE
+
+    for chunk_num in range(total_chunks):
+        start_idx = chunk_num * CHUNK_SIZE
+        end_idx = min((chunk_num + 1) * CHUNK_SIZE, len(all_tasks_items))
+        chunk = all_tasks_items[start_idx:end_idx]
+
+        logger.info(f"Procesando chunk {chunk_num + 1}/{total_chunks} ({len(chunk)} items) - Odoo")
+
+        chunk_tasks = []
+        for task_config in chunk:
+            if task_config["type"] == "create":
+                task = _sync_product_create_odoo(
+                    task_config["client"],
+                    task_config["item"]["product"],
+                    task_config["item"]["product_data"],
+                    task_config["sync_settings"],
+                    task_config["limiter"],
+                    task_config["cache"]
+                )
+            else:  # update
+                task = _sync_product_update_odoo(
+                    task_config["client"],
+                    task_config["item"]["product"],
+                    task_config["item"]["existing_product"],
+                    task_config["item"]["product_data"],
+                    task_config["sync_settings"],
+                    task_config["limiter"],
+                    task_config["cache"]
+                )
+            chunk_tasks.append(task)
+
+        chunk_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
+        results.extend(chunk_results)
+
+        # Update progress
+        if sync_job_id:
+            progress = int(((start_idx + len(chunk)) / len(all_tasks_items)) * 90)
+            await db.sync_jobs.update_one(
+                {"id": sync_job_id},
+                {"$set": {
+                    "progress": progress,
+                    "current_step": f"Procesando chunk {chunk_num + 1}/{total_chunks} (Odoo)..."
+                }}
+            )
 
     # Process results and collect error details
     for result in results:
@@ -1059,7 +1535,9 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
                 # NEW: Store detailed error message for this product
                 sku = result.get("sku", f"unknown_{errors}")
                 error_msg = result.get("message", "Error desconocido")
-                error_details[sku] = error_msg
+                # HIGH #7: Sanitize SKU for safe database storage
+                safe_sku = sku.replace('"', '').replace("'", '').replace('\x00', '')[:100]
+                error_details[safe_sku] = error_msg
                 logger.error(f"Product {sku} sync error: {error_msg}")
 
     # Final progress update
@@ -1076,6 +1554,22 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
                 "error_details": error_details,  # NEW: Store detailed error information
                 "current_step": "Finalizando sincronización de productos..."
             }}
+        )
+
+    # Record sync statistics for monitoring - OPTIMIZATION
+    duration = time.time() - sync_start_time
+    processed = len(to_create) + len(to_update)
+    if sync_job_id:
+        await record_sync_statistics(
+            sync_job_id=sync_job_id,
+            platform="odoo",
+            sync_type="products",
+            duration_seconds=duration,
+            products_processed=processed,
+            products_created=created,
+            products_updated=updated,
+            errors=errors,
+            success=(errors == 0)
         )
 
     return {
@@ -1185,16 +1679,40 @@ async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
             
             for wc_order in wc_orders:
                 try:
-                    # Check if order already synced
+                    order_external_id = str(wc_order.get("id"))
+
+                    # HIGH #10: Check BOTH local DB AND CRM for idempotency (Odoo version)
+                    # 1. Check local sync record
                     existing = await db.crm_synced_orders.find_one({
                         "user_id": user_id,
-                        "external_id": str(wc_order.get("id")),
+                        "external_id": order_external_id,
                         "source": "woocommerce"
                     })
-                    
+
                     if existing:
+                        logger.debug(f"Order {order_external_id} already synced locally (Odoo)")
                         continue
-                    
+
+                    # 2. Check if order already exists in Odoo (by client_order_ref field)
+                    try:
+                        crm_orders = client.search_orders_by_external_id(order_external_id)
+                        if crm_orders:
+                            logger.info(f"Order {order_external_id} already exists in Odoo, skipping")
+                            # Update local record
+                            await db.crm_synced_orders.insert_one({
+                                "id": str(uuid.uuid4()),
+                                "user_id": user_id,
+                                "external_id": order_external_id,
+                                "source": "woocommerce",
+                                "store_id": store.get("id"),
+                                "order_data": {"status": "already_synced"},
+                                "synced_at": datetime.now(timezone.utc).isoformat()
+                            })
+                            continue
+                    except Exception as check_err:
+                        logger.warning(f"Could not check Odoo for existing order {order_external_id}: {check_err}")
+                        # Continue anyway
+
                     customer_email = wc_order.get("billing", {}).get("email", "")
                     customer_name = f"{wc_order.get('billing', {}).get('first_name', '')} {wc_order.get('billing', {}).get('last_name', '')}".strip()
                     

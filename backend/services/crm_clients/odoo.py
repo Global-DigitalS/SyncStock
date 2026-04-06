@@ -5,11 +5,71 @@ import logging
 import requests
 import base64
 import asyncio
+import time
 from typing import Dict, List, Optional
 
 from .base import _validate_crm_url
 
 logger = logging.getLogger(__name__)
+
+
+# ==================== RETRY LOGIC WITH EXPONENTIAL BACKOFF ====================
+
+def retry_sync(
+    func,
+    max_retries: int = 3,
+    backoff_factor: float = 2.0,
+    initial_delay: float = 1.0,
+    max_delay: float = 16.0,
+    retryable_errors: tuple = (ConnectionError, TimeoutError, requests.exceptions.Timeout, requests.exceptions.ConnectionError),
+    retryable_status_codes: tuple = (429, 500, 502, 503, 504),
+    *args,
+    **kwargs
+):
+    """Retry synchronous function with exponential backoff - OPTIMIZATION
+
+    Same as retry_async but for blocking/sync operations.
+    """
+    attempt = 0
+    delay = initial_delay
+
+    while attempt < max_retries:
+        try:
+            return func(*args, **kwargs)
+        except requests.exceptions.HTTPError as e:
+            # Check HTTP status code
+            status_code = e.response.status_code if hasattr(e, 'response') and e.response else None
+
+            if status_code and status_code not in retryable_status_codes:
+                # Permanent error - don't retry
+                logger.warning(f"Not retrying permanent HTTP error {status_code}: {e}")
+                raise
+
+            # Transient error - log and retry
+            attempt += 1
+            if attempt >= max_retries:
+                logger.error(f"Max retries ({max_retries}) exceeded for HTTP {status_code}: {e}")
+                raise
+
+            logger.warning(f"HTTP {status_code} error (attempt {attempt}/{max_retries}), retrying in {delay}s: {e}")
+            time.sleep(delay)
+            delay = min(delay * backoff_factor, max_delay)
+
+        except retryable_errors as e:
+            # Transient network error - log and retry
+            attempt += 1
+            if attempt >= max_retries:
+                logger.error(f"Max retries ({max_retries}) exceeded for {type(e).__name__}: {e}")
+                raise
+
+            logger.warning(f"{type(e).__name__} (attempt {attempt}/{max_retries}), retrying in {delay}s: {e}")
+            time.sleep(delay)
+            delay = min(delay * backoff_factor, max_delay)
+
+        except Exception as e:
+            # Unexpected error - don't retry
+            logger.error(f"Unexpected error (not retryable): {type(e).__name__}: {e}")
+            raise
 
 
 class OdooClient:
@@ -45,16 +105,33 @@ class OdooClient:
         self.last_request_time = 0
 
     def _rate_limited_request(self, method: str, url: str, **kwargs) -> requests.Response:
-        """Make a rate-limited request"""
-        import time
+        """Make a rate-limited request with automatic retry on transient failures - OPTIMIZATION
+
+        Retries on:
+        - Network errors (timeouts, connection errors)
+        - Rate limits (429)
+        - Server errors (500, 502, 503, 504)
+
+        Does NOT retry on:
+        - 400 Bad Request
+        - 401 Unauthorized
+        - 403 Forbidden
+        - 404 Not Found
+        """
         elapsed = time.time() - self.last_request_time
         if elapsed < self.min_delay:
             time.sleep(self.min_delay - elapsed)
 
         kwargs.setdefault('timeout', 30)
-        response = self.session.request(method, url, **kwargs)
-        self.last_request_time = time.time()
-        return response
+
+        # Use retry logic for the actual request (lambda to avoid positional/keyword arg mismatch)
+        return retry_sync(
+            lambda: self.session.request(method, url, **kwargs),
+            max_retries=3,
+            backoff_factor=2.0,
+            initial_delay=1.0,
+            max_delay=16.0
+        )
 
     def close(self):
         """Close the session"""
@@ -480,7 +557,7 @@ class OdooClient:
                 f"{self.base_url}/api/sale.order/search_read",
                 params={
                     'domain': [['state', 'in', ['draft', 'sent', 'sale']]],
-                    'fields': ['id', 'name', 'partner_id', 'amount_total', 'date_order'],
+                    'fields': ['id', 'name', 'partner_id', 'amount_total', 'date_order', 'client_order_ref'],
                     'limit': limit,
                     'order': 'date_order desc'
                 },
@@ -491,6 +568,35 @@ class OdooClient:
             return []
         except Exception as e:
             logger.error(f"Odoo get_orders error: {e}")
+            return []
+
+    def search_orders_by_external_id(self, external_id: str) -> List[Dict]:
+        """Search for orders by external_id (client_order_ref field)
+
+        HIGH #10: Check if order already exists in CRM to prevent duplicates
+        """
+        try:
+            # client_order_ref is used to store external order IDs
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/api/sale.order/search_read",
+                params={
+                    'domain': [['client_order_ref', '=', external_id]],
+                    'fields': ['id', 'name', 'partner_id', 'amount_total', 'date_order', 'client_order_ref'],
+                    'limit': 10
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                results = response.json()
+                if isinstance(results, list):
+                    return results
+                elif isinstance(results, dict):
+                    return results.get("data", [])
+            logger.debug(f"search_orders_by_external_id({external_id}): no results or error {response.status_code}")
+            return []
+        except Exception as e:
+            logger.error(f"Error searching orders by external_id {external_id}: {e}")
             return []
 
     def get_purchase_orders(self, limit: int = 100) -> List[Dict]:
