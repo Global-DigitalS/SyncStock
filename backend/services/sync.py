@@ -1575,9 +1575,23 @@ def mask_key(key: str) -> str:
 
 
 def calculate_final_price(base_price: float, product: dict, rules: list) -> float:
+    """Calculate final price by cumulatively applying all matching margin rules.
+
+    HIGH FIX #11: Apply rules cumulatively in priority order, not just the first match.
+    Each rule is applied on top of the previous result.
+
+    Example:
+    - base_price: 100€
+    - rule 1 (all, +10%): 100 * 1.10 = 110€
+    - rule 2 (category, +20%): 110 * 1.20 = 132€
+    """
     final_price = base_price
+
+    # Rules are already sorted by priority (descending) from the caller
     for rule in rules:
         applies = False
+
+        # Check if rule applies to this product
         if rule["apply_to"] == "all":
             applies = True
         elif rule["apply_to"] == "category" and product.get("category") == rule.get("apply_to_value"):
@@ -1586,16 +1600,24 @@ def calculate_final_price(base_price: float, product: dict, rules: list) -> floa
             applies = True
         elif rule["apply_to"] == "product" and product.get("id") == rule.get("apply_to_value"):
             applies = True
+
         if applies:
+            # Check min/max price bounds (on base price)
             if rule.get("min_price") and base_price < rule["min_price"]:
                 continue
             if rule.get("max_price") and base_price > rule["max_price"]:
                 continue
+
+            # SECURITY FIX #11: Apply cumulatively on final_price, not base_price
+            # This allows multiple rules to be stacked
             if rule["rule_type"] == "percentage":
-                final_price = base_price * (1 + rule["value"] / 100)
+                final_price = final_price * (1 + rule["value"] / 100)
             elif rule["rule_type"] == "fixed":
-                final_price = base_price + rule["value"]
-            break
+                final_price = final_price + rule["value"]
+
+            # DO NOT BREAK - continue applying other rules
+            logger.debug(f"Applied margin rule: {rule.get('name', 'unnamed')} → {final_price:.2f}€")
+
     return final_price
 
 
