@@ -3,17 +3,22 @@ Módulo de configuración inicial de la aplicación.
 Permite configurar la conexión a MongoDB, JWT, CORS y crear el usuario SuperAdmin
 completamente desde la interfaz web cuando la aplicación se despliega por primera vez.
 """
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, EmailStr
-from datetime import datetime, timezone
-import uuid
-import secrets
 import logging
+import uuid
+from datetime import UTC, datetime
 
-from services.auth import hash_password, create_token, get_superadmin_user
+from fastapi import APIRouter, Depends
+from pydantic import BaseModel, EmailStr
+
+from services.auth import get_superadmin_user, hash_password
 from services.config_manager import (
-    get_config, update_config, save_config, generate_jwt_secret,
-    is_app_configured, AppConfig, get_config_info, backup_config, list_backups
+    AppConfig,
+    backup_config,
+    generate_jwt_secret,
+    get_config,
+    get_config_info,
+    list_backups,
+    save_config,
 )
 
 router = APIRouter()
@@ -72,11 +77,11 @@ async def get_setup_status():
     """
     config = get_config()
     config_info = get_config_info()
-    
+
     has_database = False
     has_superadmin = False
     database_name = ""
-    
+
     # Verificar conexión a MongoDB si hay URL configurada
     if config.mongo_url:
         try:
@@ -89,23 +94,23 @@ async def get_setup_status():
             await test_client.admin.command("ping")
             has_database = True
             database_name = config.db_name
-            
+
             # Verificar si existe un SuperAdmin
             test_db = test_client[config.db_name]
             superadmin = await test_db.users.find_one({"role": "superadmin"})
             has_superadmin = superadmin is not None
-            
+
             test_client.close()
         except Exception as e:
             logger.error(f"Database connection error: {e}")
             has_database = False
-    
+
     is_configured = has_database and has_superadmin and bool(config.jwt_secret)
-    
+
     # Determinar qué falta configurar
     needs_mongo_config = not config.mongo_url or not has_database
     needs_jwt_config = not config.jwt_secret
-    
+
     if needs_mongo_config:
         message = "Configura la conexión a MongoDB para comenzar."
     elif needs_jwt_config:
@@ -114,7 +119,7 @@ async def get_setup_status():
         message = "Crea el usuario SuperAdmin para completar la configuración."
     else:
         message = "Aplicación configurada correctamente."
-    
+
     return SetupStatus(
         is_configured=is_configured,
         has_database=has_database,
@@ -141,7 +146,7 @@ async def configure_app(setup: SetupRequest):
     Este endpoint solo funciona si no hay ningún SuperAdmin existente.
     """
     from motor.motor_asyncio import AsyncIOMotorClient
-    
+
     # Intentar conectar con la nueva URL de MongoDB
     try:
         test_client = AsyncIOMotorClient(
@@ -152,7 +157,7 @@ async def configure_app(setup: SetupRequest):
         # Probar la conexión
         await test_client.admin.command("ping")
         test_db = test_client[setup.db_name]
-        
+
         # Verificar si ya existe un SuperAdmin
         existing_superadmin = await test_db.users.find_one({"role": "superadmin"})
         if existing_superadmin:
@@ -161,7 +166,7 @@ async def configure_app(setup: SetupRequest):
                 success=False,
                 message="Ya existe un SuperAdmin. Si olvidaste las credenciales, contacta con soporte."
             )
-        
+
         # Verificar si el email ya está en uso
         existing_user = await test_db.users.find_one({"email": setup.admin_email})
         if existing_user:
@@ -170,7 +175,7 @@ async def configure_app(setup: SetupRequest):
                 success=False,
                 message="El email ya está registrado en la base de datos."
             )
-        
+
         # Generar JWT secret si no se proporcionó
         jwt_secret = setup.jwt_secret if setup.jwt_secret else generate_jwt_secret()
 
@@ -199,11 +204,11 @@ async def configure_app(setup: SetupRequest):
         )
         save_config(new_config)
         logger.info("Configuration saved successfully")
-        
+
         # Crear el SuperAdmin
         user_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
-        
+        now = datetime.now(UTC).isoformat()
+
         user_doc = {
             "id": user_id,
             "email": setup.admin_email,
@@ -216,31 +221,31 @@ async def configure_app(setup: SetupRequest):
             "max_woocommerce_stores": 999,
             "created_at": now
         }
-        
+
         await test_db.users.insert_one(user_doc)
         logger.info(f"SuperAdmin created: {setup.admin_email}")
-        
+
         # Crear token de autenticación usando el nuevo secret
         # Nota: Usamos una función especial ya que el secret cambió
         import jwt as pyjwt
         token_data = {
             "user_id": user_id,
             "role": "superadmin",
-            "exp": datetime.now(timezone.utc).timestamp() + 86400 * 7  # 7 días
+            "exp": datetime.now(UTC).timestamp() + 86400 * 7  # 7 días
         }
         token = pyjwt.encode(token_data, jwt_secret, algorithm="HS256")
-        
+
         test_client.close()
-        
+
         # Programar reinicio del backend en segundo plano (después de responder)
         # Primero intentamos recargar la configuración dinámicamente
         import subprocess
         import threading
-        
+
         def reload_and_restart():
             import time
             time.sleep(1)  # Pequeña espera para que la respuesta llegue al cliente
-            
+
             # Intentar recargar la configuración dinámicamente
             try:
                 from services.database import reload_database_config
@@ -248,14 +253,14 @@ async def configure_app(setup: SetupRequest):
                 logger.info("Database configuration reloaded dynamically")
             except Exception as e:
                 logger.warning(f"Could not reload database config dynamically: {e}")
-            
+
             # También programar un reinicio del servicio para asegurar
             time.sleep(1)
             try:
                 # Intentar reiniciar el servicio systemd con sudo
                 result = subprocess.run(
-                    ['sudo', 'systemctl', 'restart', 'syncstock-backend'], 
-                    capture_output=True, 
+                    ['sudo', 'systemctl', 'restart', 'syncstock-backend'],
+                    capture_output=True,
                     timeout=15
                 )
                 if result.returncode == 0:
@@ -263,8 +268,8 @@ async def configure_app(setup: SetupRequest):
                 else:
                     # Intentar sin sudo (por si el usuario tiene permisos)
                     subprocess.run(
-                        ['systemctl', 'restart', 'syncstock-backend'], 
-                        capture_output=True, 
+                        ['systemctl', 'restart', 'syncstock-backend'],
+                        capture_output=True,
                         timeout=15
                     )
                     logger.info("Backend service restarted via systemctl (no sudo)")
@@ -272,18 +277,18 @@ async def configure_app(setup: SetupRequest):
                 logger.warning(f"Could not restart via systemctl: {e}")
                 try:
                     # Fallback: reiniciar via supervisorctl (para desarrollo)
-                    subprocess.run(['supervisorctl', 'restart', 'backend'], 
+                    subprocess.run(['supervisorctl', 'restart', 'backend'],
                                  capture_output=True, timeout=10)
                     logger.info("Backend service restarted via supervisorctl")
                 except Exception as e2:
                     logger.warning(f"Could not restart via supervisorctl: {e2}")
                     logger.info("Manual restart may be required: sudo systemctl restart syncstock-backend")
-        
+
         # Iniciar la recarga/reinicio en un hilo separado
         restart_thread = threading.Thread(target=reload_and_restart, daemon=True)
         restart_thread.start()
         logger.info("Database reload and backend restart scheduled")
-        
+
         return SetupResponse(
             success=True,
             message="¡Configuración completada! El servidor se reiniciará automáticamente.",
@@ -300,7 +305,7 @@ async def configure_app(setup: SetupRequest):
             },
             requires_restart=True
         )
-        
+
     except Exception as e:
         logger.error(f"Setup error: {e}")
         return SetupResponse(
@@ -317,33 +322,33 @@ async def test_mongo_connection(data: dict, _admin: dict = Depends(get_superadmi
     Requiere autenticación de SuperAdmin.
     """
     from motor.motor_asyncio import AsyncIOMotorClient
-    
+
     mongo_url = data.get("mongo_url", "")
     db_name = data.get("db_name", "syncstock_db")
-    
+
     if not mongo_url:
         return {"success": False, "message": "URL de MongoDB requerida"}
-    
+
     try:
         test_client = AsyncIOMotorClient(
             mongo_url,
             connectTimeoutMS=5000,
             serverSelectionTimeoutMS=5000,
         )
-        
+
         # Probar la conexión
         await test_client.admin.command("ping")
-        
+
         # Obtener información del servidor
         server_info = await test_client.server_info()
         version = server_info.get("version", "desconocida")
-        
+
         # Verificar si la base de datos existe y tiene datos
         test_db = test_client[db_name]
         collections = await test_db.list_collection_names()
-        
+
         test_client.close()
-        
+
         return {
             "success": True,
             "message": f"Conexión exitosa a MongoDB v{version}",
@@ -351,11 +356,11 @@ async def test_mongo_connection(data: dict, _admin: dict = Depends(get_superadmi
             "collections_count": len(collections),
             "has_data": len(collections) > 0
         }
-        
+
     except Exception as e:
         logger.error(f"Connection test error: {e}")
         error_msg = str(e)
-        
+
         # Mensajes de error más amigables
         if "Authentication failed" in error_msg:
             error_msg = "Error de autenticación. Verifica el usuario y contraseña en la URL de MongoDB."
@@ -365,7 +370,7 @@ async def test_mongo_connection(data: dict, _admin: dict = Depends(get_superadmi
             error_msg = "URL de MongoDB inválida. Formato correcto: mongodb://[usuario:contraseña@]host:puerto/?authSource=admin"
         elif "connection refused" in error_msg.lower():
             error_msg = "Conexión rechazada. Verifica que MongoDB esté corriendo y el puerto esté abierto."
-        
+
         return {
             "success": False,
             "message": error_msg
@@ -391,7 +396,7 @@ async def create_backup(_admin: dict = Depends(get_superadmin_user)):
     Requiere autenticación de SuperAdmin.
     """
     backup_path = backup_config()
-    
+
     if backup_path:
         return {
             "success": True,
@@ -430,11 +435,11 @@ async def reload_database(_admin: dict = Depends(get_superadmin_user)):
     try:
         from services.database import reload_database_config
         reload_database_config()
-        
+
         # Verificar que la conexión funciona
         from services.database import db
         await db.command("ping")
-        
+
         return {
             "success": True,
             "message": "Configuración de base de datos recargada correctamente"

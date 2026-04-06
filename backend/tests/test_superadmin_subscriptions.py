@@ -5,9 +5,10 @@ Test Suite: SuperAdmin Features and Subscriptions
 - Subscription plans endpoints
 - Role-based access control
 """
+import os
+
 import pytest
 import requests
-import os
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -20,7 +21,7 @@ ADMIN_PASSWORD = "admin123"
 
 class TestSuperAdminDashboard:
     """Test SuperAdmin dashboard stats endpoint"""
-    
+
     @pytest.fixture(autouse=True)
     def setup(self):
         """Login as superadmin for all tests"""
@@ -35,7 +36,7 @@ class TestSuperAdminDashboard:
         token = login_res.json()["token"]
         self.session.headers.update({"Authorization": f"Bearer {token}"})
         self.superadmin_user = login_res.json()["user"]
-    
+
     def test_superadmin_stats_returns_200(self):
         """GET /api/dashboard/superadmin-stats should return 200 for superadmin"""
         response = self.session.get(f"{BASE_URL}/api/dashboard/superadmin-stats")
@@ -47,7 +48,7 @@ class TestSuperAdminDashboard:
         assert "sync" in data
         assert "woocommerce" in data
         assert "top_users" in data
-    
+
     def test_superadmin_stats_users_structure(self):
         """Verify users section has correct structure"""
         response = self.session.get(f"{BASE_URL}/api/dashboard/superadmin-stats")
@@ -63,7 +64,7 @@ class TestSuperAdminDashboard:
         assert "admin" in by_role
         assert "user" in by_role
         assert "viewer" in by_role
-    
+
     def test_superadmin_stats_resources_structure(self):
         """Verify resources section has correct structure"""
         response = self.session.get(f"{BASE_URL}/api/dashboard/superadmin-stats")
@@ -73,7 +74,7 @@ class TestSuperAdminDashboard:
         assert "products" in resources
         assert "catalogs" in resources
         assert "woocommerce_stores" in resources
-    
+
     def test_superadmin_stats_sync_structure(self):
         """Verify sync section has correct structure"""
         response = self.session.get(f"{BASE_URL}/api/dashboard/superadmin-stats")
@@ -81,7 +82,7 @@ class TestSuperAdminDashboard:
         sync = data["sync"]
         assert "this_week" in sync
         assert "errors_this_week" in sync
-    
+
     def test_superadmin_stats_forbidden_for_admin(self):
         """GET /api/dashboard/superadmin-stats should return 403 for non-superadmin"""
         # Login as admin
@@ -95,14 +96,14 @@ class TestSuperAdminDashboard:
             pytest.skip("Admin user not available")
         token = login_res.json()["token"]
         admin_session.headers.update({"Authorization": f"Bearer {token}"})
-        
+
         response = admin_session.get(f"{BASE_URL}/api/dashboard/superadmin-stats")
         assert response.status_code == 403
 
 
 class TestUserManagement:
     """Test user management endpoints for superadmin"""
-    
+
     @pytest.fixture(autouse=True)
     def setup(self):
         """Login as superadmin for all tests"""
@@ -116,7 +117,7 @@ class TestUserManagement:
         token = login_res.json()["token"]
         self.session.headers.update({"Authorization": f"Bearer {token}"})
         self.superadmin_id = login_res.json()["user"]["id"]
-    
+
     def test_list_users_returns_200(self):
         """GET /api/users should return list of users"""
         response = self.session.get(f"{BASE_URL}/api/users")
@@ -130,7 +131,7 @@ class TestUserManagement:
             assert "name" in user
             assert "role" in user
             assert "password" not in user  # Password should be excluded
-    
+
     def test_get_user_with_usage(self):
         """GET /api/users/{user_id} should return user with resource usage"""
         # Get list of users first
@@ -138,14 +139,14 @@ class TestUserManagement:
         users = users_res.json()
         if not users:
             pytest.skip("No users available")
-        
+
         # Get first user's details
         user_id = users[0]["id"]
         response = self.session.get(f"{BASE_URL}/api/users/{user_id}")
         assert response.status_code == 200
         data = response.json()
         assert "usage" in data
-    
+
     def test_update_user_limits_superadmin_only(self):
         """PUT /api/users/{user_id}/limits should work for superadmin only"""
         # Get a non-superadmin user
@@ -156,10 +157,10 @@ class TestUserManagement:
             if u["role"] != "superadmin" and u["id"] != self.superadmin_id:
                 target_user = u
                 break
-        
+
         if not target_user:
             pytest.skip("No non-superadmin user available for testing")
-        
+
         # Update limits
         new_limits = {
             "max_suppliers": 15,
@@ -169,7 +170,7 @@ class TestUserManagement:
         response = self.session.put(f"{BASE_URL}/api/users/{target_user['id']}/limits", json=new_limits)
         assert response.status_code == 200
         assert "message" in response.json()
-        
+
         # Verify the limits were updated
         verify_res = self.session.get(f"{BASE_URL}/api/users/{target_user['id']}")
         assert verify_res.status_code == 200
@@ -177,7 +178,7 @@ class TestUserManagement:
         assert updated_user["max_suppliers"] == 15
         assert updated_user["max_catalogs"] == 8
         assert updated_user["max_woocommerce_stores"] == 3
-    
+
     def test_update_role_changes_limits(self):
         """PUT /api/users/{user_id}/role should update role and set default limits"""
         # Get a non-superadmin user
@@ -188,10 +189,10 @@ class TestUserManagement:
             if u["role"] not in ["superadmin"] and u["id"] != self.superadmin_id:
                 target_user = u
                 break
-        
+
         if not target_user:
             pytest.skip("No suitable user available for role change test")
-        
+
         # Change role to user
         response = self.session.put(f"{BASE_URL}/api/users/{target_user['id']}/role?role=user")
         assert response.status_code == 200
@@ -199,7 +200,7 @@ class TestUserManagement:
 
 class TestSubscriptionPlans:
     """Test subscription plans endpoints"""
-    
+
     @pytest.fixture(autouse=True)
     def setup(self):
         """Login as superadmin for all tests"""
@@ -212,7 +213,7 @@ class TestSubscriptionPlans:
         assert login_res.status_code == 200
         token = login_res.json()["token"]
         self.session.headers.update({"Authorization": f"Bearer {token}"})
-    
+
     def test_get_plans_returns_4_plans(self):
         """GET /api/subscriptions/plans should return 4 default plans"""
         response = self.session.get(f"{BASE_URL}/api/subscriptions/plans")
@@ -224,7 +225,7 @@ class TestSubscriptionPlans:
         assert "Starter" in plan_names
         assert "Professional" in plan_names
         assert "Enterprise" in plan_names
-    
+
     def test_plans_have_correct_structure(self):
         """Verify each plan has correct structure"""
         response = self.session.get(f"{BASE_URL}/api/subscriptions/plans")
@@ -241,7 +242,7 @@ class TestSubscriptionPlans:
             assert "features" in plan
             assert "is_active" in plan
             assert isinstance(plan["features"], list)
-    
+
     def test_free_plan_prices(self):
         """Verify Free plan has zero prices"""
         response = self.session.get(f"{BASE_URL}/api/subscriptions/plans")
@@ -250,7 +251,7 @@ class TestSubscriptionPlans:
         assert free_plan is not None
         assert free_plan["price_monthly"] == 0
         assert free_plan["price_yearly"] == 0
-    
+
     def test_professional_plan_limits(self):
         """Verify Professional plan limits"""
         response = self.session.get(f"{BASE_URL}/api/subscriptions/plans")
@@ -262,7 +263,7 @@ class TestSubscriptionPlans:
         assert pro_plan["max_woocommerce_stores"] == 10
         assert pro_plan["price_monthly"] == 49.99
         assert pro_plan["price_yearly"] == 499.99
-    
+
     def test_enterprise_plan_unlimited(self):
         """Verify Enterprise plan has unlimited (999999) limits"""
         response = self.session.get(f"{BASE_URL}/api/subscriptions/plans")
@@ -272,7 +273,7 @@ class TestSubscriptionPlans:
         assert enterprise["max_suppliers"] >= 999999
         assert enterprise["max_catalogs"] >= 999999
         assert enterprise["max_woocommerce_stores"] >= 999999
-    
+
     def test_get_my_subscription(self):
         """GET /api/subscriptions/my should return current subscription"""
         response = self.session.get(f"{BASE_URL}/api/subscriptions/my")
@@ -284,7 +285,7 @@ class TestSubscriptionPlans:
 
 class TestSubscriptionActions:
     """Test subscription actions (subscribe/cancel)"""
-    
+
     @pytest.fixture(autouse=True)
     def setup(self):
         """Login as admin for subscription tests"""
@@ -299,7 +300,7 @@ class TestSubscriptionActions:
             pytest.skip("Admin user not available")
         token = login_res.json()["token"]
         self.session.headers.update({"Authorization": f"Bearer {token}"})
-    
+
     def test_subscribe_to_plan(self):
         """POST /api/subscriptions/subscribe/{plan_id} should create subscription"""
         # Get plans
@@ -308,7 +309,7 @@ class TestSubscriptionActions:
         starter_plan = next((p for p in plans if p["name"] == "Starter"), None)
         if not starter_plan:
             pytest.skip("Starter plan not available")
-        
+
         # Subscribe to starter plan
         response = self.session.post(f"{BASE_URL}/api/subscriptions/subscribe/{starter_plan['id']}?billing_cycle=monthly")
         assert response.status_code == 200

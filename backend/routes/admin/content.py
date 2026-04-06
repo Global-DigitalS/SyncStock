@@ -1,9 +1,10 @@
 """
 Rutas de contenido de la landing page para SuperAdmin.
 """
-from fastapi import APIRouter, Depends
-from datetime import datetime, timezone
 import logging
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends
 
 from services.auth import get_superadmin_user
 from services.database import db
@@ -130,7 +131,7 @@ async def get_landing_content():
 
     # Merge with defaults to ensure all fields exist
     result = default_content.copy()
-    for key in default_content.keys():
+    for key in default_content:
         if key in content and content[key]:
             result[key] = content[key]
 
@@ -141,7 +142,7 @@ async def get_landing_content():
 async def update_landing_content(data: dict, user: dict = Depends(get_superadmin_user)):
     """Update landing page content"""
     data["type"] = "landing_content"
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    data["updated_at"] = datetime.now(UTC).isoformat()
 
     await db.app_config.update_one(
         {"type": "landing_content"},

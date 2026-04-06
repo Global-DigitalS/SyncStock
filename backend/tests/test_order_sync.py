@@ -1,7 +1,6 @@
 """
 Tests for bidirectional order synchronization
 """
-import pytest
 from services.orders.order_sync import OrderStatusMapper
 
 

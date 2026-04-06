@@ -2,29 +2,28 @@
 Rutas para configuración y envío de correos electrónicos.
 Soporta múltiples cuentas de email para diferentes propósitos.
 """
+import logging
+import secrets
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
-from typing import Optional, Dict, Any
-from datetime import datetime, timezone, timedelta
-import uuid
-import secrets
-import logging
 
-from services.auth import get_current_user, get_superadmin_user, hash_password
-from services.database import db
+from services.auth import get_superadmin_user, hash_password
 from services.config_manager import get_config, update_config
-from services.encryption import encrypt_password, decrypt_password
+from services.database import db
 from services.email_service import (
     EmailService,
+    get_contact_form_email_template,
     get_email_service,
     get_email_service_async,
-    get_welcome_email_template,
     get_password_reset_email_template,
     get_subscription_change_email_template,
     get_superadmin_new_registration_email_template,
     get_superadmin_status_change_email_template,
-    get_contact_form_email_template,
+    get_welcome_email_template,
 )
+from services.encryption import decrypt_password, encrypt_password
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -37,8 +36,8 @@ class SmtpConfigRequest(BaseModel):
     smtp_port: int = 587
     smtp_user: str
     smtp_password: str
-    smtp_from_email: Optional[str] = ""
-    smtp_from_name: Optional[str] = "SyncStock"
+    smtp_from_email: str | None = ""
+    smtp_from_name: str | None = "SyncStock"
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
 
@@ -62,7 +61,7 @@ class SmtpTestRequest(BaseModel):
     smtp_password: str
     smtp_use_tls: bool = True
     smtp_use_ssl: bool = False
-    test_email: Optional[str] = None
+    test_email: str | None = None
 
 
 class PasswordResetRequest(BaseModel):
@@ -139,7 +138,7 @@ async def update_email_account(
     """Update a specific email account configuration"""
     if account_type not in EMAIL_ACCOUNT_TYPES:
         raise HTTPException(status_code=400, detail=f"Tipo de cuenta inválido. Usa: {EMAIL_ACCOUNT_TYPES}")
-    
+
     update_data = {
         "type": account_type,
         "smtp_host": config.smtp_host,
@@ -150,20 +149,20 @@ async def update_email_account(
         "smtp_use_tls": config.smtp_use_tls,
         "smtp_use_ssl": config.smtp_use_ssl,
         "enabled": config.enabled,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
         "updated_by": user.get("email")
     }
-    
+
     # Only update password if provided; encrypt before storing (A02)
     if config.smtp_password:
         update_data["smtp_password"] = encrypt_password(config.smtp_password)
-    
+
     await db.email_accounts.update_one(
         {"type": account_type},
         {"$set": update_data},
         upsert=True
     )
-    
+
     logger.info(f"Email account '{account_type}' updated by {user.get('email')}")
     return {"success": True, "message": f"Configuración de {account_type} actualizada"}
 
@@ -176,31 +175,31 @@ async def test_email_account_connection(
     """Test SMTP connection for a specific email account"""
     if account_type not in EMAIL_ACCOUNT_TYPES:
         raise HTTPException(status_code=400, detail="Tipo de cuenta inválido")
-    
+
     config = await db.email_accounts.find_one({"type": account_type})
     if not config or not config.get("smtp_host"):
         raise HTTPException(status_code=400, detail="Cuenta no configurada")
-    
+
     try:
         import smtplib
-        
+
         smtp_host = config.get("smtp_host")
         smtp_port = config.get("smtp_port", 587)
         smtp_user = config.get("smtp_user")
         smtp_password = decrypt_password(config.get("smtp_password", ""))
         use_tls = config.get("smtp_use_tls", True)
         use_ssl = config.get("smtp_use_ssl", False)
-        
+
         if use_ssl:
             server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=10)
         else:
             server = smtplib.SMTP(smtp_host, smtp_port, timeout=10)
             if use_tls:
                 server.starttls()
-        
+
         server.login(smtp_user, smtp_password)
         server.quit()
-        
+
         return {"success": True, "message": "Conexión exitosa"}
     except Exception as e:
         logger.error(f"SMTP connection test failed for {account_type}: {e}")
@@ -216,11 +215,11 @@ async def send_test_email_from_account(
     """Send a test email from a specific account"""
     if account_type not in EMAIL_ACCOUNT_TYPES:
         raise HTTPException(status_code=400, detail="Tipo de cuenta inválido")
-    
+
     config = await db.email_accounts.find_one({"type": account_type})
     if not config or not config.get("smtp_host"):
         raise HTTPException(status_code=400, detail="Cuenta no configurada")
-    
+
     try:
         # Create email service with this specific config
         email_config = {
@@ -233,16 +232,16 @@ async def send_test_email_from_account(
             "smtp_use_tls": config.get("smtp_use_tls", True),
             "smtp_use_ssl": config.get("smtp_use_ssl", False)
         }
-        
+
         email_service = EmailService(email_config)
-        
+
         # Get appropriate test template
         account_labels = {
             "transactional": "Transaccional (Registro/Contraseñas)",
             "support": "Soporte",
             "billing": "Facturación"
         }
-        
+
         html_content = f"""
         <html>
         <body style="font-family: Arial, sans-serif; padding: 20px;">
@@ -260,19 +259,19 @@ async def send_test_email_from_account(
         </body>
         </html>
         """
-        
+
         result = email_service.send_email(
             to_email=request.to_email,
             subject=f"[TEST] Email de prueba - {account_labels.get(account_type, account_type)}",
             html_content=html_content,
             text_content=f"Email de prueba desde la cuenta {account_type}"
         )
-        
+
         if result["success"]:
             return {"success": True, "message": "Email enviado correctamente"}
         else:
             raise HTTPException(status_code=500, detail=result["message"])
-            
+
     except HTTPException:
         raise
     except Exception as e:
@@ -286,7 +285,7 @@ async def send_test_email_from_account(
 async def get_email_config(user: dict = Depends(get_superadmin_user)):
     """Obtiene la configuración actual de email (sin contraseña)"""
     config = get_config()
-    
+
     return {
         "smtp_host": config.smtp_host,
         "smtp_port": config.smtp_port,
@@ -315,7 +314,7 @@ async def save_email_config(req: SmtpConfigRequest, user: dict = Depends(get_sup
             smtp_use_ssl=req.smtp_use_ssl,
             smtp_configured=True
         )
-        
+
         return {
             "success": True,
             "message": "Configuración de email guardada correctamente"
@@ -339,7 +338,7 @@ async def test_smtp_connection(req: SmtpTestRequest, _admin: dict = Depends(get_
         'smtp_use_tls': req.smtp_use_tls,
         'smtp_use_ssl': req.smtp_use_ssl,
     })
-    
+
     result = email_service.test_connection()
     return result
 
@@ -348,16 +347,16 @@ async def test_smtp_connection(req: SmtpTestRequest, _admin: dict = Depends(get_
 async def send_test_email(req: SendTestEmailRequest, user: dict = Depends(get_superadmin_user)):
     """Envía un correo de prueba"""
     email_service = get_email_service()
-    
+
     if not email_service.is_configured():
         return {
             "success": False,
             "message": "El servicio de email no está configurado"
         }
-    
+
     config = get_config()
     app_url = config.cors_origins.split(',')[0] if config.cors_origins != '*' else 'https://app.example.com'
-    
+
     # Seleccionar template
     if req.template == "welcome":
         template = get_welcome_email_template("Usuario de Prueba", app_url)
@@ -376,14 +375,14 @@ async def send_test_email(req: SendTestEmailRequest, user: dict = Depends(get_su
         )
     else:
         return {"success": False, "message": "Template no válido"}
-    
+
     result = email_service.send_email(
         to_email=req.to_email,
         subject=f"[PRUEBA] {template['subject']}",
         html_content=template['html'],
         text_content=template['text']
     )
-    
+
     return result
 
 
@@ -394,7 +393,7 @@ async def forgot_password(req: PasswordResetRequest):
     """Solicita un enlace para restablecer contraseña"""
     # Buscar usuario
     user = await db.users.find_one({"email": req.email})
-    
+
     # Siempre devolver éxito para no revelar si el email existe
     if not user:
         logger.info(f"Password reset requested for non-existent email: {req.email}")
@@ -402,11 +401,11 @@ async def forgot_password(req: PasswordResetRequest):
             "success": True,
             "message": "Si el email existe, recibirás un enlace para restablecer tu contraseña"
         }
-    
+
     # Generar token de reset (criptográficamente seguro)
     reset_token = secrets.token_urlsafe(32)
-    reset_expires = datetime.now(timezone.utc) + timedelta(hours=1)
-    
+    reset_expires = datetime.now(UTC) + timedelta(hours=1)
+
     # Guardar token en la base de datos
     await db.users.update_one(
         {"email": req.email},
@@ -415,33 +414,33 @@ async def forgot_password(req: PasswordResetRequest):
             "reset_token_expires": reset_expires.isoformat()
         }}
     )
-    
+
     # Enviar email
     email_service = get_email_service()
-    
+
     if email_service.is_configured():
         config = get_config()
         app_url = config.cors_origins.split(',')[0] if config.cors_origins != '*' else ''
         reset_link = f"{app_url}/reset-password?token={reset_token}"
-        
+
         template = get_password_reset_email_template(
             user.get('name', 'Usuario'),
             reset_link,
             app_url
         )
-        
+
         result = email_service.send_email(
             to_email=req.email,
             subject=template['subject'],
             html_content=template['html'],
             text_content=template['text']
         )
-        
+
         if not result['success']:
             logger.error(f"Failed to send password reset email: {result['message']}")
     else:
         logger.warning("Email service not configured, password reset email not sent")
-    
+
     return {
         "success": True,
         "message": "Si el email existe, recibirás un enlace para restablecer tu contraseña"
@@ -453,17 +452,17 @@ async def reset_password(req: PasswordResetConfirm):
     """Restablece la contraseña usando el token"""
     # Buscar usuario con el token
     user = await db.users.find_one({"reset_token": req.token})
-    
+
     if not user:
         raise HTTPException(status_code=400, detail="Token inválido o expirado")
-    
+
     # Verificar expiración
     expires = user.get('reset_token_expires')
     if expires:
         expires_dt = datetime.fromisoformat(expires.replace('Z', '+00:00'))
-        if datetime.now(timezone.utc) > expires_dt:
+        if datetime.now(UTC) > expires_dt:
             raise HTTPException(status_code=400, detail="Token expirado. Solicita uno nuevo.")
-    
+
     # Actualizar contraseña y limpiar token
     await db.users.update_one(
         {"reset_token": req.token},
@@ -472,7 +471,7 @@ async def reset_password(req: PasswordResetConfirm):
             "$unset": {"reset_token": "", "reset_token_expires": ""}
         }
     )
-    
+
     return {
         "success": True,
         "message": "Contraseña actualizada correctamente"
@@ -483,17 +482,17 @@ async def reset_password(req: PasswordResetConfirm):
 async def verify_reset_token(token: str):
     """Verifica si un token de reset es válido"""
     user = await db.users.find_one({"reset_token": token})
-    
+
     if not user:
         return {"valid": False, "message": "Token inválido"}
-    
+
     # Verificar expiración
     expires = user.get('reset_token_expires')
     if expires:
         expires_dt = datetime.fromisoformat(expires.replace('Z', '+00:00'))
-        if datetime.now(timezone.utc) > expires_dt:
+        if datetime.now(UTC) > expires_dt:
             return {"valid": False, "message": "Token expirado"}
-    
+
     return {"valid": True}
 
 
@@ -502,17 +501,17 @@ async def verify_reset_token(token: str):
 async def send_welcome_email(user_email: str, user_name: str):
     """Envía email de bienvenida a un nuevo usuario"""
     email_service = get_email_service()
-    
+
     if not email_service.is_configured():
         logger.info("Email service not configured, skipping welcome email")
         return
-    
+
     try:
         config = get_config()
         app_url = config.cors_origins.split(',')[0] if config.cors_origins != '*' else ''
-        
+
         template = get_welcome_email_template(user_name, app_url)
-        
+
         email_service.send_email(
             to_email=user_email,
             subject=template['subject'],
@@ -596,17 +595,17 @@ async def notify_superadmins_status_change(user_name: str, user_email: str, new_
 async def send_subscription_change_email(user_email: str, user_name: str, old_plan: str, new_plan: str):
     """Envía email de cambio de suscripción"""
     email_service = get_email_service()
-    
+
     if not email_service.is_configured():
         logger.info("Email service not configured, skipping subscription change email")
         return
-    
+
     try:
         config = get_config()
         app_url = config.cors_origins.split(',')[0] if config.cors_origins != '*' else ''
-        
+
         template = get_subscription_change_email_template(user_name, old_plan, new_plan, app_url)
-        
+
         email_service.send_email(
             to_email=user_email,
             subject=template['subject'],
@@ -625,7 +624,7 @@ CONTACT_DESTINATION_EMAIL = "hola@sync-stock.com"
 class ContactFormRequest(BaseModel):
     name: str
     email: EmailStr
-    subject: Optional[str] = ""
+    subject: str | None = ""
     message: str
 
 

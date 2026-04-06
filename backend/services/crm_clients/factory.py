@@ -1,16 +1,16 @@
 """
 CRM client factory function and platform classification constants.
 """
-from .dolibarr import DolibarrClient
-from .odoo import OdooClient
 from .basic_clients import (
+    FreshsalesClient,
     HubSpotClient,
+    MondayClient,
+    PipedriveClient,
     SalesforceClient,
     ZohoClient,
-    PipedriveClient,
-    MondayClient,
-    FreshsalesClient,
 )
+from .dolibarr import DolibarrClient
+from .odoo import OdooClient
 
 
 def create_crm_client(platform: str, config: dict):

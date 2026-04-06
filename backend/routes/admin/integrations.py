@@ -1,12 +1,12 @@
 """
 Rutas de integraciones (Google Services, SEO) para SuperAdmin.
 """
-from fastapi import APIRouter, Depends, HTTPException
+import logging
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime, timezone
-import logging
 
 from services.auth import get_superadmin_user
 from services.database import db
@@ -37,20 +37,20 @@ class GoogleServicesConfig(BaseModel):
 
 class GoogleServicesConfigUpdate(BaseModel):
     # Google Analytics (GA4)
-    analytics_enabled: Optional[bool] = None
-    analytics_measurement_id: Optional[str] = None
-    analytics_api_secret: Optional[str] = None
+    analytics_enabled: bool | None = None
+    analytics_measurement_id: str | None = None
+    analytics_api_secret: str | None = None
     # Google Search Console
-    search_console_enabled: Optional[bool] = None
-    search_console_property_url: Optional[str] = None
-    search_console_verification_code: Optional[str] = None
+    search_console_enabled: bool | None = None
+    search_console_property_url: str | None = None
+    search_console_verification_code: str | None = None
     # Google Tag Manager
-    tag_manager_enabled: Optional[bool] = None
-    tag_manager_container_id: Optional[str] = None
+    tag_manager_enabled: bool | None = None
+    tag_manager_container_id: str | None = None
     # Google Ads
-    google_ads_enabled: Optional[bool] = None
-    google_ads_conversion_id: Optional[str] = None
-    google_ads_conversion_label: Optional[str] = None
+    google_ads_enabled: bool | None = None
+    google_ads_conversion_id: str | None = None
+    google_ads_conversion_label: str | None = None
 
 
 _GOOGLE_DEFAULTS = GoogleServicesConfig().model_dump()
@@ -82,7 +82,7 @@ async def update_google_services(data: GoogleServicesConfigUpdate, user: dict = 
         if isinstance(update_data[key], str):
             update_data[key] = sanitize_string(update_data[key])
 
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
     update_data["updated_by"] = user["id"]
 
     await db.app_config.update_one(
@@ -144,20 +144,20 @@ class SEOConfig(BaseModel):
     twitter_image: str = ""
 
 class SEOConfigUpdate(BaseModel):
-    site_url: Optional[str] = None
-    page_title: Optional[str] = None
-    meta_description: Optional[str] = None
-    meta_keywords: Optional[str] = None
-    robots: Optional[str] = None
-    og_title: Optional[str] = None
-    og_description: Optional[str] = None
-    og_image: Optional[str] = None
-    og_locale: Optional[str] = None
-    og_site_name: Optional[str] = None
-    twitter_card: Optional[str] = None
-    twitter_title: Optional[str] = None
-    twitter_description: Optional[str] = None
-    twitter_image: Optional[str] = None
+    site_url: str | None = None
+    page_title: str | None = None
+    meta_description: str | None = None
+    meta_keywords: str | None = None
+    robots: str | None = None
+    og_title: str | None = None
+    og_description: str | None = None
+    og_image: str | None = None
+    og_locale: str | None = None
+    og_site_name: str | None = None
+    twitter_card: str | None = None
+    twitter_title: str | None = None
+    twitter_description: str | None = None
+    twitter_image: str | None = None
 
 
 _SEO_DEFAULTS = SEOConfig().model_dump()
@@ -197,7 +197,7 @@ async def update_seo_config(data: SEOConfigUpdate, user: dict = Depends(get_supe
     for key in list(update_data.keys()):
         if isinstance(update_data[key], str):
             update_data[key] = sanitize_string(update_data[key])
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
     update_data["updated_by"] = user["id"]
 
     await db.app_config.update_one(
@@ -241,7 +241,7 @@ async def get_sitemap():
 
     site_url = config.get("site_url", "https://sync-stock.com").rstrip("/") if config else "https://sync-stock.com"
 
-    lastmod = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    lastmod = datetime.now(UTC).strftime("%Y-%m-%d")
 
     urls_xml = ""
     for route in SITEMAP_ROUTES:

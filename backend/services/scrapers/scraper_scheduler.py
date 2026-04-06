@@ -10,13 +10,11 @@ Features:
 - Job status monitoring and detailed logging
 - Automatic failure recovery and dead-letter queue
 """
-import asyncio
 import logging
 import uuid
-from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Dict
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime, timedelta
 from enum import Enum
-from dataclasses import dataclass, asdict
 
 from services.database import db
 
@@ -49,15 +47,15 @@ class CrawlJob:
     status: JobStatus = JobStatus.PENDING
     attempts: int = 0
     max_retries: int = MAX_RETRIES
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
-    error_message: Optional[str] = None
+    started_at: str | None = None
+    completed_at: str | None = None
+    error_message: str | None = None
     products_found: int = 0
     products_matched: int = 0
     products_alerts: int = 0
-    duration_seconds: Optional[float] = None
-    next_retry_at: Optional[str] = None
-    scheduled_for: Optional[str] = None  # Timestamp when scheduled to run
+    duration_seconds: float | None = None
+    next_retry_at: str | None = None
+    scheduled_for: str | None = None  # Timestamp when scheduled to run
 
     def to_dict(self) -> dict:
         """Convert to dict for MongoDB storage."""
@@ -89,7 +87,7 @@ class CrawlJob:
 async def create_crawl_job(
     user_id: str,
     competitor_id: str,
-    scheduled_for: Optional[datetime] = None
+    scheduled_for: datetime | None = None
 ) -> CrawlJob:
     """
     Create a new crawl job.
@@ -113,7 +111,7 @@ async def create_crawl_job(
     await db.crawl_jobs.insert_one({
         **job.to_dict(),
         "_id": job.id,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "status": job.status.value
     })
 
@@ -121,7 +119,7 @@ async def create_crawl_job(
     return job
 
 
-async def get_job(job_id: str) -> Optional[CrawlJob]:
+async def get_job(job_id: str) -> CrawlJob | None:
     """Get a crawl job by ID."""
     doc = await db.crawl_jobs.find_one({"_id": job_id})
     if not doc:
@@ -139,7 +137,7 @@ async def update_job_status(
     """Update job status with additional fields."""
     update_data = {
         "status": status.value,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
         **kwargs
     }
 
@@ -167,7 +165,7 @@ async def schedule_job_retry(job_id: str, attempt: int) -> bool:
         return False
 
     delay_minutes = RETRY_DELAYS[attempt]
-    next_retry = datetime.now(timezone.utc) + timedelta(minutes=delay_minutes)
+    next_retry = datetime.now(UTC) + timedelta(minutes=delay_minutes)
 
     await update_job_status(
         job_id,
@@ -184,7 +182,7 @@ async def schedule_job_retry(job_id: str, attempt: int) -> bool:
 async def get_pending_jobs(
     limit: int = 50,
     max_age_hours: int = 24
-) -> List[CrawlJob]:
+) -> list[CrawlJob]:
     """
     Get pending or retrying jobs ready to execute.
 
@@ -195,7 +193,7 @@ async def get_pending_jobs(
     Returns:
         List of CrawlJob objects ready to run
     """
-    cutoff_time = (datetime.now(timezone.utc) - timedelta(hours=max_age_hours)).isoformat()
+    cutoff_time = (datetime.now(UTC) - timedelta(hours=max_age_hours)).isoformat()
 
     docs = await db.crawl_jobs.find({
         "status": {"$in": [JobStatus.PENDING.value, JobStatus.RETRYING.value]},
@@ -205,7 +203,7 @@ async def get_pending_jobs(
             {"status": JobStatus.PENDING.value},
             {
                 "status": JobStatus.RETRYING.value,
-                "next_retry_at": {"$lte": datetime.now(timezone.utc).isoformat()}
+                "next_retry_at": {"$lte": datetime.now(UTC).isoformat()}
             }
         ]
     }).limit(limit).to_list(limit)
@@ -229,7 +227,7 @@ async def get_active_crawl_count(user_id: str) -> int:
     return count
 
 
-async def can_start_crawl(user_id: str) -> tuple[bool, Optional[str]]:
+async def can_start_crawl(user_id: str) -> tuple[bool, str | None]:
     """
     Check if user can start a new crawl (respects concurrency limits).
 
@@ -249,7 +247,7 @@ async def mark_job_running(job_id: str) -> bool:
     return await update_job_status(
         job_id,
         JobStatus.RUNNING,
-        started_at=datetime.now(timezone.utc).isoformat()
+        started_at=datetime.now(UTC).isoformat()
     )
 
 
@@ -261,7 +259,7 @@ async def mark_job_completed(
     duration_seconds: float
 ) -> bool:
     """Mark a job as completed with results."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     return await update_job_status(
         job_id,
@@ -280,7 +278,7 @@ async def mark_job_failed(job_id: str, error_message: str) -> bool:
         job_id,
         JobStatus.FAILED,
         error_message=error_message,
-        completed_at=datetime.now(timezone.utc).isoformat()
+        completed_at=datetime.now(UTC).isoformat()
     )
 
 
@@ -291,7 +289,7 @@ async def get_job_stats(user_id: str, days: int = 7) -> dict:
     Returns:
         Stats including success rate, avg duration, recent errors, etc.
     """
-    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cutoff_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
     # Aggregate pipeline for stats
     stats = await db.crawl_jobs.aggregate([
@@ -381,7 +379,7 @@ async def schedule_user_crawls(user_id: str) -> int:
 
     # Schedule a job for each competitor
     jobs_scheduled = 0
-    scheduled_for = datetime.now(timezone.utc) + timedelta(hours=interval_hours)
+    scheduled_for = datetime.now(UTC) + timedelta(hours=interval_hours)
 
     for competitor in competitors:
         try:
@@ -404,7 +402,7 @@ async def cleanup_old_jobs(days: int = 30) -> int:
     Returns:
         Number of jobs deleted
     """
-    cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cutoff_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
     result = await db.crawl_jobs.delete_many({
         "created_at": {"$lt": cutoff_date},
@@ -415,7 +413,7 @@ async def cleanup_old_jobs(days: int = 30) -> int:
     return result.deleted_count
 
 
-async def get_failed_jobs(limit: int = 20) -> List[Dict]:
+async def get_failed_jobs(limit: int = 20) -> list[dict]:
     """Get recent failed jobs for monitoring/alerting."""
     docs = await db.crawl_jobs.find({
         "status": JobStatus.FAILED.value

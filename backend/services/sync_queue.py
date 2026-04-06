@@ -16,18 +16,18 @@ OPTIMIZED: Allows 1M+ products to sync without crashing the server by:
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Optional, Dict, List, Callable
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
 
-from services.database import db
 from config import (
     SYNC_MAX_CONCURRENT_GLOBAL,
     SYNC_MAX_CONCURRENT_PER_USER,
     SYNC_MAX_QUEUE_SIZE,
     SYNC_TIMEOUT_SECONDS,
 )
+from services.database import db
 
 logger = logging.getLogger(__name__)
 
@@ -54,11 +54,11 @@ class SyncTask:
     sync_type: SyncType = SyncType.SUPPLIER
     resource_id: str = ""  # supplier_id, store_id, or crm_connection_id
     status: SyncStatus = SyncStatus.PENDING
-    progress: Dict = field(default_factory=lambda: {"total": 0, "processed": 0})
-    error: Optional[str] = None
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-    started_at: Optional[str] = None
-    completed_at: Optional[str] = None
+    progress: dict = field(default_factory=lambda: {"total": 0, "processed": 0})
+    error: str | None = None
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
+    started_at: str | None = None
+    completed_at: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -129,18 +129,18 @@ class SyncQueueManager:
 
         # Task management
         self.pending_tasks: asyncio.Queue = asyncio.Queue(maxsize=max_queue_size)
-        self.running_tasks: Dict[str, asyncio.Task] = {}
-        self.completed_tasks: Dict[str, SyncTask] = {}
+        self.running_tasks: dict[str, asyncio.Task] = {}
+        self.completed_tasks: dict[str, SyncTask] = {}
 
         # Resource tracking
-        self.user_active_syncs: Dict[str, int] = {}  # user_id -> count
+        self.user_active_syncs: dict[str, int] = {}  # user_id -> count
         self.global_semaphore: asyncio.Semaphore = asyncio.Semaphore(max_concurrent_global)
 
         # Metrics
-        self.metrics: Dict[str, SyncMetrics] = {}
+        self.metrics: dict[str, SyncMetrics] = {}
 
         # Handler functions (injected from caller)
-        self.handlers: Dict[SyncType, Callable] = {
+        self.handlers: dict[SyncType, Callable] = {
             SyncType.SUPPLIER: None,
             SyncType.STORE: None,
             SyncType.CRM: None,
@@ -172,7 +172,7 @@ class SyncQueueManager:
                         self.pending_tasks.get(),
                         timeout=5.0
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
 
                 # Execute task with semaphore (global concurrency limit)
@@ -191,7 +191,7 @@ class SyncQueueManager:
         user_id: str,
         sync_type: SyncType,
         resource_id: str,
-    ) -> Dict:
+    ) -> dict:
         """
         Queue a new sync task.
 
@@ -210,7 +210,7 @@ class SyncQueueManager:
         if self.pending_tasks.qsize() >= self.max_queue_size:
             return {
                 "status": "error",
-                "message": f"El servidor está procesando muchas sincronizaciones. Intenta en unos minutos.",
+                "message": "El servidor está procesando muchas sincronizaciones. Intenta en unos minutos.",
                 "code": "queue_full"
             }
 
@@ -263,7 +263,7 @@ class SyncQueueManager:
         try:
             # Update task status in DB and memory
             task.status = SyncStatus.RUNNING
-            task.started_at = datetime.now(timezone.utc).isoformat()
+            task.started_at = datetime.now(UTC).isoformat()
 
             await db.sync_status.update_one(
                 {"id": sync_id},
@@ -288,7 +288,7 @@ class SyncQueueManager:
 
             # Mark as completed
             task.status = SyncStatus.COMPLETED
-            task.completed_at = datetime.now(timezone.utc).isoformat()
+            task.completed_at = datetime.now(UTC).isoformat()
 
             await db.sync_status.update_one(
                 {"id": sync_id},
@@ -302,10 +302,10 @@ class SyncQueueManager:
             logger.info(f"Sync {sync_id} completed successfully")
             self.completed_tasks[sync_id] = task
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             task.status = SyncStatus.FAILED
             task.error = f"Timeout: la sincronización tardó más de {self.sync_timeout_seconds}s"
-            task.completed_at = datetime.now(timezone.utc).isoformat()
+            task.completed_at = datetime.now(UTC).isoformat()
 
             await db.sync_status.update_one(
                 {"id": sync_id},
@@ -321,7 +321,7 @@ class SyncQueueManager:
         except Exception as e:
             task.status = SyncStatus.FAILED
             task.error = str(e)
-            task.completed_at = datetime.now(timezone.utc).isoformat()
+            task.completed_at = datetime.now(UTC).isoformat()
 
             await db.sync_status.update_one(
                 {"id": sync_id},
@@ -345,7 +345,7 @@ class SyncQueueManager:
         self.handlers[sync_type] = handler
         logger.info(f"Registered handler for sync type: {sync_type.value}")
 
-    async def get_sync_status(self, sync_id: str) -> Optional[Dict]:
+    async def get_sync_status(self, sync_id: str) -> dict | None:
         """Get status of a specific sync"""
         sync_doc = await db.sync_status.find_one({"id": sync_id})
         if not sync_doc:
@@ -354,14 +354,14 @@ class SyncQueueManager:
         sync_doc.pop("_id", None)
         return sync_doc
 
-    async def get_user_syncs(self, user_id: str) -> List[Dict]:
+    async def get_user_syncs(self, user_id: str) -> list[dict]:
         """Get all syncs for a user"""
         syncs = await db.sync_status.find({"user_id": user_id}).to_list(100)
         for sync in syncs:
             sync.pop("_id", None)
         return syncs
 
-    async def cancel_sync(self, sync_id: str) -> Dict:
+    async def cancel_sync(self, sync_id: str) -> dict:
         """Cancel a pending or running sync"""
         sync_doc = await db.sync_status.find_one({"id": sync_id})
         if not sync_doc:
@@ -374,7 +374,7 @@ class SyncQueueManager:
             {"id": sync_id},
             {"$set": {
                 "status": SyncStatus.CANCELLED.value,
-                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": datetime.now(UTC).isoformat(),
             }}
         )
 
@@ -383,7 +383,7 @@ class SyncQueueManager:
 
 
 # Global instance
-_queue_manager: Optional[SyncQueueManager] = None
+_queue_manager: SyncQueueManager | None = None
 
 
 def get_sync_queue() -> SyncQueueManager:

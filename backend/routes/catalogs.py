@@ -1,20 +1,30 @@
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Optional
-from datetime import datetime, timezone
-import uuid
 import logging
+import uuid
+from datetime import UTC, datetime
 
-from services.database import db
-from services.auth import get_current_user, check_user_limit
-from services.sync import calculate_final_price
+from fastapi import APIRouter, Depends, HTTPException
+
 from models.schemas import (
-    CatalogCreate, CatalogUpdate, CatalogResponse,
-    CatalogProductAdd, CatalogItemCreate, CatalogMarginRuleCreate,
-    CatalogMarginRuleResponse, MarginRuleCreate, MarginRuleResponse,
-    ProductResponse, CatalogCategoryCreate, CatalogCategoryUpdate,
-    CatalogCategoryResponse, CatalogCategoryBulkReorder, CatalogItemCategoryUpdate,
-    BulkCategoryAssignment
+    BulkCategoryAssignment,
+    CatalogCategoryBulkReorder,
+    CatalogCategoryCreate,
+    CatalogCategoryResponse,
+    CatalogCategoryUpdate,
+    CatalogCreate,
+    CatalogItemCategoryUpdate,
+    CatalogItemCreate,
+    CatalogMarginRuleCreate,
+    CatalogMarginRuleResponse,
+    CatalogProductAdd,
+    CatalogResponse,
+    CatalogUpdate,
+    MarginRuleCreate,
+    MarginRuleResponse,
+    ProductResponse,
 )
+from services.auth import check_user_limit, get_current_user
+from services.database import db
+from services.sync import calculate_final_price
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -35,12 +45,12 @@ async def create_catalog(catalog: CatalogCreate, user: dict = Depends(get_curren
     can_create = await check_user_limit(user, "catalogs")
     if not can_create:
         raise HTTPException(
-            status_code=403, 
+            status_code=403,
             detail=f"Has alcanzado el límite de catálogos. Máximo: {user.get('max_catalogs', 5)}"
         )
-    
+
     catalog_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     if catalog.is_default:
         await db.catalogs.update_many({"user_id": user["id"]}, {"$set": {"is_default": False}})
     existing_count = await db.catalogs.count_documents({"user_id": user["id"]})
@@ -55,16 +65,16 @@ async def create_catalog(catalog: CatalogCreate, user: dict = Depends(get_curren
         is_default=is_default, product_count=0, margin_rules_count=0, categories_count=0, created_at=now)
 
 
-@router.get("/catalogs", response_model=List[CatalogResponse])
+@router.get("/catalogs", response_model=list[CatalogResponse])
 async def get_catalogs(user: dict = Depends(get_current_user)):
     catalogs = await db.catalogs.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
-    
+
     if not catalogs:
         return []
-    
+
     # Obtener IDs de catálogos
     catalog_ids = [c["id"] for c in catalogs]
-    
+
     # Obtener conteos de productos en una sola consulta con agregación
     items_pipeline = [
         {"$match": {"catalog_id": {"$in": catalog_ids}}},
@@ -72,7 +82,7 @@ async def get_catalogs(user: dict = Depends(get_current_user)):
     ]
     items_counts_list = await db.catalog_items.aggregate(items_pipeline).to_list(100)
     items_counts = {doc["_id"]: doc["count"] for doc in items_counts_list}
-    
+
     # Obtener conteos de reglas en una sola consulta con agregación
     rules_pipeline = [
         {"$match": {"catalog_id": {"$in": catalog_ids}}},
@@ -80,7 +90,7 @@ async def get_catalogs(user: dict = Depends(get_current_user)):
     ]
     rules_counts_list = await db.catalog_margin_rules.aggregate(rules_pipeline).to_list(100)
     rules_counts = {doc["_id"]: doc["count"] for doc in rules_counts_list}
-    
+
     # Obtener conteos de categorías
     categories_pipeline = [
         {"$match": {"catalog_id": {"$in": catalog_ids}}},
@@ -88,7 +98,7 @@ async def get_catalogs(user: dict = Depends(get_current_user)):
     ]
     categories_counts_list = await db.catalog_categories.aggregate(categories_pipeline).to_list(100)
     categories_counts = {doc["_id"]: doc["count"] for doc in categories_counts_list}
-    
+
     # Construir respuesta
     result = []
     for cat in catalogs:
@@ -176,7 +186,7 @@ async def add_products_to_catalog(catalog_id: str, data: CatalogProductAdd, user
     ).to_list(len(product_ids))
     already_in_catalog = {i["product_id"] for i in existing_items}
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     category_ids = data.category_ids if data.category_ids else []
     to_insert = []
     for pid in product_ids:
@@ -199,8 +209,8 @@ async def add_products_to_catalog(catalog_id: str, data: CatalogProductAdd, user
 
 @router.get("/catalogs/{catalog_id}/products")
 async def get_catalog_products(
-    catalog_id: str, active_only: bool = False, search: Optional[str] = None,
-    category_id: Optional[str] = None,
+    catalog_id: str, active_only: bool = False, search: str | None = None,
+    category_id: str | None = None,
     skip: int = Query(0, ge=0, le=1000000),  # MEDIUM #12: Validate pagination
     limit: int = Query(100, ge=1, le=1000),  # MEDIUM #12: Validate limit range
     user: dict = Depends(get_current_user)
@@ -264,7 +274,7 @@ async def create_catalog_margin_rule(catalog_id: str, rule: CatalogMarginRuleCre
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
     rule_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     rule_doc = {
         "id": rule_id, "catalog_id": catalog_id, "user_id": user["id"],
         "name": rule.name, "rule_type": rule.rule_type, "value": rule.value,
@@ -276,7 +286,7 @@ async def create_catalog_margin_rule(catalog_id: str, rule: CatalogMarginRuleCre
     return CatalogMarginRuleResponse(**{k: v for k, v in rule_doc.items() if k != "user_id"})
 
 
-@router.get("/catalogs/{catalog_id}/margin-rules", response_model=List[CatalogMarginRuleResponse])
+@router.get("/catalogs/{catalog_id}/margin-rules", response_model=list[CatalogMarginRuleResponse])
 async def get_catalog_margin_rules(catalog_id: str, user: dict = Depends(get_current_user)):
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
@@ -323,7 +333,7 @@ async def add_to_catalog(item: CatalogItemCreate, user: dict = Depends(get_curre
     if existing:
         raise HTTPException(status_code=400, detail="Producto ya está en el catálogo")
     catalog_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.catalog_items.insert_one({
         "id": catalog_id, "product_id": item.product_id, "user_id": user["id"],
         "custom_price": item.custom_price, "custom_name": item.custom_name,
@@ -333,7 +343,7 @@ async def add_to_catalog(item: CatalogItemCreate, user: dict = Depends(get_curre
 
 
 @router.get("/catalog")
-async def get_catalog(active_only: bool = False, search: Optional[str] = None,
+async def get_catalog(active_only: bool = False, search: str | None = None,
     skip: int = 0, limit: int = 100, user: dict = Depends(get_current_user)):
     query = {"user_id": user["id"]}
     if active_only:
@@ -391,14 +401,14 @@ async def remove_from_catalog(catalog_id: str, user: dict = Depends(get_current_
 @router.post("/margin-rules", response_model=MarginRuleResponse)
 async def create_margin_rule(rule: MarginRuleCreate, user: dict = Depends(get_current_user)):
     rule_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     rule_doc = {"id": rule_id, "user_id": user["id"], **rule.model_dump(), "created_at": now}
     await db.catalog_margin_rules.insert_one(rule_doc)
     rule_doc.pop("_id", None)
     return MarginRuleResponse(**rule_doc)
 
 
-@router.get("/margin-rules", response_model=List[MarginRuleResponse])
+@router.get("/margin-rules", response_model=list[MarginRuleResponse])
 async def get_margin_rules(user: dict = Depends(get_current_user)):
     rules = await db.catalog_margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(MAX_MARGIN_RULES)
     return [MarginRuleResponse(**r) for r in rules]
@@ -425,7 +435,7 @@ async def delete_margin_rule(rule_id: str, user: dict = Depends(get_current_user
 
 # ==================== CATALOG CATEGORIES ====================
 
-async def get_category_level(catalog_id: str, parent_id: Optional[str]) -> int:
+async def get_category_level(catalog_id: str, parent_id: str | None) -> int:
     """Get the level of the parent category"""
     if not parent_id:
         return -1  # Return -1 so that child becomes level 0
@@ -435,7 +445,7 @@ async def get_category_level(catalog_id: str, parent_id: Optional[str]) -> int:
     return parent.get("level", 0)
 
 
-async def build_category_tree(categories: List[dict], parent_id: Optional[str] = None, counts_map: dict = None) -> List[dict]:
+async def build_category_tree(categories: list[dict], parent_id: str | None = None, counts_map: dict = None) -> list[dict]:
     """Build hierarchical tree structure from flat category list"""
     # Pre-cargar conteos si no se han cargado (1 query en vez de N)
     if counts_map is None and categories:
@@ -472,7 +482,7 @@ async def create_catalog_category(catalog_id: str, category: CatalogCategoryCrea
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    
+
     # Check parent exists and level limit
     level = 0
     if category.parent_id:
@@ -482,7 +492,7 @@ async def create_catalog_category(catalog_id: str, category: CatalogCategoryCrea
         level = await get_category_level(catalog_id, category.parent_id) + 1
         if level >= 4:
             raise HTTPException(status_code=400, detail="Máximo 4 niveles de categorías permitidos")
-    
+
     # Get next position if not specified
     if category.position == 0:
         max_pos = await db.catalog_categories.find_one(
@@ -490,9 +500,9 @@ async def create_catalog_category(catalog_id: str, category: CatalogCategoryCrea
             sort=[("position", -1)]
         )
         category.position = (max_pos.get("position", 0) + 1) if max_pos else 0
-    
+
     category_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     category_doc = {
         "id": category_id,
         "catalog_id": catalog_id,
@@ -505,7 +515,7 @@ async def create_catalog_category(catalog_id: str, category: CatalogCategoryCrea
         "created_at": now
     }
     await db.catalog_categories.insert_one(category_doc)
-    
+
     return CatalogCategoryResponse(
         id=category_id, catalog_id=catalog_id, name=category.name,
         parent_id=category.parent_id, position=category.position,
@@ -521,11 +531,11 @@ async def get_catalog_categories(catalog_id: str, flat: bool = False, user: dict
         catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
         if not catalog:
             raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-        
+
         categories = await db.catalog_categories.find(
             {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
         ).sort("position", 1).to_list(500)
-        
+
         if flat:
             # Batch: obtener conteos de todas las categorías en 1 query
             cat_ids = [c["id"] for c in categories]
@@ -544,7 +554,7 @@ async def get_catalog_categories(catalog_id: str, flat: bool = False, user: dict
                 cat_data = {k: v for k, v in cat.items() if k != "_id"}
                 result.append({**cat_data, "product_count": counts_map.get(cat["id"], 0), "children": []})
             return result
-        
+
         # Return tree structure
         return await build_category_tree(categories)
     except HTTPException:
@@ -560,18 +570,18 @@ async def get_catalog_category(catalog_id: str, category_id: str, user: dict = D
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    
+
     category = await db.catalog_categories.find_one(
         {"id": category_id, "catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
     )
     if not category:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
-    
+
     product_count = await db.catalog_items.count_documents({
         "catalog_id": catalog_id,
         "category_ids": category_id
     })
-    
+
     return CatalogCategoryResponse(**category, product_count=product_count, children=[])
 
 
@@ -581,13 +591,13 @@ async def update_catalog_category(catalog_id: str, category_id: str, update: Cat
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    
+
     existing = await db.catalog_categories.find_one({"id": category_id, "catalog_id": catalog_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
-    
+
     update_data = {k: v for k, v in update.model_dump().items() if v is not None}
-    
+
     # If changing parent, check level limit
     if "parent_id" in update_data and update_data["parent_id"] != existing.get("parent_id"):
         if update_data["parent_id"]:
@@ -600,16 +610,16 @@ async def update_catalog_category(catalog_id: str, category_id: str, update: Cat
             update_data["level"] = new_level
         else:
             update_data["level"] = 0
-    
+
     if update_data:
         await db.catalog_categories.update_one({"id": category_id}, {"$set": update_data})
-    
+
     updated = await db.catalog_categories.find_one({"id": category_id}, {"_id": 0, "user_id": 0})
     product_count = await db.catalog_items.count_documents({
         "catalog_id": catalog_id,
         "category_ids": category_id
     })
-    
+
     return CatalogCategoryResponse(**updated, product_count=product_count, children=[])
 
 
@@ -619,13 +629,13 @@ async def delete_catalog_category(catalog_id: str, category_id: str, user: dict 
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    
+
     existing = await db.catalog_categories.find_one({"id": category_id, "catalog_id": catalog_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
-    
+
     # Get all descendant categories
-    async def get_descendants(parent_id: str) -> List[str]:
+    async def get_descendants(parent_id: str) -> list[str]:
         descendants = []
         children = await db.catalog_categories.find(
             {"catalog_id": catalog_id, "parent_id": parent_id}
@@ -634,18 +644,18 @@ async def delete_catalog_category(catalog_id: str, category_id: str, user: dict 
             descendants.append(child["id"])
             descendants.extend(await get_descendants(child["id"]))
         return descendants
-    
+
     category_ids_to_delete = [category_id] + await get_descendants(category_id)
-    
+
     # Remove category references from products
     await db.catalog_items.update_many(
         {"catalog_id": catalog_id, "category_ids": {"$in": category_ids_to_delete}},
         {"$pull": {"category_ids": {"$in": category_ids_to_delete}}}
     )
-    
+
     # Delete categories
     await db.catalog_categories.delete_many({"id": {"$in": category_ids_to_delete}})
-    
+
     return {"message": f"Eliminadas {len(category_ids_to_delete)} categoría(s)"}
 
 
@@ -655,7 +665,7 @@ async def reorder_catalog_categories(catalog_id: str, reorder: CatalogCategoryBu
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    
+
     for update in reorder.updates:
         # Check level limit if changing parent
         if update.new_parent_id:
@@ -671,7 +681,7 @@ async def reorder_catalog_categories(catalog_id: str, reorder: CatalogCategoryBu
                 {"id": update.category_id, "catalog_id": catalog_id},
                 {"$set": {"parent_id": None, "position": update.new_position, "level": 0}}
             )
-    
+
     return {"message": "Categorías reordenadas"}
 
 
@@ -683,11 +693,11 @@ async def update_product_categories(catalog_id: str, item_id: str, update: Catal
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    
+
     item = await db.catalog_items.find_one({"id": item_id, "catalog_id": catalog_id})
     if not item:
         raise HTTPException(status_code=404, detail="Producto no encontrado en el catálogo")
-    
+
     # Verify all category IDs exist in this catalog
     if update.category_ids:
         valid_categories = await db.catalog_categories.find(
@@ -697,12 +707,12 @@ async def update_product_categories(catalog_id: str, item_id: str, update: Catal
         invalid_ids = set(update.category_ids) - set(valid_ids)
         if invalid_ids:
             raise HTTPException(status_code=400, detail=f"Categorías no válidas: {invalid_ids}")
-    
+
     await db.catalog_items.update_one(
         {"id": item_id},
         {"$set": {"category_ids": update.category_ids}}
     )
-    
+
     return {"message": "Categorías actualizadas", "category_ids": update.category_ids}
 
 
@@ -712,15 +722,15 @@ async def get_category_products(catalog_id: str, category_id: str, user: dict = 
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    
+
     category = await db.catalog_categories.find_one({"id": category_id, "catalog_id": catalog_id})
     if not category:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
-    
+
     items = await db.catalog_items.find(
         {"catalog_id": catalog_id, "category_ids": category_id}, {"_id": 0}
     ).to_list(500)
-    
+
     result = []
     for item in items:
         product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0, "user_id": 0})
@@ -731,7 +741,7 @@ async def get_category_products(catalog_id: str, category_id: str, user: dict = 
                 "product": product,
                 "category_ids": item.get("category_ids", [])
             })
-    
+
     return result
 
 
@@ -747,13 +757,13 @@ async def bulk_assign_categories(catalog_id: str, data: BulkCategoryAssignment, 
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    
+
     if not data.product_item_ids:
         raise HTTPException(status_code=400, detail="Debe seleccionar al menos un producto")
-    
+
     if data.mode not in ["add", "replace", "remove"]:
         raise HTTPException(status_code=400, detail="Modo no válido. Use 'add', 'replace' o 'remove'")
-    
+
     # Verify all category IDs exist in this catalog
     if data.category_ids:
         valid_categories = await db.catalog_categories.find(
@@ -763,9 +773,9 @@ async def bulk_assign_categories(catalog_id: str, data: BulkCategoryAssignment, 
         invalid_ids = set(data.category_ids) - set(valid_ids)
         if invalid_ids:
             raise HTTPException(status_code=400, detail=f"Categorías no válidas: {list(invalid_ids)}")
-    
+
     updated_count = 0
-    
+
     if data.mode == "replace":
         # Replace all categories
         result = await db.catalog_items.update_many(
@@ -773,7 +783,7 @@ async def bulk_assign_categories(catalog_id: str, data: BulkCategoryAssignment, 
             {"$set": {"category_ids": data.category_ids}}
         )
         updated_count = result.modified_count
-        
+
     elif data.mode == "add":
         # Add categories to existing ones (using $addToSet to avoid duplicates)
         result = await db.catalog_items.update_many(
@@ -781,7 +791,7 @@ async def bulk_assign_categories(catalog_id: str, data: BulkCategoryAssignment, 
             {"$addToSet": {"category_ids": {"$each": data.category_ids}}}
         )
         updated_count = result.modified_count
-        
+
     elif data.mode == "remove":
         # Remove specified categories
         result = await db.catalog_items.update_many(
@@ -789,7 +799,7 @@ async def bulk_assign_categories(catalog_id: str, data: BulkCategoryAssignment, 
             {"$pull": {"category_ids": {"$in": data.category_ids}}}
         )
         updated_count = result.modified_count
-    
+
     return {
         "message": f"Categorías actualizadas en {updated_count} producto(s)",
         "updated_count": updated_count,

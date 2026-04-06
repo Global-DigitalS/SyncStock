@@ -6,20 +6,19 @@ OPTIMIZADO: Búsquedas paralelas, alertas diferidas, caché de precios.
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
-from typing import Optional, List, Dict
-from functools import lru_cache
+from datetime import UTC, datetime
+
 from cachetools import TTLCache
 
 from services.database import db
 from services.scrapers import get_scraper
 from services.scrapers.base import ScrapedProduct
-from services.scrapers.matcher import match_product, AUTO_ACCEPT_THRESHOLD, MatchResult
+from services.scrapers.matcher import AUTO_ACCEPT_THRESHOLD, MatchResult, match_product
 
 logger = logging.getLogger(__name__)
 
 # Caché de precios recientes (user_id:sku/ean:competitor_id → price, maxsize=10k, TTL=3600s)
-_price_cache: Dict = TTLCache(maxsize=10000, ttl=3600)
+_price_cache: dict = TTLCache(maxsize=10000, ttl=3600)
 
 # Máximo de productos a scrapear por ejecución (para no sobrecargar)
 MAX_PRODUCTS_PER_RUN = 200
@@ -31,7 +30,7 @@ MAX_CONCURRENT_COMPETITORS = 5
 MAX_CONCURRENT_SEARCHES_PER_COMPETITOR = 4
 
 
-async def _get_user_products(user_id: str, limit: int = MAX_PRODUCTS_PER_RUN) -> List[dict]:
+async def _get_user_products(user_id: str, limit: int = MAX_PRODUCTS_PER_RUN) -> list[dict]:
     """
     Obtiene los productos del usuario desde el catálogo configurado para monitoreo.
     Incluye el precio final (con margen aplicado) para comparación con competidores.
@@ -148,7 +147,7 @@ async def _store_snapshot(
     match: MatchResult,
 ) -> str:
     """Almacena un snapshot de precio en la BD."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     snapshot_id = str(uuid.uuid4())
 
     snapshot = {
@@ -181,7 +180,7 @@ async def _store_pending_match(
     snapshot_id: str,
 ) -> None:
     """Almacena un match de baja confianza para revisión manual."""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     pending = {
         "id": str(uuid.uuid4()),
         "user_id": user_id,
@@ -202,8 +201,8 @@ async def _store_pending_match(
 
 async def _evaluate_alerts(
     user_id: str,
-    sku: Optional[str],
-    ean: Optional[str],
+    sku: str | None,
+    ean: str | None,
     competitor_price: float,
     competitor_name: str,
     competitor_id: str = "",
@@ -279,7 +278,7 @@ async def _evaluate_alerts(
         elif alert["alert_type"] == "price_drop":
             threshold_pct = alert.get("threshold", 0)
             prev_snapshot = await db.price_snapshots.find_one(
-                {"user_id": user_id, "sku": sku, "scraped_at": {"$lt": datetime.now(timezone.utc).isoformat()}},
+                {"user_id": user_id, "sku": sku, "scraped_at": {"$lt": datetime.now(UTC).isoformat()}},
                 {"_id": 0, "price": 1},
                 sort=[("scraped_at", -1)],
             )
@@ -293,7 +292,7 @@ async def _evaluate_alerts(
                     )
 
         if triggered:
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(UTC).isoformat()
             await db.price_alerts.update_one(
                 {"id": alert["id"]},
                 {"$set": {"last_triggered_at": now}, "$inc": {"trigger_count": 1}},
@@ -367,11 +366,11 @@ async def _send_alert_email(
     message: str,
     competitor_name: str,
     competitor_price: float,
-    sku: Optional[str],
-    ean: Optional[str],
+    sku: str | None,
+    ean: str | None,
 ) -> None:
     """Envía un email al usuario cuando se dispara una alerta de precio."""
-    from services.email_service import get_email_service_async, get_competitor_alert_email_template
+    from services.email_service import get_competitor_alert_email_template, get_email_service_async
 
     user = await db.users.find_one({"id": user_id}, {"_id": 0, "email": 1, "name": 1})
     if not user or not user.get("email"):
@@ -403,8 +402,8 @@ async def _send_alert_email(
 
 def _is_safe_webhook_url(url: str) -> bool:
     """Valida que la URL del webhook no apunte a redes internas (prevención SSRF)."""
-    from urllib.parse import urlparse
     import ipaddress
+    from urllib.parse import urlparse
 
     try:
         parsed = urlparse(url)
@@ -445,20 +444,19 @@ async def _send_alert_webhook(webhook_url: str, payload: dict) -> None:
         return
 
     timeout = aiohttp.ClientTimeout(total=10)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(
-            webhook_url,
-            json=payload,
-            headers={"Content-Type": "application/json", "User-Agent": "SyncStockAlertBot/1.0"},
-        ) as resp:
-            if resp.status >= 400:
-                logger.warning(f"Webhook devolvió status {resp.status}: {webhook_url}")
+    async with aiohttp.ClientSession(timeout=timeout) as session, session.post(
+        webhook_url,
+        json=payload,
+        headers={"Content-Type": "application/json", "User-Agent": "SyncStockAlertBot/1.0"},
+    ) as resp:
+        if resp.status >= 400:
+            logger.warning(f"Webhook devolvió status {resp.status}: {webhook_url}")
 
 
 async def crawl_competitor(
     user_id: str,
     competitor: dict,
-    user_products: List[dict],
+    user_products: list[dict],
 ) -> dict:
     """
     Ejecuta el scraping de un competidor para todos los productos del usuario.
@@ -563,7 +561,7 @@ async def crawl_competitor(
     return stats
 
 
-async def run_crawl_for_user(user_id: str, competitor_id: Optional[str] = None) -> dict:
+async def run_crawl_for_user(user_id: str, competitor_id: str | None = None) -> dict:
     """
     Ejecuta un ciclo completo de scraping para un usuario.
 
@@ -575,7 +573,7 @@ async def run_crawl_for_user(user_id: str, competitor_id: Optional[str] = None) 
         dict con estadísticas globales del crawl
     """
     logger.info(f"Iniciando crawl para usuario {user_id}")
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
 
     # Obtener competidores activos
     query = {"user_id": user_id, "active": True}
@@ -612,7 +610,7 @@ async def run_crawl_for_user(user_id: str, competitor_id: Optional[str] = None) 
     tasks = [_crawl_with_semaphore(comp) for comp in competitors]
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     for result in results:
         if isinstance(result, Exception):
@@ -639,7 +637,7 @@ async def run_crawl_for_user(user_id: str, competitor_id: Optional[str] = None) 
             {"$set": {"last_crawl_at": now, "last_crawl_status": crawl_status}},
         )
 
-    elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+    elapsed = (datetime.now(UTC) - start_time).total_seconds()
     global_stats["duration_seconds"] = round(elapsed, 2)
 
     if global_stats["total_errors"] > 0 and global_stats["total_stored"] == 0:
@@ -670,7 +668,7 @@ async def run_crawl_for_user(user_id: str, competitor_id: Optional[str] = None) 
             "type": "competitor_price",
             "message": summary_msg,
             "read": False,
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
         await db.notifications.insert_one(notification)
         await send_realtime_notification(user_id, notification)

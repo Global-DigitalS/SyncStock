@@ -1,15 +1,14 @@
+import csv
+import io
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import StreamingResponse
-from typing import List, Optional
-from datetime import datetime, timezone, timedelta
-import uuid
-import io
-import csv
 
-from services.database import db
 from services.auth import get_current_user, get_superadmin_user
+from services.cache import DASHBOARD_STATS_TTL, SUPERADMIN_STATS_TTL, SYNC_HISTORY_STATS_TTL, cache
+from services.database import db
 from services.sync import calculate_final_price
-from services.cache import cache, DASHBOARD_STATS_TTL, SUPERADMIN_STATS_TTL, SYNC_HISTORY_STATS_TTL
 
 
 def _csv_safe(value) -> str:
@@ -25,7 +24,11 @@ def _csv_safe(value) -> str:
         return "'" + value
     return value
 from models.schemas import (
-    DashboardStats, NotificationResponse, PriceHistoryResponse, ExportRequest, SyncHistoryResponse
+    DashboardStats,
+    ExportRequest,
+    NotificationResponse,
+    PriceHistoryResponse,
+    SyncHistoryResponse,
 )
 
 router = APIRouter()
@@ -40,7 +43,7 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
     cached = await cache.get(cache_key)
     if cached:
         return cached
-    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    week_ago = (datetime.now(UTC) - timedelta(days=7)).isoformat()
 
     # Unificar conteos de productos en una sola aggregation con $facet
     products_facet = await db.products.aggregate([
@@ -78,7 +81,7 @@ async def get_dashboard_stats(user: dict = Depends(get_current_user)):
     ).to_list(100)
 
     # Competitor monitoring stats (parallel)
-    yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    yesterday = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
     (
         competitors_active,
         snapshots_24h,
@@ -117,7 +120,7 @@ async def get_superadmin_dashboard_stats(superadmin: dict = Depends(get_superadm
     if cached:
         return cached
     import asyncio
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     week_ago = (now - timedelta(days=7)).isoformat()
     month_ago = (now - timedelta(days=30)).isoformat()
 
@@ -321,7 +324,7 @@ async def get_dashboard_sync_status(user: dict = Depends(get_current_user)):
                 last_dt = datetime.fromisoformat(c["last_sync"].replace('Z', '+00:00'))
                 next_sync = (last_dt + timedelta(hours=12)).isoformat()
             else:
-                next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+                next_sync = (datetime.now(UTC) + timedelta(hours=12)).isoformat()
         wc_syncs.append({
             "id": c["id"], "name": c.get("name", "Sin nombre"),
             "store_url": c.get("store_url", ""),
@@ -338,7 +341,7 @@ async def get_dashboard_sync_status(user: dict = Depends(get_current_user)):
 
 # ==================== NOTIFICATIONS ====================
 
-@router.get("/notifications", response_model=List[NotificationResponse])
+@router.get("/notifications", response_model=list[NotificationResponse])
 async def get_notifications(unread_only: bool = False, skip: int = 0, limit: int = 50, user: dict = Depends(get_current_user)):
     query = {"user_id": user["id"]}
     if unread_only:
@@ -423,9 +426,9 @@ async def get_notification_stats(user: dict = Depends(get_current_user)):
 
 # ==================== PRICE HISTORY ====================
 
-@router.get("/price-history", response_model=List[PriceHistoryResponse])
-async def get_price_history(product_id: Optional[str] = None, days: int = 30, skip: int = 0, limit: int = 100, user: dict = Depends(get_current_user)):
-    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+@router.get("/price-history", response_model=list[PriceHistoryResponse])
+async def get_price_history(product_id: str | None = None, days: int = 30, skip: int = 0, limit: int = 100, user: dict = Depends(get_current_user)):
+    start_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     query = {"user_id": user["id"], "created_at": {"$gte": start_date}}
     if product_id:
         query["product_id"] = product_id
@@ -436,17 +439,17 @@ async def get_price_history(product_id: Optional[str] = None, days: int = 30, sk
 @router.get("/price-history/product/{product_name}")
 async def get_price_history_by_product(product_name: str, days: int = 90, user: dict = Depends(get_current_user)):
     """Obtener historial de precios de un producto específico para gráficas"""
-    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    start_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     query = {"user_id": user["id"], "product_name": product_name, "created_at": {"$gte": start_date}}
     history = await db.price_history.find(query, {"_id": 0, "user_id": 0}).sort("created_at", 1).to_list(500)
-    
+
     # Build price evolution timeline
     if not history:
         return {"product_name": product_name, "timeline": [], "current_price": None, "min_price": None, "max_price": None}
-    
+
     timeline = [{"date": h["created_at"][:10], "price": h["new_price"]} for h in history]
     prices = [h["new_price"] for h in history]
-    
+
     return {
         "product_name": product_name,
         "timeline": timeline,
@@ -460,7 +463,7 @@ async def get_price_history_by_product(product_name: str, days: int = 90, user: 
 @router.get("/price-history/top-products")
 async def get_top_price_change_products(days: int = 30, limit: int = 10, user: dict = Depends(get_current_user)):
     """Obtener productos con más cambios de precio"""
-    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    start_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     pipeline = [
         {"$match": {"user_id": user["id"], "created_at": {"$gte": start_date}}},
         {"$group": {
@@ -484,17 +487,17 @@ async def get_top_price_change_products(days: int = 30, limit: int = 10, user: d
 
 # ==================== SYNC HISTORY ====================
 
-@router.get("/sync-history", response_model=List[SyncHistoryResponse])
+@router.get("/sync-history", response_model=list[SyncHistoryResponse])
 async def get_sync_history(
-    supplier_id: Optional[str] = None,
-    status: Optional[str] = None,
+    supplier_id: str | None = None,
+    status: str | None = None,
     days: int = 30,
     skip: int = 0,
     limit: int = 100,
     user: dict = Depends(get_current_user)
 ):
     """Obtener historial de sincronizaciones"""
-    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    start_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     query = {"user_id": user["id"], "created_at": {"$gte": start_date}}
     if supplier_id:
         query["supplier_id"] = supplier_id
@@ -511,14 +514,14 @@ async def get_sync_history_stats(days: int = 30, user: dict = Depends(get_curren
     cached = await cache.get(cache_key)
     if cached:
         return cached
-    start_date = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    start_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     query = {"user_id": user["id"], "created_at": {"$gte": start_date}}
-    
+
     total = await db.sync_history.count_documents(query)
     success = await db.sync_history.count_documents({**query, "status": "success"})
     errors = await db.sync_history.count_documents({**query, "status": "error"})
     partial = await db.sync_history.count_documents({**query, "status": "partial"})
-    
+
     # Get totals
     pipeline = [
         {"$match": query},
@@ -532,7 +535,7 @@ async def get_sync_history_stats(days: int = 30, user: dict = Depends(get_curren
     ]
     agg_result = await db.sync_history.aggregate(pipeline).to_list(1)
     totals = agg_result[0] if agg_result else {"total_imported": 0, "total_updated": 0, "total_errors": 0, "avg_duration": 0}
-    
+
     # Group by day for chart
     daily_pipeline = [
         {"$match": query},
@@ -549,7 +552,7 @@ async def get_sync_history_stats(days: int = 30, user: dict = Depends(get_curren
         {"$limit": 30}
     ]
     daily_stats = await db.sync_history.aggregate(daily_pipeline).to_list(30)
-    
+
     result = {
         "total": total,
         "success": success,
@@ -667,9 +670,9 @@ async def run_sync_now(user: dict = Depends(get_current_user)):
     Syncs all enabled services: suppliers, stores, CRM
     """
     from services.unified_sync import run_user_sync
-    
+
     result = await run_user_sync(user["id"])
-    
+
     # Calculate totals
     total_synced = 0
     total_errors = 0
@@ -677,7 +680,7 @@ async def run_sync_now(user: dict = Depends(get_current_user)):
         if result.get(key):
             total_synced += result[key].get("synced", 0)
             total_errors += result[key].get("errors", 0)
-    
+
     return {
         "status": "success" if total_errors == 0 else "partial",
         "message": f"Sincronización completada: {total_synced} elementos sincronizados, {total_errors} errores",

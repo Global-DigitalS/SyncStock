@@ -1,8 +1,8 @@
 """
 Tests for order retry manager with exponential backoff
 """
-import pytest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+
 from services.orders.retry_manager import RetryManager
 
 
@@ -65,7 +65,7 @@ class TestRetryTiming:
 
     def test_next_retry_time_future(self):
         """Next retry time should be in the future"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         next_time_str = RetryManager.get_next_retry_time(0)
         next_time = datetime.fromisoformat(next_time_str.replace("Z", "+00:00"))
 
@@ -103,7 +103,7 @@ class TestShouldRetry:
 
     def test_should_retry_too_soon(self):
         """Should not retry if next retry time hasn't passed"""
-        future_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+        future_time = (datetime.now(UTC) + timedelta(hours=1)).isoformat()
         order = {
             "status": "error",
             "retryCount": 0,
@@ -116,7 +116,7 @@ class TestShouldRetry:
 
     def test_should_retry_ready(self):
         """Should retry when order is ready"""
-        past_time = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+        past_time = (datetime.now(UTC) - timedelta(hours=1)).isoformat()
         order = {
             "status": "error",
             "retryCount": 0,
@@ -223,7 +223,7 @@ class TestRetryableOrders:
 
     def test_get_retryable_orders_filters_correctly(self):
         """Should filter only retryable orders"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         past = (now - timedelta(hours=1)).isoformat()
         future = (now + timedelta(hours=1)).isoformat()
 

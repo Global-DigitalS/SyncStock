@@ -6,8 +6,6 @@ Fallback: extrae precios de microdata y meta tags OpenGraph.
 import json
 import logging
 import re
-from typing import Optional
-from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
@@ -17,7 +15,7 @@ from services.scrapers.http_client import scraper_client
 logger = logging.getLogger(__name__)
 
 
-def _clean_price(raw: str) -> Optional[float]:
+def _clean_price(raw: str) -> float | None:
     """Limpia y convierte un string de precio a float."""
     if not raw:
         return None
@@ -34,7 +32,7 @@ def _clean_price(raw: str) -> Optional[float]:
         return None
 
 
-def _extract_jsonld_product(soup: BeautifulSoup) -> Optional[dict]:
+def _extract_jsonld_product(soup: BeautifulSoup) -> dict | None:
     """Extrae datos de producto desde JSON-LD (Schema.org)."""
     for script in soup.find_all("script", type="application/ld+json"):
         try:
@@ -57,7 +55,7 @@ def _extract_jsonld_product(soup: BeautifulSoup) -> Optional[dict]:
     return None
 
 
-def _extract_price_from_jsonld(product: dict) -> Optional[float]:
+def _extract_price_from_jsonld(product: dict) -> float | None:
     """Extrae el precio de un objeto JSON-LD Product."""
     offers = product.get("offers", {})
     if isinstance(offers, list):
@@ -75,7 +73,7 @@ def _extract_price_from_jsonld(product: dict) -> Optional[float]:
     return None
 
 
-def _extract_from_meta(soup: BeautifulSoup) -> Optional[ScrapedProduct]:
+def _extract_from_meta(soup: BeautifulSoup) -> ScrapedProduct | None:
     """Fallback: extrae datos de meta tags OG y product."""
     price = None
     name = None
@@ -118,7 +116,7 @@ class GenericScraper(BaseScraper):
         """El scraper genérico no soporta búsqueda; requiere URLs directas."""
         return SearchResult(query=query, error="El scraper genérico no soporta búsqueda por texto")
 
-    async def parse_product_page(self, url: str) -> Optional[ScrapedProduct]:
+    async def parse_product_page(self, url: str) -> ScrapedProduct | None:
         """
         Extrae datos de precio de una URL de producto.
         Estrategia en cascada:

@@ -3,6 +3,7 @@ Scheduler para ejecutar crawls periódicos de precios de competidores.
 Se ejecuta cada 8 horas vía APScheduler.
 """
 import logging
+
 from services.database import db
 from services.scrapers.orchestrator import run_crawl_for_user
 

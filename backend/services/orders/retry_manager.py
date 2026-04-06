@@ -3,9 +3,7 @@ Order retry manager with exponential backoff
 Handles automatic retries for failed order synchronization
 """
 import logging
-import math
-from datetime import datetime, timedelta, timezone
-from typing import Optional, Tuple
+from datetime import UTC, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -62,12 +60,12 @@ class RetryManager:
             return None
 
         delay_seconds = RetryManager.calculate_next_retry_delay(retry_count)
-        next_retry = datetime.now(timezone.utc) + timedelta(seconds=delay_seconds)
+        next_retry = datetime.now(UTC) + timedelta(seconds=delay_seconds)
 
         return next_retry.isoformat()
 
     @staticmethod
-    def should_retry(order: dict) -> Tuple[bool, Optional[str]]:
+    def should_retry(order: dict) -> tuple[bool, str | None]:
         """
         Determine if an order should be retried
 
@@ -91,7 +89,7 @@ class RetryManager:
         if next_retry_str:
             try:
                 next_retry = datetime.fromisoformat(next_retry_str.replace("Z", "+00:00"))
-                now = datetime.now(timezone.utc)
+                now = datetime.now(UTC)
                 if now < next_retry:
                     wait_time = (next_retry - now).total_seconds()
                     return False, f"Next retry in {wait_time:.0f}s"
@@ -118,7 +116,7 @@ class RetryManager:
         # Record this attempt
         retry_history.append({
             "attemptNumber": retry_count + 1,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "error": error_message,
             "delayApplied": RetryManager.calculate_next_retry_delay(retry_count)
         })

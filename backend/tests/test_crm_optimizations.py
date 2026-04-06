@@ -7,10 +7,9 @@ Tests cover:
 - Differential update detection
 - Batch product detection
 """
-import asyncio
-import pytest
 import time
-from datetime import datetime, timezone
+
+import pytest
 
 from services.crm_sync import (
     GlobalRateLimiter,

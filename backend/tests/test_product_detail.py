@@ -4,10 +4,11 @@ Test cases for Product Detail feature with tabs
 - PUT /api/products/{product_id} updates product with extended fields
 - GET /api/products-unified returns unified products by EAN
 """
-import pytest
-import requests
 import os
 import uuid
+
+import pytest
+import requests
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -38,7 +39,7 @@ def authenticated_client(api_client, auth_token):
 
 class TestProductsUnified:
     """Tests for unified products endpoint (EAN-based)"""
-    
+
     def test_get_products_unified_returns_list(self, authenticated_client):
         """GET /api/products-unified returns list of unified products"""
         response = authenticated_client.get(f"{BASE_URL}/api/products-unified")
@@ -47,14 +48,14 @@ class TestProductsUnified:
         assert isinstance(data, list)
         assert len(data) >= 1, "Expected at least one unified product"
         print(f"Found {len(data)} unified products")
-    
+
     def test_unified_product_structure(self, authenticated_client):
         """Unified product response has correct structure"""
         response = authenticated_client.get(f"{BASE_URL}/api/products-unified")
         assert response.status_code == 200
         data = response.json()
         assert len(data) >= 1
-        
+
         product = data[0]
         # Check required fields
         assert "ean" in product
@@ -65,7 +66,7 @@ class TestProductsUnified:
         assert "total_stock" in product
         assert "supplier_count" in product
         assert "suppliers" in product
-        
+
         # Check suppliers structure
         assert isinstance(product["suppliers"], list)
         if len(product["suppliers"]) > 0:
@@ -78,13 +79,13 @@ class TestProductsUnified:
             assert "is_best_offer" in supplier
             assert "product_id" in supplier
         print(f"Unified product '{product['name']}' has {len(product['suppliers'])} suppliers")
-    
+
     def test_unified_products_have_best_offer(self, authenticated_client):
         """Each unified product should have exactly one best offer"""
         response = authenticated_client.get(f"{BASE_URL}/api/products-unified")
         assert response.status_code == 200
         data = response.json()
-        
+
         for product in data:
             best_offers = [s for s in product["suppliers"] if s["is_best_offer"]]
             assert len(best_offers) == 1, f"Product {product['ean']} should have exactly one best offer"
@@ -93,7 +94,7 @@ class TestProductsUnified:
 
 class TestProductDetail:
     """Tests for GET /api/products/{product_id} endpoint"""
-    
+
     def test_get_product_returns_extended_fields(self, authenticated_client):
         """GET /api/products/{product_id} returns product with extended fields"""
         # First get a product_id from unified products
@@ -101,16 +102,16 @@ class TestProductDetail:
         assert response.status_code == 200
         unified = response.json()
         assert len(unified) >= 1
-        
+
         # Get the product_id from the best offer
         product_id = unified[0]["suppliers"][0]["product_id"]
-        
+
         # Get product detail
         detail_response = authenticated_client.get(f"{BASE_URL}/api/products/{product_id}")
         assert detail_response.status_code == 200
-        
+
         product = detail_response.json()
-        
+
         # Check base fields
         assert "id" in product
         assert "name" in product
@@ -120,7 +121,7 @@ class TestProductDetail:
         assert "stock" in product
         assert "brand" in product
         assert "category" in product
-        
+
         # Check extended fields (from ProductResponse)
         extended_fields = [
             "referencia", "part_number", "asin", "upc", "gtin", "oem", "id_erp",
@@ -133,12 +134,12 @@ class TestProductDetail:
             "formas_pago", "formas_envio",
             "permite_actualizar_coste", "permite_actualizar_stock", "tipo_cheque_regalo"
         ]
-        
+
         for field in extended_fields:
             assert field in product, f"Missing extended field: {field}"
-        
+
         print(f"Product '{product['name']}' has all {len(extended_fields)} extended fields")
-    
+
     def test_get_product_not_found(self, authenticated_client):
         """GET /api/products/{non_existent_id} returns 404"""
         fake_id = str(uuid.uuid4())
@@ -149,18 +150,18 @@ class TestProductDetail:
 
 class TestProductUpdate:
     """Tests for PUT /api/products/{product_id} endpoint"""
-    
+
     def test_update_product_name(self, authenticated_client):
         """PUT /api/products/{product_id} updates product name"""
         # Get a product_id
         response = authenticated_client.get(f"{BASE_URL}/api/products-unified")
         unified = response.json()
         product_id = unified[0]["suppliers"][0]["product_id"]
-        
+
         # Get original name
         original = authenticated_client.get(f"{BASE_URL}/api/products/{product_id}").json()
         original_name = original["name"]
-        
+
         # Update name
         new_name = f"TEST_Updated_{uuid.uuid4().hex[:8]}"
         update_response = authenticated_client.put(
@@ -170,26 +171,26 @@ class TestProductUpdate:
         assert update_response.status_code == 200
         updated = update_response.json()
         assert updated["name"] == new_name
-        
+
         # Verify persistence with GET
         verify_response = authenticated_client.get(f"{BASE_URL}/api/products/{product_id}")
         assert verify_response.status_code == 200
         assert verify_response.json()["name"] == new_name
-        
+
         # Revert name
         authenticated_client.put(f"{BASE_URL}/api/products/{product_id}", json={"name": original_name})
-        print(f"Product name update and persistence verified")
-    
+        print("Product name update and persistence verified")
+
     def test_update_product_extended_fields(self, authenticated_client):
         """PUT /api/products/{product_id} updates extended fields"""
         # Get a product_id
         response = authenticated_client.get(f"{BASE_URL}/api/products-unified")
         unified = response.json()
         product_id = unified[0]["suppliers"][0]["product_id"]
-        
+
         # Get original values
         original = authenticated_client.get(f"{BASE_URL}/api/products/{product_id}").json()
-        
+
         # Update multiple extended fields
         test_ref = f"TEST_REF_{uuid.uuid4().hex[:8]}"
         update_data = {
@@ -205,14 +206,14 @@ class TestProductUpdate:
             "alto": 10.0,
             "tipo_peso": "kilogram"
         }
-        
+
         update_response = authenticated_client.put(
             f"{BASE_URL}/api/products/{product_id}",
             json=update_data
         )
         assert update_response.status_code == 200
         updated = update_response.json()
-        
+
         # Verify updated fields
         assert updated["referencia"] == test_ref
         assert updated["part_number"] == "PN-12345"
@@ -224,12 +225,12 @@ class TestProductUpdate:
         assert updated["largo"] == 50.5
         assert updated["ancho"] == 30.2
         assert updated["alto"] == 10.0
-        
+
         # Verify persistence with GET
         verify = authenticated_client.get(f"{BASE_URL}/api/products/{product_id}").json()
         assert verify["referencia"] == test_ref
         assert verify["envio_gratis"] == True
-        
+
         # Revert changes
         revert_data = {
             "referencia": original.get("referencia"),
@@ -243,17 +244,17 @@ class TestProductUpdate:
         }
         authenticated_client.put(f"{BASE_URL}/api/products/{product_id}", json=revert_data)
         print("Extended fields update and persistence verified")
-    
+
     def test_update_product_toggle_fields(self, authenticated_client):
         """PUT /api/products/{product_id} handles boolean toggle fields"""
         # Get a product_id
         response = authenticated_client.get(f"{BASE_URL}/api/products-unified")
         unified = response.json()
         product_id = unified[0]["suppliers"][0]["product_id"]
-        
+
         # Get original values
         original = authenticated_client.get(f"{BASE_URL}/api/products/{product_id}").json()
-        
+
         # Test boolean toggles
         toggle_fields = {
             "activado": not original.get("activado", True),
@@ -268,23 +269,23 @@ class TestProductUpdate:
             "permite_actualizar_stock": not original.get("permite_actualizar_stock", True),
             "tipo_cheque_regalo": not original.get("tipo_cheque_regalo", False)
         }
-        
+
         update_response = authenticated_client.put(
             f"{BASE_URL}/api/products/{product_id}",
             json=toggle_fields
         )
         assert update_response.status_code == 200
         updated = update_response.json()
-        
+
         # Verify all toggles were updated
         for field, expected_value in toggle_fields.items():
             assert updated[field] == expected_value, f"{field} should be {expected_value}"
-        
+
         # Revert to original values
-        revert_data = {k: original.get(k) for k in toggle_fields.keys()}
+        revert_data = {k: original.get(k) for k in toggle_fields}
         authenticated_client.put(f"{BASE_URL}/api/products/{product_id}", json=revert_data)
         print(f"All {len(toggle_fields)} boolean toggle fields update verified")
-    
+
     def test_update_product_not_found(self, authenticated_client):
         """PUT /api/products/{non_existent_id} returns 404"""
         fake_id = str(uuid.uuid4())
@@ -298,7 +299,7 @@ class TestProductUpdate:
 
 class TestProductDetailPermissions:
     """Tests for product update permissions"""
-    
+
     def test_update_product_unauthorized(self, api_client):
         """PUT /api/products/{product_id} without auth returns 401/403"""
         fake_id = str(uuid.uuid4())

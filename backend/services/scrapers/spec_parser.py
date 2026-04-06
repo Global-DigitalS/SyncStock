@@ -3,10 +3,9 @@ Parser de especificaciones técnicas IT.
 Extrae CPU, RAM, GPU, SSD/HDD de nombres de producto de forma estructurada.
 Diseñado para matching de alta precisión en el sector IT/electrónica.
 """
-import re
 import logging
+import re
 from dataclasses import dataclass, field
-from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -15,33 +14,33 @@ logger = logging.getLogger(__name__)
 class ProductSpecs:
     """Especificaciones técnicas extraídas de un nombre de producto."""
     # CPU
-    cpu_brand: Optional[str] = None       # "Intel", "AMD"
-    cpu_family: Optional[str] = None      # "Core i7", "Ryzen 7", "Xeon"
-    cpu_model: Optional[str] = None       # "13700K", "5800X3D"
-    cpu_generation: Optional[int] = None  # 13 (Intel gen 13), 5 (Ryzen 5xxx)
+    cpu_brand: str | None = None       # "Intel", "AMD"
+    cpu_family: str | None = None      # "Core i7", "Ryzen 7", "Xeon"
+    cpu_model: str | None = None       # "13700K", "5800X3D"
+    cpu_generation: int | None = None  # 13 (Intel gen 13), 5 (Ryzen 5xxx)
 
     # RAM
-    ram_gb: Optional[int] = None          # 16
-    ram_type: Optional[str] = None        # "DDR4", "DDR5", "LPDDR5"
-    ram_speed_mhz: Optional[int] = None   # 3200, 6000
+    ram_gb: int | None = None          # 16
+    ram_type: str | None = None        # "DDR4", "DDR5", "LPDDR5"
+    ram_speed_mhz: int | None = None   # 3200, 6000
 
     # GPU
-    gpu_brand: Optional[str] = None       # "NVIDIA", "AMD", "Intel"
-    gpu_family: Optional[str] = None      # "RTX", "RX", "Arc"
-    gpu_model: Optional[str] = None       # "4090", "7900 XT"
-    gpu_vram_gb: Optional[int] = None     # 24
+    gpu_brand: str | None = None       # "NVIDIA", "AMD", "Intel"
+    gpu_family: str | None = None      # "RTX", "RX", "Arc"
+    gpu_model: str | None = None       # "4090", "7900 XT"
+    gpu_vram_gb: int | None = None     # 24
 
     # Almacenamiento
-    storage_gb: Optional[int] = None      # 1000 (para 1TB)
-    storage_type: Optional[str] = None    # "NVMe", "SATA", "HDD"
-    storage_interface: Optional[str] = None  # "M.2", "2.5"", PCIe"
+    storage_gb: int | None = None      # 1000 (para 1TB)
+    storage_type: str | None = None    # "NVMe", "SATA", "HDD"
+    storage_interface: str | None = None  # "M.2", "2.5"", PCIe"
 
     # Otros
-    form_factor: Optional[str] = None     # "Mini-ITX", "ATX", "Micro-ATX"
-    socket: Optional[str] = None          # "LGA1700", "AM5", "LGA4677"
+    form_factor: str | None = None     # "Mini-ITX", "ATX", "Micro-ATX"
+    socket: str | None = None          # "LGA1700", "AM5", "LGA4677"
 
     # Metadata
-    raw_specs: List[str] = field(default_factory=list)  # Especificaciones detectadas en bruto
+    raw_specs: list[str] = field(default_factory=list)  # Especificaciones detectadas en bruto
 
     def has_specs(self) -> bool:
         """True si se extrajo al menos una especificación relevante."""
@@ -52,7 +51,7 @@ class ProductSpecs:
             self.storage_gb,
         ])
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "cpu_brand": self.cpu_brand,
             "cpu_family": self.cpu_family,
@@ -199,7 +198,7 @@ class SpecParser:
         specs.raw_specs = raw
         return specs
 
-    def _extract_cpu(self, text: str, specs: ProductSpecs, raw: List[str]) -> None:
+    def _extract_cpu(self, text: str, specs: ProductSpecs, raw: list[str]) -> None:
         """Extrae información de CPU."""
         # Intel patterns
         for pattern, family_tpl, brand in self._CPU_INTEL_PATTERNS:
@@ -261,7 +260,7 @@ class SpecParser:
                 raw.append(f"CPU: {specs.cpu_brand} {specs.cpu_family} {specs.cpu_model}")
                 return
 
-    def _extract_gpu(self, text: str, specs: ProductSpecs, raw: List[str]) -> None:
+    def _extract_gpu(self, text: str, specs: ProductSpecs, raw: list[str]) -> None:
         """Extrae información de GPU."""
         for pattern, family, brand in self._GPU_NVIDIA_PATTERNS:
             m = re.search(pattern, text, re.IGNORECASE)
@@ -314,7 +313,7 @@ class SpecParser:
                 specs.gpu_vram_gb = gb
                 return
 
-    def _extract_ram(self, text: str, specs: ProductSpecs, raw: List[str]) -> None:
+    def _extract_ram(self, text: str, specs: ProductSpecs, raw: list[str]) -> None:
         """Extrae capacidad, tipo y velocidad de RAM."""
         # Tipo DDR primero
         type_m = re.search(self._RAM_TYPE_PATTERN, text, re.IGNORECASE)
@@ -341,7 +340,7 @@ class SpecParser:
                     specs.ram_gb = gb_val
                     raw.append(f"RAM: {specs.ram_gb}GB {specs.ram_type or ''} {specs.ram_speed_mhz or ''}MHz".strip())
 
-    def _extract_storage(self, text: str, specs: ProductSpecs, raw: List[str]) -> None:
+    def _extract_storage(self, text: str, specs: ProductSpecs, raw: list[str]) -> None:
         """Extrae capacidad y tipo de almacenamiento."""
         # Tipo de almacenamiento
         type_m = re.search(self._STORAGE_TYPE_PATTERN, text, re.IGNORECASE)

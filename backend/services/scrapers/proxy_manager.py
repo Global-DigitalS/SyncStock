@@ -10,12 +10,10 @@ Cooldown exponencial: 1min → 5min → 30min → 1h
 Detección automática de bloqueos por HTTP 429, 403, timeouts, CAPTCHAs.
 """
 import logging
-import time
-import random
 import threading
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass
 from enum import Enum
-from typing import Optional, List, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +43,7 @@ CAPTCHA_PATTERNS = ["captcha", "cloudflare", "ddos-guard", "under-attack", "are 
 @dataclass
 class ProxyEntry:
     """Entrada de proxy con estado de circuit breaker."""
-    url: Optional[str]       # None = sin proxy (directo)
+    url: str | None       # None = sin proxy (directo)
     host: str = "direct"
     port: int = 0
 
@@ -119,13 +117,13 @@ class ProxyManager:
             manager.record_failure(proxy, status_code=e.status)
     """
 
-    def __init__(self, proxy_urls: Optional[List[str]] = None):
+    def __init__(self, proxy_urls: list[str] | None = None):
         """
         Args:
             proxy_urls: Lista de URLs de proxy. Si es None o vacía,
                         se usa una entrada "direct" (sin proxy).
         """
-        self._proxies: List[ProxyEntry] = []
+        self._proxies: list[ProxyEntry] = []
         self._lock = threading.Lock()
 
         if proxy_urls:
@@ -150,7 +148,7 @@ class ProxyManager:
         except Exception:
             return ProxyEntry(url=url, host=url)
 
-    def get_proxy(self) -> Optional[ProxyEntry]:
+    def get_proxy(self) -> ProxyEntry | None:
         """
         Devuelve el proxy disponible con mejor success rate.
         Siempre retorna un proxy (incluido 'direct' si no hay proxies).
@@ -187,7 +185,7 @@ class ProxyManager:
             best.total_requests += 1
             return best
 
-    def record_success(self, proxy: Optional[ProxyEntry]) -> None:
+    def record_success(self, proxy: ProxyEntry | None) -> None:
         """Registra un éxito para un proxy. Thread-safe."""
         if proxy is None:
             return
@@ -208,8 +206,8 @@ class ProxyManager:
 
     def record_failure(
         self,
-        proxy: Optional[ProxyEntry],
-        status_code: Optional[int] = None,
+        proxy: ProxyEntry | None,
+        status_code: int | None = None,
         error: str = "",
         html_content: str = "",
     ) -> None:
@@ -271,7 +269,7 @@ class ProxyManager:
         content_lower = content.lower()
         return any(pattern in content_lower for pattern in CAPTCHA_PATTERNS)
 
-    def get_stats(self) -> List[Dict]:
+    def get_stats(self) -> list[dict]:
         """
         Devuelve estadísticas de todos los proxies.
 
@@ -345,7 +343,7 @@ class ProxyManager:
 # ──────────────────────────────────────────────────────────────────────────────
 
 # Carga URLs de proxies desde config/env si existen
-def _load_proxy_urls() -> List[str]:
+def _load_proxy_urls() -> list[str]:
     """Carga URLs de proxies desde variables de entorno."""
     import os
     proxy_env = os.environ.get("SCRAPER_PROXY_URLS", "")

@@ -1,25 +1,21 @@
 """
 Order management routes
 """
-from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
-from typing import List, Optional
-from datetime import datetime, timezone
-import logging
-import hmac
 import hashlib
+import hmac
+import logging
+from datetime import UTC, datetime
 
-from services.auth import get_current_user
-from services.database import db
-from services.orders.retry_manager import RetryManager
-from services.orders.order_sync import (
-    update_order_status_from_crm,
-    sync_order_to_online_store,
-    get_order_sync_status
-)
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
 
 # SECURITY: Rate limiting for webhook endpoints
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+from services.auth import get_current_user
+from services.database import db
+from services.orders.order_sync import get_order_sync_status, sync_order_to_online_store, update_order_status_from_crm
+from services.orders.retry_manager import RetryManager
 
 logger = logging.getLogger(__name__)
 
@@ -89,8 +85,8 @@ async def verify_webhook_signature(
 @router.get("/orders")
 async def get_orders(
     user: dict = Depends(get_current_user),
-    status: Optional[str] = None,
-    source: Optional[str] = None,
+    status: str | None = None,
+    source: str | None = None,
     limit: int = Query(50, ge=1, le=500),
     skip: int = Query(0, ge=0)
 ):
@@ -180,7 +176,7 @@ async def get_orders_summary(user: dict = Depends(get_current_user)):
             "count": item["count"],
             "totalAmount": item["totalAmount"]
         } for item in summary},
-        "updated_at": datetime.now(timezone.utc).isoformat()
+        "updated_at": datetime.now(UTC).isoformat()
     }
 
 
@@ -361,7 +357,7 @@ async def process_failed_orders_retries(user: dict = Depends(get_current_user)):
 async def sync_order_status_from_crm(
     order_id: str,
     user: dict = Depends(get_current_user),
-    crm_status_data: Optional[dict] = None
+    crm_status_data: dict | None = None
 ):
     """
     Manually trigger status update from CRM for an order
@@ -454,7 +450,7 @@ async def handle_dolibarr_order_webhook(request: Request):
         new_status = payload.get("new_status")
 
         if not all([user_id, object_id, new_status is not None]):
-            logger.warning(f"Invalid webhook payload: missing required fields")
+            logger.warning("Invalid webhook payload: missing required fields")
             return {"status": "error", "message": "Invalid payload"}
 
         # SECURITY FIX #8: Verify HMAC signature
@@ -552,7 +548,7 @@ async def handle_odoo_order_webhook(request: Request):
         state = payload.get("state")
 
         if not all([user_id, object_id, state]):
-            logger.warning(f"Invalid webhook payload: missing required fields")
+            logger.warning("Invalid webhook payload: missing required fields")
             return {"status": "error", "message": "Invalid payload"}
 
         # SECURITY FIX #8: Verify HMAC signature

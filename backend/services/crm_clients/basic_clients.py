@@ -2,8 +2,8 @@
 Basic CRM clients: HubSpot, Salesforce, Zoho, Pipedrive, Monday, Freshsales.
 """
 import logging
+
 import requests
-from typing import Dict, List, Optional
 
 from .base import _validate_crm_url
 
@@ -43,7 +43,7 @@ class HubSpotClient:
     def close(self):
         self.session.close()
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         try:
             response = self._rate_limited_request('GET', f"{self.base_url}/crm/v3/objects/contacts", params={'limit': 1})
             if response.status_code == 200:
@@ -62,7 +62,7 @@ class HubSpotClient:
             logger.error(f"HubSpot connection error: {e}")
             return {"status": "error", "message": "Error de conexión a HubSpot."}
 
-    def get_products(self, limit: int = 500) -> List[Dict]:
+    def get_products(self, limit: int = 500) -> list[dict]:
         try:
             products = []
             url = f"{self.base_url}/crm/v3/objects/line_items"
@@ -82,7 +82,7 @@ class HubSpotClient:
             logger.error(f"HubSpot get_products error: {e}")
             return []
 
-    def get_product_by_sku(self, sku: str) -> Optional[Dict]:
+    def get_product_by_sku(self, sku: str) -> dict | None:
         try:
             response = self._rate_limited_request(
                 'POST', f"{self.base_url}/crm/v3/objects/line_items/search",
@@ -100,7 +100,7 @@ class HubSpotClient:
             logger.error(f"HubSpot get_product_by_sku error: {e}")
             return None
 
-    def create_product(self, product_data: Dict) -> Optional[Dict]:
+    def create_product(self, product_data: dict) -> dict | None:
         try:
             response = self._rate_limited_request(
                 'POST', f"{self.base_url}/crm/v3/objects/products",
@@ -114,7 +114,7 @@ class HubSpotClient:
             logger.error(f"HubSpot create_product error: {e}")
             return None
 
-    def update_product(self, product_id: str, product_data: Dict) -> bool:
+    def update_product(self, product_id: str, product_data: dict) -> bool:
         try:
             response = self._rate_limited_request(
                 'PATCH', f"{self.base_url}/crm/v3/objects/products/{product_id}",
@@ -125,7 +125,7 @@ class HubSpotClient:
             logger.error(f"HubSpot update_product error: {e}")
             return False
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         stats = {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
         try:
             for obj_type, stat_key in [('products', 'products'), ('contacts', 'suppliers'), ('companies', 'clients'), ('deals', 'orders')]:
@@ -172,7 +172,7 @@ class SalesforceClient:
     def close(self):
         self.session.close()
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         try:
             response = self._rate_limited_request('GET', f"{self.base_url}/services/data/v59.0/sobjects")
             if response.status_code == 200:
@@ -191,7 +191,7 @@ class SalesforceClient:
             logger.error(f"Salesforce connection error: {e}")
             return {"status": "error", "message": "Error de conexión a Salesforce."}
 
-    def get_products(self, limit: int = 500) -> List[Dict]:
+    def get_products(self, limit: int = 500) -> list[dict]:
         try:
             query = f"SELECT Id, Name, ProductCode, Description, IsActive FROM Product2 WHERE IsActive = true LIMIT {limit}"
             response = self._rate_limited_request('GET', f"{self.base_url}/services/data/v59.0/query", params={'q': query})
@@ -202,7 +202,7 @@ class SalesforceClient:
             logger.error(f"Salesforce get_products error: {e}")
             return []
 
-    def get_product_by_sku(self, sku: str) -> Optional[Dict]:
+    def get_product_by_sku(self, sku: str) -> dict | None:
         try:
             query = f"SELECT Id, Name, ProductCode, Description FROM Product2 WHERE ProductCode = '{sku}' LIMIT 1"
             response = self._rate_limited_request('GET', f"{self.base_url}/services/data/v59.0/query", params={'q': query})
@@ -214,7 +214,7 @@ class SalesforceClient:
             logger.error(f"Salesforce get_product_by_sku error: {e}")
             return None
 
-    def create_product(self, product_data: Dict) -> Optional[Dict]:
+    def create_product(self, product_data: dict) -> dict | None:
         try:
             response = self._rate_limited_request(
                 'POST', f"{self.base_url}/services/data/v59.0/sobjects/Product2",
@@ -228,7 +228,7 @@ class SalesforceClient:
             logger.error(f"Salesforce create_product error: {e}")
             return None
 
-    def update_product(self, product_id: str, product_data: Dict) -> bool:
+    def update_product(self, product_id: str, product_data: dict) -> bool:
         try:
             response = self._rate_limited_request(
                 'PATCH', f"{self.base_url}/services/data/v59.0/sobjects/Product2/{product_id}",
@@ -239,7 +239,7 @@ class SalesforceClient:
             logger.error(f"Salesforce update_product error: {e}")
             return False
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         stats = {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
         try:
             queries = {
@@ -317,7 +317,7 @@ class ZohoClient:
     def close(self):
         self.session.close()
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         try:
             if not self._refresh_access_token():
                 return {"status": "error", "message": "No se pudo obtener token de acceso. Verifica Client ID, Client Secret y Refresh Token."}
@@ -338,7 +338,7 @@ class ZohoClient:
             logger.error(f"Zoho connection error: {e}")
             return {"status": "error", "message": "Error de conexión a Zoho CRM."}
 
-    def get_products(self, limit: int = 500) -> List[Dict]:
+    def get_products(self, limit: int = 500) -> list[dict]:
         try:
             products = []
             page = 1
@@ -360,7 +360,7 @@ class ZohoClient:
             logger.error(f"Zoho get_products error: {e}")
             return []
 
-    def get_product_by_sku(self, sku: str) -> Optional[Dict]:
+    def get_product_by_sku(self, sku: str) -> dict | None:
         try:
             response = self._rate_limited_request(
                 'GET', f"{self.base_url}/crm/v6/Products/search",
@@ -374,7 +374,7 @@ class ZohoClient:
             logger.error(f"Zoho get_product_by_sku error: {e}")
             return None
 
-    def create_product(self, product_data: Dict) -> Optional[Dict]:
+    def create_product(self, product_data: dict) -> dict | None:
         try:
             response = self._rate_limited_request(
                 'POST', f"{self.base_url}/crm/v6/Products",
@@ -388,7 +388,7 @@ class ZohoClient:
             logger.error(f"Zoho create_product error: {e}")
             return None
 
-    def update_product(self, product_id: str, product_data: Dict) -> bool:
+    def update_product(self, product_id: str, product_data: dict) -> bool:
         try:
             response = self._rate_limited_request(
                 'PUT', f"{self.base_url}/crm/v6/Products/{product_id}",
@@ -399,7 +399,7 @@ class ZohoClient:
             logger.error(f"Zoho update_product error: {e}")
             return False
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         stats = {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
         try:
             for module, key in [('Products', 'products'), ('Vendors', 'suppliers'), ('Contacts', 'clients'), ('Sales_Orders', 'orders')]:
@@ -444,7 +444,7 @@ class PipedriveClient:
     def close(self):
         self.session.close()
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         try:
             response = self._rate_limited_request('GET', f"{self.base_url}/api/v1/users/me")
             if response.status_code == 200:
@@ -464,7 +464,7 @@ class PipedriveClient:
             logger.error(f"Pipedrive connection error: {e}")
             return {"status": "error", "message": "Error de conexión a Pipedrive."}
 
-    def get_products(self, limit: int = 500) -> List[Dict]:
+    def get_products(self, limit: int = 500) -> list[dict]:
         try:
             products = []
             start = 0
@@ -489,7 +489,7 @@ class PipedriveClient:
             logger.error(f"Pipedrive get_products error: {e}")
             return []
 
-    def get_product_by_sku(self, sku: str) -> Optional[Dict]:
+    def get_product_by_sku(self, sku: str) -> dict | None:
         try:
             response = self._rate_limited_request(
                 'GET', f"{self.base_url}/api/v1/products/search",
@@ -503,7 +503,7 @@ class PipedriveClient:
             logger.error(f"Pipedrive get_product_by_sku error: {e}")
             return None
 
-    def create_product(self, product_data: Dict) -> Optional[Dict]:
+    def create_product(self, product_data: dict) -> dict | None:
         try:
             response = self._rate_limited_request('POST', f"{self.base_url}/api/v1/products", json=product_data)
             if response.status_code in [200, 201] and response.json().get('success'):
@@ -513,7 +513,7 @@ class PipedriveClient:
             logger.error(f"Pipedrive create_product error: {e}")
             return None
 
-    def update_product(self, product_id: str, product_data: Dict) -> bool:
+    def update_product(self, product_id: str, product_data: dict) -> bool:
         try:
             response = self._rate_limited_request('PUT', f"{self.base_url}/api/v1/products/{product_id}", json=product_data)
             return response.status_code == 200 and response.json().get('success')
@@ -521,7 +521,7 @@ class PipedriveClient:
             logger.error(f"Pipedrive update_product error: {e}")
             return False
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         stats = {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
         try:
             for endpoint, key in [('products', 'products'), ('organizations', 'suppliers'), ('persons', 'clients'), ('deals', 'orders')]:
@@ -555,7 +555,7 @@ class MondayClient:
         self.min_delay = 0.1
         self.last_request_time = 0
 
-    def _rate_limited_request(self, query: str, variables: Dict = None) -> Dict:
+    def _rate_limited_request(self, query: str, variables: dict = None) -> dict:
         import time
         elapsed = time.time() - self.last_request_time
         if elapsed < self.min_delay:
@@ -572,7 +572,7 @@ class MondayClient:
     def close(self):
         self.session.close()
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         try:
             result = self._rate_limited_request('{ me { id name } }')
             if result.get('data', {}).get('me', {}).get('id'):
@@ -589,7 +589,7 @@ class MondayClient:
             logger.error(f"Monday connection error: {e}")
             return {"status": "error", "message": "Error de conexión a Monday.com."}
 
-    def get_products(self, limit: int = 500) -> List[Dict]:
+    def get_products(self, limit: int = 500) -> list[dict]:
         try:
             if not self.board_id:
                 return []
@@ -603,7 +603,7 @@ class MondayClient:
             logger.error(f"Monday get_products error: {e}")
             return []
 
-    def get_product_by_sku(self, sku: str) -> Optional[Dict]:
+    def get_product_by_sku(self, sku: str) -> dict | None:
         products = self.get_products(limit=500)
         for item in products:
             for col in item.get('column_values', []):
@@ -611,7 +611,7 @@ class MondayClient:
                     return item
         return None
 
-    def create_product(self, product_data: Dict) -> Optional[Dict]:
+    def create_product(self, product_data: dict) -> dict | None:
         try:
             if not self.board_id:
                 return None
@@ -624,7 +624,7 @@ class MondayClient:
             logger.error(f"Monday create_product error: {e}")
             return None
 
-    def update_product(self, item_id: str, product_data: Dict) -> bool:
+    def update_product(self, item_id: str, product_data: dict) -> bool:
         try:
             columns = product_data.get('column_values', '{}')
             query = 'mutation ($boardId: ID!, $itemId: ID!, $columnValues: JSON) { change_multiple_column_values(board_id: $boardId, item_id: $itemId, column_values: $columnValues) { id } }'
@@ -634,7 +634,7 @@ class MondayClient:
             logger.error(f"Monday update_product error: {e}")
             return False
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         stats = {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
         try:
             if self.board_id:
@@ -681,7 +681,7 @@ class FreshsalesClient:
     def close(self):
         self.session.close()
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         try:
             response = self._rate_limited_request('GET', f"{self.base_url}/api/contacts/filters")
             if response.status_code == 200:
@@ -700,7 +700,7 @@ class FreshsalesClient:
             logger.error(f"Freshsales connection error: {e}")
             return {"status": "error", "message": "Error de conexión a Freshsales."}
 
-    def get_products(self, limit: int = 500) -> List[Dict]:
+    def get_products(self, limit: int = 500) -> list[dict]:
         try:
             products = []
             page = 1
@@ -722,7 +722,7 @@ class FreshsalesClient:
             logger.error(f"Freshsales get_products error: {e}")
             return []
 
-    def get_product_by_sku(self, sku: str) -> Optional[Dict]:
+    def get_product_by_sku(self, sku: str) -> dict | None:
         try:
             response = self._rate_limited_request(
                 'GET', f"{self.base_url}/api/cpq/products",
@@ -737,7 +737,7 @@ class FreshsalesClient:
             logger.error(f"Freshsales get_product_by_sku error: {e}")
             return None
 
-    def create_product(self, product_data: Dict) -> Optional[Dict]:
+    def create_product(self, product_data: dict) -> dict | None:
         try:
             response = self._rate_limited_request(
                 'POST', f"{self.base_url}/api/cpq/products",
@@ -750,7 +750,7 @@ class FreshsalesClient:
             logger.error(f"Freshsales create_product error: {e}")
             return None
 
-    def update_product(self, product_id: str, product_data: Dict) -> bool:
+    def update_product(self, product_id: str, product_data: dict) -> bool:
         try:
             response = self._rate_limited_request(
                 'PUT', f"{self.base_url}/api/cpq/products/{product_id}",
@@ -761,7 +761,7 @@ class FreshsalesClient:
             logger.error(f"Freshsales update_product error: {e}")
             return False
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         stats = {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
         try:
             for endpoint, key in [('cpq/products', 'products'), ('contacts', 'clients'), ('deals', 'orders')]:

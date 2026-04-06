@@ -1,10 +1,11 @@
 """
 Rutas de reinicio del sistema para SuperAdmin.
 """
+import logging
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from datetime import datetime, timezone
-import logging
 
 from services.auth import get_superadmin_user
 from services.database import db
@@ -67,7 +68,7 @@ async def reset_application(confirmation: ResetConfirmation, user: dict = Depend
             "message": "Aplicación reiniciada correctamente. Todos los datos han sido eliminados excepto los usuarios.",
             "stats": deleted_stats,
             "executed_by": user.get("email"),
-            "executed_at": datetime.now(timezone.utc).isoformat()
+            "executed_at": datetime.now(UTC).isoformat()
         }
 
     except Exception as e:

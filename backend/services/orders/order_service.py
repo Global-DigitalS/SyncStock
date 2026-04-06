@@ -2,12 +2,13 @@
 Order service: enrichment, validation, and CRM synchronization
 """
 import logging
-from typing import Optional, Dict, Tuple
-from datetime import datetime, timezone
-from services.database import db
+from datetime import UTC, datetime
+
 from services.crm_clients.factory import create_crm_client
+from services.database import db
+
 from .models import Order
-from .normalizer import normalize_order, validate_order_data
+from .normalizer import normalize_order
 from .retry_manager import RetryManager
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ async def check_duplicate_order(source: str, source_order_id: str) -> bool:
     return existing is not None
 
 
-async def enrich_order(order: Order, user_id: str) -> Tuple[Order, Optional[str]]:
+async def enrich_order(order: Order, user_id: str) -> tuple[Order, str | None]:
     """
     Enrich order with product data and stock information
 
@@ -65,7 +66,7 @@ async def enrich_order(order: Order, user_id: str) -> Tuple[Order, Optional[str]
         return order, error_msg
 
 
-async def get_user_crm(user_id: str) -> Tuple[Optional[Dict], Optional[str]]:
+async def get_user_crm(user_id: str) -> tuple[dict | None, str | None]:
     """
     Get user's configured CRM connection
 
@@ -96,7 +97,7 @@ async def get_user_crm(user_id: str) -> Tuple[Optional[Dict], Optional[str]]:
         return None, None
 
 
-async def sync_order_to_crm(order: Order, crm_client, crm_platform: str, user_id: str) -> Tuple[bool, Optional[str], Optional[Dict]]:
+async def sync_order_to_crm(order: Order, crm_client, crm_platform: str, user_id: str) -> tuple[bool, str | None, dict | None]:
     """
     Synchronize order to configured CRM
 
@@ -117,7 +118,7 @@ async def sync_order_to_crm(order: Order, crm_client, crm_platform: str, user_id
         return False, error_msg, None
 
 
-async def _sync_to_dolibarr(order: Order, crm_client, user_id: str) -> Tuple[bool, Optional[str], Optional[Dict]]:
+async def _sync_to_dolibarr(order: Order, crm_client, user_id: str) -> tuple[bool, str | None, dict | None]:
     """Sync order to Dolibarr CRM"""
     try:
         # Get or create customer in Dolibarr
@@ -166,7 +167,7 @@ async def _sync_to_dolibarr(order: Order, crm_client, user_id: str) -> Tuple[boo
 
         order_result = crm_client.create_order({
             "customer_id": dolibarr_customer_id,
-            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+            "date": datetime.now(UTC).strftime("%Y-%m-%d"),
             "external_ref": f"{order.source.upper()}-{order.source_order_id}",
             "notes": f"Order from {order.source} (ID: {order.source_order_id})",
             "lines": lines
@@ -186,7 +187,7 @@ async def _sync_to_dolibarr(order: Order, crm_client, user_id: str) -> Tuple[boo
         return False, str(e), None
 
 
-async def _sync_to_odoo(order: Order, crm_client, user_id: str) -> Tuple[bool, Optional[str], Optional[Dict]]:
+async def _sync_to_odoo(order: Order, crm_client, user_id: str) -> tuple[bool, str | None, dict | None]:
     """Sync order to Odoo CRM"""
     try:
         # Get or create customer in Odoo
@@ -265,15 +266,15 @@ async def _sync_to_odoo(order: Order, crm_client, user_id: str) -> Tuple[bool, O
         return False, str(e), None
 
 
-async def save_order_to_db(order: Order, user_id: str, crm_data: Optional[Dict] = None,
-                          status: str = "completed", error: Optional[Dict] = None,
-                          retry_info: Optional[Dict] = None) -> bool:
+async def save_order_to_db(order: Order, user_id: str, crm_data: dict | None = None,
+                          status: str = "completed", error: dict | None = None,
+                          retry_info: dict | None = None) -> bool:
     """Save order to MongoDB"""
     try:
         doc = order.to_dict()
         doc["userId"] = user_id
         doc["status"] = status
-        doc["processedAt"] = datetime.now(timezone.utc).isoformat()
+        doc["processedAt"] = datetime.now(UTC).isoformat()
 
         if crm_data:
             doc["crmData"] = crm_data
@@ -289,7 +290,7 @@ async def save_order_to_db(order: Order, user_id: str, crm_data: Optional[Dict] 
         # Add history entry
         doc["history"].append({
             "action": "created",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "details": {"status": status}
         })
 
@@ -303,7 +304,7 @@ async def save_order_to_db(order: Order, user_id: str, crm_data: Optional[Dict] 
         return False
 
 
-async def process_order_webhook(data: Dict, platform: str, user_id: str, store_id: str) -> Dict:
+async def process_order_webhook(data: dict, platform: str, user_id: str, store_id: str) -> dict:
     """
     Main function to process order webhook
 

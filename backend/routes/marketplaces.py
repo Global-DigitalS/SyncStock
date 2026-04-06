@@ -1,14 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
-from typing import List, Optional
-from datetime import datetime, timezone
-import uuid
-import logging
 import csv
 import io
+import logging
+import uuid
 import xml.etree.ElementTree as ET
+from datetime import UTC, datetime
 
+from fastapi import APIRouter, Depends, HTTPException, Response
+
+from services.auth import DEFAULT_LIMITS, get_current_user, get_superadmin_user
 from services.database import db
-from services.auth import get_current_user, get_superadmin_user, DEFAULT_LIMITS
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -503,7 +503,7 @@ async def create_marketplace_connection(
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
     connection_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     connection = {
         "id": connection_id,
@@ -575,7 +575,7 @@ async def update_marketplace_connection(
         update_data["catalog_id"] = data["catalog_id"]
         update_data["catalog_name"] = catalog.get("name", "")
 
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
 
     await db.marketplace_connections.update_one(
         {"id": connection_id},
@@ -653,7 +653,7 @@ async def get_marketplace_feed(connection_id: str):
     await db.marketplace_connections.update_one(
         {"id": connection_id},
         {"$set": {
-            "last_generated": datetime.now(timezone.utc).isoformat(),
+            "last_generated": datetime.now(UTC).isoformat(),
             "products_count": len(products)
         }}
     )

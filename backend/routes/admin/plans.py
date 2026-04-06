@@ -1,11 +1,11 @@
 """
 Rutas de planes de suscripción para SuperAdmin.
 """
+import uuid
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List
-from datetime import datetime, timezone
-import uuid
 
 from services.auth import get_superadmin_user
 from services.database import db
@@ -17,7 +17,7 @@ sub_router = APIRouter()
 
 class SubscriptionPlanCreate(BaseModel):
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     max_suppliers: int = 5
     max_catalogs: int = 3
     max_products: int = 1000
@@ -26,37 +26,37 @@ class SubscriptionPlanCreate(BaseModel):
     price_monthly: float = 0
     price_yearly: float = 0
     trial_days: int = 0
-    features: List[str] = []
+    features: list[str] = []
     is_default: bool = False
     sort_order: int = 0
     # Unified Auto-Sync options (for Suppliers, Stores, CRM)
     auto_sync_enabled: bool = False
-    sync_intervals: List[int] = []
+    sync_intervals: list[int] = []
     # Legacy CRM-only Auto-Sync options (for backwards compatibility)
     crm_sync_enabled: bool = False
-    crm_sync_intervals: List[int] = []
+    crm_sync_intervals: list[int] = []
 
 class SubscriptionPlanUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    max_suppliers: Optional[int] = None
-    max_catalogs: Optional[int] = None
-    max_products: Optional[int] = None
-    max_stores: Optional[int] = None
-    max_crm_connections: Optional[int] = None
-    price_monthly: Optional[float] = None
-    price_yearly: Optional[float] = None
-    trial_days: Optional[int] = None
-    features: Optional[List[str]] = None
-    is_active: Optional[bool] = None
-    is_default: Optional[bool] = None
-    sort_order: Optional[int] = None
+    name: str | None = None
+    description: str | None = None
+    max_suppliers: int | None = None
+    max_catalogs: int | None = None
+    max_products: int | None = None
+    max_stores: int | None = None
+    max_crm_connections: int | None = None
+    price_monthly: float | None = None
+    price_yearly: float | None = None
+    trial_days: int | None = None
+    features: list[str] | None = None
+    is_active: bool | None = None
+    is_default: bool | None = None
+    sort_order: int | None = None
     # Unified Auto-Sync options (for Suppliers, Stores, CRM)
-    auto_sync_enabled: Optional[bool] = None
-    sync_intervals: Optional[List[int]] = None
+    auto_sync_enabled: bool | None = None
+    sync_intervals: list[int] | None = None
     # Legacy CRM-only Auto-Sync options (for backwards compatibility)
-    crm_sync_enabled: Optional[bool] = None
-    crm_sync_intervals: Optional[List[int]] = None
+    crm_sync_enabled: bool | None = None
+    crm_sync_intervals: list[int] | None = None
 
 
 # ==================== SUBSCRIPTION PLANS ENDPOINTS ====================
@@ -72,7 +72,7 @@ async def get_plans(user: dict = Depends(get_superadmin_user)):
 async def create_plan(data: SubscriptionPlanCreate, user: dict = Depends(get_superadmin_user)):
     """Create a new subscription plan"""
     plan_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # If this is the default plan, unset others
     if data.is_default:
@@ -100,7 +100,7 @@ async def update_plan(plan_id: str, data: SubscriptionPlanUpdate, user: dict = D
         raise HTTPException(status_code=404, detail="Plan no encontrado")
 
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
 
     # If setting as default, unset others
     if data.is_default:

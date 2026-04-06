@@ -1,17 +1,18 @@
-import jwt
-import bcrypt
 import os
 import re
 import secrets
-from datetime import datetime, timezone, timedelta
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+
+import bcrypt
+import jwt
 from fastapi import Depends, HTTPException, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 from services.database import db
 
 # Cargar JWT config desde config_manager o variables de entorno
 try:
-    from services.config_manager import get_config, ensure_jwt_secret
+    from services.config_manager import ensure_jwt_secret, get_config
     config = get_config()
     JWT_SECRET = config.jwt_secret if config.jwt_secret else ensure_jwt_secret()
 except ImportError:
@@ -95,7 +96,7 @@ def create_token(user_id: str, role: str = "user") -> str:
     payload = {
         "user_id": user_id,
         "role": role,
-        "exp": datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+        "exp": datetime.now(UTC) + timedelta(hours=JWT_EXPIRATION_HOURS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -106,7 +107,7 @@ def create_access_token(user_id: str, role: str = "user") -> str:
         "user_id": user_id,
         "role": role,
         "type": "access",
-        "exp": datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_MINUTES),
+        "exp": datetime.now(UTC) + timedelta(minutes=ACCESS_TOKEN_MINUTES),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -118,7 +119,7 @@ def create_refresh_token(user_id: str, role: str = "user") -> str:
         "role": role,
         "type": "refresh",
         "jti": secrets.token_hex(16),
-        "exp": datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_DAYS),
+        "exp": datetime.now(UTC) + timedelta(days=REFRESH_TOKEN_DAYS),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -169,14 +170,14 @@ def require_permission(permission: str):
 async def check_user_limit(user: dict, resource_type: str) -> bool:
     """Check if user has reached their resource limit"""
     role = user.get("role", "user")
-    
+
     # Superadmin has no limits
     if role == "superadmin" or "unlimited" in ROLE_PERMISSIONS.get(role, []):
         return True
-    
+
     limit_field = f"max_{resource_type}"
     user_limit = user.get(limit_field, DEFAULT_LIMITS.get(role, {}).get(limit_field, 0))
-    
+
     # Count current resources
     if resource_type == "suppliers":
         count = await db.suppliers.count_documents({"user_id": user["id"]})
@@ -186,7 +187,7 @@ async def check_user_limit(user: dict, resource_type: str) -> bool:
         count = await db.woocommerce_configs.count_documents({"user_id": user["id"]})
     else:
         return True
-    
+
     return count < user_limit
 
 
@@ -195,10 +196,10 @@ async def get_user_resource_usage(user: dict) -> dict:
     suppliers = await db.suppliers.count_documents({"user_id": user["id"]})
     catalogs = await db.catalogs.count_documents({"user_id": user["id"]})
     stores = await db.woocommerce_configs.count_documents({"user_id": user["id"]})
-    
+
     role = user.get("role", "user")
     defaults = DEFAULT_LIMITS.get(role, DEFAULT_LIMITS["user"])
-    
+
     return {
         "suppliers": {"used": suppliers, "max": user.get("max_suppliers", defaults["max_suppliers"])},
         "catalogs": {"used": catalogs, "max": user.get("max_catalogs", defaults["max_catalogs"])},
@@ -208,7 +209,7 @@ async def get_user_resource_usage(user: dict) -> dict:
 
 async def _extract_token(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials],
+    credentials: HTTPAuthorizationCredentials | None,
 ) -> str:
     """Extract JWT token from httpOnly cookie or Authorization header."""
     token = request.cookies.get("auth_token")
@@ -221,7 +222,7 @@ async def _extract_token(
 
 async def get_current_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict:
     token = await _extract_token(request, credentials)
     try:
@@ -245,7 +246,7 @@ async def get_current_user(
 
 async def get_admin_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict:
     """Get current user and verify admin role"""
     user = await get_current_user(request, credentials)
@@ -256,7 +257,7 @@ async def get_admin_user(
 
 async def get_superadmin_user(
     request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
 ) -> dict:
     """Get current user and verify superadmin role"""
     user = await get_current_user(request, credentials)
@@ -271,7 +272,7 @@ async def check_account_lockout(email: str) -> None:
     """Raise 429 if the account is currently locked out.
     Fails open: if the DB is unreachable, allow the login attempt."""
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         record = await db.login_attempts.find_one({"email": email})
         if not record:
             return
@@ -279,7 +280,7 @@ async def check_account_lockout(email: str) -> None:
         if locked_until:
             lu = datetime.fromisoformat(locked_until)
             if lu.tzinfo is None:
-                lu = lu.replace(tzinfo=timezone.utc)
+                lu = lu.replace(tzinfo=UTC)
             if now < lu:
                 remaining = int((lu - now).total_seconds() / 60) + 1
                 raise HTTPException(
@@ -299,7 +300,7 @@ async def record_failed_login(email: str) -> None:
     LOW FIX #19: Log failed login attempts for security monitoring
     """
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         window_start = (now - timedelta(minutes=_ATTEMPT_WINDOW_MINUTES)).isoformat()
 
         record = await db.login_attempts.find_one({"email": email})
@@ -345,7 +346,7 @@ async def reset_failed_logins(email: str) -> None:
 async def revoke_refresh_token(jti: str) -> None:
     """Add a refresh token's jti to the blacklist so it cannot be reused."""
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await db.token_blacklist.update_one(
             {"jti": jti},
             {"$set": {

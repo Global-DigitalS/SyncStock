@@ -1,13 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Optional
-from datetime import datetime, timezone, timedelta
-import uuid
 import logging
+import uuid
+from datetime import UTC, datetime, timedelta
 
-from services.database import db
-from services.auth import get_current_user, get_superadmin_user, DEFAULT_LIMITS
-from models.schemas import SubscriptionPlan, UserSubscription
+from fastapi import APIRouter, Depends, HTTPException
+
+from models.schemas import SubscriptionPlan
 from routes.email import send_subscription_change_email
+from services.auth import get_current_user, get_superadmin_user
+from services.database import db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -17,11 +17,11 @@ router = APIRouter()
 
 # ==================== SUBSCRIPTION PLANS (SuperAdmin) ====================
 
-@router.get("/subscriptions/plans", response_model=List[SubscriptionPlan])
+@router.get("/subscriptions/plans", response_model=list[SubscriptionPlan])
 async def get_subscription_plans(user: dict = Depends(get_current_user)):
     """Get all available subscription plans"""
     plans = await db.subscription_plans.find({"is_active": True}, {"_id": 0}).to_list(100)
-    
+
     # If no plans exist, create default ones
     if not plans:
         default_plans = [
@@ -43,7 +43,7 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "sync_intervals": [],
                 "crm_sync_enabled": False,
                 "crm_sync_intervals": [],
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": datetime.now(UTC).isoformat()
             },
             {
                 "id": str(uuid.uuid4()),
@@ -63,7 +63,7 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "sync_intervals": [24],  # Solo cada 24 horas
                 "crm_sync_enabled": True,
                 "crm_sync_intervals": [24],
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": datetime.now(UTC).isoformat()
             },
             {
                 "id": str(uuid.uuid4()),
@@ -83,7 +83,7 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "sync_intervals": [6, 12, 24],  # Cada 6, 12 o 24 horas
                 "crm_sync_enabled": True,
                 "crm_sync_intervals": [6, 12, 24],
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": datetime.now(UTC).isoformat()
             },
             {
                 "id": str(uuid.uuid4()),
@@ -103,13 +103,13 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
                 "sync_intervals": [1, 6, 12, 24],  # Todos los intervalos
                 "crm_sync_enabled": True,
                 "crm_sync_intervals": [1, 6, 12, 24],
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": datetime.now(UTC).isoformat()
             }
         ]
         for plan in default_plans:
             await db.subscription_plans.insert_one(plan)
         plans = default_plans
-    
+
     return [SubscriptionPlan(**p) for p in plans]
 
 
@@ -117,10 +117,10 @@ async def get_subscription_plans(user: dict = Depends(get_current_user)):
 async def get_public_subscription_plans():
     """Get available subscription plans (public endpoint for registration)"""
     plans = await db.subscription_plans.find(
-        {"is_active": True}, 
+        {"is_active": True},
         {"_id": 0}
     ).sort("price_monthly", 1).to_list(100)
-    
+
     # Return simplified plan info for public display
     public_plans = []
     for plan in plans:
@@ -136,7 +136,7 @@ async def get_public_subscription_plans():
             "max_catalogs": plan.get("max_catalogs", 0),
             "max_woocommerce_stores": plan.get("max_woocommerce_stores", 0)
         })
-    
+
     return public_plans
 
 
@@ -144,7 +144,7 @@ async def get_public_subscription_plans():
 async def create_subscription_plan(plan: dict, superadmin: dict = Depends(get_superadmin_user)):
     """Create a new subscription plan (SuperAdmin only)"""
     plan_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     plan_doc = {
         "id": plan_id,
         "name": plan.get("name", "New Plan"),
@@ -176,11 +176,11 @@ async def update_subscription_plan(plan_id: str, plan: dict, superadmin: dict = 
     existing = await db.subscription_plans.find_one({"id": plan_id})
     if not existing:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
-    
+
     update_data = {k: v for k, v in plan.items() if v is not None and k != "id"}
     if update_data:
         await db.subscription_plans.update_one({"id": plan_id}, {"$set": update_data})
-    
+
     updated = await db.subscription_plans.find_one({"id": plan_id}, {"_id": 0})
     return SubscriptionPlan(**updated)
 
@@ -194,8 +194,8 @@ async def delete_subscription_plan(plan_id: str, superadmin: dict = Depends(get_
     return {"message": "Plan desactivado"}
 
 
+
 from pydantic import BaseModel, EmailStr
-from typing import Optional as OptionalType
 
 
 class BillingInfo(BaseModel):
@@ -206,7 +206,7 @@ class BillingInfo(BaseModel):
     city: str
     postal_code: str
     country: str = "España"
-    billing_email: OptionalType[EmailStr] = None
+    billing_email: EmailStr | None = None
 
 
 # ==================== USER SUBSCRIPTIONS ====================
@@ -218,22 +218,22 @@ async def get_my_subscription(user: dict = Depends(get_current_user)):
         {"user_id": user["id"], "status": {"$in": ["active", "trial"]}},
         {"_id": 0}
     )
-    
+
     # Get user's billing info
     billing_info = await db.billing_info.find_one({"user_id": user["id"]}, {"_id": 0})
-    
+
     # Check if user is in trial period
     is_in_trial = False
     trial_days_left = 0
     trial_end = None
-    
+
     if subscription and subscription.get("status") == "trial":
         trial_end_str = subscription.get("current_period_end")
         if trial_end_str:
             trial_end_dt = datetime.fromisoformat(trial_end_str.replace('Z', '+00:00'))
-            if trial_end_dt > datetime.now(timezone.utc):
+            if trial_end_dt > datetime.now(UTC):
                 is_in_trial = True
-                trial_days_left = (trial_end_dt - datetime.now(timezone.utc)).days
+                trial_days_left = (trial_end_dt - datetime.now(UTC)).days
                 trial_end = trial_end_str
             else:
                 # Trial has ended, update status
@@ -242,19 +242,19 @@ async def get_my_subscription(user: dict = Depends(get_current_user)):
                     {"$set": {"status": "trial_ended"}}
                 )
                 subscription["status"] = "trial_ended"
-    
+
     # Also check user-level trial_end (legacy support)
     user_trial_end = user.get("trial_end")
     if user_trial_end and not is_in_trial:
         try:
             trial_end_dt = datetime.fromisoformat(user_trial_end.replace('Z', '+00:00'))
-            if trial_end_dt > datetime.now(timezone.utc):
+            if trial_end_dt > datetime.now(UTC):
                 is_in_trial = True
-                trial_days_left = (trial_end_dt - datetime.now(timezone.utc)).days
+                trial_days_left = (trial_end_dt - datetime.now(UTC)).days
                 trial_end = user_trial_end
         except (ValueError, AttributeError):
             pass
-    
+
     if not subscription or subscription.get("status") in ["trial_ended", "cancelled", "expired"]:
         # Return free plan info
         return {
@@ -272,7 +272,7 @@ async def get_my_subscription(user: dict = Depends(get_current_user)):
             "trial_end": trial_end,
             "billing_info": billing_info
         }
-    
+
     plan = await db.subscription_plans.find_one({"id": subscription["plan_id"]}, {"_id": 0})
     return {
         "subscription": subscription,
@@ -297,15 +297,15 @@ async def save_billing_info(billing: BillingInfo, user: dict = Depends(get_curre
         "postal_code": billing.postal_code,
         "country": billing.country,
         "billing_email": billing.billing_email or user.get("email"),
-        "updated_at": datetime.now(timezone.utc).isoformat()
+        "updated_at": datetime.now(UTC).isoformat()
     }
-    
+
     await db.billing_info.update_one(
         {"user_id": user["id"]},
         {"$set": billing_doc},
         upsert=True
     )
-    
+
     return {"message": "Datos de facturación guardados", "billing_info": billing_doc}
 
 
@@ -322,15 +322,15 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
     plan = await db.subscription_plans.find_one({"id": plan_id, "is_active": True}, {"_id": 0})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
-    
+
     billing_cycle = request.get("billing_cycle", "monthly")
     start_trial = request.get("start_trial", False)  # If user wants to start trial
     trial_days = plan.get("trial_days", 0)
-    
+
     # For paid plans, require billing information unless starting a trial
     if plan.get("price_monthly", 0) > 0 and not start_trial:
         billing_info = await db.billing_info.find_one({"user_id": user["id"]})
-        
+
         # Check if billing info was provided in the request
         if not billing_info and request.get("billing_info"):
             billing_data = request["billing_info"]
@@ -343,44 +343,44 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
                 "postal_code": billing_data.get("postal_code", ""),
                 "country": billing_data.get("country", "España"),
                 "billing_email": billing_data.get("billing_email") or user.get("email"),
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": datetime.now(UTC).isoformat()
             }
             await db.billing_info.insert_one(billing_doc)
             billing_info = billing_doc
-        
+
         if not billing_info:
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail="Se requieren datos de facturación para planes de pago"
             )
-    
+
     # Get current subscription to know the old plan name
     current_subscription = await db.user_subscriptions.find_one(
         {"user_id": user["id"], "status": {"$in": ["active", "trial"]}},
         {"_id": 0}
     )
     old_plan_name = current_subscription.get("plan_name", "Free") if current_subscription else "Free"
-    
+
     # Check if user already used trial for this plan
     existing_trial = await db.user_subscriptions.find_one({
         "user_id": user["id"],
         "plan_id": plan_id,
         "status": {"$in": ["trial", "trial_ended"]}
     })
-    
+
     # Determine if we should start a trial
     is_trial = False
     if start_trial and trial_days > 0 and not existing_trial:
         is_trial = True
-    
+
     # Cancel existing subscription
     await db.user_subscriptions.update_many(
         {"user_id": user["id"], "status": {"$in": ["active", "trial"]}},
         {"$set": {"status": "cancelled"}}
     )
-    
-    now = datetime.now(timezone.utc)
-    
+
+    now = datetime.now(UTC)
+
     if is_trial:
         # Trial period
         period_end = now + timedelta(days=trial_days)
@@ -389,7 +389,7 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
         # Regular subscription
         period_end = now + timedelta(days=30 if billing_cycle == "monthly" else 365)
         status = "active"
-    
+
     subscription_id = str(uuid.uuid4())
     subscription_doc = {
         "id": subscription_id,
@@ -405,7 +405,7 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
         "created_at": now.isoformat()
     }
     await db.user_subscriptions.insert_one(subscription_doc)
-    
+
     # Update user limits based on plan
     await db.users.update_one(
         {"id": user["id"]},
@@ -417,10 +417,10 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
             "trial_end": period_end.isoformat() if is_trial else None
         }}
     )
-    
+
     # Remove _id added by MongoDB insert_one
     subscription_doc.pop("_id", None)
-    
+
     # Send subscription change email
     try:
         await send_subscription_change_email(
@@ -432,9 +432,9 @@ async def subscribe_to_plan(plan_id: str, request: dict, user: dict = Depends(ge
         logger.info(f"Subscription change email sent to {user.get('email')}")
     except Exception as e:
         logger.error(f"Failed to send subscription change email: {e}")
-    
+
     message = f"¡Periodo de prueba de {trial_days} días activado para el plan {plan['name']}!" if is_trial else f"Suscrito al plan {plan['name']} exitosamente"
-    
+
     return {
         "message": message,
         "subscription": subscription_doc,
@@ -450,10 +450,10 @@ async def cancel_subscription(user: dict = Depends(get_current_user)):
         {"user_id": user["id"], "status": "active"},
         {"$set": {"status": "cancelled"}}
     )
-    
+
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="No hay suscripción activa")
-    
+
     # Revert to free plan limits
     await db.users.update_one(
         {"id": user["id"]},
@@ -463,7 +463,7 @@ async def cancel_subscription(user: dict = Depends(get_current_user)):
             "max_woocommerce_stores": 1
         }}
     )
-    
+
     return {"message": "Suscripción cancelada. Los límites se han revertido al plan gratuito."}
 
 
@@ -476,7 +476,7 @@ async def get_billing_history(user: dict = Depends(get_current_user)):
         {"user_id": user["id"]},
         {"_id": 0}
     ).sort("created_at", -1).limit(20).to_list(20)
-    
+
     return history
 
 
@@ -484,14 +484,14 @@ async def get_billing_history(user: dict = Depends(get_current_user)):
 async def get_subscription_stats(superadmin: dict = Depends(get_superadmin_user)):
     """Get subscription statistics (SuperAdmin only)"""
     total_subscriptions = await db.user_subscriptions.count_documents({"status": "active"})
-    
+
     # Count by plan
     pipeline = [
         {"$match": {"status": "active"}},
         {"$group": {"_id": "$plan_name", "count": {"$sum": 1}}}
     ]
     by_plan = await db.user_subscriptions.aggregate(pipeline).to_list(100)
-    
+
     # Monthly revenue estimate
     revenue_pipeline = [
         {"$match": {"status": "active"}},
@@ -517,7 +517,7 @@ async def get_subscription_stats(superadmin: dict = Depends(get_superadmin_user)
     ]
     revenue_result = await db.user_subscriptions.aggregate(revenue_pipeline).to_list(1)
     monthly_revenue = revenue_result[0]["monthly_revenue"] if revenue_result else 0
-    
+
     return {
         "total_active": total_subscriptions,
         "by_plan": {p["_id"]: p["count"] for p in by_plan},

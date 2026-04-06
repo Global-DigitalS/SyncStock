@@ -1,28 +1,40 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from datetime import datetime, timezone, timedelta
-import uuid
+import logging
 import secrets
-from typing import List
-from pydantic import BaseModel, EmailStr
+import uuid
+from datetime import UTC, datetime, timedelta
 
-from services.database import db
-from services.auth import (
-    hash_password, verify_password, create_token, get_current_user,
-    get_admin_user, get_superadmin_user, ROLE_PERMISSIONS, DEFAULT_LIMITS,
-    get_user_resource_usage, validate_password_strength,
-    check_account_lockout, record_failed_login, reset_failed_logins,
-    _DUMMY_HASH,
-    create_access_token, create_refresh_token, verify_refresh_token,
-    verify_refresh_token_async, revoke_refresh_token,
-    generate_csrf_token, REFRESH_TOKEN_DAYS,
-)
-from services.sanitizer import sanitize_string, sanitize_email, sanitize_password, sanitize_dict
-from models.schemas import UserCreate, UserLogin, UserResponse, UserUpdate, UserLimits, UserFullUpdate
-from services.email_service import get_email_service, get_password_reset_email_template
-from services.config_manager import get_config
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from pydantic import BaseModel, EmailStr
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import logging
+
+from models.schemas import UserCreate, UserFullUpdate, UserLimits, UserLogin, UserResponse
+from services.auth import (
+    _DUMMY_HASH,
+    DEFAULT_LIMITS,
+    REFRESH_TOKEN_DAYS,
+    ROLE_PERMISSIONS,
+    check_account_lockout,
+    create_access_token,
+    create_refresh_token,
+    generate_csrf_token,
+    get_admin_user,
+    get_current_user,
+    get_superadmin_user,
+    get_user_resource_usage,
+    hash_password,
+    record_failed_login,
+    reset_failed_logins,
+    revoke_refresh_token,
+    validate_password_strength,
+    verify_password,
+    verify_refresh_token,
+    verify_refresh_token_async,
+)
+from services.config_manager import get_config
+from services.database import db
+from services.email_service import get_email_service, get_password_reset_email_template
+from services.sanitizer import sanitize_email, sanitize_password, sanitize_string
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -132,7 +144,7 @@ async def register(request: Request, response: Response, user: UserCreate):
             # Apply trial period if plan has trial days
             trial_days = plan.get("trial_days", 0)
             if trial_days > 0:
-                trial_end = (datetime.now(timezone.utc) + timedelta(days=trial_days)).isoformat()
+                trial_end = (datetime.now(UTC) + timedelta(days=trial_days)).isoformat()
         else:
             limits = DEFAULT_LIMITS.get(role, DEFAULT_LIMITS["user"])
 
@@ -148,7 +160,7 @@ async def register(request: Request, response: Response, user: UserCreate):
             "plan_id": plan["id"] if plan else None,
             "plan_name": plan["name"] if plan else "Free",
             "trial_end": trial_end,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(UTC).isoformat()
         }
         await db.users.insert_one(user_doc)
         token = _set_auth_cookies(response, user_id, role)
@@ -162,7 +174,7 @@ async def register(request: Request, response: Response, user: UserCreate):
                 "plan_name": plan["name"],
                 "status": "pending_payment",  # Requires payment
                 "billing_cycle": "monthly",
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": datetime.now(UTC).isoformat()
             }
             await db.user_subscriptions.insert_one(subscription_doc)
 
@@ -309,24 +321,24 @@ async def update_profile(request: dict, user: dict = Depends(get_current_user)):
     """Update user's profile information"""
     allowed_fields = ["name", "company", "phone"]
     update_data = {}
-    
+
     for field in allowed_fields:
         if field in request and request[field] is not None:
             if field in ["name", "company"]:
                 update_data[field] = sanitize_string(request[field], max_length=200)
             else:
                 update_data[field] = request[field]
-    
+
     if not update_data:
         raise HTTPException(status_code=400, detail="No hay datos para actualizar")
-    
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    
+
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
+
     await db.users.update_one(
         {"id": user["id"]},
         {"$set": update_data}
     )
-    
+
     return {"message": "Perfil actualizado correctamente", "updated": list(update_data.keys())}
 
 
@@ -341,10 +353,10 @@ async def change_password(request: Request, body: ChangePasswordRequest, user: d
     """Change user's password"""
     current_password = body.current_password
     new_password = body.new_password
-    
+
     if not current_password or not new_password:
         raise HTTPException(status_code=400, detail="Contraseña actual y nueva son requeridas")
-    
+
     try:
         validate_password_strength(new_password)
     except ValueError as exc:
@@ -354,21 +366,21 @@ async def change_password(request: Request, body: ChangePasswordRequest, user: d
     db_user = await db.users.find_one({"id": user["id"]})
     if not db_user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
     # Verify current password
     if not verify_password(current_password, db_user.get("password", "")):
         raise HTTPException(status_code=400, detail="La contraseña actual es incorrecta")
-    
+
     # Update password
     new_hashed = hash_password(new_password)
     await db.users.update_one(
         {"id": user["id"]},
         {"$set": {
             "password": new_hashed,
-            "password_changed_at": datetime.now(timezone.utc).isoformat()
+            "password_changed_at": datetime.now(UTC).isoformat()
         }}
     )
-    
+
     return {"message": "Contraseña actualizada correctamente"}
 
 
@@ -391,7 +403,7 @@ async def get_my_limits(user: dict = Depends(get_current_user)):
 
 # ==================== USER MANAGEMENT (Admin/SuperAdmin) ====================
 
-@router.get("/users", response_model=List[UserResponse])
+@router.get("/users", response_model=list[UserResponse])
 async def list_users(admin: dict = Depends(get_admin_user)):
     """List all users (admin/superadmin only)"""
     users = await db.users.find({}, {"_id": 0, "password": 0}).to_list(1000)
@@ -411,7 +423,7 @@ async def get_user(user_id: str, admin: dict = Depends(get_admin_user)):
     user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
     usage = await get_user_resource_usage(user)
     return {**user, "usage": usage}
 
@@ -422,33 +434,33 @@ async def get_user_stats(user_id: str, superadmin: dict = Depends(get_superadmin
     user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
     # Get resource counts
     suppliers_count = await db.suppliers.count_documents({"user_id": user_id})
     catalogs_count = await db.catalogs.count_documents({"user_id": user_id})
     products_count = await db.products.count_documents({"user_id": user_id})
     stores_count = await db.woocommerce_configs.count_documents({"user_id": user_id})
     marketplaces_count = await db.marketplace_connections.count_documents({"user_id": user_id})
-    
+
     # Get recent activity
     recent_syncs = await db.sync_history.find(
         {"user_id": user_id}
     ).sort("created_at", -1).limit(5).to_list(5)
-    
+
     # Clean sync history for response
     for sync in recent_syncs:
         if "_id" in sync:
             del sync["_id"]
-    
+
     # Get payment history
     payments = await db.payment_transactions.find(
         {"user_id": user_id}
     ).sort("created_at", -1).limit(10).to_list(10)
-    
+
     for payment in payments:
         if "_id" in payment:
             del payment["_id"]
-    
+
     # Get subscription plan details if exists
     subscription_plan = None
     if user.get("subscription_plan_id"):
@@ -456,7 +468,7 @@ async def get_user_stats(user_id: str, superadmin: dict = Depends(get_superadmin
             {"id": user.get("subscription_plan_id")},
             {"_id": 0}
         )
-    
+
     return {
         "user": user,
         "usage": {
@@ -491,12 +503,12 @@ async def update_user_full(user_id: str, update: UserFullUpdate, superadmin: dic
     """Update all user fields (SuperAdmin only)"""
     # Sanitize user_id
     user_id = sanitize_string(user_id, max_length=50)
-    
+
     # Check if user exists
     user = await db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
     # Build update dict, only include non-None values and sanitize
     update_data = {}
     for field, value in update.model_dump().items():
@@ -508,25 +520,25 @@ async def update_user_full(user_id: str, update: UserFullUpdate, superadmin: dic
                     update_data[field] = sanitize_string(value, max_length=500)
             else:
                 update_data[field] = value
-    
+
     # Check if email is being changed and if it's unique
     if "email" in update_data and update_data["email"] != user.get("email"):
         existing = await db.users.find_one({"email": update_data["email"], "id": {"$ne": user_id}})
         if existing:
             raise HTTPException(status_code=400, detail="Este email ya está en uso por otro usuario")
-    
+
     # Validate role if being changed
     if "role" in update_data:
         valid_roles = ["superadmin", "admin", "user", "viewer"]
         if update_data["role"] not in valid_roles:
             raise HTTPException(status_code=400, detail=f"Rol inválido. Roles válidos: {valid_roles}")
-    
+
     if not update_data:
         return {"message": "No hay cambios para guardar"}
-    
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
     update_data["updated_by"] = superadmin.get("email")
-    
+
     await db.users.update_one({"id": user_id}, {"$set": update_data})
 
     # Notify superadmins if is_active changed
@@ -551,17 +563,17 @@ async def update_user_role(user_id: str, role: str, admin: dict = Depends(get_ad
     # Only superadmin can assign superadmin or admin roles
     if role in ["superadmin", "admin"] and admin.get("role") != "superadmin":
         raise HTTPException(status_code=403, detail="Solo SuperAdmin puede asignar roles de admin")
-    
+
     if role not in ROLE_PERMISSIONS:
         raise HTTPException(status_code=400, detail=f"Rol inválido. Roles válidos: {list(ROLE_PERMISSIONS.keys())}")
-    
+
     # Prevent changing own role
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="No puedes cambiar tu propio rol")
-    
+
     # Get default limits for new role
     limits = DEFAULT_LIMITS.get(role, DEFAULT_LIMITS["user"])
-    
+
     result = await db.users.update_one(
         {"id": user_id},
         {"$set": {
@@ -574,7 +586,7 @@ async def update_user_role(user_id: str, role: str, admin: dict = Depends(get_ad
     )
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
+
     return {"message": f"Rol actualizado a '{role}' con límites por defecto"}
 
 
@@ -702,12 +714,12 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest):
     Always returns success to prevent email enumeration attacks.
     """
     user = await db.users.find_one({"email": body.email})
-    
+
     if user:
         # Generate reset token
         reset_token = secrets.token_urlsafe(32)
-        expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
-        
+        expires_at = datetime.now(UTC) + timedelta(hours=1)
+
         # Store reset token in database
         await db.password_resets.delete_many({"user_id": user["id"]})  # Remove old tokens
         await db.password_resets.insert_one({
@@ -716,22 +728,22 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest):
             "email": user["email"],
             "token": reset_token,
             "expires_at": expires_at.isoformat(),
-            "created_at": datetime.now(timezone.utc).isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
             "used": False
         })
-        
+
         # Send email
         try:
             config = get_config()
             app_url = getattr(config, 'app_url', '') or 'https://app.sync-stock.com'
             reset_link = f"{app_url}/#/forgot-password?token={reset_token}"
-            
+
             email_template = get_password_reset_email_template(
                 user_name=user.get("name", "Usuario"),
                 reset_link=reset_link,
                 app_url=app_url
             )
-            
+
             email_service = get_email_service()
             if email_service.is_configured():
                 result = email_service.send_email(
@@ -746,10 +758,10 @@ async def forgot_password(request: Request, body: ForgotPasswordRequest):
                     logger.warning(f"Failed to send password reset email: {result['message']}")
             else:
                 logger.warning("Email service not configured, reset token generated but email not sent")
-                
+
         except Exception as e:
             logger.error(f"Error sending password reset email: {e}")
-    
+
     # Always return success to prevent email enumeration
     return {"message": "Si el email está registrado, recibirás un enlace de recuperación"}
 
@@ -770,22 +782,22 @@ async def reset_password(request: Request, body: ResetPasswordRequest):
         "token": body.token,
         "used": False
     })
-    
+
     if not reset_record:
         raise HTTPException(status_code=400, detail="Token inválido o ya utilizado")
-    
+
     # Check expiration
     expires_at = datetime.fromisoformat(reset_record["expires_at"].replace('Z', '+00:00'))
-    if datetime.now(timezone.utc) > expires_at:
+    if datetime.now(UTC) > expires_at:
         raise HTTPException(status_code=400, detail="El token ha expirado. Solicita un nuevo enlace.")
-    
+
     # Update password
     hashed_password = hash_password(body.new_password)
     result = await db.users.update_one(
         {"id": reset_record["user_id"]},
         {"$set": {
             "password": hashed_password,
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "updated_at": datetime.now(UTC).isoformat()
         }}
     )
 
@@ -795,11 +807,11 @@ async def reset_password(request: Request, body: ResetPasswordRequest):
     # Mark token as used
     await db.password_resets.update_one(
         {"token": body.token},
-        {"$set": {"used": True, "used_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {"used": True, "used_at": datetime.now(UTC).isoformat()}}
     )
-    
+
     logger.info(f"Password reset successful for user {reset_record['email']}")
-    
+
     return {"message": "Contraseña actualizada correctamente"}
 
 
@@ -812,12 +824,12 @@ async def verify_reset_token(token: str):
         "token": token,
         "used": False
     })
-    
+
     if not reset_record:
         raise HTTPException(status_code=400, detail="Token inválido")
-    
+
     expires_at = datetime.fromisoformat(reset_record["expires_at"].replace('Z', '+00:00'))
-    if datetime.now(timezone.utc) > expires_at:
+    if datetime.now(UTC) > expires_at:
         raise HTTPException(status_code=400, detail="Token expirado")
-    
+
     return {"valid": True}

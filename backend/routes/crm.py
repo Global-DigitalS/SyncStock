@@ -2,17 +2,18 @@
 CRM Integration Routes
 Thin route handlers — business logic lives in services/crm_clients.py and services/crm_sync.py.
 """
-from fastapi import APIRouter, Depends, HTTPException
-from datetime import datetime, timezone
-import uuid
-import logging
 import asyncio
+import logging
 import secrets
+import uuid
+from datetime import UTC, datetime
 
-from services.database import db
+from fastapi import APIRouter, Depends, HTTPException
+
 from services.auth import get_current_user
-from services.crm_clients import create_crm_client, FULL_SYNC_PLATFORMS, BASIC_SYNC_PLATFORMS
+from services.crm_clients import create_crm_client
 from services.crm_sync import run_sync_in_background
+from services.database import db
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -107,8 +108,8 @@ async def create_crm_connection(request: dict, user: dict = Depends(get_current_
         "auto_sync_interval": request.get("auto_sync_interval", "daily"),
         "status": "active",
         "webhook_secret": webhook_secret,  # SECURITY: Store for HMAC verification
-        "created_at": datetime.now(timezone.utc).isoformat(),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
+        "updated_at": datetime.now(UTC).isoformat(),
         "last_sync": None
     }
 
@@ -140,7 +141,7 @@ async def update_crm_connection(connection_id: str, request: dict, user: dict = 
         if field in request:
             update_data[field] = request[field]
 
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
 
     # CRITICAL FIX: Always include user_id in update filter to prevent cross-user modification
     result = await db.crm_connections.update_one(
@@ -240,7 +241,7 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
 
     # Create sync job for progress tracking
     sync_job_id = str(uuid.uuid4())
-    started_at = datetime.now(timezone.utc).isoformat()
+    started_at = datetime.now(UTC).isoformat()
     sync_job = {
         "id": sync_job_id,
         "user_id": user["id"],
@@ -282,7 +283,7 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
                 ),
                 timeout=3600  # 1 hour max
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(f"Sync job {sync_job_id} exceeded 1 hour timeout")
             try:
                 await db.sync_jobs.update_one(
@@ -290,7 +291,7 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
                     {"$set": {
                         "status": "error",
                         "current_step": "Sincronización excedió el tiempo máximo (1 hora)",
-                        "completed_at": datetime.now(timezone.utc).isoformat()
+                        "completed_at": datetime.now(UTC).isoformat()
                     }}
                 )
             except Exception as e:
@@ -418,8 +419,8 @@ async def get_platform_statistics(platform: str, user: dict = Depends(get_curren
         days = 30
 
     # Calculate cutoff date
-    from datetime import datetime, timezone, timedelta
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    from datetime import datetime, timedelta
+    cutoff = datetime.now(UTC) - timedelta(days=days)
 
     # Get stats for platform in the time range
     stats = await db.sync_statistics.find(

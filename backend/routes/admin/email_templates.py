@@ -1,14 +1,15 @@
 """
 Rutas de plantillas de email y presets de tema para SuperAdmin.
 """
+import uuid
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List
-from datetime import datetime, timezone
-import uuid
 
 from services.auth import get_superadmin_user
 from services.database import db
+
 from .branding import BrandingConfig
 
 sub_router = APIRouter()
@@ -21,17 +22,17 @@ class EmailTemplateCreate(BaseModel):
     key: str  # welcome, password_reset, subscription_change, etc.
     subject: str
     html_content: str
-    text_content: Optional[str] = None
-    variables: List[str] = []  # Available variables: {name}, {email}, {link}, etc.
+    text_content: str | None = None
+    variables: list[str] = []  # Available variables: {name}, {email}, {link}, etc.
     is_active: bool = True
 
 class EmailTemplateUpdate(BaseModel):
-    name: Optional[str] = None
-    subject: Optional[str] = None
-    html_content: Optional[str] = None
-    text_content: Optional[str] = None
-    variables: Optional[List[str]] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    subject: str | None = None
+    html_content: str | None = None
+    text_content: str | None = None
+    variables: list[str] | None = None
+    is_active: bool | None = None
 
 
 # ==================== DEFAULT TEMPLATES ====================
@@ -161,7 +162,7 @@ async def get_email_templates(user: dict = Depends(get_superadmin_user)):
 
     # If no templates exist, create defaults
     if not templates:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         for tpl in DEFAULT_TEMPLATES:
             template = {
                 "id": str(uuid.uuid4()),
@@ -192,7 +193,7 @@ async def update_email_template(template_id: str, data: EmailTemplateUpdate, use
         raise HTTPException(status_code=404, detail="Plantilla no encontrada")
 
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
     update_data["updated_by"] = user["id"]
 
     await db.email_templates.update_one({"id": template_id}, {"$set": update_data})
@@ -210,7 +211,7 @@ async def create_email_template(data: EmailTemplateCreate, user: dict = Depends(
         raise HTTPException(status_code=400, detail=f"Ya existe una plantilla con la clave '{data.key}'")
 
     template_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     template = {
         "id": template_id,
@@ -283,7 +284,7 @@ async def preview_email_template(template_id: str, user: dict = Depends(get_supe
 @sub_router.post("/admin/email-templates/reset-defaults")
 async def reset_default_templates(user: dict = Depends(get_superadmin_user)):
     """Reset default templates to their original content"""
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     for tpl in DEFAULT_TEMPLATES:
         await db.email_templates.update_one(
@@ -370,7 +371,7 @@ async def apply_theme_preset(preset_key: str, user: dict = Depends(get_superadmi
             "secondary_color": preset["secondary_color"],
             "accent_color": preset["accent_color"],
             "theme_preset": preset_key,
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "updated_at": datetime.now(UTC).isoformat()
         }},
         upsert=True
     )

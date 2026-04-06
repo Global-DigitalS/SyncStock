@@ -5,27 +5,27 @@ Incluye: exportación CSV/Excel, informes de posicionamiento y automatización d
 """
 import csv
 import io
+import logging
 import re
 import uuid
-import logging
-from datetime import datetime, timezone, timedelta
-from typing import Optional, List
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Body, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.responses import StreamingResponse
-from services.database import db
+
 from services.auth import get_current_user
+from services.database import db
 
 limiter = Limiter(key_func=get_remote_address)
 from models.schemas import (
     CompetitorCreate,
-    CompetitorUpdate,
     CompetitorResponse,
+    CompetitorUpdate,
     PriceAlertCreate,
-    PriceAlertUpdate,
     PriceAlertResponse,
+    PriceAlertUpdate,
 )
 
 router = APIRouter()
@@ -65,8 +65,8 @@ def _validate_url(url: str) -> bool:
 
 @router.get("/competitors/prices")
 async def get_competitor_prices(
-    sku: Optional[str] = Query(None, description="SKU del producto"),
-    ean: Optional[str] = Query(None, description="EAN del producto"),
+    sku: str | None = Query(None, description="SKU del producto"),
+    ean: str | None = Query(None, description="EAN del producto"),
     user: dict = Depends(get_current_user),
 ):
     """
@@ -157,9 +157,9 @@ async def get_competitor_prices(
 
 @router.get("/competitors/prices/history")
 async def get_competitor_price_history(
-    sku: Optional[str] = Query(None, description="SKU del producto"),
-    ean: Optional[str] = Query(None, description="EAN del producto"),
-    competitor_id: Optional[str] = Query(None, description="Filtrar por competidor"),
+    sku: str | None = Query(None, description="SKU del producto"),
+    ean: str | None = Query(None, description="EAN del producto"),
+    competitor_id: str | None = Query(None, description="Filtrar por competidor"),
     days: int = Query(30, ge=1, le=365, description="Número de días de historial"),
     user: dict = Depends(get_current_user),
 ):
@@ -170,7 +170,7 @@ async def get_competitor_price_history(
     if not sku and not ean:
         raise HTTPException(status_code=400, detail="Debes proporcionar un SKU o EAN")
 
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
     query: dict = {"user_id": user["id"], "scraped_at": {"$gte": since}}
     if sku:
@@ -257,7 +257,7 @@ async def create_price_alert(
     if data.alert_type in ("price_below", "price_drop") and data.threshold is None:
         raise HTTPException(status_code=400, detail="El umbral es obligatorio para este tipo de alerta")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     alert = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
@@ -357,7 +357,7 @@ _background_crawls: set = set()
 
 @router.post("/competitors/crawl")
 async def trigger_crawl(
-    competitor_id: Optional[str] = Query(None, description="ID de competidor específico"),
+    competitor_id: str | None = Query(None, description="ID de competidor específico"),
     user: dict = Depends(get_current_user),
 ):
     """
@@ -365,6 +365,7 @@ async def trigger_crawl(
     Si se especifica competitor_id, solo se scrapea ese competidor.
     """
     import asyncio
+
     from services.scrapers.orchestrator import run_crawl_for_user
 
     # Verificar que hay competidores activos
@@ -405,7 +406,7 @@ async def get_crawl_status(
     ).to_list(200)
 
     # Batch: obtener conteos de snapshots de las últimas 24h en 1 query
-    yesterday = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    yesterday = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
     comp_ids = [c["id"] for c in competitors]
     if comp_ids:
         pipeline = [
@@ -464,7 +465,7 @@ async def review_pending_match(
     if not match:
         raise HTTPException(status_code=404, detail="Match no encontrado")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     new_status = "confirmed" if action == "confirm" else "rejected"
 
     await db.pending_matches.update_one(
@@ -496,14 +497,14 @@ def _csv_safe(value) -> str:
 @router.get("/competitors/export/prices")
 async def export_competitor_prices_csv(
     days: int = Query(30, ge=1, le=365, description="Días de historial"),
-    competitor_id: Optional[str] = Query(None),
+    competitor_id: str | None = Query(None),
     user: dict = Depends(get_current_user),
 ):
     """
     Exporta los snapshots de precios de competidores en CSV.
     Incluye: producto, competidor, precio, disponibilidad, fecha.
     """
-    since = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    since = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     query = {"user_id": user["id"], "scraped_at": {"$gte": since}}
     if competitor_id:
         query["competitor_id"] = competitor_id
@@ -556,8 +557,8 @@ async def export_competitor_prices_csv(
 
 @router.get("/competitors/report/positioning")
 async def get_positioning_report(
-    category: Optional[str] = Query(None, description="Filtrar por categoría"),
-    supplier_id: Optional[str] = Query(None, description="Filtrar por proveedor"),
+    category: str | None = Query(None, description="Filtrar por categoría"),
+    supplier_id: str | None = Query(None, description="Filtrar por proveedor"),
     user: dict = Depends(get_current_user),
 ):
     """
@@ -666,7 +667,7 @@ async def get_positioning_report(
     report_items.sort(key=lambda x: x.get("price_difference_percent") or 0, reverse=True)
 
     return {
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "summary": stats,
         "total_products_analyzed": len(report_items),
         "items": report_items,
@@ -675,8 +676,8 @@ async def get_positioning_report(
 
 @router.get("/competitors/report/positioning/export")
 async def export_positioning_report_csv(
-    category: Optional[str] = Query(None),
-    supplier_id: Optional[str] = Query(None),
+    category: str | None = Query(None),
+    supplier_id: str | None = Query(None),
     user: dict = Depends(get_current_user),
 ):
     """Exporta el informe de posicionamiento en CSV."""
@@ -795,7 +796,7 @@ async def create_automation_rule(
     if min_price is not None and max_price is not None and min_price > max_price:
         raise HTTPException(status_code=400, detail="min_price no puede ser mayor que max_price")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     rule = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
@@ -870,7 +871,7 @@ async def delete_automation_rule(
 
 @router.post("/competitors/automation/simulate")
 async def simulate_automation(
-    rule_id: Optional[str] = Query(None, description="Simular regla específica"),
+    rule_id: str | None = Query(None, description="Simular regla específica"),
     limit: int = Query(50, ge=1, le=500),
     user: dict = Depends(get_current_user),
 ):
@@ -974,7 +975,7 @@ async def simulate_automation(
 
 @router.post("/competitors/automation/apply")
 async def apply_automation(
-    rule_id: Optional[str] = Query(None, description="Aplicar regla específica"),
+    rule_id: str | None = Query(None, description="Aplicar regla específica"),
     dry_run: bool = Query(False, description="Solo simular sin aplicar"),
     user: dict = Depends(get_current_user),
 ):
@@ -1021,7 +1022,7 @@ async def apply_automation(
     ).to_list(10000)
 
     applied = 0
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     rule_counts = {r["id"]: 0 for r in rules}
 
     for product in my_products:
@@ -1120,7 +1121,7 @@ def _rule_applies_to(rule: dict, product: dict) -> bool:
     return False
 
 
-def _calculate_automated_price(rule: dict, current_price: float, best_competitor: float) -> Optional[float]:
+def _calculate_automated_price(rule: dict, current_price: float, best_competitor: float) -> float | None:
     """Calcula el nuevo precio según la estrategia de la regla."""
     strategy = rule["strategy"]
     value = rule.get("value", 0)
@@ -1203,7 +1204,7 @@ async def create_competitor(
     if existing:
         raise HTTPException(status_code=409, detail="Ya existe un competidor con esta URL")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     competitor = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
@@ -1330,7 +1331,7 @@ async def get_dashboard_overview(user: dict = Depends(get_current_user)):
     competitors_count = await db.competitors.count_documents({"user_id": user_id, "active": True})
     alerts_count = await db.price_alerts.count_documents({"user_id": user_id, "active": True})
 
-    since_7d = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+    since_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
     snapshots_7d = await db.price_snapshots.count_documents({"user_id": user_id, "scraped_at": {"$gte": since_7d}})
 
     # SKUs únicos monitorizados
@@ -1338,7 +1339,7 @@ async def get_dashboard_overview(user: dict = Depends(get_current_user)):
     monitored_skus = len([s for s in unique_skus if s])
 
     # Productos donde el competidor es más barato (últimos 24h)
-    since_24h = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    since_24h = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
     pipeline_cheaper = [
         {"$match": {"user_id": user_id, "scraped_at": {"$gte": since_24h}}},
         {"$sort": {"scraped_at": -1}},
@@ -1367,7 +1368,7 @@ async def get_dashboard_overview(user: dict = Depends(get_current_user)):
 async def get_dashboard_price_table(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
-    search: Optional[str] = Query(None),
+    search: str | None = Query(None),
     sort_by: str = Query("gap", description="Campo de ordenación: gap, price, sku"),
     user: dict = Depends(get_current_user),
 ):
@@ -1396,8 +1397,8 @@ async def get_dashboard_price_table(
         return {"items": [], "total": total, "page": page, "page_size": page_size}
 
     # Para cada producto, obtener último precio de cada competidor
-    since_48h = (datetime.now(timezone.utc) - timedelta(hours=48)).isoformat()
-    since_96h = (datetime.now(timezone.utc) - timedelta(hours=96)).isoformat()
+    since_48h = (datetime.now(UTC) - timedelta(hours=48)).isoformat()
+    since_96h = (datetime.now(UTC) - timedelta(hours=96)).isoformat()
 
     result_items = []
     for prod in products:
@@ -1511,7 +1512,7 @@ async def get_dashboard_price_table(
 @router.get("/competitors/dashboard/alerts/enriched")
 async def get_enriched_alerts(
     limit: int = Query(20, ge=1, le=100),
-    status: Optional[str] = Query(None, description="PENDING, ACTED, IGNORED"),
+    status: str | None = Query(None, description="PENDING, ACTED, IGNORED"),
     user: dict = Depends(get_current_user),
 ):
     """
@@ -1575,8 +1576,8 @@ async def schedule_crawl_job(
     Programa un trabajo de scraping para un competidor.
     Si immediate=True, se ejecuta en cuanto haya recursos disponibles.
     """
+
     from services.scrapers.scraper_scheduler import create_crawl_job
-    from datetime import timezone, datetime
 
     user_id = user["id"]
 
@@ -1603,7 +1604,7 @@ async def schedule_crawl_job(
 
 @router.get("/competitors/jobs")
 async def list_crawl_jobs(
-    status: Optional[str] = Query(None, description="pending, running, completed, failed"),
+    status: str | None = Query(None, description="pending, running, completed, failed"),
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     user: dict = Depends(get_current_user),
@@ -1674,8 +1675,8 @@ async def get_crawl_job_details(job_id: str, user: dict = Depends(get_current_us
 @router.post("/competitors/jobs/{job_id}/cancel")
 async def cancel_crawl_job(job_id: str, user: dict = Depends(get_current_user)):
     """Cancela un trabajo de scraping pendiente o en ejecución."""
-    from services.scrapers.scraper_scheduler import get_job, update_job_status, JobStatus
     from services.scrapers.job_executor import cancel_job
+    from services.scrapers.scraper_scheduler import JobStatus, get_job, update_job_status
 
     user_id = user["id"]
 

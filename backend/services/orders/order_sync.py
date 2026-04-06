@@ -3,8 +3,7 @@ Bidirectional order synchronization
 Syncs order status from CRM back to online stores
 """
 import logging
-from typing import Optional, Tuple, Dict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from services.database import db
 
@@ -64,8 +63,8 @@ class OrderStatusMapper:
 async def update_order_status_from_crm(
     order_id: str,
     user_id: str,
-    crm_status_data: Dict
-) -> Tuple[bool, Optional[str]]:
+    crm_status_data: dict
+) -> tuple[bool, str | None]:
     """
     Update order status based on CRM data
 
@@ -106,21 +105,21 @@ async def update_order_status_from_crm(
         # Update order status
         update_data = {
             "status": new_status,
-            "processedAt": datetime.now(timezone.utc).isoformat()
+            "processedAt": datetime.now(UTC).isoformat()
         }
 
         # Store CRM status info
         if not order.get("crmData"):
             order["crmData"] = {}
         order["crmData"]["crmStatus"] = crm_status
-        order["crmData"]["lastSyncAt"] = datetime.now(timezone.utc).isoformat()
+        order["crmData"]["lastSyncAt"] = datetime.now(UTC).isoformat()
 
         update_data["crmData"] = order["crmData"]
 
         # Add to history
         history_entry = {
             "action": "status_updated_from_crm",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "details": {
                 "previousStatus": order.get("status"),
                 "newStatus": new_status,
@@ -152,7 +151,7 @@ async def update_order_status_from_crm(
 async def sync_order_to_online_store(
     order_id: str,
     user_id: str
-) -> Tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """
     Synchronize order status from SyncStock to online store
 
@@ -225,7 +224,7 @@ async def sync_order_to_online_store(
             # Update order history
             history_entry = {
                 "action": "synced_to_store",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
                 "details": {
                     "platform": source,
                     "status": order_status,
@@ -237,7 +236,7 @@ async def sync_order_to_online_store(
                 {"id": order_id},
                 {
                     "$push": {"history": history_entry},
-                    "$set": {"lastSyncedToStoreAt": datetime.now(timezone.utc).isoformat()}
+                    "$set": {"lastSyncedToStoreAt": datetime.now(UTC).isoformat()}
                 }
             )
 
@@ -388,7 +387,7 @@ async def _sync_to_prestashop(
         return False
 
 
-async def get_order_sync_status(order_id: str, user_id: str) -> Dict:
+async def get_order_sync_status(order_id: str, user_id: str) -> dict:
     """
     Get bidirectional sync status for an order
 

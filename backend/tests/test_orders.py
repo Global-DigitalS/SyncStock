@@ -2,15 +2,13 @@
 Tests for order management system
 Tests order normalization, enrichment, CRM sync, and REST APIs
 """
-import pytest
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
 import uuid
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from services.orders import normalize_order, process_order_webhook, check_duplicate_order, enrich_order
-from services.orders.models import Order, OrderItem, OrderAddress
+import pytest
 
+from services.orders import check_duplicate_order, enrich_order, normalize_order, process_order_webhook
+from services.orders.models import Order, OrderAddress, OrderItem
 
 # ==================== FIXTURES ====================
 

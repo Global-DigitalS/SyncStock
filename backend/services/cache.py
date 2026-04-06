@@ -6,9 +6,9 @@ thread-safe cache access. Suitable for single-process deployments.
 """
 
 import asyncio
-import time
 import logging
-from typing import Any, Optional
+import time
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class TTLCache:
         self._store: dict[str, tuple[Any, float]] = {}  # key -> (value, expires_at)
         self._lock = asyncio.Lock()
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """Return cached value if exists and not expired, else None."""
         async with self._lock:
             entry = self._store.get(key)

@@ -13,7 +13,6 @@ import logging
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
-from typing import Optional, List, Tuple
 
 from services.scrapers.base import ScrapedProduct
 
@@ -37,10 +36,10 @@ class MatchResult:
     matched: bool = False
     confidence: float = 0.0
     matched_by: str = ""           # "ean", "sku", "specs", "fuzzy_name", "specs+fuzzy"
-    product_id: Optional[str] = None
-    product_sku: Optional[str] = None
-    product_ean: Optional[str] = None
-    product_name: Optional[str] = None
+    product_id: str | None = None
+    product_sku: str | None = None
+    product_ean: str | None = None
+    product_name: str | None = None
     needs_review: bool = False     # True si la confianza es baja
     match_details: str = ""        # Descripción de las capas usadas
 
@@ -103,7 +102,7 @@ def fuzzy_name_score(name_a: str, name_b: str) -> float:
     return base_score
 
 
-def _spec_layer_score(scraped_name: str, product_name: str) -> Tuple[float, str]:
+def _spec_layer_score(scraped_name: str, product_name: str) -> tuple[float, str]:
     """
     Capa 2: Similitud por especificaciones técnicas IT.
     Importa spec_matcher aquí (evita circular al inicio del módulo).
@@ -118,7 +117,7 @@ def _spec_layer_score(scraped_name: str, product_name: str) -> Tuple[float, str]
 
 async def match_product(
     scraped: ScrapedProduct,
-    user_products: List[dict],
+    user_products: list[dict],
 ) -> MatchResult:
     """
     Intenta emparejar un producto scrapeado con la lista de productos del usuario.

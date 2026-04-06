@@ -1,6 +1,6 @@
-from pydantic import BaseModel, Field, EmailStr
-from typing import List, Optional, Dict, Any
+from typing import Any
 
+from pydantic import BaseModel, EmailStr, Field
 
 # ==================== AUTH MODELS ====================
 
@@ -8,9 +8,9 @@ class UserCreate(BaseModel):
     email: EmailStr
     password: str
     name: str
-    company: Optional[str] = None
-    role: Optional[str] = "user"  # superadmin, admin, user, viewer
-    plan_id: Optional[str] = None  # Selected subscription plan
+    company: str | None = None
+    role: str | None = "user"  # superadmin, admin, user, viewer
+    plan_id: str | None = None  # Selected subscription plan
 
 class UserLogin(BaseModel):
     email: EmailStr
@@ -22,54 +22,54 @@ class UserResponse(BaseModel):
     id: str
     email: str
     name: str = ""
-    company: Optional[str] = None
+    company: str | None = None
     role: str = "user"
     max_suppliers: int = 10
     max_catalogs: int = 5
     max_woocommerce_stores: int = 2
     max_marketplace_connections: int = 1
-    max_products: Optional[int] = None
-    is_active: Optional[bool] = None
-    plan_id: Optional[str] = None
-    plan_name: Optional[str] = None
-    subscription_plan_id: Optional[str] = None
-    subscription_plan_name: Optional[str] = None
-    subscription_status: Optional[str] = None
-    trial_end: Optional[str] = None
-    created_at: Optional[str] = None
+    max_products: int | None = None
+    is_active: bool | None = None
+    plan_id: str | None = None
+    plan_name: str | None = None
+    subscription_plan_id: str | None = None
+    subscription_plan_name: str | None = None
+    subscription_status: str | None = None
+    trial_end: str | None = None
+    created_at: str | None = None
 
 class UserUpdate(BaseModel):
-    name: Optional[str] = None
-    company: Optional[str] = None
-    role: Optional[str] = None
-    max_suppliers: Optional[int] = None
-    max_catalogs: Optional[int] = None
-    max_woocommerce_stores: Optional[int] = None
-    max_marketplace_connections: Optional[int] = None
+    name: str | None = None
+    company: str | None = None
+    role: str | None = None
+    max_suppliers: int | None = None
+    max_catalogs: int | None = None
+    max_woocommerce_stores: int | None = None
+    max_marketplace_connections: int | None = None
 
 class UserLimits(BaseModel):
     max_suppliers: int = 10
     max_catalogs: int = 5
     max_woocommerce_stores: int = 2
     max_marketplace_connections: int = 1
-    max_products: Optional[int] = 1000
+    max_products: int | None = 1000
 
 
 class UserFullUpdate(BaseModel):
     """Model for full user update by SuperAdmin"""
-    name: Optional[str] = None
-    email: Optional[EmailStr] = None
-    company: Optional[str] = None
-    role: Optional[str] = None
-    max_suppliers: Optional[int] = None
-    max_catalogs: Optional[int] = None
-    max_woocommerce_stores: Optional[int] = None
-    max_marketplace_connections: Optional[int] = None
-    max_products: Optional[int] = None
-    subscription_plan_id: Optional[str] = None
-    subscription_plan_name: Optional[str] = None
-    subscription_status: Optional[str] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    email: EmailStr | None = None
+    company: str | None = None
+    role: str | None = None
+    max_suppliers: int | None = None
+    max_catalogs: int | None = None
+    max_woocommerce_stores: int | None = None
+    max_marketplace_connections: int | None = None
+    max_products: int | None = None
+    subscription_plan_id: str | None = None
+    subscription_plan_name: str | None = None
+    subscription_status: str | None = None
+    is_active: bool | None = None
 
 
 # ==================== SUPPLIER MODELS ====================
@@ -77,84 +77,84 @@ class UserFullUpdate(BaseModel):
 class FtpFileConfig(BaseModel):
     path: str
     role: str = "products"
-    label: Optional[str] = None
-    separator: Optional[str] = ";"
-    header_row: Optional[int] = 1
-    merge_key: Optional[str] = None
+    label: str | None = None
+    separator: str | None = ";"
+    header_row: int | None = 1
+    merge_key: str | None = None
 
 class SupplierCreate(BaseModel):
     name: str
-    description: Optional[str] = None
-    connection_type: Optional[str] = "ftp"
-    file_url: Optional[str] = None
-    url_username: Optional[str] = None
-    url_password: Optional[str] = None
-    ftp_schema: Optional[str] = "ftp"
-    ftp_host: Optional[str] = None
-    ftp_user: Optional[str] = None
-    ftp_password: Optional[str] = None
-    ftp_port: Optional[int] = 21
-    ftp_path: Optional[str] = None
-    ftp_paths: Optional[List[Dict[str, Any]]] = None
-    ftp_mode: Optional[str] = "passive"
-    file_format: Optional[str] = "csv"
-    csv_separator: Optional[str] = ";"
-    csv_enclosure: Optional[str] = '"'
-    csv_line_break: Optional[str] = "\\n"
-    csv_header_row: Optional[int] = 1
-    column_mapping: Optional[Dict[str, Any]] = None
-    strip_ean_quotes: Optional[bool] = False
-    preset_id: Optional[str] = None
+    description: str | None = None
+    connection_type: str | None = "ftp"
+    file_url: str | None = None
+    url_username: str | None = None
+    url_password: str | None = None
+    ftp_schema: str | None = "ftp"
+    ftp_host: str | None = None
+    ftp_user: str | None = None
+    ftp_password: str | None = None
+    ftp_port: int | None = 21
+    ftp_path: str | None = None
+    ftp_paths: list[dict[str, Any]] | None = None
+    ftp_mode: str | None = "passive"
+    file_format: str | None = "csv"
+    csv_separator: str | None = ";"
+    csv_enclosure: str | None = '"'
+    csv_line_break: str | None = "\\n"
+    csv_header_row: int | None = 1
+    column_mapping: dict[str, Any] | None = None
+    strip_ean_quotes: bool | None = False
+    preset_id: str | None = None
 
 class SupplierUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    connection_type: Optional[str] = None
-    file_url: Optional[str] = None
-    url_username: Optional[str] = None
-    url_password: Optional[str] = None
-    ftp_schema: Optional[str] = None
-    ftp_host: Optional[str] = None
-    ftp_user: Optional[str] = None
-    ftp_password: Optional[str] = None
-    ftp_port: Optional[int] = None
-    ftp_path: Optional[str] = None
-    ftp_paths: Optional[List[Dict[str, Any]]] = None
-    ftp_mode: Optional[str] = None
-    file_format: Optional[str] = None
-    csv_separator: Optional[str] = None
-    csv_enclosure: Optional[str] = None
-    csv_line_break: Optional[str] = None
-    csv_header_row: Optional[int] = None
-    column_mapping: Optional[Dict[str, Any]] = None
-    strip_ean_quotes: Optional[bool] = None
-    preset_id: Optional[str] = None
+    name: str | None = None
+    description: str | None = None
+    connection_type: str | None = None
+    file_url: str | None = None
+    url_username: str | None = None
+    url_password: str | None = None
+    ftp_schema: str | None = None
+    ftp_host: str | None = None
+    ftp_user: str | None = None
+    ftp_password: str | None = None
+    ftp_port: int | None = None
+    ftp_path: str | None = None
+    ftp_paths: list[dict[str, Any]] | None = None
+    ftp_mode: str | None = None
+    file_format: str | None = None
+    csv_separator: str | None = None
+    csv_enclosure: str | None = None
+    csv_line_break: str | None = None
+    csv_header_row: int | None = None
+    column_mapping: dict[str, Any] | None = None
+    strip_ean_quotes: bool | None = None
+    preset_id: str | None = None
 
 class SupplierResponse(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
-    connection_type: Optional[str] = "ftp"
-    file_url: Optional[str] = None
-    url_username: Optional[str] = None
-    ftp_schema: Optional[str] = None
-    ftp_host: Optional[str] = None
-    ftp_user: Optional[str] = None
-    ftp_port: Optional[int] = None
-    ftp_path: Optional[str] = None
-    ftp_paths: Optional[List[Dict[str, Any]]] = None
-    ftp_mode: Optional[str] = None
-    file_format: Optional[str] = None
-    csv_separator: Optional[str] = None
-    csv_enclosure: Optional[str] = None
-    csv_line_break: Optional[str] = None
-    csv_header_row: Optional[int] = None
-    column_mapping: Optional[Dict[str, Any]] = None
-    strip_ean_quotes: Optional[bool] = False
-    preset_id: Optional[str] = None
-    detected_columns: Optional[Any] = None  # Can be List[str] or Dict[str, List[str]] for multi-file
+    description: str | None = None
+    connection_type: str | None = "ftp"
+    file_url: str | None = None
+    url_username: str | None = None
+    ftp_schema: str | None = None
+    ftp_host: str | None = None
+    ftp_user: str | None = None
+    ftp_port: int | None = None
+    ftp_path: str | None = None
+    ftp_paths: list[dict[str, Any]] | None = None
+    ftp_mode: str | None = None
+    file_format: str | None = None
+    csv_separator: str | None = None
+    csv_enclosure: str | None = None
+    csv_line_break: str | None = None
+    csv_header_row: int | None = None
+    column_mapping: dict[str, Any] | None = None
+    strip_ean_quotes: bool | None = False
+    preset_id: str | None = None
+    detected_columns: Any | None = None  # Can be List[str] or Dict[str, List[str]] for multi-file
     product_count: int = 0
-    last_sync: Optional[str] = None
+    last_sync: str | None = None
     created_at: str
 
 
@@ -163,18 +163,18 @@ class SupplierResponse(BaseModel):
 class ProductBase(BaseModel):
     sku: str
     name: str
-    description: Optional[str] = None
-    short_description: Optional[str] = None
-    long_description: Optional[str] = None
+    description: str | None = None
+    short_description: str | None = None
+    long_description: str | None = None
     price: float
     stock: int
-    category: Optional[str] = None
-    brand: Optional[str] = None
-    ean: Optional[str] = None
-    weight: Optional[float] = None
-    image_url: Optional[str] = None
-    gallery_images: Optional[List[str]] = None  # Secondary images
-    attributes: Optional[Dict[str, Any]] = None
+    category: str | None = None
+    brand: str | None = None
+    ean: str | None = None
+    weight: float | None = None
+    image_url: str | None = None
+    gallery_images: list[str] | None = None  # Secondary images
+    attributes: dict[str, Any] | None = None
 
 class ProductResponse(ProductBase):
     id: str
@@ -185,149 +185,149 @@ class ProductResponse(ProductBase):
     # Selection flag for product flow: Supplier -> Products -> Catalogs
     is_selected: bool = False
     # Extended editable fields
-    referencia: Optional[str] = None
-    part_number: Optional[str] = None
-    asin: Optional[str] = None
-    upc: Optional[str] = None
-    gtin: Optional[str] = None
-    oem: Optional[str] = None
-    id_erp: Optional[str] = None
+    referencia: str | None = None
+    part_number: str | None = None
+    asin: str | None = None
+    upc: str | None = None
+    gtin: str | None = None
+    oem: str | None = None
+    id_erp: str | None = None
     activado: bool = True
     descatalogado: bool = False
-    condicion: Optional[str] = None
+    condicion: str | None = None
     activar_pos: bool = False
     tipo_pack: bool = False
     vender_sin_stock: bool = False
-    nuevo: Optional[str] = None
-    fecha_disponibilidad: Optional[str] = None
-    stock_disponible: Optional[int] = None
-    stock_fantasma: Optional[int] = None
-    stock_market: Optional[int] = None
-    unid_caja: Optional[int] = None
-    cantidad_minima: Optional[int] = 0
-    dias_entrega: Optional[int] = None
-    cantidad_maxima_carrito: Optional[int] = None
+    nuevo: str | None = None
+    fecha_disponibilidad: str | None = None
+    stock_disponible: int | None = None
+    stock_fantasma: int | None = None
+    stock_market: int | None = None
+    unid_caja: int | None = None
+    cantidad_minima: int | None = 0
+    dias_entrega: int | None = None
+    cantidad_maxima_carrito: int | None = None
     resto_stock: bool = True
     requiere_envio: bool = True
     envio_gratis: bool = False
-    gastos_envio: Optional[float] = None
-    largo: Optional[float] = 0
-    ancho: Optional[float] = 0
-    alto: Optional[float] = 0
-    tipo_peso: Optional[str] = "kilogram"
-    formas_pago: Optional[str] = "todas"
-    formas_envio: Optional[str] = "todas"
+    gastos_envio: float | None = None
+    largo: float | None = 0
+    ancho: float | None = 0
+    alto: float | None = 0
+    tipo_peso: str | None = "kilogram"
+    formas_pago: str | None = "todas"
+    formas_envio: str | None = "todas"
     permite_actualizar_coste: bool = True
     permite_actualizar_stock: bool = True
     tipo_cheque_regalo: bool = False
     # PIM fields - SEO
-    meta_title: Optional[str] = None
-    meta_description: Optional[str] = None
-    meta_keywords: Optional[str] = None
-    slug: Optional[str] = None
+    meta_title: str | None = None
+    meta_description: str | None = None
+    meta_keywords: str | None = None
+    slug: str | None = None
     # PIM fields - Additional pricing
-    cost_price: Optional[float] = None
-    compare_at_price: Optional[float] = None
-    tax_class: Optional[str] = None
-    currency: Optional[str] = "EUR"
+    cost_price: float | None = None
+    compare_at_price: float | None = None
+    tax_class: str | None = None
+    currency: str | None = "EUR"
     # PIM fields - Tags and custom attributes
-    tags: Optional[List[str]] = None
-    custom_attributes: Optional[List[Dict[str, str]]] = None
+    tags: list[str] | None = None
+    custom_attributes: list[dict[str, str]] | None = None
     # PIM fields - Additional info
-    manufacturer: Optional[str] = None
-    mpn: Optional[str] = None
-    video_url: Optional[str] = None
-    country_of_origin: Optional[str] = None
-    warranty: Optional[str] = None
-    notas_internas: Optional[str] = None
+    manufacturer: str | None = None
+    mpn: str | None = None
+    video_url: str | None = None
+    country_of_origin: str | None = None
+    warranty: str | None = None
+    notas_internas: str | None = None
 
 class ProductUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    short_description: Optional[str] = None
-    long_description: Optional[str] = None
-    price: Optional[float] = None
-    stock: Optional[int] = None
-    category: Optional[str] = None
-    brand: Optional[str] = None
-    ean: Optional[str] = None
-    weight: Optional[float] = None
-    image_url: Optional[str] = None
-    gallery_images: Optional[List[str]] = None
-    is_selected: Optional[bool] = None
-    referencia: Optional[str] = None
-    part_number: Optional[str] = None
-    asin: Optional[str] = None
-    upc: Optional[str] = None
-    gtin: Optional[str] = None
-    oem: Optional[str] = None
-    id_erp: Optional[str] = None
-    activado: Optional[bool] = None
-    descatalogado: Optional[bool] = None
-    condicion: Optional[str] = None
-    activar_pos: Optional[bool] = None
-    tipo_pack: Optional[bool] = None
-    vender_sin_stock: Optional[bool] = None
-    nuevo: Optional[str] = None
-    fecha_disponibilidad: Optional[str] = None
-    stock_disponible: Optional[int] = None
-    stock_fantasma: Optional[int] = None
-    stock_market: Optional[int] = None
-    unid_caja: Optional[int] = None
-    cantidad_minima: Optional[int] = None
-    dias_entrega: Optional[int] = None
-    cantidad_maxima_carrito: Optional[int] = None
-    resto_stock: Optional[bool] = None
-    requiere_envio: Optional[bool] = None
-    envio_gratis: Optional[bool] = None
-    gastos_envio: Optional[float] = None
-    largo: Optional[float] = None
-    ancho: Optional[float] = None
-    alto: Optional[float] = None
-    tipo_peso: Optional[str] = None
-    formas_pago: Optional[str] = None
-    formas_envio: Optional[str] = None
-    permite_actualizar_coste: Optional[bool] = None
-    permite_actualizar_stock: Optional[bool] = None
-    tipo_cheque_regalo: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    short_description: str | None = None
+    long_description: str | None = None
+    price: float | None = None
+    stock: int | None = None
+    category: str | None = None
+    brand: str | None = None
+    ean: str | None = None
+    weight: float | None = None
+    image_url: str | None = None
+    gallery_images: list[str] | None = None
+    is_selected: bool | None = None
+    referencia: str | None = None
+    part_number: str | None = None
+    asin: str | None = None
+    upc: str | None = None
+    gtin: str | None = None
+    oem: str | None = None
+    id_erp: str | None = None
+    activado: bool | None = None
+    descatalogado: bool | None = None
+    condicion: str | None = None
+    activar_pos: bool | None = None
+    tipo_pack: bool | None = None
+    vender_sin_stock: bool | None = None
+    nuevo: str | None = None
+    fecha_disponibilidad: str | None = None
+    stock_disponible: int | None = None
+    stock_fantasma: int | None = None
+    stock_market: int | None = None
+    unid_caja: int | None = None
+    cantidad_minima: int | None = None
+    dias_entrega: int | None = None
+    cantidad_maxima_carrito: int | None = None
+    resto_stock: bool | None = None
+    requiere_envio: bool | None = None
+    envio_gratis: bool | None = None
+    gastos_envio: float | None = None
+    largo: float | None = None
+    ancho: float | None = None
+    alto: float | None = None
+    tipo_peso: str | None = None
+    formas_pago: str | None = None
+    formas_envio: str | None = None
+    permite_actualizar_coste: bool | None = None
+    permite_actualizar_stock: bool | None = None
+    tipo_cheque_regalo: bool | None = None
     # PIM fields - SEO
-    meta_title: Optional[str] = None
-    meta_description: Optional[str] = None
-    meta_keywords: Optional[str] = None
-    slug: Optional[str] = None
+    meta_title: str | None = None
+    meta_description: str | None = None
+    meta_keywords: str | None = None
+    slug: str | None = None
     # PIM fields - Additional pricing
-    cost_price: Optional[float] = None
-    compare_at_price: Optional[float] = None
-    tax_class: Optional[str] = None
-    currency: Optional[str] = None
+    cost_price: float | None = None
+    compare_at_price: float | None = None
+    tax_class: str | None = None
+    currency: str | None = None
     # PIM fields - Tags and custom attributes
-    tags: Optional[List[str]] = None
-    custom_attributes: Optional[List[Dict[str, str]]] = None
+    tags: list[str] | None = None
+    custom_attributes: list[dict[str, str]] | None = None
     # PIM fields - Additional info
-    manufacturer: Optional[str] = None
-    mpn: Optional[str] = None
-    video_url: Optional[str] = None
-    country_of_origin: Optional[str] = None
-    warranty: Optional[str] = None
-    notas_internas: Optional[str] = None
+    manufacturer: str | None = None
+    mpn: str | None = None
+    video_url: str | None = None
+    country_of_origin: str | None = None
+    warranty: str | None = None
+    notas_internas: str | None = None
 
 
 # ==================== CATALOG MODELS ====================
 
 class CatalogCreate(BaseModel):
     name: str = Field(..., description="Nombre del catálogo")
-    description: Optional[str] = None
+    description: str | None = None
     is_default: bool = False
 
 class CatalogUpdate(BaseModel):
-    name: Optional[str] = None
-    description: Optional[str] = None
-    is_default: Optional[bool] = None
+    name: str | None = None
+    description: str | None = None
+    is_default: bool | None = None
 
 class CatalogResponse(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     is_default: bool = False
     product_count: int = 0
     margin_rules_count: int = 0
@@ -335,35 +335,35 @@ class CatalogResponse(BaseModel):
     created_at: str
 
 class CatalogProductAdd(BaseModel):
-    product_ids: List[str]
-    custom_prices: Optional[Dict[str, float]] = None
-    category_ids: Optional[List[str]] = None
+    product_ids: list[str]
+    custom_prices: dict[str, float] | None = None
+    category_ids: list[str] | None = None
 
 class CatalogItemCreate(BaseModel):
     product_id: str
-    custom_price: Optional[float] = None
-    custom_name: Optional[str] = None
+    custom_price: float | None = None
+    custom_name: str | None = None
     active: bool = True
-    category_ids: Optional[List[str]] = None
+    category_ids: list[str] | None = None
 
 class CatalogItemResponse(BaseModel):
     id: str
     product_id: str
     product: ProductResponse
-    custom_price: Optional[float] = None
-    custom_name: Optional[str] = None
+    custom_price: float | None = None
+    custom_name: str | None = None
     final_price: float
     active: bool
-    category_ids: List[str] = []
+    category_ids: list[str] = []
     created_at: str
 
 class CatalogItemCategoryUpdate(BaseModel):
-    category_ids: List[str]
+    category_ids: list[str]
 
 class BulkCategoryAssignment(BaseModel):
     """Assign categories to multiple products at once"""
-    product_item_ids: List[str]
-    category_ids: List[str]
+    product_item_ids: list[str]
+    category_ids: list[str]
     mode: str = "add"  # "add" to append, "replace" to overwrite, "remove" to remove
 
 class CatalogMarginRuleCreate(BaseModel):
@@ -372,9 +372,9 @@ class CatalogMarginRuleCreate(BaseModel):
     rule_type: str = "percentage"
     value: float
     apply_to: str = "all"
-    apply_to_value: Optional[str] = None
-    min_price: Optional[float] = None
-    max_price: Optional[float] = None
+    apply_to_value: str | None = None
+    min_price: float | None = None
+    max_price: float | None = None
     priority: int = 0
 
 class CatalogMarginRuleResponse(BaseModel):
@@ -384,9 +384,9 @@ class CatalogMarginRuleResponse(BaseModel):
     rule_type: str
     value: float
     apply_to: str
-    apply_to_value: Optional[str] = None
-    min_price: Optional[float] = None
-    max_price: Optional[float] = None
+    apply_to_value: str | None = None
+    min_price: float | None = None
+    max_price: float | None = None
     priority: int
     created_at: str
 
@@ -395,38 +395,38 @@ class CatalogMarginRuleResponse(BaseModel):
 
 class CatalogCategoryCreate(BaseModel):
     name: str
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     position: int = 0
-    description: Optional[str] = None
+    description: str | None = None
 
 class CatalogCategoryUpdate(BaseModel):
-    name: Optional[str] = None
-    parent_id: Optional[str] = None
-    position: Optional[int] = None
-    description: Optional[str] = None
+    name: str | None = None
+    parent_id: str | None = None
+    position: int | None = None
+    description: str | None = None
 
 class CatalogCategoryResponse(BaseModel):
     id: str
     catalog_id: str
     name: str
-    parent_id: Optional[str] = None
+    parent_id: str | None = None
     position: int = 0
-    description: Optional[str] = None
+    description: str | None = None
     level: int = 0
     product_count: int = 0
-    children: List["CatalogCategoryResponse"] = []
+    children: list["CatalogCategoryResponse"] = []
     created_at: str
 
 class CatalogCategoryReorder(BaseModel):
     category_id: str
-    new_parent_id: Optional[str] = None
+    new_parent_id: str | None = None
     new_position: int
 
 class CatalogCategoryBulkReorder(BaseModel):
-    updates: List[CatalogCategoryReorder]
+    updates: list[CatalogCategoryReorder]
 
 class ProductCategoryAssignment(BaseModel):
-    category_ids: List[str]
+    category_ids: list[str]
 
 
 # ==================== MARGIN RULE MODELS ====================
@@ -436,9 +436,9 @@ class MarginRuleCreate(BaseModel):
     rule_type: str
     value: float
     apply_to: str
-    apply_to_value: Optional[str] = None
-    min_price: Optional[float] = None
-    max_price: Optional[float] = None
+    apply_to_value: str | None = None
+    min_price: float | None = None
+    max_price: float | None = None
     priority: int = 0
 
 class MarginRuleResponse(MarginRuleCreate):
@@ -459,7 +459,7 @@ class SyncHistoryResponse(BaseModel):
     updated: int = 0
     errors: int = 0
     duration_seconds: float = 0
-    error_message: Optional[str] = None
+    error_message: str | None = None
     created_at: str
 
 
@@ -469,8 +469,8 @@ class NotificationResponse(BaseModel):
     id: str
     type: str
     message: str
-    product_id: Optional[str] = None
-    product_name: Optional[str] = None
+    product_id: str | None = None
+    product_name: str | None = None
     read: bool
     created_at: str
 
@@ -488,7 +488,7 @@ class PriceHistoryResponse(BaseModel):
 
 class ExportRequest(BaseModel):
     platform: str
-    catalog_ids: Optional[List[str]] = None
+    catalog_ids: list[str] | None = None
 
 
 # ==================== WOOCOMMERCE MODELS ====================
@@ -497,17 +497,17 @@ class WooCommerceConfig(BaseModel):
     store_url: str = Field(..., description="URL de la tienda WooCommerce")
     consumer_key: str = Field(..., description="Consumer Key de la API REST")
     consumer_secret: str = Field(..., description="Consumer Secret de la API REST")
-    name: Optional[str] = "Mi Tienda WooCommerce"
-    catalog_id: Optional[str] = None
+    name: str | None = "Mi Tienda WooCommerce"
+    catalog_id: str | None = None
     auto_sync_enabled: bool = False
 
 class WooCommerceConfigUpdate(BaseModel):
-    store_url: Optional[str] = None
-    consumer_key: Optional[str] = None
-    consumer_secret: Optional[str] = None
-    name: Optional[str] = None
-    catalog_id: Optional[str] = None
-    auto_sync_enabled: Optional[bool] = None
+    store_url: str | None = None
+    consumer_key: str | None = None
+    consumer_secret: str | None = None
+    name: str | None = None
+    catalog_id: str | None = None
+    auto_sync_enabled: bool | None = None
 
 class WooCommerceConfigResponse(BaseModel):
     id: str
@@ -515,17 +515,17 @@ class WooCommerceConfigResponse(BaseModel):
     store_url: str
     consumer_key_masked: str
     is_connected: bool = False
-    last_sync: Optional[str] = None
+    last_sync: str | None = None
     products_synced: int = 0
     created_at: str
-    catalog_id: Optional[str] = None
-    catalog_name: Optional[str] = None
+    catalog_id: str | None = None
+    catalog_name: str | None = None
     auto_sync_enabled: bool = False
-    next_sync: Optional[str] = None
+    next_sync: str | None = None
 
 class WooCommerceExportRequest(BaseModel):
     config_id: str
-    catalog_id: Optional[str] = None
+    catalog_id: str | None = None
     update_existing: bool = True
 
 class WooCommerceExportResult(BaseModel):
@@ -533,7 +533,7 @@ class WooCommerceExportResult(BaseModel):
     created: int = 0
     updated: int = 0
     failed: int = 0
-    errors: List[str] = []
+    errors: list[str] = []
 
 
 # ==================== SUBSCRIPTION/BILLING MODELS ====================
@@ -541,7 +541,7 @@ class WooCommerceExportResult(BaseModel):
 class SubscriptionPlan(BaseModel):
     id: str
     name: str
-    description: Optional[str] = None
+    description: str | None = None
     max_suppliers: int
     max_catalogs: int
     max_woocommerce_stores: int
@@ -550,15 +550,15 @@ class SubscriptionPlan(BaseModel):
     price_monthly: float
     price_yearly: float
     trial_days: int = 0  # Días de prueba gratuita
-    features: List[str] = []
+    features: list[str] = []
     is_active: bool = True
     created_at: str
     # Auto-sync options (unified for all services: suppliers, stores, CRM)
     auto_sync_enabled: bool = False  # Whether this plan allows auto-sync
-    sync_intervals: List[int] = []  # Allowed intervals in hours: [1, 6, 12, 24]
+    sync_intervals: list[int] = []  # Allowed intervals in hours: [1, 6, 12, 24]
     # Legacy fields for backwards compatibility
     crm_sync_enabled: bool = False
-    crm_sync_intervals: List[int] = []
+    crm_sync_intervals: list[int] = []
 
 class UserSubscription(BaseModel):
     id: str
@@ -606,21 +606,21 @@ class SupplierOffer(BaseModel):
     product_id: str
 
 class UnifiedProductResponse(BaseModel):
-    ean: Optional[str] = None
+    ean: str | None = None
     name: str
-    description: Optional[str] = None
-    category: Optional[str] = None
-    brand: Optional[str] = None
-    image_url: Optional[str] = None
+    description: str | None = None
+    category: str | None = None
+    brand: str | None = None
+    image_url: str | None = None
     best_price: float
     best_supplier: str
     best_supplier_id: str
     total_stock: int
     supplier_count: int
-    suppliers: List[SupplierOffer]
-    weight: Optional[float] = None
-    short_description: Optional[str] = None
-    long_description: Optional[str] = None
+    suppliers: list[SupplierOffer]
+    weight: float | None = None
+    short_description: str | None = None
+    long_description: str | None = None
 
 
 # ==================== MARKETPLACE MODELS ====================
@@ -629,25 +629,25 @@ class MarketplaceConnectionCreate(BaseModel):
     platform_id: str
     name: str
     catalog_id: str
-    store_url: Optional[str] = ""
-    currency: Optional[str] = "EUR"
-    condition: Optional[str] = "new"
-    shipping_cost: Optional[str] = ""
-    delivery_time: Optional[str] = ""
-    field_mapping: Optional[Dict[str, str]] = {}
+    store_url: str | None = ""
+    currency: str | None = "EUR"
+    condition: str | None = "new"
+    shipping_cost: str | None = ""
+    delivery_time: str | None = ""
+    field_mapping: dict[str, str] | None = {}
     include_out_of_stock: bool = False
 
 class MarketplaceConnectionUpdate(BaseModel):
-    name: Optional[str] = None
-    catalog_id: Optional[str] = None
-    store_url: Optional[str] = None
-    currency: Optional[str] = None
-    condition: Optional[str] = None
-    shipping_cost: Optional[str] = None
-    delivery_time: Optional[str] = None
-    field_mapping: Optional[Dict[str, str]] = None
-    include_out_of_stock: Optional[bool] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    catalog_id: str | None = None
+    store_url: str | None = None
+    currency: str | None = None
+    condition: str | None = None
+    shipping_cost: str | None = None
+    delivery_time: str | None = None
+    field_mapping: dict[str, str] | None = None
+    include_out_of_stock: bool | None = None
+    is_active: bool | None = None
 
 class MarketplaceConnectionResponse(BaseModel):
     id: str
@@ -662,11 +662,11 @@ class MarketplaceConnectionResponse(BaseModel):
     condition: str = "new"
     shipping_cost: str = ""
     delivery_time: str = ""
-    field_mapping: Dict[str, str] = {}
+    field_mapping: dict[str, str] = {}
     include_out_of_stock: bool = False
     is_active: bool = True
     feed_format: str = "xml"
-    last_generated: Optional[str] = None
+    last_generated: str | None = None
     products_count: int = 0
     created_at: str
     updated_at: str
@@ -683,11 +683,11 @@ class CompetitorCreate(BaseModel):
     active: bool = True
 
 class CompetitorUpdate(BaseModel):
-    name: Optional[str] = Field(None, min_length=1, max_length=200)
-    base_url: Optional[str] = Field(None, min_length=1, max_length=500)
-    channel: Optional[str] = None
-    country: Optional[str] = Field(None, max_length=5)
-    active: Optional[bool] = None
+    name: str | None = Field(None, min_length=1, max_length=200)
+    base_url: str | None = Field(None, min_length=1, max_length=500)
+    channel: str | None = None
+    country: str | None = Field(None, max_length=5)
+    active: bool | None = None
 
 class CompetitorResponse(BaseModel):
     id: str
@@ -697,8 +697,8 @@ class CompetitorResponse(BaseModel):
     channel: str
     country: str = "ES"
     active: bool = True
-    last_crawl_at: Optional[str] = None
-    last_crawl_status: Optional[str] = None  # success, error, partial
+    last_crawl_at: str | None = None
+    last_crawl_status: str | None = None  # success, error, partial
     total_snapshots: int = 0
     created_at: str
 
@@ -707,51 +707,51 @@ class PriceSnapshotResponse(BaseModel):
     """Snapshot de precio de un competidor para un producto"""
     id: str
     competitor_id: str
-    competitor_name: Optional[str] = None
-    sku: Optional[str] = None
-    ean: Optional[str] = None
-    product_name: Optional[str] = None
+    competitor_name: str | None = None
+    sku: str | None = None
+    ean: str | None = None
+    product_name: str | None = None
     price: float
-    original_price: Optional[float] = None  # Precio tachado / antes de descuento
+    original_price: float | None = None  # Precio tachado / antes de descuento
     currency: str = "EUR"
-    url: Optional[str] = None
-    seller: Optional[str] = None
-    availability: Optional[str] = None  # in_stock, out_of_stock, limited
-    match_confidence: Optional[float] = None  # 0.0 - 1.0
-    matched_by: Optional[str] = None  # ean, sku, fuzzy_name
+    url: str | None = None
+    seller: str | None = None
+    availability: str | None = None  # in_stock, out_of_stock, limited
+    match_confidence: float | None = None  # 0.0 - 1.0
+    matched_by: str | None = None  # ean, sku, fuzzy_name
     scraped_at: str
 
 
 class PriceAlertCreate(BaseModel):
     """Configurar una alerta de precio"""
-    sku: Optional[str] = None
-    ean: Optional[str] = None
+    sku: str | None = None
+    ean: str | None = None
     alert_type: str = Field(..., description="Tipo: price_drop, price_below, competitor_cheaper, any_change")
-    threshold: Optional[float] = Field(None, ge=0, description="Umbral en porcentaje o precio absoluto")
+    threshold: float | None = Field(None, ge=0, description="Umbral en porcentaje o precio absoluto")
     channel: str = Field(default="app", description="Canal de notificación: app, email, webhook")
-    webhook_url: Optional[str] = Field(None, max_length=500)
+    webhook_url: str | None = Field(None, max_length=500)
     active: bool = True
 
 class PriceAlertUpdate(BaseModel):
-    sku: Optional[str] = None
-    ean: Optional[str] = None
-    alert_type: Optional[str] = None
-    threshold: Optional[float] = Field(None, ge=0)
-    channel: Optional[str] = None
-    webhook_url: Optional[str] = Field(None, max_length=500)
-    active: Optional[bool] = None
+    sku: str | None = None
+    ean: str | None = None
+    alert_type: str | None = None
+    threshold: float | None = Field(None, ge=0)
+    channel: str | None = None
+    webhook_url: str | None = Field(None, max_length=500)
+    active: bool | None = None
 
 class PriceAlertResponse(BaseModel):
     id: str
     user_id: str
-    sku: Optional[str] = None
-    ean: Optional[str] = None
+    sku: str | None = None
+    ean: str | None = None
     alert_type: str
-    threshold: Optional[float] = None
+    threshold: float | None = None
     channel: str = "app"
-    webhook_url: Optional[str] = None
+    webhook_url: str | None = None
     active: bool = True
-    last_triggered_at: Optional[str] = None
+    last_triggered_at: str | None = None
     trigger_count: int = 0
     created_at: str
 
@@ -759,14 +759,14 @@ class PriceAlertResponse(BaseModel):
 class CompetitorPriceComparison(BaseModel):
     """Comparación de precio de un producto con competidores"""
     sku: str
-    ean: Optional[str] = None
-    product_name: Optional[str] = None
-    my_price: Optional[float] = None
-    competitors: List[PriceSnapshotResponse] = []
-    best_competitor_price: Optional[float] = None
-    position: Optional[str] = None  # cheaper, equal, expensive
-    price_difference: Optional[float] = None
-    price_difference_percent: Optional[float] = None
+    ean: str | None = None
+    product_name: str | None = None
+    my_price: float | None = None
+    competitors: list[PriceSnapshotResponse] = []
+    best_competitor_price: float | None = None
+    position: str | None = None  # cheaper, equal, expensive
+    price_difference: float | None = None
+    price_difference_percent: float | None = None
 
 
 # ==================== STORE CATALOG CREATION ====================
@@ -774,9 +774,9 @@ class CompetitorPriceComparison(BaseModel):
 class CreateStoreCatalogRequest(BaseModel):
     """Request to create a catalog from store products"""
     store_config_id: str
-    catalog_name: Optional[str] = None
-    catalog_id: Optional[str] = None  # Use existing catalog instead of creating new one
-    match_by: List[str] = ["sku", "ean", "name"]  # Fields to match products by
+    catalog_name: str | None = None
+    catalog_id: str | None = None  # Use existing catalog instead of creating new one
+    match_by: list[str] = ["sku", "ean", "name"]  # Fields to match products by
     skip_unmatched: bool = True  # If False, create products without supplier
 
 class StoreCatalogCreationResponse(BaseModel):
@@ -788,5 +788,5 @@ class StoreCatalogCreationResponse(BaseModel):
     unmatched_products: int
     added_items: int
     created_products: int = 0
-    errors: List[str] = []
+    errors: list[str] = []
     created_at: str

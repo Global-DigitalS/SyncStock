@@ -5,21 +5,22 @@ Tests the new features:
 2. Subscription email notifications
 3. Email test connection endpoint
 """
+import os
+
 import pytest
 import requests
-import os
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
 
 class TestSetupSmtpConfiguration:
     """Tests for Setup page Step 3 - SMTP configuration"""
-    
+
     def test_setup_status_returns_correct_structure(self):
         """Verify setup status endpoint returns all required fields"""
         response = requests.get(f"{BASE_URL}/api/setup/status")
         assert response.status_code == 200
-        
+
         data = response.json()
         # Verify all required fields exist
         assert "is_configured" in data
@@ -29,7 +30,7 @@ class TestSetupSmtpConfiguration:
         assert "needs_jwt_config" in data
         assert "current_cors" in data
         print(f"Setup status: is_configured={data['is_configured']}, has_superadmin={data['has_superadmin']}")
-    
+
     def test_setup_configure_accepts_smtp_fields(self):
         """Verify setup configure endpoint accepts SMTP fields in request schema"""
         # This test validates that the SetupRequest model includes SMTP fields
@@ -58,7 +59,7 @@ class TestSetupSmtpConfiguration:
 
 class TestSmtpTestConnection:
     """Tests for SMTP test connection endpoint"""
-    
+
     def test_smtp_test_connection_endpoint_exists(self):
         """Verify the SMTP test connection endpoint exists and requires valid payload"""
         response = requests.post(f"{BASE_URL}/api/email/test-connection", json={
@@ -75,7 +76,7 @@ class TestSmtpTestConnection:
         assert "success" in data
         assert "message" in data
         print(f"SMTP test connection result: success={data['success']}, message={data['message']}")
-    
+
     def test_smtp_test_connection_with_invalid_server(self):
         """Test SMTP connection with invalid server returns appropriate error"""
         response = requests.post(f"{BASE_URL}/api/email/test-connection", json={
@@ -94,7 +95,7 @@ class TestSmtpTestConnection:
 
 class TestSubscriptionEmail:
     """Tests for subscription change email functionality"""
-    
+
     @pytest.fixture
     def auth_token(self):
         """Get authentication token"""
@@ -105,17 +106,17 @@ class TestSubscriptionEmail:
         if response.status_code == 200:
             return response.json().get("token")
         pytest.skip("Authentication failed - skipping authenticated tests")
-    
+
     def test_subscription_plans_endpoint(self, auth_token):
         """Verify subscription plans endpoint returns plans"""
         headers = {"Authorization": f"Bearer {auth_token}"}
         response = requests.get(f"{BASE_URL}/api/subscriptions/plans", headers=headers)
         assert response.status_code == 200
-        
+
         plans = response.json()
         assert isinstance(plans, list)
         assert len(plans) > 0
-        
+
         # Verify plan structure
         for plan in plans:
             assert "id" in plan
@@ -123,49 +124,49 @@ class TestSubscriptionEmail:
             assert "max_suppliers" in plan
             assert "max_catalogs" in plan
             assert "price_monthly" in plan
-        
+
         print(f"Found {len(plans)} subscription plans")
-    
+
     def test_subscribe_to_plan_triggers_email(self, auth_token):
         """Verify subscribing to a plan attempts to send email notification"""
         headers = {"Authorization": f"Bearer {auth_token}"}
-        
+
         # Get available plans first
         plans_response = requests.get(f"{BASE_URL}/api/subscriptions/plans", headers=headers)
         plans = plans_response.json()
-        
+
         if not plans:
             pytest.skip("No plans available")
-        
+
         # Find a plan that's not Free to test upgrade
         target_plan = None
         for plan in plans:
             if plan["name"] != "Free" and plan.get("is_active", True):
                 target_plan = plan
                 break
-        
+
         if not target_plan:
             target_plan = plans[0]
-        
+
         # Subscribe to the plan
         response = requests.post(
             f"{BASE_URL}/api/subscriptions/subscribe/{target_plan['id']}",
             params={"billing_cycle": "monthly"},
             headers=headers
         )
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "subscription" in data
         assert data["subscription"]["plan_name"] == target_plan["name"]
         print(f"Successfully subscribed to plan: {target_plan['name']}")
         # Note: Email sending happens in background - success depends on SMTP config
-    
+
     def test_get_my_subscription(self, auth_token):
         """Verify get my subscription endpoint works"""
         headers = {"Authorization": f"Bearer {auth_token}"}
         response = requests.get(f"{BASE_URL}/api/subscriptions/my", headers=headers)
-        
+
         assert response.status_code == 200
         data = response.json()
         assert "plan" in data
@@ -175,7 +176,7 @@ class TestSubscriptionEmail:
 
 class TestEmailConfig:
     """Tests for email configuration endpoints"""
-    
+
     @pytest.fixture
     def superadmin_token(self):
         """Get superadmin authentication token"""
@@ -186,18 +187,18 @@ class TestEmailConfig:
         if response.status_code == 200:
             return response.json().get("token")
         pytest.skip("Authentication failed - skipping authenticated tests")
-    
+
     def test_email_config_endpoint_requires_auth(self):
         """Verify email config endpoint requires authentication"""
         response = requests.get(f"{BASE_URL}/api/email/config")
         assert response.status_code == 401 or response.status_code == 403
         print("Email config endpoint correctly requires authentication")
-    
+
     def test_get_email_config(self, superadmin_token):
         """Get email configuration (for superadmin)"""
         headers = {"Authorization": f"Bearer {superadmin_token}"}
         response = requests.get(f"{BASE_URL}/api/email/config", headers=headers)
-        
+
         # May return 200 or 403 depending on user role
         if response.status_code == 200:
             data = response.json()
@@ -211,7 +212,7 @@ class TestEmailConfig:
 
 class TestForgotPassword:
     """Tests for password reset functionality (uses email)"""
-    
+
     def test_forgot_password_endpoint_exists(self):
         """Verify forgot password endpoint exists and accepts email"""
         response = requests.post(f"{BASE_URL}/api/auth/forgot-password", json={
@@ -222,7 +223,7 @@ class TestForgotPassword:
         data = response.json()
         assert data.get("success") == True
         print(f"Forgot password response: {data.get('message')}")
-    
+
     def test_verify_reset_token_endpoint_exists(self):
         """Verify the reset token verification endpoint exists"""
         response = requests.get(f"{BASE_URL}/api/auth/verify-reset-token/invalid-token-123")

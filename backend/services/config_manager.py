@@ -11,12 +11,12 @@ Ubicaciones de configuración (en orden de prioridad):
 3. ~/.syncstock/config.json (desarrollo local)
 4. [APP_DIR]/backend/config.json (fallback, sobrescrito en actualizaciones)
 """
-import os
 import json
-import secrets
 import logging
+import os
+import secrets
 from pathlib import Path
-from typing import Optional
+
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -137,18 +137,18 @@ def load_config() -> AppConfig:
 
     # Buscar configuración en todas las ubicaciones posibles
     config_locations = _get_all_config_locations()
-    
+
     config_loaded = False
     for config_path in config_locations:
         if config_path.exists():
             try:
-                with open(config_path, 'r') as f:
+                with open(config_path) as f:
                     data = json.load(f)
                     config = AppConfig(**data)
                     CONFIG_FILE = config_path  # Actualizar la ruta actual
                     logger.info(f"Configuration loaded from {config_path}")
                     config_loaded = True
-                    
+
                     # Si encontramos config en ubicación de app, migrar a ubicación persistente
                     if str(config_path).startswith(str(APP_CONFIG_DIR)) and config.is_configured:
                         try:
@@ -160,14 +160,14 @@ def load_config() -> AppConfig:
                             logger.info(f"Configuration migrated to persistent location: {new_path}")
                         except Exception as e:
                             logger.warning(f"Could not migrate config: {e}")
-                    
+
                     break
             except Exception as e:
                 logger.error(f"Error loading config from {config_path}: {e}")
-    
+
     if not config_loaded:
         logger.info("No configuration file found, using defaults/environment")
-    
+
     # Fallback a variables de entorno si el archivo no tiene valores
     if not config.mongo_url:
         config.mongo_url = os.environ.get('MONGO_URL', '')
@@ -181,7 +181,7 @@ def load_config() -> AppConfig:
         env_cors = os.environ.get('CORS_ORIGINS', '*')
         if env_cors:
             config.cors_origins = env_cors
-    
+
     return config
 
 
@@ -191,12 +191,12 @@ def save_config(config: AppConfig) -> bool:
     Intenta guardar en ubicación persistente (/etc/syncstock) primero.
     """
     global CONFIG_FILE
-    
+
     try:
         # Intentar guardar en ubicación del sistema primero
         config_path = CONFIG_FILE
         config_dir = config_path.parent
-        
+
         # Si estamos en ubicación de app, intentar migrar a ubicación del sistema
         if str(config_path).startswith(str(APP_CONFIG_DIR)):
             try:
@@ -207,15 +207,15 @@ def save_config(config: AppConfig) -> bool:
                 logger.info(f"Migrating config to persistent location: {config_path}")
             except PermissionError:
                 logger.warning(f"Cannot create system config dir, using: {config_path}")
-        
+
         # Asegurar que el directorio existe
         config_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Guardar en config.json
         with open(config_path, 'w') as f:
             json.dump(config.model_dump(), f, indent=2)
         logger.info(f"Configuration saved to {config_path}")
-        
+
         # También actualizar el archivo .env para compatibilidad
         env_file = APP_CONFIG_DIR / ".env"
         env_lines = [
@@ -240,7 +240,7 @@ def save_config(config: AppConfig) -> bool:
             logger.info(f"Environment file updated: {env_file}")
         except Exception as e:
             logger.warning(f"Could not update .env file: {e}")
-        
+
         return True
     except Exception as e:
         logger.error(f"Error saving config file: {e}")
@@ -255,26 +255,26 @@ def get_config() -> AppConfig:
 
 
 def update_config(
-    mongo_url: Optional[str] = None,
-    db_name: Optional[str] = None,
-    jwt_secret: Optional[str] = None,
-    cors_origins: Optional[str] = None,
-    is_configured: Optional[bool] = None,
-    smtp_host: Optional[str] = None,
-    smtp_port: Optional[int] = None,
-    smtp_user: Optional[str] = None,
-    smtp_password: Optional[str] = None,
-    smtp_from_email: Optional[str] = None,
-    smtp_from_name: Optional[str] = None,
-    smtp_use_tls: Optional[bool] = None,
-    smtp_use_ssl: Optional[bool] = None,
-    smtp_configured: Optional[bool] = None
+    mongo_url: str | None = None,
+    db_name: str | None = None,
+    jwt_secret: str | None = None,
+    cors_origins: str | None = None,
+    is_configured: bool | None = None,
+    smtp_host: str | None = None,
+    smtp_port: int | None = None,
+    smtp_user: str | None = None,
+    smtp_password: str | None = None,
+    smtp_from_email: str | None = None,
+    smtp_from_name: str | None = None,
+    smtp_use_tls: bool | None = None,
+    smtp_use_ssl: bool | None = None,
+    smtp_configured: bool | None = None
 ) -> AppConfig:
     """
     Actualiza la configuración con los valores proporcionados.
     """
     config = load_config()
-    
+
     if mongo_url is not None:
         config.mongo_url = mongo_url
     if db_name is not None:
@@ -304,7 +304,7 @@ def update_config(
         config.smtp_use_ssl = smtp_use_ssl
     if smtp_configured is not None:
         config.smtp_configured = smtp_configured
-    
+
     save_config(config)
     return config
 
@@ -323,12 +323,12 @@ def ensure_jwt_secret() -> str:
     Si no existe, genera uno nuevo y lo guarda.
     """
     config = load_config()
-    
+
     if not config.jwt_secret:
         config.jwt_secret = generate_jwt_secret()
         save_config(config)
         logger.info("Generated new JWT secret")
-    
+
     return config.jwt_secret
 
 
@@ -339,7 +339,7 @@ def get_config_info() -> dict:
     Útil para debugging y para mostrar al usuario dónde se guarda la config.
     """
     config = load_config()
-    
+
     return {
         "config_path": str(CONFIG_FILE),
         "is_persistent": str(CONFIG_FILE).startswith("/etc/syncstock"),
@@ -352,7 +352,7 @@ def get_config_info() -> dict:
     }
 
 
-def backup_config() -> Optional[str]:
+def backup_config() -> str | None:
     """
     Crea una copia de seguridad de la configuración actual.
     Útil antes de actualizar la aplicación.
@@ -360,17 +360,17 @@ def backup_config() -> Optional[str]:
     config = load_config()
     if not config.is_configured:
         return None
-    
+
     from datetime import datetime
     backup_dir = SYSTEM_CONFIG_DIR / "backups"
     try:
         backup_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_path = backup_dir / f"config_backup_{timestamp}.json"
-        
+
         with open(backup_path, 'w') as f:
             json.dump(config.model_dump(), f, indent=2)
-        
+
         logger.info(f"Configuration backup created: {backup_path}")
         return str(backup_path)
     except Exception as e:
@@ -383,7 +383,7 @@ def restore_config(backup_path: str) -> bool:
     Restaura la configuración desde una copia de seguridad.
     """
     try:
-        with open(backup_path, 'r') as f:
+        with open(backup_path) as f:
             data = json.load(f)
             config = AppConfig(**data)
             save_config(config)
@@ -400,7 +400,7 @@ def list_backups() -> list:
     """
     backup_dir = SYSTEM_CONFIG_DIR / "backups"
     backups = []
-    
+
     if backup_dir.exists():
         for backup_file in sorted(backup_dir.glob("config_backup_*.json"), reverse=True):
             backups.append({
@@ -408,5 +408,5 @@ def list_backups() -> list:
                 "filename": backup_file.name,
                 "created": backup_file.stat().st_mtime
             })
-    
+
     return backups
