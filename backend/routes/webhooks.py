@@ -2,19 +2,19 @@
 Webhook System for Store Integrations
 Allows stores to notify the app about inventory/order changes
 """
-from fastapi import APIRouter, Depends, HTTPException, Request, BackgroundTasks
-from typing import List, Optional
-from datetime import datetime, timezone
-import uuid
-import secrets
+import hashlib
+import hmac
 import logging
+import secrets
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-import hmac
-import hashlib
 
-from services.database import db
 from services.auth import get_current_user
+from services.database import db
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
@@ -27,24 +27,24 @@ logger = logging.getLogger(__name__)
 async def get_webhook_configs(user: dict = Depends(get_current_user)):
     """Get webhook configurations for user's stores"""
     configs = await db.webhook_configs.find(
-        {"user_id": user["id"]}, 
+        {"user_id": user["id"]},
         {"_id": 0}
     ).to_list(100)
-    
+
     # Get store names
     store_ids = [c.get("store_id") for c in configs if c.get("store_id")]
     stores = {}
     if store_ids:
         store_docs = await db.woocommerce_configs.find({"id": {"$in": store_ids}}).to_list(100)
         stores = {s["id"]: s.get("name") for s in store_docs}
-    
+
     for config in configs:
         config["store_name"] = stores.get(config.get("store_id"))
         # Mask secret key
         if config.get("secret_key"):
             config["secret_key_masked"] = config["secret_key"][:8] + "..." + config["secret_key"][-4:]
             del config["secret_key"]
-    
+
     return configs
 
 
@@ -52,18 +52,18 @@ async def get_webhook_configs(user: dict = Depends(get_current_user)):
 async def create_webhook_config(config: dict, user: dict = Depends(get_current_user)):
     """Create a webhook configuration for a store"""
     store_id = config.get("store_id")
-    
+
     # Verify store exists and belongs to user
     store = await db.woocommerce_configs.find_one({"id": store_id, "user_id": user["id"]})
     if not store:
         raise HTTPException(status_code=404, detail="Tienda no encontrada")
-    
+
     # Generate webhook secret with cryptographically secure random bytes
     secret_key = secrets.token_urlsafe(48)
-    
+
     config_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
-    
+    now = datetime.now(UTC).isoformat()
+
     webhook_config = {
         "id": config_id,
         "user_id": user["id"],
@@ -77,9 +77,9 @@ async def create_webhook_config(config: dict, user: dict = Depends(get_current_u
         "last_received": None,
         "total_received": 0
     }
-    
+
     await db.webhook_configs.insert_one(webhook_config)
-    
+
     return {
         "id": config_id,
         "store_id": store_id,
@@ -100,16 +100,16 @@ async def update_webhook_config(config_id: str, update: dict, user: dict = Depen
     existing = await db.webhook_configs.find_one({"id": config_id, "user_id": user["id"]})
     if not existing:
         raise HTTPException(status_code=404, detail="Configuración de webhook no encontrada")
-    
+
     update_data = {}
     if "enabled" in update:
         update_data["enabled"] = update["enabled"]
     if "events" in update:
         update_data["events"] = update["events"]
-    
+
     if update_data:
         await db.webhook_configs.update_one({"id": config_id}, {"$set": update_data})
-    
+
     return {"message": "Webhook actualizado"}
 
 
@@ -128,10 +128,10 @@ async def regenerate_webhook_secret(config_id: str, user: dict = Depends(get_cur
     existing = await db.webhook_configs.find_one({"id": config_id, "user_id": user["id"]})
     if not existing:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
-    
+
     new_secret = secrets.token_urlsafe(48)
     await db.webhook_configs.update_one({"id": config_id}, {"$set": {"secret_key": new_secret}})
-    
+
     return {"secret_key": new_secret, "message": "Secret regenerado. Actualiza la configuración en tu tienda."}
 
 
@@ -179,9 +179,9 @@ async def process_webhook_event(webhook_config: dict, event_type: str, data: dic
     platform = webhook_config.get("platform", "woocommerce")
     store_id = webhook_config.get("store_id")
     user_id = webhook_config.get("user_id")
-    
-    now = datetime.now(timezone.utc).isoformat()
-    
+
+    now = datetime.now(UTC).isoformat()
+
     # Log the webhook event
     event_log = {
         "id": str(uuid.uuid4()),
@@ -195,7 +195,7 @@ async def process_webhook_event(webhook_config: dict, event_type: str, data: dic
         "created_at": now
     }
     await db.webhook_events.insert_one(event_log)
-    
+
     # Update webhook config stats
     await db.webhook_configs.update_one(
         {"id": webhook_config["id"]},
@@ -204,24 +204,24 @@ async def process_webhook_event(webhook_config: dict, event_type: str, data: dic
             "$inc": {"total_received": 1}
         }
     )
-    
+
     try:
         # Process based on event type
         if event_type in ["inventory.updated", "stock.updated", "product.stock_changed"]:
             await process_inventory_update(user_id, store_id, platform, data)
-        
+
         elif event_type in ["order.created", "order.completed"]:
             await process_order_event(user_id, store_id, platform, data)
-        
+
         elif event_type in ["product.updated", "product.created"]:
             await process_product_update(user_id, store_id, platform, data)
-        
+
         # Mark as processed
         await db.webhook_events.update_one(
             {"id": event_log["id"]},
-            {"$set": {"processed": True, "processed_at": datetime.now(timezone.utc).isoformat()}}
+            {"$set": {"processed": True, "processed_at": datetime.now(UTC).isoformat()}}
         )
-        
+
         # Create notification
         await db.notifications.insert_one({
             "id": str(uuid.uuid4()),
@@ -233,7 +233,7 @@ async def process_webhook_event(webhook_config: dict, event_type: str, data: dic
             "read": False,
             "created_at": now
         })
-        
+
     except Exception as e:
         logger.error(f"Error processing webhook event: {e}")
         await db.webhook_events.update_one(
@@ -246,27 +246,27 @@ async def process_inventory_update(user_id: str, store_id: str, platform: str, d
     """Process inventory update from webhook"""
     sku = data.get("sku") or data.get("product_sku") or data.get("id")
     new_quantity = data.get("quantity") or data.get("stock_quantity") or data.get("available")
-    
+
     if not sku:
         logger.warning("Inventory update without SKU")
         return
-    
+
     # Find matching product in our database
     product = await db.products.find_one({"user_id": user_id, "sku": sku})
-    
+
     if product:
         old_stock = product.get("stock", 0)
-        
+
         # Update product stock
         await db.products.update_one(
             {"id": product["id"]},
             {"$set": {
                 "external_stock": new_quantity,
                 "stock_sync_source": store_id,
-                "stock_synced_at": datetime.now(timezone.utc).isoformat()
+                "stock_synced_at": datetime.now(UTC).isoformat()
             }}
         )
-        
+
         logger.info(f"Updated stock for {sku}: {old_stock} -> {new_quantity}")
 
 
@@ -294,7 +294,7 @@ async def process_order_event(user_id: str, store_id: str, platform: str, data: 
             "order_id": result.get("order_id"),
             "user_id": user_id,
             "read": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(UTC).isoformat()
         })
     elif result["status"] == "duplicate":
         logger.warning(f"Duplicate order detected: {order_id}")
@@ -309,7 +309,7 @@ async def process_order_event(user_id: str, store_id: str, platform: str, data: 
             "order_id": order_id,
             "user_id": user_id,
             "read": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(UTC).isoformat()
         })
 
 
@@ -317,13 +317,13 @@ async def process_product_update(user_id: str, store_id: str, platform: str, dat
     """Process product update from webhook"""
     sku = data.get("sku") or data.get("id")
     price = data.get("price") or data.get("regular_price")
-    
+
     if not sku:
         return
-    
+
     # Find matching product
     product = await db.products.find_one({"user_id": user_id, "sku": sku})
-    
+
     if product and price:
         old_price = product.get("price", 0)
         try:
@@ -338,7 +338,7 @@ async def process_product_update(user_id: str, store_id: str, platform: str, dat
                     "change_percent": ((new_price - old_price) / old_price * 100) if old_price else 0,
                     "source": f"webhook_{platform}",
                     "user_id": user_id,
-                    "created_at": datetime.now(timezone.utc).isoformat()
+                    "created_at": datetime.now(UTC).isoformat()
                 })
         except (ValueError, TypeError):
             pass
@@ -352,13 +352,13 @@ async def receive_webhook(config_id: str, request: Request, background_tasks: Ba
     webhook_config = await db.webhook_configs.find_one({"id": config_id})
     if not webhook_config:
         raise HTTPException(status_code=404, detail="Webhook no encontrado")
-    
+
     if not webhook_config.get("enabled", True):
         return {"status": "ignored", "message": "Webhook deshabilitado"}
-    
+
     # Get request body
     body = await request.body()
-    
+
     # Verify signature — reject if secret is configured but signature is missing or invalid
     signature = (
         request.headers.get("X-Webhook-Signature")
@@ -373,23 +373,23 @@ async def receive_webhook(config_id: str, request: Request, background_tasks: Ba
         if not verify_webhook_signature(body, signature, secret_key, webhook_config.get("platform", "")):
             logger.warning(f"Webhook {config_id}: firma inválida")
             raise HTTPException(status_code=401, detail="Firma de webhook inválida")
-    
+
     # Parse body
     try:
         data = await request.json()
     except Exception:
         data = {"raw": body.decode() if body else ""}
-    
+
     # Determine event type
     event_type = request.headers.get("X-WC-Webhook-Topic") or \
                  request.headers.get("X-Shopify-Topic") or \
                  data.get("event") or \
                  data.get("type") or \
                  "unknown"
-    
+
     # Process in background
     background_tasks.add_task(process_webhook_event, webhook_config, event_type, data)
-    
+
     return {"status": "received", "event": event_type}
 
 
@@ -399,18 +399,18 @@ async def receive_webhook(config_id: str, request: Request, background_tasks: Ba
 async def get_webhook_events(
     user: dict = Depends(get_current_user),
     limit: int = 50,
-    store_id: Optional[str] = None
+    store_id: str | None = None
 ):
     """Get webhook event logs"""
     query = {"user_id": user["id"]}
     if store_id:
         query["store_id"] = store_id
-    
+
     events = await db.webhook_events.find(
-        query, 
+        query,
         {"_id": 0, "data": 0}  # Exclude large data field
     ).sort("created_at", -1).limit(limit).to_list(limit)
-    
+
     return events
 
 
@@ -424,7 +424,7 @@ async def get_webhook_stats(user: dict = Depends(get_current_user)):
         {"$sort": {"count": -1}}
     ]
     by_type = await db.webhook_events.aggregate(pipeline).to_list(100)
-    
+
     # Count by store
     pipeline_store = [
         {"$match": {"user_id": user["id"]}},
@@ -432,17 +432,17 @@ async def get_webhook_stats(user: dict = Depends(get_current_user)):
         {"$sort": {"count": -1}}
     ]
     by_store = await db.webhook_events.aggregate(pipeline_store).to_list(100)
-    
+
     # Get store names
     store_ids = [s["_id"] for s in by_store if s["_id"]]
     stores = {}
     if store_ids:
         store_docs = await db.woocommerce_configs.find({"id": {"$in": store_ids}}).to_list(100)
         stores = {s["id"]: s.get("name") for s in store_docs}
-    
+
     total = await db.webhook_events.count_documents({"user_id": user["id"]})
     processed = await db.webhook_events.count_documents({"user_id": user["id"], "processed": True})
-    
+
     return {
         "total_events": total,
         "processed": processed,

@@ -8,11 +8,12 @@ Cubre:
 - Matching de productos multicapa
 - Lógica de configuración de catálogo
 """
+import os
+import sys
 import time
 import uuid
+
 import pytest
-import sys
-import os
 
 # Añadir backend al path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -26,7 +27,7 @@ class TestProxyManagerCircuitBreaker:
     """Tests del circuito de proxy con estados CLOSED/OPEN/HALF_OPEN."""
 
     def setup_method(self):
-        from services.scrapers.proxy_manager import ProxyManager, CircuitState
+        from services.scrapers.proxy_manager import CircuitState, ProxyManager
         self.ProxyManager = ProxyManager
         self.CircuitState = CircuitState
 
@@ -170,7 +171,7 @@ class TestProxyManagerCircuitBreaker:
 
     def test_is_available_property(self):
         """is_available es True para proxies CLOSED."""
-        from services.scrapers.proxy_manager import ProxyEntry, CircuitState
+        from services.scrapers.proxy_manager import CircuitState, ProxyEntry
         entry = ProxyEntry(url=None, host="direct")
         assert entry.is_available is True
 
@@ -404,7 +405,7 @@ class TestMultiLayerMatcher:
     """Tests del matcher de productos multicapa (EAN → SKU → Specs+Fuzzy)."""
 
     def setup_method(self):
-        from services.scrapers.matcher import match_product, MatchResult, AUTO_ACCEPT_THRESHOLD
+        from services.scrapers.matcher import AUTO_ACCEPT_THRESHOLD, MatchResult, match_product
         self.match_product = match_product
         self.MatchResult = MatchResult
         self.AUTO_ACCEPT_THRESHOLD = AUTO_ACCEPT_THRESHOLD

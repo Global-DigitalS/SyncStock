@@ -5,7 +5,6 @@ Cada canal (amazon_es, pccomponentes, etc.) implementa esta interfaz.
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Optional, List
 
 logger = logging.getLogger(__name__)
 
@@ -16,22 +15,22 @@ class ScrapedProduct:
     product_name: str
     price: float
     currency: str = "EUR"
-    original_price: Optional[float] = None  # Precio tachado
-    url: Optional[str] = None
-    ean: Optional[str] = None
-    sku: Optional[str] = None
-    seller: Optional[str] = None
+    original_price: float | None = None  # Precio tachado
+    url: str | None = None
+    ean: str | None = None
+    sku: str | None = None
+    seller: str | None = None
     availability: str = "in_stock"  # in_stock, out_of_stock, limited
-    image_url: Optional[str] = None
+    image_url: str | None = None
 
 
 @dataclass
 class SearchResult:
     """Resultado de una búsqueda de producto en un competidor."""
-    products: List[ScrapedProduct] = field(default_factory=list)
+    products: list[ScrapedProduct] = field(default_factory=list)
     total_found: int = 0
     query: str = ""
-    error: Optional[str] = None
+    error: str | None = None
 
 
 class BaseScraper(ABC):
@@ -58,15 +57,15 @@ class BaseScraper(ABC):
         ...
 
     @abstractmethod
-    async def parse_product_page(self, url: str) -> Optional[ScrapedProduct]:
+    async def parse_product_page(self, url: str) -> ScrapedProduct | None:
         """Extrae datos de precio de una URL de producto específica."""
         ...
 
     async def search_product(
         self,
-        ean: Optional[str] = None,
-        sku: Optional[str] = None,
-        name: Optional[str] = None,
+        ean: str | None = None,
+        sku: str | None = None,
+        name: str | None = None,
     ) -> SearchResult:
         """
         Estrategia de búsqueda en cascada:

@@ -10,8 +10,8 @@ This allows 1M+ products to sync efficiently without blocking the server.
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Optional, List
+from datetime import UTC, datetime
+from typing import Optional
 
 from services.database import db
 
@@ -35,21 +35,21 @@ async def get_user_sync_settings(user_id: str) -> dict:
             "sync_stores": True,
             "sync_crm": True
         }
-    
+
     # Get user's current sync config
     sync_config = user.get("sync_config", {})
-    
+
     # Get plan permissions
     plan_id = user.get("subscription_plan_id")
     allowed_intervals = []
     sync_enabled = False
-    
+
     if plan_id:
         plan = await db.subscription_plans.find_one({"id": plan_id})
         if plan:
             sync_enabled = plan.get("auto_sync_enabled", False)
             allowed_intervals = plan.get("sync_intervals", plan.get("crm_sync_intervals", []))
-    
+
     return {
         "enabled": sync_enabled,
         "intervals": allowed_intervals,
@@ -67,7 +67,7 @@ async def update_user_sync_settings(user_id: str, settings: dict) -> dict:
     user = await db.users.find_one({"id": user_id})
     if not user:
         return {"status": "error", "message": "Usuario no encontrado"}
-    
+
     # Get allowed intervals from plan
     plan_id = user.get("subscription_plan_id")
     allowed_intervals = []
@@ -75,27 +75,27 @@ async def update_user_sync_settings(user_id: str, settings: dict) -> dict:
         plan = await db.subscription_plans.find_one({"id": plan_id})
         if plan:
             allowed_intervals = plan.get("sync_intervals", plan.get("crm_sync_intervals", []))
-    
+
     interval = settings.get("interval")
     if interval and interval not in allowed_intervals:
         return {"status": "error", "message": f"Intervalo {interval}h no permitido en tu plan"}
-    
+
     sync_config = {
         "interval": interval,
-        "updated_at": datetime.now(timezone.utc).isoformat()
+        "updated_at": datetime.now(UTC).isoformat()
     }
-    
+
     # Calculate next sync time
     if interval:
         from datetime import timedelta
-        next_sync = datetime.now(timezone.utc) + timedelta(hours=interval)
+        next_sync = datetime.now(UTC) + timedelta(hours=interval)
         sync_config["next_sync"] = next_sync.isoformat()
-    
+
     await db.users.update_one(
         {"id": user_id},
         {"$set": {"sync_config": sync_config}}
     )
-    
+
     return {"status": "success", "message": "Configuración actualizada", "config": sync_config}
 
 
@@ -107,7 +107,6 @@ async def sync_user_suppliers(user_id: str, queue_task: Optional['SyncTask'] = N
     With 5 suppliers: ~30s total instead of 5 * 30s = 150s
     """
     from services.sync import sync_supplier
-    from services.sync_queue import SyncTask
 
     suppliers = await db.suppliers.find({"user_id": user_id}).to_list(100)
     results = {"total": len(suppliers), "synced": 0, "errors": 0, "details": []}
@@ -297,7 +296,7 @@ async def run_user_sync(user_id: str, queue_task: Optional['SyncTask'] = None) -
 
     results = {
         "user_id": user_id,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "suppliers": None,
         "stores": None,
         "crm": None
@@ -338,7 +337,7 @@ async def run_user_sync(user_id: str, queue_task: Optional['SyncTask'] = None) -
 
     if interval:
         from datetime import timedelta
-        next_sync = datetime.now(timezone.utc) + timedelta(hours=interval)
+        next_sync = datetime.now(UTC) + timedelta(hours=interval)
         update_data["sync_config.next_sync"] = next_sync.isoformat()
 
     await db.users.update_one(
@@ -355,27 +354,27 @@ async def run_scheduled_syncs():
     Called by APScheduler
     """
     logger.info("Running scheduled sync check...")
-    
-    now = datetime.now(timezone.utc)
-    
+
+    now = datetime.now(UTC)
+
     # Find all users with auto-sync enabled
     users = await db.users.find({
         "sync_config.interval": {"$exists": True, "$ne": None}
     }).to_list(10000)
-    
+
     synced_count = 0
     error_count = 0
-    
+
     for user in users:
         try:
             user_id = user.get("id")
             sync_config = user.get("sync_config", {})
             interval = sync_config.get("interval")
             last_sync = sync_config.get("last_sync")
-            
+
             if not interval:
                 continue
-            
+
             # Check if user's plan allows this sync
             plan_id = user.get("subscription_plan_id")
             if plan_id:
@@ -385,7 +384,7 @@ async def run_scheduled_syncs():
                 allowed_intervals = plan.get("sync_intervals", plan.get("crm_sync_intervals", []))
                 if interval not in allowed_intervals:
                     continue
-            
+
             # Check if it's time to sync
             should_sync = False
             if not last_sync:
@@ -397,11 +396,11 @@ async def run_scheduled_syncs():
                     should_sync = hours_since_sync >= interval
                 except:
                     should_sync = True
-            
+
             if should_sync:
                 logger.info(f"Executing scheduled sync for user {user_id} (interval: {interval}h)")
                 result = await run_user_sync(user_id)
-                
+
                 # Count results
                 total_synced = 0
                 total_errors = 0
@@ -409,16 +408,16 @@ async def run_scheduled_syncs():
                     if result.get(key):
                         total_synced += result[key].get("synced", 0)
                         total_errors += result[key].get("errors", 0)
-                
+
                 if total_errors == 0:
                     synced_count += 1
                 else:
                     error_count += 1
                     logger.warning(f"Sync for user {user_id} completed with {total_errors} errors")
-        
+
         except Exception as e:
             error_count += 1
             logger.error(f"Error processing sync for user {user.get('id')}: {e}")
-    
+
     logger.info(f"Scheduled syncs completed: {synced_count} users synced, {error_count} with errors")
     return {"synced": synced_count, "errors": error_count}

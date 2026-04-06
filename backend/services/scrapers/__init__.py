@@ -9,7 +9,7 @@ from services.scrapers.generic import GenericScraper
 from services.scrapers.pccomponentes import PCComponentesScraper
 
 
-def get_scraper(channel: str, base_url: str = "") -> Optional[BaseScraper]:
+def get_scraper(channel: str, base_url: str = "") -> BaseScraper | None:
     """
     Devuelve la instancia de scraper apropiada para el canal.
 

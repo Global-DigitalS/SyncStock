@@ -12,11 +12,11 @@ All public symbols are re-exported here for backward compatibility:
 """
 
 from .base import PlatformIntegrationError
+from .factory import get_platform_client
+from .magento import MagentoClient
 from .prestashop import PrestaShopClient
 from .shopify_client import ShopifyClient
-from .magento import MagentoClient
 from .wix import WixClient
-from .factory import get_platform_client
 
 __all__ = [
     "PlatformIntegrationError",

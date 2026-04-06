@@ -2,8 +2,8 @@
 Wix eCommerce API Integration
 """
 import logging
+
 import requests
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class WixClient:
             'Content-Type': 'application/json'
         }
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         """Test API connection"""
         try:
             response = requests.get(
@@ -39,7 +39,7 @@ class WixClient:
         except requests.exceptions.RequestException as e:
             return {"status": "error", "message": f"Error de conexión: {str(e)}"}
 
-    def get_products(self, limit: int = 50) -> List[Dict]:
+    def get_products(self, limit: int = 50) -> list[dict]:
         """Get products from Wix"""
         try:
             response = requests.get(
@@ -55,7 +55,7 @@ class WixClient:
             logger.error(f"Wix get_products error: {e}")
             return []
 
-    def get_all_products(self, page_size: int = 100) -> List[Dict]:
+    def get_all_products(self, page_size: int = 100) -> list[dict]:
         """Get all products from Wix with pagination"""
         all_products = []
         offset = 0
@@ -82,7 +82,7 @@ class WixClient:
             logger.error(f"Wix get_all_products error: {e}")
         return all_products
 
-    def update_inventory(self, product_id: str, variant_id: str, quantity: int) -> Dict:
+    def update_inventory(self, product_id: str, variant_id: str, quantity: int) -> dict:
         """Update inventory for a product variant"""
         try:
             response = requests.post(
@@ -107,7 +107,7 @@ class WixClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def create_product(self, product_data: Dict) -> Dict:
+    def create_product(self, product_data: dict) -> dict:
         """Create a new product in Wix with full product data"""
         try:
             # Build description - prefer long_description
@@ -170,7 +170,7 @@ class WixClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def update_product(self, product_id: str, product_data: Dict) -> Dict:
+    def update_product(self, product_id: str, product_data: dict) -> dict:
         """Update an existing product with full data"""
         try:
             payload = {'product': {'id': product_id}}

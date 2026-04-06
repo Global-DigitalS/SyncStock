@@ -7,7 +7,6 @@ Optimizes:
 - Chunk-based population from MongoDB
 """
 import logging
-from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
 
 from services.database import db
@@ -44,17 +43,17 @@ class SKUCache:
         self.user_id = user_id
 
         # Main cache: sku -> CachedProduct
-        self.products: Dict[str, CachedProduct] = {}
+        self.products: dict[str, CachedProduct] = {}
 
         # Track which SKUs we've checked but don't exist
-        self.missing_skus: Set[str] = set()
+        self.missing_skus: set[str] = set()
 
         # Stats
         self.hits = 0
         self.misses = 0
         self.db_fetches = 0
 
-    async def populate_batch(self, skus: List[str]) -> int:
+    async def populate_batch(self, skus: list[str]) -> int:
         """
         Load a batch of SKUs from MongoDB.
 
@@ -127,7 +126,7 @@ class SKUCache:
             logger.error(f"Error populating SKU cache: {e}")
             return 0
 
-    def get(self, sku: str) -> Optional[CachedProduct]:
+    def get(self, sku: str) -> CachedProduct | None:
         """
         Get a cached product by SKU.
 
@@ -155,7 +154,7 @@ class SKUCache:
             return (product.price, product.stock)
         return (0.0, 0)
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Get cache statistics"""
         total_lookups = self.hits + self.misses
         hit_rate = (self.hits / total_lookups * 100) if total_lookups > 0 else 0

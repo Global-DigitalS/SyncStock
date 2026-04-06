@@ -1,23 +1,22 @@
-import os
-import logging
-import json
 import asyncio
+import json
+import logging
+import os
 import time
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
-from typing import Dict, Set
+from datetime import UTC, datetime
 
-from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Request
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from dotenv import load_dotenv
+from fastapi import APIRouter, FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.util import get_remote_address
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from dotenv import load_dotenv
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
 
 load_dotenv()
 
@@ -29,33 +28,32 @@ UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Import route modules
-from routes.auth import router as auth_router
-from routes.suppliers import router as suppliers_router
-from routes.products import router as products_router
-from routes.catalogs import router as catalogs_router
-from routes.woocommerce import router as woocommerce_router
-from routes.dashboard import router as dashboard_router
-from routes.subscriptions import router as subscriptions_router
-from routes.stores import router as stores_router
-from routes.webhooks import router as webhooks_router
-from routes.setup import router as setup_router
-from routes.email import router as email_router
 from routes.admin import router as admin_router
-from routes.stripe import router as stripe_router
-from routes.crm import router as crm_router
-from routes.support import router as support_router
-from routes.marketplaces import router as marketplaces_router
+from routes.auth import router as auth_router
+from routes.catalogs import router as catalogs_router
 from routes.competitors import router as competitors_router
+from routes.crm import router as crm_router
+from routes.dashboard import router as dashboard_router
+from routes.email import router as email_router
+from routes.marketplaces import router as marketplaces_router
 from routes.orders import router as orders_router
+from routes.products import router as products_router
+from routes.setup import router as setup_router
+from routes.stores import router as stores_router
+from routes.stripe import router as stripe_router
+from routes.subscriptions import router as subscriptions_router
+from routes.suppliers import router as suppliers_router
+from routes.support import router as support_router
+from routes.webhooks import router as webhooks_router
+from routes.woocommerce import router as woocommerce_router
+from services.cache import cache
+from services.database import ensure_indexes
+from services.error_monitor import RequestLoggingMiddleware
 
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
-from services.crm_scheduler import run_scheduled_crm_syncs
-from services.unified_sync import run_scheduled_syncs, sync_user_suppliers, sync_user_stores, sync_user_crm
-from services.database import ensure_indexes
-from services.cache import cache
-from services.error_monitor import RequestLoggingMiddleware
-from services.sync_queue import get_sync_queue, SyncType
+from services.sync_queue import SyncType, get_sync_queue
+from services.unified_sync import run_scheduled_syncs
 
 # Initialize rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -68,24 +66,24 @@ scheduler = AsyncIOScheduler()
 
 class ConnectionManager:
     """Manages WebSocket connections for real-time notifications"""
-    
+
     def __init__(self):
-        self.active_connections: Dict[str, Set[WebSocket]] = {}  # user_id -> set of websockets
-    
+        self.active_connections: dict[str, set[WebSocket]] = {}  # user_id -> set of websockets
+
     async def connect(self, websocket: WebSocket, user_id: str):
         await websocket.accept()
         if user_id not in self.active_connections:
             self.active_connections[user_id] = set()
         self.active_connections[user_id].add(websocket)
         logger.info(f"WebSocket connected for user {user_id}. Total connections: {len(self.active_connections[user_id])}")
-    
+
     def disconnect(self, websocket: WebSocket, user_id: str):
         if user_id in self.active_connections:
             self.active_connections[user_id].discard(websocket)
             if not self.active_connections[user_id]:
                 del self.active_connections[user_id]
             logger.info(f"WebSocket disconnected for user {user_id}")
-    
+
     async def send_to_user(self, user_id: str, message: dict):
         """Send message to all connections of a specific user"""
         if user_id in self.active_connections:
@@ -99,7 +97,7 @@ class ConnectionManager:
             # Clean up disconnected
             for conn in disconnected:
                 self.active_connections[user_id].discard(conn)
-    
+
     async def broadcast(self, message: dict):
         """Broadcast message to all connected users"""
         for user_id in list(self.active_connections.keys()):
@@ -112,9 +110,10 @@ ws_manager = ConnectionManager()
 
 async def _purge_expired_security_records():
     """Scheduled job: remove expired password-reset tokens and stale login-attempt records."""
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from services.database import db as _db
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     result_tokens = await _db.password_resets.delete_many({"expires_at": {"$lt": now}})
     result_attempts = await _db.login_attempts.delete_many({"last_attempt": {"$lt": now}})
     logger.info(
@@ -127,10 +126,11 @@ async def _purge_old_database_records():
     """Scheduled job: limpieza de datos antiguos como complemento a los TTL indexes.
     Los TTL indexes de MongoDB limpian automáticamente, pero este job sirve como respaldo
     y para colecciones donde el campo de fecha no es 'Date' nativo de MongoDB."""
-    from datetime import datetime, timezone, timedelta
+    from datetime import datetime, timedelta
+
     from services.database import db as _db
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff_90d = (now - timedelta(days=90)).isoformat()
     cutoff_180d = (now - timedelta(days=180)).isoformat()
     cutoff_30d = (now - timedelta(days=30)).isoformat()
@@ -283,7 +283,7 @@ async def api_health_check():
     except Exception:
         db_status = "disconnected"
     status = "ok" if db_status == "connected" else "degraded"
-    return {"status": status, "database": db_status, "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"status": status, "database": db_status, "timestamp": datetime.now(UTC).isoformat()}
 
 
 # Root-level health check for Kubernetes deployment
@@ -298,7 +298,7 @@ async def health_check():
     except Exception:
         db_status = "disconnected"
     status = "ok" if db_status == "connected" else "degraded"
-    return {"status": status, "database": db_status, "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {"status": status, "database": db_status, "timestamp": datetime.now(UTC).isoformat()}
 
 
 # WebSocket endpoint for real-time notifications
@@ -314,8 +314,9 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
     # Authenticate before accepting the connection.
     # The JWT token is expected as a query parameter: ?token=<jwt>
     # (browsers cannot set custom headers on WebSocket connections).
-    from services.auth import JWT_SECRET, JWT_ALGORITHM
     import jwt as _jwt
+
+    from services.auth import JWT_ALGORITHM, JWT_SECRET
 
     # Accept token from query parameter or from the httpOnly auth_token cookie
     token = websocket.query_params.get("token") or websocket.cookies.get("auth_token")

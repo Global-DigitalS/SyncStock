@@ -3,8 +3,8 @@ Magento 2 REST API Integration
 """
 import base64
 import logging
+
 import requests
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ class MagentoClient:
             'Content-Type': 'application/json'
         }
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         """Test API connection"""
         try:
             response = requests.get(
@@ -39,7 +39,7 @@ class MagentoClient:
         except requests.exceptions.RequestException as e:
             return {"status": "error", "message": f"Error de conexión: {str(e)}"}
 
-    def get_products(self, limit: int = 50) -> List[Dict]:
+    def get_products(self, limit: int = 50) -> list[dict]:
         """Get products from Magento"""
         try:
             response = requests.get(
@@ -58,7 +58,7 @@ class MagentoClient:
             logger.error(f"Magento get_products error: {e}")
             return []
 
-    def get_all_products(self, page_size: int = 100) -> List[Dict]:
+    def get_all_products(self, page_size: int = 100) -> list[dict]:
         """Get all products from Magento with pagination"""
         all_products = []
         page = 1
@@ -88,7 +88,7 @@ class MagentoClient:
             logger.error(f"Magento get_all_products error: {e}")
         return all_products
 
-    def get_stock(self, sku: str) -> Optional[Dict]:
+    def get_stock(self, sku: str) -> dict | None:
         """Get stock info for a product by SKU"""
         try:
             response = requests.get(
@@ -103,7 +103,7 @@ class MagentoClient:
             logger.error(f"Magento get_stock error: {e}")
             return None
 
-    def update_stock(self, sku: str, quantity: int, is_in_stock: bool = True) -> Dict:
+    def update_stock(self, sku: str, quantity: int, is_in_stock: bool = True) -> dict:
         """Update stock quantity for a product"""
         try:
             stock_info = self.get_stock(sku)
@@ -127,7 +127,7 @@ class MagentoClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def create_product(self, product_data: Dict) -> Dict:
+    def create_product(self, product_data: dict) -> dict:
         """Create a new product in Magento with full product data"""
         try:
             # Build custom attributes
@@ -201,7 +201,7 @@ class MagentoClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def _upload_product_images(self, sku: str, product_data: Dict) -> None:
+    def _upload_product_images(self, sku: str, product_data: dict) -> None:
         """Upload images to a Magento product"""
         try:
             images = []
@@ -260,7 +260,7 @@ class MagentoClient:
         except Exception as e:
             logger.error(f"Magento _upload_product_images error: {e}")
 
-    def update_product(self, sku: str, product_data: Dict) -> Dict:
+    def update_product(self, sku: str, product_data: dict) -> dict:
         """Update an existing product with full data"""
         try:
             payload = {'product': {'sku': sku}}

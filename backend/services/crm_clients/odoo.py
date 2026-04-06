@@ -1,12 +1,12 @@
 """
 Odoo ERP/CRM API Client.
 """
-import logging
-import requests
-import base64
 import asyncio
+import base64
+import logging
 import time
-from typing import Dict, List, Optional
+
+import requests
 
 from .base import _validate_crm_url
 
@@ -137,7 +137,7 @@ class OdooClient:
         """Close the session"""
         self.session.close()
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         """Test API connection to Odoo"""
         try:
             response = self._rate_limited_request(
@@ -168,7 +168,7 @@ class OdooClient:
 
     # ==================== PRODUCTS ====================
 
-    def get_products(self, limit: int = 500) -> List[Dict]:
+    def get_products(self, limit: int = 500) -> list[dict]:
         """Get products from Odoo"""
         try:
             response = self._rate_limited_request(
@@ -188,7 +188,7 @@ class OdooClient:
             logger.error(f"Odoo get_products error: {e}")
             return []
 
-    def get_product_by_sku(self, sku: str) -> Optional[Dict]:
+    def get_product_by_sku(self, sku: str) -> dict | None:
         """Get a product by SKU (default_code)"""
         try:
             response = self._rate_limited_request(
@@ -209,7 +209,7 @@ class OdooClient:
             logger.error(f"Odoo get_product_by_sku error: {e}")
             return None
 
-    def get_products_by_skus_batch(self, skus: List[str]) -> Dict[str, Dict]:
+    def get_products_by_skus_batch(self, skus: list[str]) -> dict[str, dict]:
         """Get multiple products by SKU in batch - returns dict of sku -> product"""
         result = {}
         for sku in skus:
@@ -218,7 +218,7 @@ class OdooClient:
                 result[sku] = product
         return result
 
-    def create_product(self, product_data: Dict) -> Dict:
+    def create_product(self, product_data: dict) -> dict:
         """Create a new product in Odoo"""
         try:
             # Prepare product data for Odoo
@@ -280,7 +280,7 @@ class OdooClient:
             logger.error(f"Odoo create_product error: {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def update_product(self, product_id: int, product_data: Dict) -> Dict:
+    def update_product(self, product_id: int, product_data: dict) -> dict:
         """Update an existing product in Odoo"""
         try:
             payload = {}
@@ -313,7 +313,7 @@ class OdooClient:
             logger.error(f"Odoo update_product error: {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> Dict:
+    def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> dict:
         """Update product stock in Odoo"""
         try:
             # Get or use default warehouse
@@ -359,7 +359,7 @@ class OdooClient:
             logger.error(f"Odoo update_stock error: {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def get_or_create_default_warehouse(self) -> Optional[int]:
+    def get_or_create_default_warehouse(self) -> int | None:
         """Get the first warehouse or create a default one"""
         try:
             warehouses = self.get_warehouses()
@@ -386,7 +386,7 @@ class OdooClient:
             logger.error(f"Odoo get_or_create_default_warehouse error: {e}")
             return None
 
-    def get_warehouses(self) -> List[Dict]:
+    def get_warehouses(self) -> list[dict]:
         """Get all warehouses from Odoo"""
         try:
             response = self._rate_limited_request(
@@ -402,7 +402,7 @@ class OdooClient:
             logger.error(f"Odoo get_warehouses error: {e}")
             return []
 
-    def get_product_by_id(self, product_id: int) -> Optional[Dict]:
+    def get_product_by_id(self, product_id: int) -> dict | None:
         """Get product by ID"""
         try:
             response = self._rate_limited_request(
@@ -420,7 +420,7 @@ class OdooClient:
 
     # ==================== SUPPLIERS (Partners) ====================
 
-    def get_suppliers(self, limit: int = 500) -> List[Dict]:
+    def get_suppliers(self, limit: int = 500) -> list[dict]:
         """Get suppliers (vendors) from Odoo"""
         try:
             response = self._rate_limited_request(
@@ -440,7 +440,7 @@ class OdooClient:
             logger.error(f"Odoo get_suppliers error: {e}")
             return []
 
-    def create_supplier(self, supplier_data: Dict) -> Dict:
+    def create_supplier(self, supplier_data: dict) -> dict:
         """Create a supplier in Odoo"""
         try:
             payload = {
@@ -477,7 +477,7 @@ class OdooClient:
             logger.error(f"Odoo create_supplier error: {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def update_supplier(self, supplier_id: int, supplier_data: Dict) -> Dict:
+    def update_supplier(self, supplier_id: int, supplier_data: dict) -> dict:
         """Update a supplier in Odoo"""
         try:
             payload = {}
@@ -507,7 +507,7 @@ class OdooClient:
             logger.error(f"Odoo update_supplier error: {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def link_product_to_supplier(self, product_sku: str, supplier_id: int, purchase_price: float, supplier_sku: str = None) -> Dict:
+    def link_product_to_supplier(self, product_sku: str, supplier_id: int, purchase_price: float, supplier_sku: str = None) -> dict:
         """Link a product to a supplier with purchase price in Odoo"""
         try:
             # Get the product
@@ -549,7 +549,7 @@ class OdooClient:
 
     # ==================== ORDERS ====================
 
-    def get_orders(self, limit: int = 100) -> List[Dict]:
+    def get_orders(self, limit: int = 100) -> list[dict]:
         """Get sales orders from Odoo"""
         try:
             response = self._rate_limited_request(
@@ -570,7 +570,7 @@ class OdooClient:
             logger.error(f"Odoo get_orders error: {e}")
             return []
 
-    def search_orders_by_external_id(self, external_id: str) -> List[Dict]:
+    def search_orders_by_external_id(self, external_id: str) -> list[dict]:
         """Search for orders by external_id (client_order_ref field)
 
         HIGH #10: Check if order already exists in CRM to prevent duplicates
@@ -599,7 +599,7 @@ class OdooClient:
             logger.error(f"Error searching orders by external_id {external_id}: {e}")
             return []
 
-    def get_purchase_orders(self, limit: int = 100) -> List[Dict]:
+    def get_purchase_orders(self, limit: int = 100) -> list[dict]:
         """Get purchase orders from Odoo"""
         try:
             response = self._rate_limited_request(
@@ -622,7 +622,7 @@ class OdooClient:
 
     # ==================== STATS ====================
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Get basic stats from Odoo"""
         try:
             products = self.get_products(limit=10000)
@@ -642,17 +642,17 @@ class OdooClient:
 
     # ==================== ASYNC METHODS (FASE 2) ====================
 
-    async def create_product_async(self, product_data: Dict) -> Dict:
+    async def create_product_async(self, product_data: dict) -> dict:
         """Async wrapper for create_product - runs in thread pool to avoid blocking"""
         loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.create_product, product_data)
 
-    async def update_product_async(self, product_id: int, product_data: Dict) -> Dict:
+    async def update_product_async(self, product_id: int, product_data: dict) -> dict:
         """Async wrapper for update_product - runs in thread pool to avoid blocking"""
         loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.update_product, product_id, product_data)
 
-    async def update_stock_async(self, product_id: int, stock_value: int) -> Dict:
+    async def update_stock_async(self, product_id: int, stock_value: int) -> dict:
         """Async wrapper for update_stock - runs in thread pool to avoid blocking"""
         loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.update_stock, product_id, stock_value)

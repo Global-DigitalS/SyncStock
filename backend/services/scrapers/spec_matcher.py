@@ -10,7 +10,6 @@ Pesos por componente:
 """
 import logging
 import re
-from typing import Optional, Tuple
 
 from services.scrapers.spec_parser import ProductSpecs, spec_parser
 
@@ -29,7 +28,7 @@ def _clean_model(model: str) -> str:
     return m.strip()
 
 
-def compare_cpu(a: ProductSpecs, b: ProductSpecs) -> Tuple[float, str]:
+def compare_cpu(a: ProductSpecs, b: ProductSpecs) -> tuple[float, str]:
     """
     Compara las especificaciones de CPU entre dos productos.
 
@@ -78,7 +77,7 @@ def compare_cpu(a: ProductSpecs, b: ProductSpecs) -> Tuple[float, str]:
     return 0.0, "cpu_no_match"
 
 
-def compare_gpu(a: ProductSpecs, b: ProductSpecs) -> Tuple[float, str]:
+def compare_gpu(a: ProductSpecs, b: ProductSpecs) -> tuple[float, str]:
     """Compara especificaciones de GPU."""
     if not a.gpu_model and not a.gpu_family:
         return 0.0, "no_gpu_in_a"
@@ -116,7 +115,7 @@ def compare_gpu(a: ProductSpecs, b: ProductSpecs) -> Tuple[float, str]:
     return 0.0, "gpu_no_match"
 
 
-def compare_ram(a: ProductSpecs, b: ProductSpecs) -> Tuple[float, str]:
+def compare_ram(a: ProductSpecs, b: ProductSpecs) -> tuple[float, str]:
     """Compara especificaciones de RAM."""
     if not a.ram_gb and not a.ram_type:
         return 0.0, "no_ram_in_a"
@@ -145,7 +144,7 @@ def compare_ram(a: ProductSpecs, b: ProductSpecs) -> Tuple[float, str]:
     return 0.0, "ram_no_match"
 
 
-def compare_storage(a: ProductSpecs, b: ProductSpecs) -> Tuple[float, str]:
+def compare_storage(a: ProductSpecs, b: ProductSpecs) -> tuple[float, str]:
     """Compara especificaciones de almacenamiento."""
     if not a.storage_gb and not a.storage_type:
         return 0.0, "no_storage_in_a"
@@ -153,7 +152,7 @@ def compare_storage(a: ProductSpecs, b: ProductSpecs) -> Tuple[float, str]:
         return 0.0, "no_storage_in_b"
 
     # Tolerancia: ±5% de capacidad (por ejemplo 960GB ≈ 1000GB)
-    def cap_close(x: Optional[int], y: Optional[int]) -> bool:
+    def cap_close(x: int | None, y: int | None) -> bool:
         if not x or not y:
             return False
         diff = abs(x - y) / max(x, y)
@@ -175,7 +174,7 @@ def compare_storage(a: ProductSpecs, b: ProductSpecs) -> Tuple[float, str]:
     return 0.0, "storage_no_match"
 
 
-def spec_similarity_score(text_a: str, text_b: str) -> Tuple[float, str]:
+def spec_similarity_score(text_a: str, text_b: str) -> tuple[float, str]:
     """
     Calcula el score de similitud entre dos nombres de producto
     basándose en sus especificaciones técnicas IT.

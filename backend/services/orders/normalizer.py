@@ -1,11 +1,10 @@
 """
 Order normalization from different platforms to standard format
 """
-import re
 import logging
-from typing import Dict, Optional
-from datetime import datetime, timezone
-from .models import Order, OrderItem, OrderAddress
+import re
+
+from .models import Order, OrderAddress, OrderItem
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +15,7 @@ def validate_email(email: str) -> bool:
     return bool(re.match(pattern, email))
 
 
-def validate_order_data(data: Dict) -> Dict:
+def validate_order_data(data: dict) -> dict:
     """Validate order data structure"""
     errors = []
 
@@ -55,7 +54,7 @@ def validate_order_data(data: Dict) -> Dict:
     return {"valid": len(errors) == 0, "errors": errors}
 
 
-def normalize_woocommerce_order(data: Dict) -> Optional[Order]:
+def normalize_woocommerce_order(data: dict) -> Order | None:
     """Normalize WooCommerce webhook data to Order"""
     try:
         # Extract customer info
@@ -121,7 +120,7 @@ def normalize_woocommerce_order(data: Dict) -> Optional[Order]:
         return None
 
 
-def normalize_shopify_order(data: Dict) -> Optional[Order]:
+def normalize_shopify_order(data: dict) -> Order | None:
     """Normalize Shopify webhook data to Order"""
     try:
         customer = data.get("customer", {})
@@ -180,7 +179,7 @@ def normalize_shopify_order(data: Dict) -> Optional[Order]:
         return None
 
 
-def normalize_prestashop_order(data: Dict) -> Optional[Order]:
+def normalize_prestashop_order(data: dict) -> Order | None:
     """Normalize PrestaShop webhook data to Order"""
     try:
         customer_name = f"{data.get('firstname', '')} {data.get('lastname', '')}".strip()
@@ -221,7 +220,7 @@ def normalize_prestashop_order(data: Dict) -> Optional[Order]:
         return None
 
 
-def normalize_order(data: Dict, platform: str) -> Optional[Order]:
+def normalize_order(data: dict, platform: str) -> Order | None:
     """
     Normalize order from any platform
 

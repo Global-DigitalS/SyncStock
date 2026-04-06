@@ -6,8 +6,9 @@ Requiere la variable de entorno FERNET_KEY.
 Generar una clave nueva con:
     python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 """
-import os
 import logging
+import os
+
 from cryptography.fernet import Fernet, InvalidToken
 
 logger = logging.getLogger(__name__)

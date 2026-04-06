@@ -11,19 +11,17 @@ Responsabilidades:
 """
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from services.database import db
 from services.scrapers.orchestrator import run_crawl_for_user
 from services.scrapers.scraper_scheduler import (
-    get_pending_jobs,
     can_start_crawl,
-    mark_job_running,
+    get_pending_jobs,
     mark_job_completed,
     mark_job_failed,
+    mark_job_running,
     schedule_job_retry,
-    JobStatus,
 )
 
 logger = logging.getLogger(__name__)
@@ -73,11 +71,11 @@ async def execute_job(job_id: str, competitor_id: str, user_id: str) -> bool:
 
         # Ejecutar scraping usando run_crawl_for_user (que acepta competitor_id)
         logger.info(f"Starting crawl job {job_id} for competitor {competitor_id}")
-        start_time = datetime.now(timezone.utc)
+        start_time = datetime.now(UTC)
 
         result = await run_crawl_for_user(user_id, competitor_id=competitor_id)
 
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         duration_seconds = (end_time - start_time).total_seconds()
 
         status = result.get("status", "error")
@@ -106,7 +104,7 @@ async def execute_job(job_id: str, competitor_id: str, user_id: str) -> bool:
             await mark_job_failed(job_id, error_msg)
             return False
 
-    except asyncio.TimeoutError:
+    except TimeoutError:
         error_msg = "Timeout durante scraping"
         logger.error(f"Job {job_id} timeout: {error_msg}")
         await mark_job_failed(job_id, error_msg)
@@ -215,13 +213,13 @@ async def start_scheduler_worker(
     """
     logger.info(f"Starting scheduler worker (poll_interval={poll_interval_seconds}s)")
 
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
     max_duration = max_runtime_hours * 3600
 
     try:
         while True:
             # Chequear si se ha excedido el runtime máximo
-            elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+            elapsed = (datetime.now(UTC) - start_time).total_seconds()
             if elapsed > max_duration:
                 logger.info(f"Scheduler worker max_runtime ({max_runtime_hours}h) exceeded, exiting")
                 break
@@ -257,7 +255,7 @@ async def cancel_job(job_id: str) -> bool:
     if job_id in _active_jobs:
         # Nota: aiohttp/asyncio no permite cancellation granular,
         # marcamos como cancelado y esperamos que termine naturalmente
-        from services.scrapers.scraper_scheduler import update_job_status, JobStatus
+        from services.scrapers.scraper_scheduler import JobStatus, update_job_status
 
         await update_job_status(job_id, JobStatus.CANCELLED)
         logger.info(f"Job {job_id} marked for cancellation")

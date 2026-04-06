@@ -1,11 +1,11 @@
 """
 PrestaShop Webservice API Integration
 """
-import re
 import logging
+import re
+
 import requests
 from requests.auth import HTTPBasicAuth
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class PrestaShopClient:
         }
         self._category_map = {}  # Cache for category id mapping
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         """Test API connection"""
         try:
             response = requests.get(
@@ -43,7 +43,7 @@ class PrestaShopClient:
         except requests.exceptions.RequestException as e:
             return {"status": "error", "message": f"Error de conexión: {str(e)}"}
 
-    def get_products(self, limit: int = 100) -> List[Dict]:
+    def get_products(self, limit: int = 100) -> list[dict]:
         """Get products from PrestaShop"""
         try:
             response = requests.get(
@@ -65,7 +65,7 @@ class PrestaShopClient:
             logger.error(f"PrestaShop get_products error: {e}")
             return []
 
-    def get_all_products(self, page_size: int = 100) -> List[Dict]:
+    def get_all_products(self, page_size: int = 100) -> list[dict]:
         """Get all products from PrestaShop with pagination"""
         all_products = []
         offset = 0
@@ -95,7 +95,7 @@ class PrestaShopClient:
             logger.error(f"PrestaShop get_all_products error: {e}")
         return all_products
 
-    def get_stock_available(self, product_id: int, combination_id: int = 0) -> Optional[Dict]:
+    def get_stock_available(self, product_id: int, combination_id: int = 0) -> dict | None:
         """Get stock info for a product"""
         try:
             response = requests.get(
@@ -119,7 +119,7 @@ class PrestaShopClient:
             logger.error(f"PrestaShop get_stock error: {e}")
             return None
 
-    def update_stock(self, stock_id: int, quantity: int) -> Dict:
+    def update_stock(self, stock_id: int, quantity: int) -> dict:
         """Update stock quantity"""
         try:
             # PrestaShop requires XML format for PUT requests
@@ -145,7 +145,7 @@ class PrestaShopClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def create_product(self, product_data: Dict) -> Dict:
+    def create_product(self, product_data: dict) -> dict:
         """Create a new product in PrestaShop with full product data"""
         try:
             # Build description combining short and long
@@ -195,7 +195,7 @@ class PrestaShopClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def _upload_product_images(self, product_id: str, product_data: Dict) -> None:
+    def _upload_product_images(self, product_id: str, product_data: dict) -> None:
         """Upload images to a PrestaShop product"""
         try:
             images = []
@@ -228,7 +228,7 @@ class PrestaShopClient:
         except Exception as e:
             logger.error(f"PrestaShop _upload_product_images error: {e}")
 
-    def update_product(self, product_id: int, product_data: Dict) -> Dict:
+    def update_product(self, product_id: int, product_data: dict) -> dict:
         """Update an existing product with full data"""
         try:
             # Build update fields
@@ -274,7 +274,7 @@ class PrestaShopClient:
 
     # ==================== CATEGORY METHODS ====================
 
-    def get_categories(self) -> List[Dict]:
+    def get_categories(self) -> list[dict]:
         """Get all categories from PrestaShop"""
         try:
             response = requests.get(
@@ -295,7 +295,7 @@ class PrestaShopClient:
             logger.error(f"PrestaShop get_categories error: {e}")
             return []
 
-    def create_category(self, category_data: Dict) -> Dict:
+    def create_category(self, category_data: dict) -> dict:
         """Create a new category in PrestaShop"""
         try:
             parent_id = category_data.get("parent_id", 2)  # 2 is usually "Home" in PrestaShop
@@ -328,7 +328,7 @@ class PrestaShopClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def find_or_create_category(self, name: str, parent_id: int = 2) -> Optional[int]:
+    def find_or_create_category(self, name: str, parent_id: int = 2) -> int | None:
         """Find existing category by name or create it"""
         try:
             # First, try to find existing category

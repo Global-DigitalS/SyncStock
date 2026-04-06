@@ -1,11 +1,8 @@
 """
 Shared imports, constants, and utility functions for CRM clients.
 """
-import re
 import logging
-import requests
-import base64
-from typing import Dict, List, Optional, Any
+import re
 
 logger = logging.getLogger(__name__)
 

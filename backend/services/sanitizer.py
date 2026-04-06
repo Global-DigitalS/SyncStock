@@ -2,10 +2,10 @@
 Input sanitization utilities for security.
 Prevents XSS, injection attacks, and other security issues.
 """
-import re
 import html
-from typing import Any, Dict, List, Union
 import logging
+import re
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -35,29 +35,29 @@ def sanitize_string(value: str, max_length: int = 10000, allow_html: bool = Fals
     """
     if not isinstance(value, str):
         return value
-    
+
     # Trim to max length
     value = value[:max_length]
-    
+
     # Remove null bytes
     value = value.replace('\x00', '')
-    
+
     # Remove script tags and content
     value = SCRIPT_CONTENT.sub('', value)
-    
+
     # Remove dangerous tags
     value = DANGEROUS_TAGS.sub('', value)
-    
+
     # Remove dangerous attributes (onclick, onload, etc.)
     value = DANGEROUS_ATTRS.sub('', value)
-    
+
     # Escape HTML if not allowed
     if not allow_html:
         value = html.escape(value, quote=True)
-    
+
     # Strip leading/trailing whitespace
     value = value.strip()
-    
+
     return value
 
 
@@ -65,19 +65,19 @@ def sanitize_email(email: str) -> str:
     """Sanitize email input."""
     if not isinstance(email, str):
         return email
-    
+
     # Basic sanitization
     email = sanitize_string(email, max_length=254)
-    
+
     # Remove any whitespace
     email = email.strip().lower()
-    
+
     # Basic email validation pattern
     email_pattern = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
     if not email_pattern.match(email):
         # Return empty string for invalid emails (let validation handle it)
         return email
-    
+
     return email
 
 
@@ -88,11 +88,11 @@ def sanitize_password(password: str) -> str:
     """
     if not isinstance(password, str):
         return password
-    
+
     # Only remove null bytes and limit length
     password = password.replace('\x00', '')
     password = password[:128]  # Reasonable max password length
-    
+
     return password
 
 
@@ -100,11 +100,11 @@ def sanitize_mongo_query(value: str) -> str:
     """Remove potential MongoDB operator injection."""
     if not isinstance(value, str):
         return value
-    
+
     # Escape $ at the start of strings (MongoDB operators)
     if value.startswith('$'):
         value = '\\' + value
-    
+
     return value
 
 
@@ -112,16 +112,16 @@ def sanitize_path(path: str) -> str:
     """Sanitize file path to prevent path traversal attacks."""
     if not isinstance(path, str):
         return path
-    
+
     # Remove path traversal patterns
     path = PATH_TRAVERSAL.sub('', path)
-    
+
     # Remove null bytes
     path = path.replace('\x00', '')
-    
+
     # Remove potentially dangerous characters
     path = re.sub(r'[<>:"|?*]', '', path)
-    
+
     return path
 
 
@@ -129,17 +129,17 @@ def sanitize_url(url: str) -> str:
     """Sanitize URL input."""
     if not isinstance(url, str):
         return url
-    
+
     url = sanitize_string(url, max_length=2048)
-    
+
     # Check for javascript: or data: URLs
     if re.match(r'^(javascript|data|vbscript):', url, re.IGNORECASE):
         return ''
-    
+
     return url
 
 
-def sanitize_dict(data: Dict[str, Any], allow_html_fields: List[str] = None) -> Dict[str, Any]:
+def sanitize_dict(data: dict[str, Any], allow_html_fields: list[str] = None) -> dict[str, Any]:
     """
     Recursively sanitize all string values in a dictionary.
     
@@ -152,13 +152,13 @@ def sanitize_dict(data: Dict[str, Any], allow_html_fields: List[str] = None) -> 
     """
     if allow_html_fields is None:
         allow_html_fields = []
-    
+
     sanitized = {}
-    
+
     for key, value in data.items():
         # Sanitize the key itself
         safe_key = sanitize_string(str(key), max_length=256)
-        
+
         if isinstance(value, str):
             allow_html = key in allow_html_fields
             sanitized[safe_key] = sanitize_string(value, allow_html=allow_html)
@@ -168,17 +168,17 @@ def sanitize_dict(data: Dict[str, Any], allow_html_fields: List[str] = None) -> 
             sanitized[safe_key] = sanitize_list(value, allow_html_fields)
         else:
             sanitized[safe_key] = value
-    
+
     return sanitized
 
 
-def sanitize_list(data: List[Any], allow_html_fields: List[str] = None) -> List[Any]:
+def sanitize_list(data: list[Any], allow_html_fields: list[str] = None) -> list[Any]:
     """Recursively sanitize all string values in a list."""
     if allow_html_fields is None:
         allow_html_fields = []
-    
+
     sanitized = []
-    
+
     for item in data:
         if isinstance(item, str):
             sanitized.append(sanitize_string(item))
@@ -188,11 +188,11 @@ def sanitize_list(data: List[Any], allow_html_fields: List[str] = None) -> List[
             sanitized.append(sanitize_list(item, allow_html_fields))
         else:
             sanitized.append(item)
-    
+
     return sanitized
 
 
-def sanitize_model(model: Any, allow_html_fields: List[str] = None) -> Any:
+def sanitize_model(model: Any, allow_html_fields: list[str] = None) -> Any:
     """
     Sanitize a Pydantic model's fields.
     
@@ -205,16 +205,16 @@ def sanitize_model(model: Any, allow_html_fields: List[str] = None) -> Any:
     """
     if allow_html_fields is None:
         allow_html_fields = []
-    
+
     if hasattr(model, 'model_dump'):
         data = model.model_dump()
     elif hasattr(model, 'dict'):
         data = model.dict()
     else:
         return model
-    
+
     sanitized_data = sanitize_dict(data, allow_html_fields)
-    
+
     # Return sanitized dict (caller can reconstruct model if needed)
     return sanitized_data
 
@@ -222,10 +222,11 @@ def sanitize_model(model: Any, allow_html_fields: List[str] = None) -> Any:
 # Middleware helper for FastAPI
 def create_sanitization_middleware():
     """Create a middleware that sanitizes request bodies."""
+    import json
+
     from fastapi import Request
     from starlette.middleware.base import BaseHTTPMiddleware
-    import json
-    
+
     class SanitizationMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             # Only process JSON requests
@@ -242,10 +243,10 @@ def create_sanitization_middleware():
                             # So sanitization should be done at the route level
                 except Exception:
                     pass
-            
+
             response = await call_next(request)
             return response
-    
+
     return SanitizationMiddleware
 
 
@@ -259,7 +260,7 @@ SENSITIVE_FIELDS = {
 }
 
 
-def remove_credentials(data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+def remove_credentials(data: dict[str, Any] | list[dict[str, Any]]) -> dict[str, Any] | list[dict[str, Any]]:
     """
     Recursively remove sensitive credentials from API responses.
 

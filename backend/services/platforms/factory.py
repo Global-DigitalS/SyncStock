@@ -1,15 +1,14 @@
 """
 Factory function for creating platform clients.
 """
-from typing import Dict, Optional
 
+from .magento import MagentoClient
 from .prestashop import PrestaShopClient
 from .shopify_client import ShopifyClient
-from .magento import MagentoClient
 from .wix import WixClient
 
 
-def get_platform_client(config: Dict):
+def get_platform_client(config: dict):
     """Factory function to get the appropriate platform client"""
     platform = config.get('platform', 'woocommerce')
 

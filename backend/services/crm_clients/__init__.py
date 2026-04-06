@@ -6,18 +6,18 @@ This package re-exports everything for backward compatibility so that
 existing imports like `from services.crm_clients import DolibarrClient`
 continue to work unchanged.
 """
-from .base import _validate_crm_url, _PRIVATE_IP_RE, _VALID_URL_RE
-from .dolibarr import DolibarrClient
-from .odoo import OdooClient
+from .base import _PRIVATE_IP_RE, _VALID_URL_RE, _validate_crm_url
 from .basic_clients import (
+    FreshsalesClient,
     HubSpotClient,
+    MondayClient,
+    PipedriveClient,
     SalesforceClient,
     ZohoClient,
-    PipedriveClient,
-    MondayClient,
-    FreshsalesClient,
 )
-from .factory import create_crm_client, FULL_SYNC_PLATFORMS, BASIC_SYNC_PLATFORMS
+from .dolibarr import DolibarrClient
+from .factory import BASIC_SYNC_PLATFORMS, FULL_SYNC_PLATFORMS, create_crm_client
+from .odoo import OdooClient
 
 __all__ = [
     # Base utilities

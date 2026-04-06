@@ -1,13 +1,13 @@
 """
 Rutas de branding e iconos para SuperAdmin.
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime, timezone
-import uuid
-import os
 import logging
+import os
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from services.auth import get_superadmin_user
 from services.database import db
@@ -32,36 +32,36 @@ except PermissionError:
 class BrandingConfig(BaseModel):
     app_name: str = "SyncStock"
     app_slogan: str = "Sincronización de Inventario B2B"
-    logo_url: Optional[str] = None
-    favicon_url: Optional[str] = None
+    logo_url: str | None = None
+    favicon_url: str | None = None
     primary_color: str = "#4f46e5"  # indigo-600
     secondary_color: str = "#0f172a"  # slate-900
     accent_color: str = "#10b981"  # emerald-500
     footer_text: str = ""
     theme_preset: str = "default"
     # Hero section for login/register
-    hero_image_url: Optional[str] = None
+    hero_image_url: str | None = None
     hero_title: str = "Gestiona tu inventario de forma inteligente"
     hero_subtitle: str = "Sincroniza proveedores, configura márgenes y exporta a tu tienda online en minutos."
     # Page title (browser tab)
     page_title: str = "SyncStock — Sincronización de Inventario B2B Automatizada"
 
 class BrandingConfigUpdate(BaseModel):
-    app_name: Optional[str] = None
-    app_slogan: Optional[str] = None
-    logo_url: Optional[str] = None
-    favicon_url: Optional[str] = None
-    primary_color: Optional[str] = None
-    secondary_color: Optional[str] = None
-    accent_color: Optional[str] = None
-    footer_text: Optional[str] = None
-    theme_preset: Optional[str] = None
+    app_name: str | None = None
+    app_slogan: str | None = None
+    logo_url: str | None = None
+    favicon_url: str | None = None
+    primary_color: str | None = None
+    secondary_color: str | None = None
+    accent_color: str | None = None
+    footer_text: str | None = None
+    theme_preset: str | None = None
     # Hero section for login/register
-    hero_image_url: Optional[str] = None
-    hero_title: Optional[str] = None
-    hero_subtitle: Optional[str] = None
+    hero_image_url: str | None = None
+    hero_title: str | None = None
+    hero_subtitle: str | None = None
     # Page title (browser tab)
-    page_title: Optional[str] = None
+    page_title: str | None = None
 
 
 _BRANDING_DEFAULTS = BrandingConfig().model_dump()
@@ -84,7 +84,7 @@ async def get_branding(user: dict = Depends(get_superadmin_user)):
 async def update_branding(data: BrandingConfigUpdate, user: dict = Depends(get_superadmin_user)):
     """Update branding configuration"""
     update_data = {k: v for k, v in data.model_dump().items() if v is not None}
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
     update_data["updated_by"] = user["id"]
 
     await db.app_config.update_one(
@@ -117,7 +117,7 @@ async def upload_logo(file: UploadFile = File(...), user: dict = Depends(get_sup
 
     await db.app_config.update_one(
         {"type": "branding"},
-        {"$set": {"logo_url": logo_url, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {"logo_url": logo_url, "updated_at": datetime.now(UTC).isoformat()}},
         upsert=True
     )
 
@@ -142,7 +142,7 @@ async def upload_favicon(file: UploadFile = File(...), user: dict = Depends(get_
 
     await db.app_config.update_one(
         {"type": "branding"},
-        {"$set": {"favicon_url": favicon_url, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {"favicon_url": favicon_url, "updated_at": datetime.now(UTC).isoformat()}},
         upsert=True
     )
 
@@ -167,7 +167,7 @@ async def upload_hero_image(file: UploadFile = File(...), user: dict = Depends(g
 
     await db.app_config.update_one(
         {"type": "branding"},
-        {"$set": {"hero_image_url": hero_image_url, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {"hero_image_url": hero_image_url, "updated_at": datetime.now(UTC).isoformat()}},
         upsert=True
     )
 
@@ -252,7 +252,7 @@ async def upload_icon(
 
     await db.app_config.update_one(
         {"type": "icons"},
-        {"$set": {f"icons.{icon_key}": icon_url, "updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$set": {f"icons.{icon_key}": icon_url, "updated_at": datetime.now(UTC).isoformat()}},
         upsert=True
     )
 
@@ -278,7 +278,7 @@ async def delete_icon(icon_key: str, user: dict = Depends(get_superadmin_user)):
 
     await db.app_config.update_one(
         {"type": "icons"},
-        {"$unset": {f"icons.{icon_key}": ""}, "$set": {"updated_at": datetime.now(timezone.utc).isoformat()}},
+        {"$unset": {f"icons.{icon_key}": ""}, "$set": {"updated_at": datetime.now(UTC).isoformat()}},
         upsert=True
     )
 

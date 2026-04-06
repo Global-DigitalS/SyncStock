@@ -11,8 +11,7 @@ Enriquece las alertas genéricas ("precio bajó") con:
 import logging
 import math
 from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Dict
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -58,21 +57,21 @@ class PriceContext:
     # Posición competitiva
     competitor_id: str = ""
     competitor_name: str = ""
-    your_price: Optional[float] = None
-    best_competitor_price: Optional[float] = None
+    your_price: float | None = None
+    best_competitor_price: float | None = None
     your_position: str = "unknown"  # "1st", "2nd", "3rd+", "most_expensive", "unknown"
     price_gap_eur: float = 0.0
     total_competitors_analyzed: int = 0
 
     # Impacto en margen
-    your_cost: Optional[float] = None
-    margin_current_percent: Optional[float] = None
-    margin_if_copy_percent: Optional[float] = None
-    margin_delta_pp: Optional[float] = None  # Puntos porcentuales de diferencia
+    your_cost: float | None = None
+    margin_current_percent: float | None = None
+    margin_if_copy_percent: float | None = None
+    margin_delta_pp: float | None = None  # Puntos porcentuales de diferencia
 
     # Recomendación
     action: AlertAction = AlertAction.MANUAL_REVIEW
-    suggested_price: Optional[float] = None
+    suggested_price: float | None = None
     action_reason: str = ""
 
     # Nivel de alerta
@@ -85,8 +84,8 @@ class EnrichedAlert:
     # IDs
     alert_id: str = ""
     user_id: str = ""
-    sku: Optional[str] = None
-    ean: Optional[str] = None
+    sku: str | None = None
+    ean: str | None = None
 
     # Contexto
     context: PriceContext = field(default_factory=PriceContext)
@@ -97,7 +96,7 @@ class EnrichedAlert:
     message_long: str = ""     # Para email/dashboard
 
     # Acciones disponibles
-    available_actions: List[str] = field(default_factory=list)
+    available_actions: list[str] = field(default_factory=list)
 
     # Timestamp
     created_at: str = ""
@@ -105,8 +104,8 @@ class EnrichedAlert:
 
 async def analyze_price_alert(
     user_id: str,
-    sku: Optional[str],
-    ean: Optional[str],
+    sku: str | None,
+    ean: str | None,
     competitor_id: str,
     competitor_name: str,
     new_price: float,
@@ -127,7 +126,7 @@ async def analyze_price_alert(
     Returns:
         EnrichedAlert con contexto completo y recomendación.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     context = PriceContext(
         new_price=new_price,
         competitor_id=competitor_id,
@@ -176,14 +175,14 @@ async def analyze_price_alert(
 
 async def _get_price_history(
     user_id: str,
-    sku: Optional[str],
-    ean: Optional[str],
+    sku: str | None,
+    ean: str | None,
     competitor_id: str,
     days: int,
     db,
-) -> List[dict]:
+) -> list[dict]:
     """Obtiene el histórico de snapshots ordenado del más reciente al más antiguo."""
-    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
 
     query = {
         "user_id": user_id,
@@ -212,10 +211,10 @@ async def _get_price_history(
 
 async def _get_my_product(
     user_id: str,
-    sku: Optional[str],
-    ean: Optional[str],
+    sku: str | None,
+    ean: str | None,
     db,
-) -> Optional[dict]:
+) -> dict | None:
     """Obtiene los datos de nuestro producto."""
     query = {"user_id": user_id}
     if sku:
@@ -232,8 +231,8 @@ async def _get_my_product(
 
 async def _calculate_competitive_position(
     user_id: str,
-    sku: Optional[str],
-    ean: Optional[str],
+    sku: str | None,
+    ean: str | None,
     context: PriceContext,
     db,
 ) -> None:
@@ -292,7 +291,7 @@ async def _calculate_competitive_position(
         logger.debug(f"Error calculando posición competitiva: {e}")
 
 
-def _calculate_trend(snapshots: List[dict], days: int = 7) -> tuple:
+def _calculate_trend(snapshots: list[dict], days: int = 7) -> tuple:
     """
     Calcula la tendencia de precios usando regresión lineal simple.
     Returns: (TrendDirection, days_analyzed)
@@ -300,7 +299,7 @@ def _calculate_trend(snapshots: List[dict], days: int = 7) -> tuple:
     if len(snapshots) < 3:
         return TrendDirection.STABLE, 0
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     cutoff = now - timedelta(days=days)
     recent = [s for s in snapshots if s.get("scraped_at", "") >= cutoff.isoformat()]
 
@@ -330,7 +329,7 @@ def _calculate_trend(snapshots: List[dict], days: int = 7) -> tuple:
         return TrendDirection.DOWNTREND, days
 
 
-def _calculate_volatility(snapshots: List[dict]) -> float:
+def _calculate_volatility(snapshots: list[dict]) -> float:
     """Calcula volatilidad como coeficiente de variación de los precios."""
     prices = [s["price"] for s in snapshots if s.get("price", 0) > 0]
     if len(prices) < 2:
@@ -454,8 +453,8 @@ def _determine_alert_level(context: PriceContext) -> AlertLevel:
 
 def _format_alert(
     user_id: str,
-    sku: Optional[str],
-    ean: Optional[str],
+    sku: str | None,
+    ean: str | None,
     context: PriceContext,
     now: datetime,
 ) -> EnrichedAlert:

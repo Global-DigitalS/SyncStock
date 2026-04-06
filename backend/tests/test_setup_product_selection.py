@@ -4,27 +4,28 @@ Tests for:
 1. Setup page - MongoDB connection check and SuperAdmin status
 2. Product selection flow - Select/deselect products from suppliers
 """
-import pytest
-import requests
 import os
 
-BASE_URL = os.environ.get('REACT_APP_BACKEND_URL').rstrip('/')
+import pytest
+import requests
+
+BASE_URL = (os.environ.get('REACT_APP_BACKEND_URL') or 'http://localhost:8001').rstrip('/')
 
 class TestSetupEndpoints:
     """Tests for /api/setup/* endpoints"""
-    
+
     def test_setup_status_returns_correct_structure(self):
         """Test that setup/status returns expected fields"""
         response = requests.get(f"{BASE_URL}/api/setup/status")
         assert response.status_code == 200
-        
+
         data = response.json()
         assert "is_configured" in data
         assert "has_database" in data
         assert "has_superadmin" in data
         assert "database_name" in data
         assert "message" in data
-        
+
         # For our test environment, app should be configured
         assert isinstance(data["is_configured"], bool)
         assert isinstance(data["has_database"], bool)
@@ -35,7 +36,7 @@ class TestSetupEndpoints:
         """When app is configured, all flags should be true"""
         response = requests.get(f"{BASE_URL}/api/setup/status")
         assert response.status_code == 200
-        
+
         data = response.json()
         # Since we have test@test.com superadmin, app should be configured
         assert data["is_configured"] == True
@@ -48,7 +49,7 @@ class TestSetupEndpoints:
         """Test connection endpoint should require mongo_url"""
         response = requests.post(f"{BASE_URL}/api/setup/test-connection", json={})
         assert response.status_code == 200
-        
+
         data = response.json()
         assert data["success"] == False
         assert "URL" in data["message"] or "requerida" in data["message"]
@@ -61,7 +62,7 @@ class TestSetupEndpoints:
             "db_name": "test_db"
         })
         assert response.status_code == 200
-        
+
         data = response.json()
         assert data["success"] == False
         # Connection should fail with invalid URL
@@ -78,7 +79,7 @@ class TestSetupEndpoints:
             "company": "Test Company"
         })
         assert response.status_code == 200
-        
+
         data = response.json()
         # Should fail because superadmin already exists
         assert data["success"] == False
@@ -88,7 +89,7 @@ class TestSetupEndpoints:
 
 class TestProductSelection:
     """Tests for product selection endpoints"""
-    
+
     @pytest.fixture
     def auth_token(self):
         """Get authentication token"""
@@ -134,7 +135,7 @@ class TestProductSelection:
             headers=auth_headers
         )
         assert response.status_code == 200
-        
+
         data = response.json()
         assert "selected" in data
         assert "total" in data
@@ -150,7 +151,7 @@ class TestProductSelection:
             headers=auth_headers
         )
         assert response.status_code == 200
-        
+
         data = response.json()
         assert "selected" in data
         assert "total" in data
@@ -163,10 +164,10 @@ class TestProductSelection:
             headers=auth_headers
         )
         assert response.status_code == 200
-        
+
         products = response.json()
         assert len(products) > 0
-        
+
         # All products should have is_selected field
         for product in products:
             assert "is_selected" in product
@@ -180,10 +181,10 @@ class TestProductSelection:
             headers=auth_headers
         )
         assert response.status_code == 200
-        
+
         categories = response.json()
         assert isinstance(categories, list)
-        
+
         if len(categories) > 0:
             for cat in categories:
                 assert "category" in cat
@@ -204,7 +205,7 @@ class TestProductSelection:
         assert "selected" in select_data
         assert select_data["selected"] >= 1
         print(f"Selected: {select_data}")
-        
+
         # Step 2: Verify product is now selected
         verify_response = requests.get(
             f"{BASE_URL}/api/supplier/{supplier_id}/products?is_selected=true&limit=100",
@@ -212,10 +213,10 @@ class TestProductSelection:
         )
         assert verify_response.status_code == 200
         selected_products = verify_response.json()
-        
+
         product_found = any(p["id"] == product_id for p in selected_products)
         assert product_found, "Product should appear in selected list"
-        
+
         # Step 3: Deselect the product
         deselect_response = requests.post(
             f"{BASE_URL}/api/products/deselect",
@@ -263,7 +264,7 @@ class TestProductSelection:
         assert "modified" in data
         selected_count = data["modified"]
         print(f"Selected all: {data}")
-        
+
         # Verify with selected-count
         count_response = requests.get(
             f"{BASE_URL}/api/products/selected-count?supplier_id={supplier_id}",
@@ -273,7 +274,7 @@ class TestProductSelection:
         count_data = count_response.json()
         # Selected should be >= what we just modified
         print(f"After select all: {count_data}")
-        
+
         # Deselect all for cleanup
         deselect_response = requests.post(
             f"{BASE_URL}/api/products/select-by-supplier",
@@ -284,7 +285,7 @@ class TestProductSelection:
             }
         )
         assert deselect_response.status_code == 200
-        print(f"Cleanup: Deselected all products")
+        print("Cleanup: Deselected all products")
 
     def test_select_by_supplier_with_category_filter(self, auth_headers, supplier_id):
         """Test selecting products filtered by category"""
@@ -295,10 +296,10 @@ class TestProductSelection:
         )
         if cat_response.status_code != 200 or len(cat_response.json()) == 0:
             pytest.skip("No categories found")
-        
+
         category = cat_response.json()[0]["category"]
         category_count = cat_response.json()[0]["count"]
-        
+
         # Select by category
         response = requests.post(
             f"{BASE_URL}/api/products/select-by-supplier",
@@ -314,7 +315,7 @@ class TestProductSelection:
         assert "modified" in data
         assert data["modified"] <= category_count
         print(f"Selected category '{category}': {data}")
-        
+
         # Cleanup
         cleanup_response = requests.post(
             f"{BASE_URL}/api/products/select-by-supplier",
@@ -355,7 +356,7 @@ class TestProductSelection:
 
 class TestProductsUnifiedFilter:
     """Tests for products-unified filtering by selection"""
-    
+
     @pytest.fixture
     def auth_headers(self):
         """Get headers with auth token"""
@@ -387,7 +388,7 @@ class TestProductsUnifiedFilter:
             headers=auth_headers,
             json={"supplier_id": supplier_id, "select_all": False}
         )
-        
+
         # Check products-unified - should be empty or few
         response_before = requests.get(
             f"{BASE_URL}/api/products-unified",
@@ -396,7 +397,7 @@ class TestProductsUnifiedFilter:
         assert response_before.status_code == 200
         count_before = len(response_before.json())
         print(f"Products before selection: {count_before}")
-        
+
         # Select some products
         select_response = requests.post(
             f"{BASE_URL}/api/products/select-by-supplier",
@@ -407,7 +408,7 @@ class TestProductsUnifiedFilter:
                 "select_all": True
             }
         )
-        
+
         # Check products-unified - should show selected products
         response_after = requests.get(
             f"{BASE_URL}/api/products-unified?limit=50",
@@ -416,10 +417,10 @@ class TestProductsUnifiedFilter:
         assert response_after.status_code == 200
         count_after = len(response_after.json())
         print(f"Products after selection: {count_after}")
-        
+
         # Should have more products now
         assert count_after >= count_before
-        
+
         # Cleanup
         requests.post(
             f"{BASE_URL}/api/products/select-by-supplier",
@@ -436,7 +437,7 @@ class TestProductsUnifiedFilter:
         )
         assert response_selected.status_code == 200
         count_selected = len(response_selected.json())
-        
+
         # Get count with include_all=true
         response_all = requests.get(
             f"{BASE_URL}/api/products-unified?include_all=true&limit=100",
@@ -444,7 +445,7 @@ class TestProductsUnifiedFilter:
         )
         assert response_all.status_code == 200
         count_all = len(response_all.json())
-        
+
         # include_all should show >= selected only
         assert count_all >= count_selected
         print(f"Selected only: {count_selected}, Include all: {count_all}")
@@ -458,7 +459,7 @@ class TestProductsUnifiedFilter:
         )
         assert response_selected.status_code == 200
         count_selected = response_selected.json().get("total", 0)
-        
+
         # Count with include_all
         response_all = requests.get(
             f"{BASE_URL}/api/products-unified/count?include_all=true",
@@ -466,14 +467,14 @@ class TestProductsUnifiedFilter:
         )
         assert response_all.status_code == 200
         count_all = response_all.json().get("total", 0)
-        
+
         assert count_all >= count_selected
         print(f"Count - Selected: {count_selected}, All: {count_all}")
 
 
 class TestAuthentication:
     """Tests for endpoint authentication"""
-    
+
     def test_setup_status_is_public(self):
         """Setup status should be accessible without auth"""
         response = requests.get(f"{BASE_URL}/api/setup/status")

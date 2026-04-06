@@ -3,17 +3,17 @@ Rutas para configuración y procesamiento de pagos con Stripe.
 Incluye configuración de API keys, webhooks y procesamiento de suscripciones.
 Usa el SDK oficial de Stripe.
 """
-from fastapi import APIRouter, Depends, HTTPException, Request
-from pydantic import BaseModel
-from typing import Optional
-from datetime import datetime, timezone
 import logging
 import re
-import stripe
+from datetime import UTC, datetime
 
-from services.auth import get_superadmin_user, get_current_user
+import stripe
+from fastapi import APIRouter, Depends, HTTPException, Request
+from pydantic import BaseModel
+
+from services.auth import get_current_user, get_superadmin_user
 from services.database import db
-from services.encryption import encrypt_password, decrypt_password
+from services.encryption import decrypt_password, encrypt_password
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -30,18 +30,18 @@ class StripeConfig(BaseModel):
 
 
 class StripeConfigUpdate(BaseModel):
-    stripe_public_key: Optional[str] = None
-    stripe_secret_key: Optional[str] = None
-    stripe_webhook_secret: Optional[str] = None
-    is_live_mode: Optional[bool] = None
-    enabled: Optional[bool] = None
+    stripe_public_key: str | None = None
+    stripe_secret_key: str | None = None
+    stripe_webhook_secret: str | None = None
+    is_live_mode: bool | None = None
+    enabled: bool | None = None
 
 
 class CheckoutRequest(BaseModel):
     plan_id: str
     origin_url: str
     billing_cycle: str = "monthly"  # monthly or yearly
-    billing_email: Optional[str] = None  # Required for new user registration
+    billing_email: str | None = None  # Required for new user registration
 
 
 class CheckoutResponse(BaseModel):
@@ -85,7 +85,7 @@ async def get_stripe_config(user: dict = Depends(get_superadmin_user)):
     config = await db.app_config.find_one({"type": "stripe"})
     if not config:
         return StripeConfig().model_dump()
-    
+
     def _mask(val: str) -> str:
         """Return last 4 chars masked — never expose full keys via API."""
         if not val:
@@ -118,7 +118,7 @@ async def update_stripe_config(config: StripeConfigUpdate, user: dict = Depends(
         update_data["stripe_secret_key"] = encrypt_password(update_data["stripe_secret_key"])
     if update_data.get("stripe_webhook_secret"):
         update_data["stripe_webhook_secret"] = encrypt_password(update_data["stripe_webhook_secret"])
-    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    update_data["updated_at"] = datetime.now(UTC).isoformat()
     update_data["updated_by"] = user.get("email")
 
     await db.app_config.update_one(
@@ -126,7 +126,7 @@ async def update_stripe_config(config: StripeConfigUpdate, user: dict = Depends(
         {"$set": {**update_data, "type": "stripe"}},
         upsert=True
     )
-    
+
     logger.info(f"Stripe config updated by {user.get('email')}")
     return {"success": True, "message": "Configuración de Stripe actualizada"}
 
@@ -141,7 +141,7 @@ async def test_stripe_connection(user: dict = Depends(get_superadmin_user)):
     try:
         stripe.api_key = config.get("stripe_secret_key")
         account = stripe.Account.retrieve()
-        
+
         return {
             "success": True,
             "message": "Conexión exitosa con Stripe",
@@ -170,7 +170,7 @@ async def get_stripe_status():
     config = await fetch_stripe_config()
     if not config:
         return {"enabled": False, "configured": False}
-    
+
     return {
         "enabled": config.get("enabled", False),
         "configured": bool(config.get("stripe_secret_key")),
@@ -263,7 +263,7 @@ async def create_checkout_session(
             "currency": "eur",
             "status": "pending",
             "payment_status": "initiated",
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(UTC).isoformat()
         })
 
         logger.info(f"Checkout session created for user {user.get('email')}, plan {plan.get('name')}, session {session.id}")
@@ -375,7 +375,7 @@ async def create_checkout_session_new_user(
             "status": "pending",
             "payment_status": "initiated",
             "is_new_registration": True,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(UTC).isoformat()
         })
 
         logger.info(f"Checkout session created for new user registration, email {customer_email}, plan {plan.get('name')}, session {session.id}")
@@ -430,27 +430,27 @@ async def get_checkout_status_public(session_id: str, request: Request):
 @router.get("/stripe/checkout-status-auth/{session_id}")
 async def get_checkout_status(session_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Get the status of a checkout session and update user subscription if paid"""
-    
+
     config = await get_configured_stripe()
-    
+
     try:
         # Retrieve session from Stripe
         session = stripe.checkout.Session.retrieve(session_id)
-        
+
         # Map Stripe status to our status
         status = session.status  # complete, expired, open
         payment_status = session.payment_status  # paid, unpaid, no_payment_required
-        
+
         # Get transaction from database
         transaction = await db.payment_transactions.find_one({"session_id": session_id})
-        
+
         # Update transaction status
         update_data = {
             "status": status,
             "payment_status": payment_status,
-            "updated_at": datetime.now(timezone.utc).isoformat()
+            "updated_at": datetime.now(UTC).isoformat()
         }
-        
+
         # If payment is complete and hasn't been processed yet, update user subscription
         if payment_status == "paid":
             if transaction and not transaction.get("subscription_applied"):
@@ -471,23 +471,23 @@ async def get_checkout_status(session_id: str, request: Request, user: dict = De
                                 "max_stores": plan.get("max_stores") or plan.get("max_woocommerce_stores", 1),
                                 "subscription_status": "active",
                                 "subscription_billing_cycle": transaction.get("billing_cycle", "monthly"),
-                                "subscription_updated_at": datetime.now(timezone.utc).isoformat()
+                                "subscription_updated_at": datetime.now(UTC).isoformat()
                             }}
                         )
-                        
+
                         # Mark as applied to prevent duplicate processing
                         update_data["subscription_applied"] = True
-                        update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
-                        
+                        update_data["completed_at"] = datetime.now(UTC).isoformat()
+
                         logger.info(f"Subscription activated for user {user.get('email')}, plan {plan.get('name')}")
-        
+
         # Update transaction record
         if transaction:
             await db.payment_transactions.update_one(
                 {"session_id": session_id},
                 {"$set": update_data}
             )
-        
+
         return {
             "status": status,
             "payment_status": payment_status,
@@ -495,7 +495,7 @@ async def get_checkout_status(session_id: str, request: Request, user: dict = De
             "currency": session.currency,
             "subscription_applied": update_data.get("subscription_applied", False)
         }
-        
+
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error retrieving checkout status: {e}")
         raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
@@ -511,14 +511,14 @@ async def stripe_webhook(request: Request):
     """Handle Stripe webhooks"""
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
-    
+
     config = await fetch_stripe_config()
     if not config:
         raise HTTPException(status_code=503, detail="Stripe no configurado")
-    
+
     stripe.api_key = config.get("stripe_secret_key")
     webhook_secret = config.get("stripe_webhook_secret")
-    
+
     if not webhook_secret:
         logger.error("Stripe webhook recibido pero STRIPE_WEBHOOK_SECRET no está configurado. Rechazando.")
         raise HTTPException(status_code=400, detail="Webhook no verificable: configura stripe_webhook_secret")
@@ -527,29 +527,29 @@ async def stripe_webhook(request: Request):
         event = stripe.Webhook.construct_event(
             payload, sig_header, webhook_secret
         )
-        
+
         event_type = event.type
         logger.info(f"Stripe webhook received: {event_type}")
-        
+
         # Handle checkout.session.completed event
         if event_type == "checkout.session.completed":
             session = event.data.object
             session_id = session.id
             payment_status = session.payment_status
-            
+
             logger.info(f"Checkout completed: session {session_id}, payment_status: {payment_status}")
-            
+
             update_data = {
                 "webhook_event": event_type,
                 "payment_status": payment_status,
                 "status": "complete" if payment_status == "paid" else session.status,
-                "updated_at": datetime.now(timezone.utc).isoformat()
+                "updated_at": datetime.now(UTC).isoformat()
             }
-            
+
             # If payment completed, apply subscription
             if payment_status == "paid":
-                update_data["completed_at"] = datetime.now(timezone.utc).isoformat()
-                
+                update_data["completed_at"] = datetime.now(UTC).isoformat()
+
                 # Get transaction and apply subscription if not already done
                 transaction = await db.payment_transactions.find_one({"session_id": session_id})
                 if transaction and not transaction.get("subscription_applied"):
@@ -566,35 +566,35 @@ async def stripe_webhook(request: Request):
                                 "max_stores": plan.get("max_stores") or plan.get("max_woocommerce_stores", 1),
                                 "subscription_status": "active",
                                 "subscription_billing_cycle": transaction.get("billing_cycle", "monthly"),
-                                "subscription_updated_at": datetime.now(timezone.utc).isoformat()
+                                "subscription_updated_at": datetime.now(UTC).isoformat()
                             }}
                         )
                         update_data["subscription_applied"] = True
                         logger.info(f"Subscription applied via webhook for user {transaction.get('user_email')}")
-            
+
             await db.payment_transactions.update_one(
                 {"session_id": session_id},
                 {"$set": update_data}
             )
-        
+
         # Handle checkout.session.expired event
         elif event_type == "checkout.session.expired":
             session = event.data.object
             session_id = session.id
-            
+
             await db.payment_transactions.update_one(
                 {"session_id": session_id},
                 {"$set": {
                     "webhook_event": event_type,
                     "status": "expired",
                     "payment_status": "expired",
-                    "updated_at": datetime.now(timezone.utc).isoformat()
+                    "updated_at": datetime.now(UTC).isoformat()
                 }}
             )
             logger.info(f"Checkout session expired: {session_id}")
-        
+
         return {"status": "success", "event_type": event_type}
-        
+
     except stripe.error.SignatureVerificationError as e:
         logger.error(f"Webhook signature verification failed: {e}")
         raise HTTPException(status_code=400, detail="Firma de webhook inválida")

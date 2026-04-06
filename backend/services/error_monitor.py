@@ -5,16 +5,14 @@ Provides JSON-formatted logs for production observability,
 compatible with log aggregators (ELK, CloudWatch, Datadog, etc.).
 """
 
+import json
 import logging
 import time
 import traceback
-import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
-
 
 logger = logging.getLogger("syncstock.monitor")
 
@@ -71,7 +69,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
                 "ip": client_ip,
                 "error": str(exc),
                 "traceback": traceback.format_exc(),
-                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
             logger.error(json.dumps(error_data))
             raise
@@ -98,7 +96,7 @@ class ErrorAggregator:
             "method": method,
             "status": status,
             "detail": detail[:200],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         })
 
         # Trim to max

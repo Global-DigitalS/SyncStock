@@ -2,8 +2,8 @@
 Shopify Admin API Integration
 """
 import logging
+
 import requests
-from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ class ShopifyClient:
             'Content-Type': 'application/json'
         }
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         """Test API connection"""
         try:
             response = requests.get(
@@ -42,7 +42,7 @@ class ShopifyClient:
         except requests.exceptions.RequestException as e:
             return {"status": "error", "message": f"Error de conexión: {str(e)}"}
 
-    def get_products(self, limit: int = 50) -> List[Dict]:
+    def get_products(self, limit: int = 50) -> list[dict]:
         """Get products from Shopify"""
         try:
             response = requests.get(
@@ -58,7 +58,7 @@ class ShopifyClient:
             logger.error(f"Shopify get_products error: {e}")
             return []
 
-    def get_all_products(self, page_size: int = 250) -> List[Dict]:
+    def get_all_products(self, page_size: int = 250) -> list[dict]:
         """Get all products from Shopify with pagination using since_id"""
         all_products = []
         since_id = 0
@@ -86,7 +86,7 @@ class ShopifyClient:
             logger.error(f"Shopify get_all_products error: {e}")
         return all_products
 
-    def get_locations(self) -> List[Dict]:
+    def get_locations(self) -> list[dict]:
         """Get inventory locations"""
         try:
             response = requests.get(
@@ -101,7 +101,7 @@ class ShopifyClient:
             logger.error(f"Shopify get_locations error: {e}")
             return []
 
-    def get_inventory_level(self, inventory_item_id: int, location_id: int) -> Optional[Dict]:
+    def get_inventory_level(self, inventory_item_id: int, location_id: int) -> dict | None:
         """Get inventory level for an item at a location"""
         try:
             response = requests.get(
@@ -121,7 +121,7 @@ class ShopifyClient:
             logger.error(f"Shopify get_inventory error: {e}")
             return None
 
-    def update_inventory(self, inventory_item_id: int, location_id: int, available: int) -> Dict:
+    def update_inventory(self, inventory_item_id: int, location_id: int, available: int) -> dict:
         """Update inventory quantity"""
         try:
             response = requests.post(
@@ -141,7 +141,7 @@ class ShopifyClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def create_product(self, product_data: Dict) -> Dict:
+    def create_product(self, product_data: dict) -> dict:
         """Create a new product in Shopify with full product data"""
         try:
             # Build description - prefer long_description, fallback to description
@@ -203,7 +203,7 @@ class ShopifyClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def update_product(self, product_id: int, product_data: Dict) -> Dict:
+    def update_product(self, product_id: int, product_data: dict) -> dict:
         """Update an existing product with full data"""
         try:
             payload = {'product': {'id': product_id}}
@@ -263,7 +263,7 @@ class ShopifyClient:
 
     # ==================== CATEGORY (COLLECTION) METHODS ====================
 
-    def get_collections(self) -> List[Dict]:
+    def get_collections(self) -> list[dict]:
         """Get all custom collections (categories) from Shopify"""
         try:
             response = requests.get(
@@ -278,7 +278,7 @@ class ShopifyClient:
             logger.error(f"Shopify get_collections error: {e}")
             return []
 
-    def create_collection(self, collection_data: Dict) -> Dict:
+    def create_collection(self, collection_data: dict) -> dict:
         """Create a new custom collection (category) in Shopify"""
         try:
             payload = {
@@ -303,7 +303,7 @@ class ShopifyClient:
         except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
 
-    def find_or_create_collection(self, name: str) -> Optional[int]:
+    def find_or_create_collection(self, name: str) -> int | None:
         """Find existing collection by name or create it"""
         try:
             # First, try to find existing collection
@@ -321,7 +321,7 @@ class ShopifyClient:
             logger.error(f"Shopify find_or_create_collection error: {e}")
             return None
 
-    def add_product_to_collection(self, collection_id: int, product_id: int) -> Dict:
+    def add_product_to_collection(self, collection_id: int, product_id: int) -> dict:
         """Add a product to a collection"""
         try:
             payload = {

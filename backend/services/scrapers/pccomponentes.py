@@ -5,15 +5,13 @@ Soporta búsqueda por EAN y por texto.
 """
 import json
 import logging
-import re
-from typing import Optional
 from urllib.parse import quote_plus
 
 from bs4 import BeautifulSoup
 
 from services.scrapers.base import BaseScraper, ScrapedProduct, SearchResult
-from services.scrapers.http_client import scraper_client
 from services.scrapers.generic import _clean_price, _extract_jsonld_product, _extract_price_from_jsonld
+from services.scrapers.http_client import scraper_client
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +63,7 @@ class PCComponentesScraper(BaseScraper):
             query=query,
         )
 
-    def _parse_search_result(self, article) -> Optional[ScrapedProduct]:
+    def _parse_search_result(self, article) -> ScrapedProduct | None:
         """Parsea un artículo de resultado de búsqueda."""
         # Nombre
         name_el = article.select_one(
@@ -149,7 +147,7 @@ class PCComponentesScraper(BaseScraper):
 
         return products[:10]
 
-    def _jsonld_to_product(self, item: dict) -> Optional[ScrapedProduct]:
+    def _jsonld_to_product(self, item: dict) -> ScrapedProduct | None:
         """Convierte un item JSON-LD Product a ScrapedProduct."""
         name = item.get("name")
         offers = item.get("offers", {})
@@ -186,7 +184,7 @@ class PCComponentesScraper(BaseScraper):
             currency=offers.get("priceCurrency", "EUR"),
         )
 
-    async def parse_product_page(self, url: str) -> Optional[ScrapedProduct]:
+    async def parse_product_page(self, url: str) -> ScrapedProduct | None:
         """Extrae datos de una página de producto de PCComponentes."""
         html = await scraper_client.fetch(url)
         if not html:

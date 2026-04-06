@@ -4,13 +4,10 @@ Optimizado para ser invisible: User-Agents reales, headers realistas, delays ale
 Integra ProxyManager con circuit breaker para resiliencia ante bloqueos.
 """
 import asyncio
-import hashlib
 import logging
-import time
 import random
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict
-from urllib.parse import urlparse, urljoin
+import time
+from urllib.parse import urlparse
 from urllib.robotparser import RobotFileParser
 
 import aiohttp
@@ -44,12 +41,12 @@ _REFERERS = [
     None,  # Más probabilidad de sin referer (comportamiento real)
 ]
 
-def _get_random_referer() -> Optional[str]:
+def _get_random_referer() -> str | None:
     """Obtiene un Referer aleatorio realista."""
     return random.choice(_REFERERS)
 
 # Headers realistas que imitan un navegador real
-def _get_realistic_headers(user_agent: Optional[str] = None, referer: Optional[str] = None) -> dict:
+def _get_realistic_headers(user_agent: str | None = None, referer: str | None = None) -> dict:
     """Genera headers realistas que parecen un navegador de verdad."""
     ua = user_agent or _get_random_user_agent()
     ref = referer if referer is not None else _get_random_referer()
@@ -114,9 +111,9 @@ class CacheHeadersStore:
     """Almacena ETags y Last-Modified para caching HTTP."""
 
     def __init__(self):
-        self._cache: Dict[str, Dict[str, str]] = {}  # url -> {etag, last_modified}
+        self._cache: dict[str, dict[str, str]] = {}  # url -> {etag, last_modified}
 
-    def get_cache_headers(self, url: str) -> Dict[str, str]:
+    def get_cache_headers(self, url: str) -> dict[str, str]:
         """Obtiene headers de caché para una URL."""
         if url in self._cache:
             headers = {}
@@ -147,7 +144,7 @@ class RobotsCache:
     """Cache en memoria de robots.txt por dominio."""
 
     def __init__(self):
-        self._cache: Dict[str, tuple] = {}  # domain -> (parser, fetched_at)
+        self._cache: dict[str, tuple] = {}  # domain -> (parser, fetched_at)
         # User-Agent genérico para robots.txt (los servidores suelen permitir */)
         self._robots_ua = "*"
 
@@ -187,7 +184,7 @@ class RobotsCache:
         self._cache[domain] = (parser, now)
         return parser.can_fetch(self._robots_ua, url)
 
-    def get_crawl_delay(self, domain: str) -> Optional[float]:
+    def get_crawl_delay(self, domain: str) -> float | None:
         """Obtiene el Crawl-delay definido en robots.txt."""
         if domain in self._cache:
             parser, _ = self._cache[domain]
@@ -201,15 +198,15 @@ class RateLimiter:
 
     def __init__(self, default_delay: float = _DEFAULT_DELAY):
         self._default_delay = default_delay
-        self._last_request: Dict[str, float] = {}  # domain -> timestamp
-        self._locks: Dict[str, asyncio.Lock] = {}
+        self._last_request: dict[str, float] = {}  # domain -> timestamp
+        self._locks: dict[str, asyncio.Lock] = {}
 
     def _get_lock(self, domain: str) -> asyncio.Lock:
         if domain not in self._locks:
             self._locks[domain] = asyncio.Lock()
         return self._locks[domain]
 
-    async def wait(self, domain: str, crawl_delay: Optional[float] = None):
+    async def wait(self, domain: str, crawl_delay: float | None = None):
         """Espera el tiempo necesario antes de hacer una petición al dominio.
         Usa delays aleatorios para parecer más humano."""
         lock = self._get_lock(domain)
@@ -254,8 +251,8 @@ class ScraperHttpClient:
     """
 
     def __init__(self):
-        self._session: Optional[aiohttp.ClientSession] = None
-        self._domain_cookies: Dict[str, aiohttp.CookieJar] = {}  # Cookies por dominio
+        self._session: aiohttp.ClientSession | None = None
+        self._domain_cookies: dict[str, aiohttp.CookieJar] = {}  # Cookies por dominio
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -282,8 +279,8 @@ class ScraperHttpClient:
         self,
         url: str,
         respect_robots: bool = True,
-        extra_headers: Optional[Dict[str, str]] = None,
-    ) -> Optional[str]:
+        extra_headers: dict[str, str] | None = None,
+    ) -> str | None:
         """
         Obtiene el HTML de una URL respetando robots.txt y rate limiting.
 
@@ -346,7 +343,7 @@ class ScraperHttpClient:
                     else:
                         logger.warning(f"HTTP {resp.status} para {url}")
                         return None
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_error = "timeout"
                 logger.warning(f"Timeout para {url} (intento {attempt + 1})")
             except aiohttp.ClientError as e:
@@ -369,12 +366,12 @@ class ProxyAwareHttpClient(ScraperHttpClient):
 
     def __init__(self):
         super().__init__()
-        self._proxy_sessions: Dict[str, aiohttp.ClientSession] = {}
+        self._proxy_sessions: dict[str, aiohttp.ClientSession] = {}
 
     async def _get_session_for_proxy(
         self,
-        proxy_url: Optional[str],
-        timeout_seconds: Optional[int] = None
+        proxy_url: str | None,
+        timeout_seconds: int | None = None
     ) -> aiohttp.ClientSession:
         """
         Obtiene (o crea) una sesión aiohttp para el proxy indicado.
@@ -427,8 +424,8 @@ class ProxyAwareHttpClient(ScraperHttpClient):
         self,
         url: str,
         respect_robots: bool = True,
-        extra_headers: Optional[Dict[str, str]] = None,
-    ) -> Optional[str]:
+        extra_headers: dict[str, str] | None = None,
+    ) -> str | None:
         """
         Obtiene HTML usando el mejor proxy disponible según ProxyManager.
         Registra éxitos y fallos automáticamente para el circuit breaker.
@@ -512,7 +509,7 @@ class ProxyAwareHttpClient(ScraperHttpClient):
                         logger.warning(f"HTTP {resp.status} para {url}")
                         return None
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_error = "timeout"
                 proxy_manager.record_failure(proxy_entry, error="timeout")
                 logger.warning(f"Timeout para {url} (proxy={proxy_entry.host if proxy_entry else 'direct'}, intento {attempt + 1})")

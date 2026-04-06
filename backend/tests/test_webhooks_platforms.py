@@ -2,10 +2,10 @@
 Webhook System and Platform Integrations Tests
 Tests for webhook CRUD, webhook stats, and platform client integrations
 """
+import os
+
 import pytest
 import requests
-import os
-import uuid
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
@@ -60,7 +60,7 @@ def test_store(auth_headers):
 
 class TestWebhookConfigs:
     """Webhook Configuration CRUD Tests"""
-    
+
     def test_get_webhook_configs(self, auth_headers):
         """Test GET /api/webhooks/configs returns list"""
         response = requests.get(
@@ -71,7 +71,7 @@ class TestWebhookConfigs:
         data = response.json()
         assert isinstance(data, list), "Expected list response"
         print(f"GET /api/webhooks/configs returned {len(data)} configs")
-    
+
     def test_get_webhook_stats(self, auth_headers):
         """Test GET /api/webhooks/stats returns statistics"""
         response = requests.get(
@@ -80,16 +80,16 @@ class TestWebhookConfigs:
         )
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
         data = response.json()
-        
+
         # Verify stats structure
         assert "total_events" in data, "Missing total_events in stats"
         assert "processed" in data, "Missing processed in stats"
         assert "pending" in data, "Missing pending in stats"
         assert "by_event_type" in data, "Missing by_event_type in stats"
         assert "by_store" in data, "Missing by_store in stats"
-        
+
         print(f"Webhook stats: {data['total_events']} total, {data['processed']} processed, {data['pending']} pending")
-    
+
     def test_create_webhook_config(self, auth_headers, test_store):
         """Test POST /api/webhooks/configs creates webhook"""
         webhook_data = {
@@ -97,14 +97,14 @@ class TestWebhookConfigs:
             "enabled": True,
             "events": ["inventory.updated", "order.created", "product.updated"]
         }
-        
+
         response = requests.post(
             f"{BASE_URL}/api/webhooks/configs",
             headers=auth_headers,
             json=webhook_data
         )
         assert response.status_code == 200, f"Expected 200, got {response.status_code}: {response.text}"
-        
+
         data = response.json()
         assert "id" in data, "Missing webhook id"
         assert "secret_key" in data, "Missing secret_key (shown only on creation)"
@@ -112,15 +112,15 @@ class TestWebhookConfigs:
         assert data["store_id"] == test_store["id"], "Store ID mismatch"
         assert data["enabled"] == True, "Enabled should be True"
         assert len(data["events"]) == 3, "Expected 3 events"
-        
+
         # Store webhook id for cleanup
         webhook_id = data["id"]
         print(f"Created webhook: {webhook_id}")
         print(f"Webhook URL: {data['webhook_url']}")
-        
+
         # Cleanup webhook
         requests.delete(f"{BASE_URL}/api/webhooks/configs/{webhook_id}", headers=auth_headers)
-    
+
     def test_create_webhook_invalid_store(self, auth_headers):
         """Test POST /api/webhooks/configs with invalid store returns 404"""
         webhook_data = {
@@ -128,14 +128,14 @@ class TestWebhookConfigs:
             "enabled": True,
             "events": ["inventory.updated"]
         }
-        
+
         response = requests.post(
             f"{BASE_URL}/api/webhooks/configs",
             headers=auth_headers,
             json=webhook_data
         )
         assert response.status_code == 404, f"Expected 404, got {response.status_code}"
-    
+
     def test_webhook_crud_flow(self, auth_headers, test_store):
         """Test full CRUD flow for webhook"""
         # CREATE
@@ -153,7 +153,7 @@ class TestWebhookConfigs:
         webhook = create_resp.json()
         webhook_id = webhook["id"]
         original_secret = webhook["secret_key"]
-        
+
         # READ - verify webhook in list
         list_resp = requests.get(
             f"{BASE_URL}/api/webhooks/configs",
@@ -163,7 +163,7 @@ class TestWebhookConfigs:
         configs = list_resp.json()
         found = any(c["id"] == webhook_id for c in configs)
         assert found, "Created webhook not found in list"
-        
+
         # UPDATE - disable webhook
         update_resp = requests.put(
             f"{BASE_URL}/api/webhooks/configs/{webhook_id}",
@@ -171,7 +171,7 @@ class TestWebhookConfigs:
             json={"enabled": False, "events": ["order.created"]}
         )
         assert update_resp.status_code == 200
-        
+
         # Verify update
         list_resp2 = requests.get(
             f"{BASE_URL}/api/webhooks/configs",
@@ -180,7 +180,7 @@ class TestWebhookConfigs:
         updated = next((c for c in list_resp2.json() if c["id"] == webhook_id), None)
         assert updated is not None
         assert updated["enabled"] == False, "Webhook should be disabled"
-        
+
         # REGENERATE SECRET
         regen_resp = requests.post(
             f"{BASE_URL}/api/webhooks/configs/{webhook_id}/regenerate-secret",
@@ -191,14 +191,14 @@ class TestWebhookConfigs:
         assert new_secret is not None, "No new secret returned"
         assert new_secret != original_secret, "Secret should have changed"
         print("Secret regeneration works correctly")
-        
+
         # DELETE
         delete_resp = requests.delete(
             f"{BASE_URL}/api/webhooks/configs/{webhook_id}",
             headers=auth_headers
         )
         assert delete_resp.status_code == 200
-        
+
         # Verify deletion
         list_resp3 = requests.get(
             f"{BASE_URL}/api/webhooks/configs",
@@ -211,7 +211,7 @@ class TestWebhookConfigs:
 
 class TestWebhookEvents:
     """Webhook Events Tests"""
-    
+
     def test_get_webhook_events(self, auth_headers):
         """Test GET /api/webhooks/events returns event logs"""
         response = requests.get(
@@ -226,7 +226,7 @@ class TestWebhookEvents:
 
 class TestWebhookReceiver:
     """Webhook Receiver Endpoint Tests"""
-    
+
     def test_receive_webhook_invalid_config(self):
         """Test POST /api/webhooks/receive/{invalid_id} returns 404"""
         response = requests.post(
@@ -235,7 +235,7 @@ class TestWebhookReceiver:
             headers={"Content-Type": "application/json"}
         )
         assert response.status_code == 404, f"Expected 404, got {response.status_code}"
-    
+
     def test_receive_webhook_valid(self, auth_headers, test_store):
         """Test webhook receiver endpoint with valid config"""
         # Create a webhook config first
@@ -252,7 +252,7 @@ class TestWebhookReceiver:
         assert create_resp.status_code == 200
         webhook = create_resp.json()
         webhook_id = webhook["id"]
-        
+
         try:
             # Send webhook (no auth required for webhook receiver)
             webhook_payload = {
@@ -276,7 +276,7 @@ class TestWebhookReceiver:
 
 class TestPlatformIntegrations:
     """Platform Integration Tests - Verifying real clients exist"""
-    
+
     def test_prestashop_store_connection_test(self, auth_headers):
         """Test PrestaShop store connection test endpoint"""
         # Create a PrestaShop store
@@ -293,7 +293,7 @@ class TestPlatformIntegrations:
         )
         assert create_resp.status_code == 200
         store = create_resp.json()
-        
+
         try:
             # Test connection - will fail with invalid credentials but tests the client
             test_resp = requests.post(
@@ -308,7 +308,7 @@ class TestPlatformIntegrations:
             print(f"PrestaShop test result: {data.get('status')} - {data.get('message', '')}")
         finally:
             requests.delete(f"{BASE_URL}/api/stores/configs/{store['id']}", headers=auth_headers)
-    
+
     def test_shopify_store_connection_test(self, auth_headers):
         """Test Shopify store connection test endpoint"""
         store_data = {
@@ -324,7 +324,7 @@ class TestPlatformIntegrations:
         )
         assert create_resp.status_code == 200
         store = create_resp.json()
-        
+
         try:
             test_resp = requests.post(
                 f"{BASE_URL}/api/stores/configs/{store['id']}/test",
@@ -336,7 +336,7 @@ class TestPlatformIntegrations:
             print(f"Shopify test result: {data.get('status')} - {data.get('message', '')}")
         finally:
             requests.delete(f"{BASE_URL}/api/stores/configs/{store['id']}", headers=auth_headers)
-    
+
     def test_magento_store_connection_test(self, auth_headers):
         """Test Magento store connection test endpoint"""
         store_data = {
@@ -352,7 +352,7 @@ class TestPlatformIntegrations:
         )
         assert create_resp.status_code == 200
         store = create_resp.json()
-        
+
         try:
             test_resp = requests.post(
                 f"{BASE_URL}/api/stores/configs/{store['id']}/test",
@@ -364,7 +364,7 @@ class TestPlatformIntegrations:
             print(f"Magento test result: {data.get('status')} - {data.get('message', '')}")
         finally:
             requests.delete(f"{BASE_URL}/api/stores/configs/{store['id']}", headers=auth_headers)
-    
+
     def test_wix_store_connection_test(self, auth_headers):
         """Test Wix store connection test endpoint"""
         store_data = {
@@ -381,7 +381,7 @@ class TestPlatformIntegrations:
         )
         assert create_resp.status_code == 200
         store = create_resp.json()
-        
+
         try:
             test_resp = requests.post(
                 f"{BASE_URL}/api/stores/configs/{store['id']}/test",
@@ -397,12 +397,12 @@ class TestPlatformIntegrations:
 
 class TestAuthRequired:
     """Tests to verify authentication is required"""
-    
+
     def test_webhook_configs_requires_auth(self):
         """Test GET /api/webhooks/configs requires auth"""
         response = requests.get(f"{BASE_URL}/api/webhooks/configs")
         assert response.status_code in [401, 403], f"Expected 401/403, got {response.status_code}"
-    
+
     def test_webhook_stats_requires_auth(self):
         """Test GET /api/webhooks/stats requires auth"""
         response = requests.get(f"{BASE_URL}/api/webhooks/stats")

@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class EmailService:
     """Servicio para envío de correos electrónicos via SMTP"""
 
-    def __init__(self, config: Dict[str, Any] = None):
+    def __init__(self, config: dict[str, Any] = None):
         self.config = config or {}
         self.smtp_host = self.config.get('smtp_host', '')
         self.smtp_port = self.config.get('smtp_port', 587)
@@ -33,7 +33,7 @@ class EmailService:
         """Verifica si el servicio de email está configurado"""
         return bool(self.smtp_host and self.smtp_user and self.smtp_password)
 
-    def test_connection(self) -> Dict[str, Any]:
+    def test_connection(self) -> dict[str, Any]:
         """Prueba la conexión SMTP"""
         if not self.is_configured():
             return {
@@ -81,8 +81,8 @@ class EmailService:
         to_email: str,
         subject: str,
         html_content: str,
-        text_content: Optional[str] = None
-    ) -> Dict[str, Any]:
+        text_content: str | None = None
+    ) -> dict[str, Any]:
         """Envía un correo electrónico"""
         if not self.is_configured():
             logger.warning("Email service not configured, skipping email send")
@@ -126,7 +126,7 @@ class EmailService:
 
 # ==================== EMAIL TEMPLATES ====================
 
-def get_welcome_email_template(user_name: str, app_url: str) -> Dict[str, str]:
+def get_welcome_email_template(user_name: str, app_url: str) -> dict[str, str]:
     """Template para email de bienvenida tras registro"""
     html = f"""
     <!DOCTYPE html>
@@ -204,7 +204,7 @@ def get_welcome_email_template(user_name: str, app_url: str) -> Dict[str, str]:
     return {"html": html, "text": text, "subject": f"¡Bienvenido a SyncStock, {user_name}!"}
 
 
-def get_password_reset_email_template(user_name: str, reset_link: str, app_url: str) -> Dict[str, str]:
+def get_password_reset_email_template(user_name: str, reset_link: str, app_url: str) -> dict[str, str]:
     """Template para email de recuperación de contraseña"""
     html = f"""
     <!DOCTYPE html>
@@ -296,7 +296,7 @@ def get_subscription_change_email_template(
     old_plan: str,
     new_plan: str,
     app_url: str
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Template para email de cambio de plan de suscripción"""
 
     is_upgrade = True  # Podríamos determinar esto comparando los planes
@@ -407,7 +407,7 @@ def get_superadmin_new_registration_email_template(
     new_user_email: str,
     new_user_company: str,
     app_url: str
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Template para notificar al SuperAdmin sobre un nuevo registro"""
     company_line = f"<p style='color:#475569;font-size:15px;margin:0 0 8px;'><strong>Empresa:</strong> {new_user_company}</p>" if new_user_company else ""
     company_text = f"\nEmpresa: {new_user_company}" if new_user_company else ""
@@ -491,7 +491,7 @@ def get_superadmin_status_change_email_template(
     new_status: bool,
     changed_by: str,
     app_url: str
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Template para notificar al SuperAdmin sobre un cambio de estado de usuario"""
     status_label = "Activo" if new_status else "Desactivado"
     status_color = "#10b981" if new_status else "#ef4444"
@@ -643,7 +643,7 @@ def get_competitor_alert_email_template(
     competitor_name: str,
     competitor_price: float,
     product_ref: str,
-) -> Dict[str, str]:
+) -> dict[str, str]:
     """Template para alertas de precios de competidores"""
     alert_type_labels = {
         "price_drop": "Bajada de precio",

@@ -1,13 +1,13 @@
 """
 Dolibarr ERP/CRM API Client.
 """
-import logging
-import requests
-import base64
 import asyncio
+import base64
+import logging
 import time
-from typing import Dict, List, Optional
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
+import requests
 
 from .base import _validate_crm_url
 
@@ -290,7 +290,7 @@ class DolibarrClient:
         """Close the session"""
         self.session.close()
 
-    def test_connection(self) -> Dict:
+    def test_connection(self) -> dict:
         """Test API connection"""
         try:
             response = self._rate_limited_request('GET', f"{self.base_url}/status", timeout=30)
@@ -323,7 +323,7 @@ class DolibarrClient:
 
     # ==================== PRODUCTS ====================
 
-    def get_products(self, limit: int = 500) -> List[Dict]:
+    def get_products(self, limit: int = 500) -> list[dict]:
         """Get products from Dolibarr"""
         try:
             response = self._rate_limited_request(
@@ -345,7 +345,7 @@ class DolibarrClient:
             logger.error(f"Dolibarr get_products error: {e}")
             return []
 
-    def get_product_by_ref(self, ref: str) -> Optional[Dict]:
+    def get_product_by_ref(self, ref: str) -> dict | None:
         """Get a product by reference (SKU)
 
         Returns:
@@ -381,7 +381,7 @@ class DolibarrClient:
         """Check if a product exists by reference (SKU) - simpler method"""
         return self.get_product_by_ref(ref) is not None
 
-    def search_products_by_name(self, name: str, limit: int = 10) -> List[Dict]:
+    def search_products_by_name(self, name: str, limit: int = 10) -> list[dict]:
         """Search for products by name (useful as fallback if SKU lookup fails)"""
         try:
             response = self._rate_limited_request(
@@ -411,7 +411,7 @@ class DolibarrClient:
             logger.error(f"Error searching products by name '{name}': {e}")
             return []
 
-    def get_products_by_refs_batch(self, refs: List[str]) -> Dict[str, Dict]:
+    def get_products_by_refs_batch(self, refs: list[str]) -> dict[str, dict]:
         """Get multiple products by reference in batch - returns dict of ref -> product"""
         result = {}
         for ref in refs:
@@ -420,7 +420,7 @@ class DolibarrClient:
                 result[ref] = product
         return result
 
-    def create_product(self, product_data: Dict) -> Dict:
+    def create_product(self, product_data: dict) -> dict:
         """Create a new product in Dolibarr with full data including purchase price"""
         try:
             # Build description (combine short and long)
@@ -478,10 +478,10 @@ class DolibarrClient:
                 return {"status": "success", "product_id": product_id, "message": "Producto creado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
-        except Exception as e:
+        except Exception:
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def update_product(self, product_id: int, product_data: Dict) -> Dict:
+    def update_product(self, product_id: int, product_data: dict) -> dict:
         """Update an existing product with full data including purchase price"""
         try:
             payload = {}
@@ -531,10 +531,10 @@ class DolibarrClient:
                 return {"status": "success", "message": "Producto actualizado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
-        except Exception as e:
+        except Exception:
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def upload_product_image(self, product_id: int, image_url: str, base_url: str = None) -> Dict:
+    def upload_product_image(self, product_id: int, image_url: str, base_url: str = None) -> dict:
         """Upload image to a Dolibarr product
 
         Args:
@@ -629,7 +629,7 @@ class DolibarrClient:
             logger.error(f"Dolibarr upload_product_image error: {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def _get_warehouse_stock(self, product_id: int, warehouse_id: int) -> Optional[int]:
+    def _get_warehouse_stock(self, product_id: int, warehouse_id: int) -> int | None:
         """
         Get the REAL stock of a product in a specific warehouse using the stock endpoint.
         This is more reliable than stock_reel from GET /products/{id} which can be stale/null.
@@ -675,7 +675,7 @@ class DolibarrClient:
             logger.warning(f"[STOCK] Error getting warehouse stock for product {product_id}: {e}")
             return None
 
-    def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> Dict:
+    def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> dict:
         """Update product stock in Dolibarr using absolute stock value.
 
         IMPORTANT: This method sets stock to an absolute value by calculating
@@ -751,7 +751,7 @@ class DolibarrClient:
                 "qty": abs(diff),
                 "type": 0 if diff > 0 else 1,  # 0 = entrada (entrada de stock), 1 = salida (salida de stock)
                 "label": f"SyncStock: {current_stock} → {stock}",
-                "date": datetime.now(timezone.utc).isoformat()
+                "date": datetime.now(UTC).isoformat()
             }
 
             response = self._rate_limited_request(
@@ -789,7 +789,7 @@ class DolibarrClient:
             logger.error(f"[STOCK] update_stock error for product {product_id}: {e}", exc_info=True)
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def get_warehouses(self) -> List[Dict]:
+    def get_warehouses(self) -> list[dict]:
         """Get all warehouses from Dolibarr"""
         try:
             response = self._rate_limited_request(
@@ -804,7 +804,7 @@ class DolibarrClient:
             logger.error(f"Dolibarr get_warehouses error: {e}")
             return []
 
-    def create_warehouse(self, label: str, location: str = "") -> Optional[int]:
+    def create_warehouse(self, label: str, location: str = "") -> int | None:
         """Create a warehouse in Dolibarr"""
         try:
             payload = {
@@ -829,7 +829,7 @@ class DolibarrClient:
             logger.error(f"create_warehouse error: {e}")
             return None
 
-    def get_or_create_default_warehouse(self) -> Optional[int]:
+    def get_or_create_default_warehouse(self) -> int | None:
         """Get the first warehouse or create a default one"""
         warehouses = self.get_warehouses()
         if warehouses:
@@ -839,7 +839,7 @@ class DolibarrClient:
         logger.info("No warehouses found, creating default warehouse...")
         return self.create_warehouse("Almacén Principal", "Almacén predeterminado")
 
-    def get_product_by_id(self, product_id: int) -> Optional[Dict]:
+    def get_product_by_id(self, product_id: int) -> dict | None:
         """Get product by ID"""
         try:
             response = self._rate_limited_request(
@@ -856,7 +856,7 @@ class DolibarrClient:
 
     # ==================== SUPPLIERS (Third Parties) ====================
 
-    def get_thirdparties(self, limit: int = 500, thirdparty_type: str = None) -> List[Dict]:
+    def get_thirdparties(self, limit: int = 500, thirdparty_type: str = None) -> list[dict]:
         """Get third parties (clients/suppliers) from Dolibarr
         thirdparty_type: 'supplier' or 'customer' or None for all
         """
@@ -881,11 +881,11 @@ class DolibarrClient:
             logger.error(f"Dolibarr get_thirdparties error: {e}")
             return []
 
-    def get_suppliers(self, limit: int = 500) -> List[Dict]:
+    def get_suppliers(self, limit: int = 500) -> list[dict]:
         """Get suppliers from Dolibarr"""
         return self.get_thirdparties(limit=limit, thirdparty_type='supplier')
 
-    def create_supplier(self, supplier_data: Dict) -> Dict:
+    def create_supplier(self, supplier_data: dict) -> dict:
         """Create a supplier in Dolibarr"""
         try:
             name = supplier_data.get("name", "").strip()
@@ -929,7 +929,7 @@ class DolibarrClient:
             logger.error(f"Dolibarr create_supplier exception for '{supplier_data.get('name', '')}': {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def update_supplier(self, supplier_id: int, supplier_data: Dict) -> Dict:
+    def update_supplier(self, supplier_id: int, supplier_data: dict) -> dict:
         """Update a supplier in Dolibarr"""
         try:
             payload = {}
@@ -953,10 +953,10 @@ class DolibarrClient:
                 return {"status": "success", "message": "Proveedor actualizado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code}"}
-        except Exception as e:
+        except Exception:
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def get_supplier_by_name(self, name: str) -> Optional[Dict]:
+    def get_supplier_by_name(self, name: str) -> dict | None:
         """Find supplier by name using direct API search"""
         if not name or not name.strip():
             return None
@@ -987,7 +987,7 @@ class DolibarrClient:
             logger.error(f"Dolibarr get_supplier_by_name error: {e}")
             return None
 
-    def link_product_to_supplier(self, product_ref: str, supplier_id: int, purchase_price: float, supplier_ref: str = None) -> Dict:
+    def link_product_to_supplier(self, product_ref: str, supplier_id: int, purchase_price: float, supplier_ref: str = None) -> dict:
         """Link a product to a supplier with purchase price in Dolibarr using purchase_prices API"""
         try:
             # First get the product by reference
@@ -1035,7 +1035,7 @@ class DolibarrClient:
 
     # ==================== ORDERS ====================
 
-    def get_orders(self, limit: int = 100) -> List[Dict]:
+    def get_orders(self, limit: int = 100) -> list[dict]:
         """Get customer orders from Dolibarr"""
         try:
             response = self._rate_limited_request(
@@ -1051,7 +1051,7 @@ class DolibarrClient:
             logger.error(f"Dolibarr get_orders error: {e}")
             return []
 
-    def search_orders_by_external_id(self, external_id: str) -> List[Dict]:
+    def search_orders_by_external_id(self, external_id: str) -> list[dict]:
         """Search for orders by external_id (ref_client field)
 
         HIGH #10: Check if order already exists in CRM to prevent duplicates
@@ -1079,7 +1079,7 @@ class DolibarrClient:
             logger.error(f"Error searching orders by external_id {external_id}: {e}")
             return []
 
-    def get_supplier_orders(self, limit: int = 100) -> List[Dict]:
+    def get_supplier_orders(self, limit: int = 100) -> list[dict]:
         """Get supplier orders from Dolibarr"""
         try:
             response = self._rate_limited_request(
@@ -1095,12 +1095,12 @@ class DolibarrClient:
             logger.error(f"Dolibarr get_supplier_orders error: {e}")
             return []
 
-    def create_order(self, order_data: Dict) -> Dict:
+    def create_order(self, order_data: dict) -> dict:
         """Create a customer order in Dolibarr"""
         try:
             payload = {
                 "socid": order_data.get("customer_id"),
-                "date": order_data.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+                "date": order_data.get("date", datetime.now(UTC).strftime("%Y-%m-%d")),
                 "ref_client": order_data.get("external_ref", ""),
                 "note_public": order_data.get("notes", ""),
                 "lines": []
@@ -1128,15 +1128,15 @@ class DolibarrClient:
                 return {"status": "success", "order_id": order_id, "message": "Pedido creado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
-        except Exception as e:
+        except Exception:
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def create_supplier_order(self, order_data: Dict) -> Dict:
+    def create_supplier_order(self, order_data: dict) -> dict:
         """Create a supplier order in Dolibarr"""
         try:
             payload = {
                 "socid": order_data.get("supplier_id"),
-                "date": order_data.get("date", datetime.now(timezone.utc).strftime("%Y-%m-%d")),
+                "date": order_data.get("date", datetime.now(UTC).strftime("%Y-%m-%d")),
                 "ref_supplier": order_data.get("external_ref", ""),
                 "note_public": order_data.get("notes", ""),
                 "lines": []
@@ -1162,12 +1162,12 @@ class DolibarrClient:
                 return {"status": "success", "order_id": order_id, "message": "Pedido a proveedor creado"}
             else:
                 return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
-        except Exception as e:
+        except Exception:
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
     # ==================== STATS ====================
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Get basic stats from Dolibarr"""
         try:
             products_count = len(self.get_products(limit=10000))
@@ -1188,22 +1188,22 @@ class DolibarrClient:
 
     # ==================== ASYNC METHODS (FASE 2) ====================
 
-    async def create_product_async(self, product_data: Dict) -> Dict:
+    async def create_product_async(self, product_data: dict) -> dict:
         """Async wrapper for create_product - runs in thread pool to avoid blocking"""
         loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.create_product, product_data)
 
-    async def update_product_async(self, product_id: int, product_data: Dict) -> Dict:
+    async def update_product_async(self, product_id: int, product_data: dict) -> dict:
         """Async wrapper for update_product - runs in thread pool to avoid blocking"""
         loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.update_product, product_id, product_data)
 
-    async def update_stock_async(self, product_id: int, stock_value: int) -> Dict:
+    async def update_stock_async(self, product_id: int, stock_value: int) -> dict:
         """Async wrapper for update_stock - runs in thread pool to avoid blocking"""
         loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.update_stock, product_id, stock_value)
 
-    async def upload_product_image_async(self, product_id: int, image_url: str) -> Dict:
+    async def upload_product_image_async(self, product_id: int, image_url: str) -> dict:
         """Async wrapper for upload_product_image - runs in thread pool to avoid blocking"""
         loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
         return await loop.run_in_executor(None, self.upload_product_image, product_id, image_url)

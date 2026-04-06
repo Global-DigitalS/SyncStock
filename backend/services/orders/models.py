@@ -1,15 +1,14 @@
 """
 Database models and schemas for order management
 """
-from datetime import datetime, timezone
-from typing import Optional, List, Dict
 import uuid
+from datetime import UTC, datetime
 
 
 class OrderItem:
     """Represents a line item in an order"""
     def __init__(self, sku: str, quantity: int, price: float, name: str,
-                 ean: Optional[str] = None, product_id: Optional[str] = None):
+                 ean: str | None = None, product_id: str | None = None):
         self.sku = sku
         self.ean = ean
         self.quantity = quantity
@@ -33,7 +32,7 @@ class OrderItem:
 class OrderAddress:
     """Represents a shipping/billing address"""
     def __init__(self, street: str, city: str, zip_code: str, country: str,
-                 state: Optional[str] = None):
+                 state: str | None = None):
         self.street = street
         self.city = city
         self.state = state
@@ -53,10 +52,10 @@ class OrderAddress:
 class Order:
     """Represents a normalized order from any platform"""
     def __init__(self, source: str, source_order_id: str, customer_name: str,
-                 customer_email: str, items: List[OrderItem],
+                 customer_email: str, items: list[OrderItem],
                  shipping_address: OrderAddress, payment_status: str = "pending",
-                 customer_phone: Optional[str] = None,
-                 billing_address: Optional[OrderAddress] = None):
+                 customer_phone: str | None = None,
+                 billing_address: OrderAddress | None = None):
         self.id = str(uuid.uuid4())
         self.source = source  # "woocommerce", "shopify", "prestashop"
         self.source_order_id = source_order_id
@@ -74,7 +73,7 @@ class Order:
         self.total_amount = sum(item.quantity * item.price for item in items)
         self.total_items = len(items)
         self.status = "pending"  # "pending", "processing", "completed", "backorder", "error"
-        self.created_at = datetime.now(timezone.utc).isoformat()
+        self.created_at = datetime.now(UTC).isoformat()
         self.processed_at = None
         self.completed_at = None
         self.error = None

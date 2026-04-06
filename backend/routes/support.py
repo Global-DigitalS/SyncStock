@@ -2,15 +2,15 @@
 Rutas de soporte al usuario — tickets de incidencias y contacto.
 Permite a los usuarios crear y gestionar tickets de soporte.
 """
+import logging
+import uuid
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import Optional, List
-from datetime import datetime, timezone
-import uuid
-import logging
 
-from services.database import db
 from services.auth import get_current_user
+from services.database import db
 
 router = APIRouter(prefix="/support", tags=["support"])
 logger = logging.getLogger(__name__)
@@ -26,13 +26,13 @@ class TicketCreate(BaseModel):
     type: str  # technical, usage, billing, feedback, other
     subject: str
     description: str
-    priority: Optional[str] = "normal"
-    section: Optional[str] = None
+    priority: str | None = "normal"
+    section: str | None = None
     # Technical specific fields
-    what_tried: Optional[str] = None
-    what_happened: Optional[str] = None
-    when_started: Optional[str] = None
-    is_recurring: Optional[bool] = None
+    what_tried: str | None = None
+    what_happened: str | None = None
+    when_started: str | None = None
+    is_recurring: bool | None = None
 
 
 class TicketMessageCreate(BaseModel):
@@ -41,12 +41,12 @@ class TicketMessageCreate(BaseModel):
 
 class TicketRating(BaseModel):
     rating: int  # 1-5
-    comment: Optional[str] = None
+    comment: str | None = None
 
 
 class TicketStatusUpdate(BaseModel):
     status: str
-    internal_note: Optional[str] = None
+    internal_note: str | None = None
 
 
 # ==================== HELPERS ====================
@@ -76,7 +76,7 @@ async def create_ticket(
         raise HTTPException(status_code=400, detail="El asunto y la descripción son obligatorios")
 
     ticket_number = await _generate_ticket_number()
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     # Get user subscription info
     plan_name = "Free"
@@ -128,7 +128,7 @@ async def create_ticket(
 
 @router.get("/tickets")
 async def list_tickets(
-    status: Optional[str] = None,
+    status: str | None = None,
     current_user: dict = Depends(get_current_user),
 ):
     query = {"user_id": current_user["id"]}
@@ -165,7 +165,7 @@ async def add_message(
     if not message.content.strip():
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     new_message = {
         "id": str(uuid.uuid4()),
         "author": current_user.get("name", "Usuario"),
@@ -200,7 +200,7 @@ async def rate_ticket(
     if not (1 <= rating.rating <= 5):
         raise HTTPException(status_code=400, detail="La valoración debe ser entre 1 y 5")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.support_tickets.update_one(
         {"id": ticket_id},
         {"$set": {"rating": rating.rating, "rating_comment": rating.comment, "updated_at": now}},
@@ -221,7 +221,7 @@ async def reopen_ticket(
     if ticket["status"] not in ("resolved", "closed"):
         raise HTTPException(status_code=400, detail="Solo se pueden reabrir tickets resueltos o cerrados")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     await db.support_tickets.update_one(
         {"id": ticket_id},
         {"$set": {"status": "received", "updated_at": now}},
@@ -240,9 +240,9 @@ def _require_admin(user: dict):
 
 @router.get("/admin/tickets")
 async def admin_list_tickets(
-    status: Optional[str] = None,
-    type: Optional[str] = None,
-    priority: Optional[str] = None,
+    status: str | None = None,
+    type: str | None = None,
+    priority: str | None = None,
     current_user: dict = Depends(get_current_user),
 ):
     _require_admin(current_user)
@@ -287,7 +287,7 @@ async def admin_update_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket no encontrado")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     set_fields = {"status": update.status, "updated_at": now}
 
     await db.support_tickets.update_one({"id": ticket_id}, {"$set": set_fields})
@@ -310,7 +310,7 @@ async def admin_add_message(
     if not message.content.strip():
         raise HTTPException(status_code=400, detail="El mensaje no puede estar vacío")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     new_message = {
         "id": str(uuid.uuid4()),
         "author": current_user.get("name", "Soporte"),
