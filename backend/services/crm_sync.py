@@ -1000,6 +1000,14 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
             "description": product.get("description", ""),
         }
 
+        # Sync stock
+        if sync_settings.get("stock", True):
+            stock_value = product.get("stock", 0)
+            if isinstance(stock_value, (int, float)) and stock_value > 1000000:
+                logger.warning(f"Stock value suspiciously large for {product_sku}: {stock_value}. Capping at 1000000.")
+                stock_value = 1000000
+            product_data["stock"] = max(0, int(stock_value) if isinstance(stock_value, (int, float)) else 0)
+
         if sync_settings.get("images") and product.get("image_url"):
             product_data["image_url"] = product.get("image_url")
 

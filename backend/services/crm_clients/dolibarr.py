@@ -463,27 +463,21 @@ class DolibarrClient:
 
                 stock_reel = product.get("stock_reel")
 
-                # SAFETY CHECK: if stock_reel is null/None/empty, we CANNOT safely
-                # determine current stock. Creating a movement would be dangerous
-                # because we'd assume current=0 and add the full desired stock.
+                # For NEW products, stock_reel might be null/empty - in that case, assume current_stock = 0
                 if stock_reel is None or stock_reel == "" or stock_reel == "null":
-                    logger.error(
+                    logger.info(
                         f"[STOCK] Product {product_id}: stock_reel is null/empty. "
-                        f"SKIPPING stock update to prevent accumulation. "
+                        f"Assuming current stock = 0 for new product. "
                         f"Desired stock: {stock}"
                     )
-                    return {
-                        "status": "warning",
-                        "message": f"No se pudo determinar el stock actual en Dolibarr (stock_reel vacío). "
-                                   f"Actualización de stock omitida para evitar acumulación."
-                    }
-
-                try:
-                    current_stock = int(float(stock_reel))
-                    logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} (fallback)")
-                except (ValueError, TypeError):
-                    logger.error(f"[STOCK] Invalid stock_reel value: {stock_reel}")
-                    return {"status": "error", "message": "Valor de stock inválido en Dolibarr"}
+                    current_stock = 0
+                else:
+                    try:
+                        current_stock = int(float(stock_reel))
+                        logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} (fallback)")
+                    except (ValueError, TypeError):
+                        logger.error(f"[STOCK] Invalid stock_reel value: {stock_reel}")
+                        return {"status": "error", "message": "Valor de stock inválido en Dolibarr"}
 
             # Calculate difference
             diff = stock - current_stock
