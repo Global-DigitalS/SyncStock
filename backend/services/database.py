@@ -317,6 +317,27 @@ async def ensure_indexes():
             [("created_at", 1)], expireAfterSeconds=2592000, name="ttl_crawl_jobs_30d"
         )
 
+        # Índices para colecciones sin cobertura previa
+        await _db.orders.create_index([("user_id", 1), ("created_at", -1)])
+        await _db.orders.create_index([("user_id", 1), ("status", 1)])
+        await _db.orders.create_index([("user_id", 1), ("store_id", 1)])
+        await _db.orders.create_index([("id", 1)], unique=True)
+
+        await _db.webhook_configs.create_index([("user_id", 1)])
+        await _db.webhook_configs.create_index([("id", 1)], unique=True)
+
+        await _db.support_tickets.create_index([("user_id", 1), ("created_at", -1)])
+        await _db.support_tickets.create_index([("id", 1)], unique=True)
+        await _db.support_tickets.create_index([("status", 1), ("created_at", -1)])
+
+        await _db.subscriptions.create_index([("user_id", 1)], unique=True)
+        await _db.subscription_plans.create_index([("id", 1)], unique=True)
+
+        await _db.password_resets.create_index([("token", 1)], unique=True)
+        await _db.password_resets.create_index(
+            [("expires_at", 1)], expireAfterSeconds=0, name="ttl_password_resets"
+        )
+
         logger.info("MongoDB indexes ensured (incluidos índices de optimización y TTL)")
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB: {e}. Comprueba la URL de conexión y las credenciales.")
