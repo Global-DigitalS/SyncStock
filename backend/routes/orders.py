@@ -5,6 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, R
 from typing import List, Optional
 from datetime import datetime, timezone
 import logging
+import hmac
+import hashlib
 
 from services.auth import get_current_user
 from services.database import db
@@ -23,6 +25,65 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
+
+
+# ==================== SECURITY: WEBHOOK SIGNATURE VERIFICATION ====================
+
+async def verify_webhook_signature(
+    platform: str,
+    user_id: str,
+    payload_bytes: bytes,
+    signature: str
+) -> bool:
+    """Verify HMAC-SHA256 signature of webhook payload - SECURITY FIX #8
+
+    Args:
+        platform: CRM platform (dolibarr, odoo, etc)
+        user_id: User ID to find the correct connection
+        payload_bytes: Raw request body bytes
+        signature: Signature header value (format: "sha256=<hex>")
+
+    Returns:
+        True if signature is valid, False otherwise
+    """
+    try:
+        # Find the connection to get webhook secret
+        connection = await db.crm_connections.find_one({
+            "user_id": user_id,
+            "platform": platform
+        })
+
+        if not connection or "webhook_secret" not in connection:
+            logger.warning(f"Webhook signature verification failed: no secret for {platform}")
+            return False
+
+        webhook_secret = connection["webhook_secret"]
+
+        # Calculate expected signature
+        expected_sig = hmac.new(
+            webhook_secret.encode('utf-8'),
+            payload_bytes,
+            hashlib.sha256
+        ).hexdigest()
+
+        # Extract signature from header (format: "sha256=<hex>")
+        if not signature.startswith("sha256="):
+            logger.warning(f"Invalid signature format: {signature[:20]}...")
+            return False
+
+        provided_sig = signature[7:]  # Remove "sha256=" prefix
+
+        # Use constant-time comparison to prevent timing attacks
+        is_valid = hmac.compare_digest(expected_sig, provided_sig)
+
+        if not is_valid:
+            logger.warning(f"Webhook signature mismatch for {platform}")
+
+        return is_valid
+
+    except Exception as e:
+        logger.error(f"Error verifying webhook signature: {e}")
+        return False
 
 
 @router.get("/orders")
@@ -381,9 +442,12 @@ async def handle_dolibarr_order_webhook(request: Request):
     }
     """
     try:
+        # SECURITY FIX #8: Verify webhook signature first (before parsing)
+        payload_bytes = await request.body()
+        signature = request.headers.get("X-Webhook-Signature", "")
+
         payload = await request.json()
 
-        # SECURITY: Verify webhook signature in production
         # Parse and validate all fields with safe type conversion
         user_id = payload.get("user_id")
         object_id = payload.get("object_id")
@@ -392,6 +456,18 @@ async def handle_dolibarr_order_webhook(request: Request):
         if not all([user_id, object_id, new_status is not None]):
             logger.warning(f"Invalid webhook payload: missing required fields")
             return {"status": "error", "message": "Invalid payload"}
+
+        # SECURITY FIX #8: Verify HMAC signature
+        is_valid = await verify_webhook_signature(
+            platform="dolibarr",
+            user_id=user_id,
+            payload_bytes=payload_bytes,
+            signature=signature
+        )
+
+        if not is_valid:
+            logger.warning(f"Webhook signature verification failed for user {user_id}")
+            return {"status": "error", "message": "Invalid webhook signature"}
 
         # SECURITY FIX: Safe int conversion with error handling
         try:
@@ -464,9 +540,12 @@ async def handle_odoo_order_webhook(request: Request):
     }
     """
     try:
+        # SECURITY FIX #8: Verify webhook signature first (before parsing)
+        payload_bytes = await request.body()
+        signature = request.headers.get("X-Webhook-Signature", "")
+
         payload = await request.json()
 
-        # SECURITY: Verify webhook signature in production
         # Parse and validate all fields with safe type conversion
         user_id = payload.get("user_id")
         object_id = payload.get("object_id")
@@ -475,6 +554,18 @@ async def handle_odoo_order_webhook(request: Request):
         if not all([user_id, object_id, state]):
             logger.warning(f"Invalid webhook payload: missing required fields")
             return {"status": "error", "message": "Invalid payload"}
+
+        # SECURITY FIX #8: Verify HMAC signature
+        is_valid = await verify_webhook_signature(
+            platform="odoo",
+            user_id=user_id,
+            payload_bytes=payload_bytes,
+            signature=signature
+        )
+
+        if not is_valid:
+            logger.warning(f"Webhook signature verification failed for user {user_id}")
+            return {"status": "error", "message": "Invalid webhook signature"}
 
         # SECURITY FIX: Safe int conversion with error handling
         try:

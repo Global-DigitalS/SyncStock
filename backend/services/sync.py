@@ -176,15 +176,34 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
                         "user_id": user_id, "read": False, "created_at": now
                     })
 
-                # Use UpdateOne with upsert=True to avoid E11000 duplicate key errors.
-                # Filter by (supplier_id, sku) which is the unique compound key.
-                # $setOnInsert guards against race conditions where the doc was
-                # deleted between cache lookup and DB write.
+                # SECURITY FIX #10: Prevent TOCTTOU race condition
+                # Include the expected ID in the filter so if the doc was deleted/recreated,
+                # the update fails and we create a new one with a fresh ID instead of
+                # creating a duplicate with stale ID.
+                # This prevents the scenario where:
+                # 1. Thread A checks cache: finds product_id=123
+                # 2. Thread B deletes product_id=123
+                # 3. Thread A updates with id=123 (but wrong product_id ref)
                 product_ops.append(UpdateOne(
-                    {"supplier_id": supplier_id, "sku": sku},
+                    {
+                        "supplier_id": supplier_id,
+                        "sku": sku,
+                        "id": existing.id  # SECURITY: Ensure ID hasn't changed
+                    },
                     {
                         "$set": product_doc,
                         "$setOnInsert": {"id": existing.id, "created_at": now}
+                    },
+                    upsert=False  # Don't create new on mismatch - let fallthrough create new one
+                ))
+
+                # If update doesn't match (ID mismatch), create new product with fresh ID
+                # This handles the race condition case
+                product_ops.append(UpdateOne(
+                    {"supplier_id": supplier_id, "sku": sku, "id": {"$ne": existing.id}},
+                    {
+                        "$set": product_doc,
+                        "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}  # New ID
                     },
                     upsert=True
                 ))
