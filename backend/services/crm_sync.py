@@ -121,6 +121,48 @@ class SyncCache:
         async with self.lock:
             return len(self.cache)
 
+    async def invalidate(self, key: str) -> bool:
+        """Invalidate a specific cache entry - MEDIUM #14
+
+        Returns:
+            True if entry was cached and removed, False otherwise
+        """
+        async with self.lock:
+            if key in self.cache:
+                self.cache.pop(key, None)
+                self.timestamps.pop(key, None)
+                logger.debug(f"Invalidated cache entry: {key}")
+                return True
+            return False
+
+    async def invalidate_pattern(self, pattern: str) -> int:
+        """Invalidate all cache entries matching a pattern - MEDIUM #14
+
+        Args:
+            pattern: Simple prefix pattern (e.g., "sku:*" matches "sku:123")
+
+        Returns:
+            Number of entries invalidated
+        """
+        async with self.lock:
+            import fnmatch
+            prefix = pattern.replace('*', '')
+            keys_to_remove = [k for k in self.cache.keys() if k.startswith(prefix)]
+            for key in keys_to_remove:
+                self.cache.pop(key, None)
+                self.timestamps.pop(key, None)
+            if keys_to_remove:
+                logger.debug(f"Invalidated {len(keys_to_remove)} cache entries matching pattern: {pattern}")
+            return len(keys_to_remove)
+
+    async def clear_all(self):
+        """Clear entire cache - MEDIUM #14"""
+        async with self.lock:
+            size = len(self.cache)
+            self.cache.clear()
+            self.timestamps.clear()
+            logger.info(f"Cleared entire cache ({size} entries)")
+
 
 def build_differential_update_payload(local_product: Dict, crm_product: Dict, fields_to_check: List[str] = None) -> Dict:
     """
@@ -189,6 +231,64 @@ def _safe_to_string(value) -> str:
     # For complex types (dict, list), don't include in update
     logger.debug(f"Skipping complex type comparison: {type(value)}")
     return ""
+
+
+def validate_margin_rules(rules: List[Dict]) -> List[Dict]:
+    """Validate margin rules before use - MEDIUM #20
+
+    Filters out invalid rules that would cause calculation errors.
+
+    Returns:
+        List of valid margin rules
+    """
+    if not rules:
+        return []
+
+    valid_rules = []
+    for i, rule in enumerate(rules):
+        try:
+            if not isinstance(rule, dict):
+                logger.warning(f"Margin rule {i}: not a dict, skipping")
+                continue
+
+            # Validate required fields
+            if "type" not in rule or "value" not in rule:
+                logger.warning(f"Margin rule {i}: missing type or value, skipping")
+                continue
+
+            rule_type = rule.get("type", "").lower()
+            rule_value = rule.get("value")
+
+            # Validate type
+            if rule_type not in ["percentage", "fixed", "multiplier"]:
+                logger.warning(f"Margin rule {i}: invalid type '{rule_type}', skipping")
+                continue
+
+            # Validate value is numeric
+            try:
+                float_value = float(rule_value)
+            except (ValueError, TypeError):
+                logger.warning(f"Margin rule {i}: value '{rule_value}' is not numeric, skipping")
+                continue
+
+            # Validate value range
+            if rule_type == "percentage" and (float_value < -100 or float_value > 1000):
+                logger.warning(f"Margin rule {i}: percentage {float_value} is out of reasonable range, skipping")
+                continue
+
+            if rule_type == "multiplier" and (float_value <= 0 or float_value > 100):
+                logger.warning(f"Margin rule {i}: multiplier {float_value} must be > 0, skipping")
+                continue
+
+            valid_rules.append(rule)
+        except Exception as e:
+            logger.error(f"Error validating margin rule {i}: {e}")
+            continue
+
+    if len(valid_rules) < len(rules):
+        logger.info(f"Margin rules validation: {len(valid_rules)}/{len(rules)} rules are valid")
+
+    return valid_rules
 
 async def run_sync_in_background(
     sync_job_id: str,
@@ -451,7 +551,9 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
             {"_id": 0}
         ).sort("priority", -1).to_list(100)
 
-        logger.info(f"Found {len(margin_rules)} margin rules for catalog {catalog_id}")
+        # MEDIUM #20: Validate margin rules before using them
+        margin_rules = validate_margin_rules(margin_rules)
+        logger.info(f"Found {len(margin_rules)} valid margin rules for catalog {catalog_id}")
 
         # Change query to filter by product IDs instead of is_selected
         query = {"user_id": user_id, "id": {"$in": product_ids}}
