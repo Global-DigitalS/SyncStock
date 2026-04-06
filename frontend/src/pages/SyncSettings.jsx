@@ -1,11 +1,5 @@
 import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Label } from "../components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
-import { Badge } from "../components/ui/badge";
 import { toast } from "sonner";
-import { api } from "../App";
 import {
   RefreshCw,
   Clock,
@@ -15,6 +9,12 @@ import {
   Play,
   Loader2
 } from "lucide-react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Label } from "../components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
+import { Badge } from "../components/ui/badge";
+import { api } from "../App";
 
 const SYNC_INTERVAL_OPTIONS = [
   { value: 1, label: "Cada hora", description: "Sincronización más frecuente" },

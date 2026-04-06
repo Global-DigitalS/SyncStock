@@ -1,11 +1,11 @@
 import { useState } from "react";
+import { RefreshCw, BookOpen, Star, Plus } from "lucide-react";
 import { Button } from "../components/ui/button";
 import { Checkbox } from "../components/ui/checkbox";
 import { Badge } from "../components/ui/badge";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "../components/ui/dialog";
-import { RefreshCw, BookOpen, Star, Plus } from "lucide-react";
 
 const CatalogSelectorDialog = ({
   open,

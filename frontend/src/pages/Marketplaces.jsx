@@ -1,6 +1,10 @@
 import { useState, useEffect, useContext } from "react";
-import { api, AuthContext } from "../App";
 import { toast } from "sonner";
+import {
+  ShoppingCart, Plus, Pencil, Trash2, Copy, ExternalLink, RefreshCw,
+  CheckCircle, Globe, Package, Zap, Link2, Eye, FileText, AlertCircle
+} from "lucide-react";
+import { api, AuthContext } from "../App";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -17,10 +21,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "../components/ui/select";
-import {
-  ShoppingCart, Plus, Pencil, Trash2, Copy, ExternalLink, RefreshCw,
-  CheckCircle, Globe, Package, Zap, Link2, Eye, FileText, AlertCircle
-} from "lucide-react";
 import { useCustomIcons } from "../hooks/useCustomIcons";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";

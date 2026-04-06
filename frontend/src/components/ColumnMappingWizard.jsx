@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  FileSpreadsheet, RefreshCw, Check, AlertTriangle, ArrowRight, Save, Eye, Wand2
+} from "lucide-react";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -14,9 +17,6 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "../components/ui/table";
-import {
-  FileSpreadsheet, RefreshCw, Check, AlertTriangle, ArrowRight, Save, Eye, Wand2
-} from "lucide-react";
 
 const FIELD_LABELS = {
   sku: { label: "SKU / Código", required: true },

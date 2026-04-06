@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  RefreshCw, CheckCircle, XCircle, AlertTriangle, Clock, Calendar,
+  TrendingUp, Package, Truck, Timer
+} from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { api } from "../App";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -10,11 +15,6 @@ import {
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow
 } from "../components/ui/table";
-import {
-  RefreshCw, CheckCircle, XCircle, AlertTriangle, Clock, Calendar,
-  TrendingUp, Package, Truck, Timer
-} from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 
 const SyncHistory = () => {
   const [history, setHistory] = useState([]);

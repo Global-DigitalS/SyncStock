@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../App";
 import { toast } from "sonner";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
 import { Package, Mail, Lock, User, Building2, ArrowRight, ArrowLeft, Eye, EyeOff, Check, Crown, Sparkles, FileText, MapPin, CreditCard } from "lucide-react";
 import axios from "axios";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Label } from "../components/ui/label";
+import { Input } from "../components/ui/input";
+import { Button } from "../components/ui/button";
+import { useAuth } from "../App";
 import { registerSchema } from "../schemas";
 import { sanitizeEmail, sanitizeString } from "../utils/sanitizer";
 

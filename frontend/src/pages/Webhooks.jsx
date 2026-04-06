@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  Webhook, Plus, Trash2, RefreshCw, Copy, Eye, EyeOff, 
+  Activity, Store, CheckCircle, XCircle, Clock, Key, Link2,
+  Bell, Package, ShoppingCart, AlertTriangle
+} from "lucide-react";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -21,11 +26,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
-import {
-  Webhook, Plus, Trash2, RefreshCw, Copy, Eye, EyeOff, 
-  Activity, Store, CheckCircle, XCircle, Clock, Key, Link2,
-  Bell, Package, ShoppingCart, AlertTriangle
-} from "lucide-react";
 
 const WEBHOOK_EVENTS = [
   { id: "inventory.updated", label: "Actualización de Inventario", icon: Package },

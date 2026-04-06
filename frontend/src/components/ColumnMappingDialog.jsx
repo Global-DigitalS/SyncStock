@@ -1,4 +1,13 @@
 import { useState, useEffect } from "react";
+import {
+  ArrowRight,
+  Check,
+  AlertCircle,
+  Database,
+  FileSpreadsheet,
+  RefreshCw,
+  X
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 import {
@@ -18,15 +27,6 @@ import {
 } from "./ui/select";
 import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
-import {
-  ArrowRight,
-  Check,
-  AlertCircle,
-  Database,
-  FileSpreadsheet,
-  RefreshCw,
-  X
-} from "lucide-react";
 
 // Campos del sistema disponibles para mapear
 const SYSTEM_FIELDS = [

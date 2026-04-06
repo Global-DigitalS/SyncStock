@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  Store, Plus, MoreVertical, Trash2, RefreshCw, ExternalLink, Upload,
+  Wifi, WifiOff, Package, Key, Link2, BookOpen, Settings,
+  ShoppingCart, ShoppingBag, Globe, Boxes, Sparkles, Download, Search
+} from "lucide-react";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -23,11 +28,6 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
-import {
-  Store, Plus, MoreVertical, Trash2, RefreshCw, ExternalLink, Upload,
-  Wifi, WifiOff, Package, Key, Link2, BookOpen, Settings,
-  ShoppingCart, ShoppingBag, Globe, Boxes, Sparkles, Download, Search
-} from "lucide-react";
 import IconDisplay from "../components/shared/IconDisplay";
 
 // Platform configurations

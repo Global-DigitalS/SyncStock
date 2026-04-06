@@ -1,8 +1,8 @@
 import { useState } from "react";
+import { Search, Filter, RefreshCw, Plus, CheckSquare, Upload } from "lucide-react";
 import { Input } from "../ui/input";
 import { Button } from "../ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
-import { Search, Filter, RefreshCw, Plus, CheckSquare, Upload } from "lucide-react";
 
 const ProductFilters = ({
   filters,

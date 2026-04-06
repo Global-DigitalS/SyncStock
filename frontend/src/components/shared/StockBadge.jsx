@@ -1,5 +1,5 @@
-import { Badge } from "../ui/badge";
 import { AlertTriangle, Package, Check } from "lucide-react";
+import { Badge } from "../ui/badge";
 
 const StockBadge = ({ stock, className }) => {
   if (stock <= 0) {

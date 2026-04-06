@@ -1,6 +1,28 @@
 import { useState, useEffect } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  Building2,
+  Plus,
+  Settings,
+  Trash2,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
+  ExternalLink,
+  Link2,
+  Users,
+  Package,
+  FileText,
+  Zap,
+  Truck,
+  ShoppingCart,
+  Image,
+  DollarSign,
+  Layers,
+  ChevronDown,
+  ChevronUp
+} from "lucide-react";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -24,28 +46,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import {
-  Building2,
-  Plus,
-  Settings,
-  Trash2,
-  RefreshCw,
-  CheckCircle,
-  XCircle,
-  ExternalLink,
-  Link2,
-  Users,
-  Package,
-  FileText,
-  Zap,
-  Truck,
-  ShoppingCart,
-  Image,
-  DollarSign,
-  Layers,
-  ChevronDown,
-  ChevronUp
-} from "lucide-react";
 import { useCustomIcons } from "../hooks/useCustomIcons";
 
 // CRM Platform configurations

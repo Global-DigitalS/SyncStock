@@ -1,7 +1,22 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  BookOpen,
+  ArrowLeft,
+  Search,
+  Package,
+  Trash2,
+  RefreshCw,
+  Plus,
+  DollarSign,
+  AlertTriangle,
+  Percent,
+  Filter,
+  FolderTree,
+  Tag
+} from "lucide-react";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -41,21 +56,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
-import {
-  BookOpen,
-  ArrowLeft,
-  Search,
-  Package,
-  Trash2,
-  RefreshCw,
-  Plus,
-  DollarSign,
-  AlertTriangle,
-  Percent,
-  Filter,
-  FolderTree,
-  Tag
-} from "lucide-react";
 
 const CatalogDetail = () => {
   const { catalogId } = useParams();

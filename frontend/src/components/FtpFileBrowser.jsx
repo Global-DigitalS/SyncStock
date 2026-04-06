@@ -1,6 +1,10 @@
 import { useState, useEffect } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  Folder, File, FolderUp, RefreshCw, ChevronRight, FileArchive,
+  FileSpreadsheet, Plus, Trash2, Save
+} from "lucide-react";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -12,10 +16,6 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter
 } from "../components/ui/dialog";
 import { Checkbox } from "../components/ui/checkbox";
-import {
-  Folder, File, FolderUp, RefreshCw, ChevronRight, FileArchive,
-  FileSpreadsheet, Plus, Trash2, Save
-} from "lucide-react";
 
 // Get file icon based on extension
 const getFileIcon = (filename, isDir) => {

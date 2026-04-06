@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useAuth } from "../App";
 import { toast } from "sonner";
 import axios from "axios";
 import { Package, CheckCircle2, AlertCircle } from "lucide-react";
+import { useAuth } from "../App";
 import { Button } from "../components/ui/button";
 import { sanitizeEmail, sanitizeString } from "../utils/sanitizer";
 

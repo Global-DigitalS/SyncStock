@@ -1,7 +1,35 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  Truck,
+  Package,
+  Search,
+  Upload,
+  Plus,
+  Eye,
+  ArrowLeft,
+  FileUp,
+  CheckSquare,
+  Square,
+  ShoppingCart,
+  Server,
+  FileText,
+  RefreshCw,
+  Clock,
+  Zap,
+  Globe,
+  Columns,
+  BookOpen,
+  Star,
+  CheckCircle,
+  XCircle,
+  ArrowRight,
+  Layers,
+  ChevronLeft,
+  ChevronRight
+} from "lucide-react";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -31,34 +59,6 @@ import {
   DialogDescription,
   DialogFooter,
 } from "../components/ui/dialog";
-import {
-  Truck,
-  Package,
-  Search,
-  Upload,
-  Plus,
-  Eye,
-  ArrowLeft,
-  FileUp,
-  CheckSquare,
-  Square,
-  ShoppingCart,
-  Server,
-  FileText,
-  RefreshCw,
-  Clock,
-  Zap,
-  Globe,
-  Columns,
-  BookOpen,
-  Star,
-  CheckCircle,
-  XCircle,
-  ArrowRight,
-  Layers,
-  ChevronLeft,
-  ChevronRight
-} from "lucide-react";
 import { CategoryCascadeFilter, CategorySelectionCascade } from "../components/suppliers";
 import ProductDetailDialog from "../components/dialogs/ProductDetailDialog";
 

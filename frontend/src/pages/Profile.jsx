@@ -1,6 +1,11 @@
 import { useState, useEffect } from "react";
-import { useAuth, api } from "../App";
 import { toast } from "sonner";
+import {
+  User, Mail, Building2, Phone, Save, Edit2, X, Lock,
+  FileText, MapPin, Globe, CreditCard, Crown, Sparkles, Calendar,
+  LifeBuoy
+} from "lucide-react";
+import { useAuth, api } from "../App";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -8,11 +13,6 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../co
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Badge } from "../components/ui/badge";
 import Support from "./Support";
-import {
-  User, Mail, Building2, Phone, Save, Edit2, X, Lock,
-  FileText, MapPin, Globe, CreditCard, Crown, Sparkles, Calendar,
-  LifeBuoy
-} from "lucide-react";
 
 const Profile = () => {
   const { user, refreshUser } = useAuth();

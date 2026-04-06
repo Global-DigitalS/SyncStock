@@ -1,13 +1,5 @@
 import { useState, useEffect } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
-import { Switch } from "../components/ui/switch";
-import { Badge } from "../components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   Mail,
   Server,
@@ -25,6 +17,14 @@ import {
   Settings,
   TestTube
 } from "lucide-react";
+import { api } from "../App";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { Switch } from "../components/ui/switch";
+import { Badge } from "../components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 
 // Email account types configuration
 const EMAIL_TYPES = {

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { ChevronRight, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -7,7 +8,6 @@ import {
   SelectValue,
 } from "../ui/select";
 import { Button } from "../ui/button";
-import { ChevronRight, CheckCircle, XCircle, RefreshCw } from "lucide-react";
 
 const CategorySelectionCascade = ({ 
   hierarchy = [], 

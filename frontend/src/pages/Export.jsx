@@ -1,9 +1,5 @@
 import { useState, useEffect } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
-import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
 import {
   Download,
   ShoppingCart,
@@ -11,6 +7,10 @@ import {
   FileDown,
   ExternalLink
 } from "lucide-react";
+import { api } from "../App";
+import { Button } from "../components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { Badge } from "../components/ui/badge";
 
 const platforms = [
   {

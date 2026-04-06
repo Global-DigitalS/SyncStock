@@ -1,9 +1,9 @@
+import { Eye, BookOpen, Star, AlertTriangle, Check, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { Checkbox } from "../ui/checkbox";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
-import { Eye, BookOpen, Star, AlertTriangle, Check, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 
 const SortableHeader = ({ column, label, currentSort, sortOrder, onSort }) => {
   const isActive = currentSort === column;
