@@ -93,8 +93,8 @@ api.interceptors.request.use((config) => {
 });
 
 // Response interceptor: auto-refresh on 401, redirect on final failure
-let isRefreshing = false;
-let refreshQueue = [];
+// Usa una Promise compartida para evitar race conditions entre requests concurrentes
+let refreshPromise = null;
 
 api.interceptors.response.use(
   (response) => response,
@@ -111,30 +111,22 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      if (isRefreshing) {
-        // Queue this request until refresh completes
-        return new Promise((resolve, reject) => {
-          refreshQueue.push({ resolve, reject });
-        }).then(() => api(originalRequest));
+      originalRequest._retry = true;
+
+      // Si ya hay un refresh en curso, esperar a que termine
+      if (!refreshPromise) {
+        refreshPromise = api.post("/auth/refresh").finally(() => {
+          refreshPromise = null;
+        });
       }
 
-      originalRequest._retry = true;
-      isRefreshing = true;
-
       try {
-        await api.post("/auth/refresh");
-        // Refresh successful — retry queued requests
-        refreshQueue.forEach(({ resolve }) => resolve());
-        refreshQueue = [];
+        await refreshPromise;
         return api(originalRequest);
       } catch (refreshError) {
-        refreshQueue.forEach(({ reject }) => reject(refreshError));
-        refreshQueue = [];
         localStorage.removeItem("user");
         window.location.href = "/#/login";
         return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
       }
     }
 
