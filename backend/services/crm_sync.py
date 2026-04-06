@@ -330,14 +330,22 @@ async def _sync_product_create_dolibarr(
 
         if result.get("status") == "success":
             sku = product.get("sku")
+            product_id = result.get("product_id")
 
             # Cache the new product data if cache is available
             if cache:
                 await cache.set(sku, product_data)
 
+            # Sync stock using stock movements for accurate tracking
+            if sync_settings.get("stock", True):
+                stock_value = product_data.get("stock", 0)
+                await limiter.acquire()
+                stock_result = await client.update_stock_async(product_id, stock_value)
+                if stock_result.get("status") != "success":
+                    logger.warning(f"Stock warning for new product {sku}: {stock_result.get('message')}")
+
             # Image is uploaded in create_product if image_url is provided
             if image_url and sync_settings.get("images", True):
-                product_id = result.get("product_id")
                 await limiter.acquire()
                 await client.upload_product_image_async(product_id, image_url)
 
@@ -856,10 +864,13 @@ async def _sync_product_create_odoo(
             if cache:
                 await cache.set(sku, product_data)
 
-            # Update stock if enabled
-            if sync_settings.get("stock") and product.get("stock"):
+            # Update stock if enabled - CRITICAL: Always sync stock (not just if > 0)
+            if sync_settings.get("stock", True):
+                stock_value = product_data.get("stock", 0)
                 await limiter.acquire()
-                await client.update_stock_async(product_id, int(product.get("stock", 0)))
+                stock_result = await client.update_stock_async(product_id, int(stock_value))
+                if stock_result.get("status") != "success":
+                    logger.warning(f"Stock warning for new Odoo product {sku}: {stock_result.get('message')}")
 
             return {"status": "success", "sku": sku}
         else:
