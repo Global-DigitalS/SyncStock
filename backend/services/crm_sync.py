@@ -22,20 +22,43 @@ logger = logging.getLogger(__name__)
 # ==================== FASE 2-3: GLOBAL RATE LIMITER & CACHING ====================
 
 class GlobalRateLimiter:
-    """Global rate limiter for CRM API calls to prevent exceeding rate limits - DEADLOCK SAFE"""
+    """Global rate limiter for CRM API calls to prevent exceeding rate limits - DEADLOCK SAFE
 
-    def __init__(self, max_concurrent: int = 5, min_delay: float = 0.1):
+    MEDIUM #16: Supports platform-specific configuration
+    """
+
+    # Platform-specific rate limit configurations
+    RATE_LIMITS = {
+        "dolibarr": {"max_concurrent": 5, "min_delay": 0.1},  # 10 req/sec
+        "odoo": {"max_concurrent": 5, "min_delay": 0.15},     # ~6 req/sec
+        "hubspot": {"max_concurrent": 3, "min_delay": 0.2},   # 5 req/sec (conservative)
+        "salesforce": {"max_concurrent": 3, "min_delay": 0.3}, # 3 req/sec
+        "zoho": {"max_concurrent": 5, "min_delay": 0.2},      # 5 req/sec
+        "default": {"max_concurrent": 5, "min_delay": 0.1}
+    }
+
+    def __init__(self, platform: str = "default", max_concurrent: int = None, min_delay: float = None):
         """
-        Initialize rate limiter.
+        Initialize rate limiter with platform-specific defaults.
 
         Args:
-            max_concurrent: Maximum concurrent operations
-            min_delay: Minimum delay between operations (seconds)
+            platform: CRM platform name (dolibarr, odoo, hubspot, etc)
+            max_concurrent: Override default max concurrent operations
+            min_delay: Override default minimum delay between operations (seconds)
         """
-        self.semaphore = asyncio.Semaphore(max_concurrent)
-        self.min_delay = min_delay
+        # Get defaults for platform
+        config = self.RATE_LIMITS.get(platform, self.RATE_LIMITS["default"])
+
+        # Allow overrides
+        self.max_concurrent = max_concurrent if max_concurrent is not None else config["max_concurrent"]
+        self.min_delay = min_delay if min_delay is not None else config["min_delay"]
+        self.platform = platform
+
+        self.semaphore = asyncio.Semaphore(self.max_concurrent)
         self.last_call = time.time()
         self.lock = asyncio.Lock()
+
+        logger.info(f"Rate limiter initialized for {platform}: {self.max_concurrent} concurrent, {self.min_delay}s delay")
 
     async def acquire(self):
         """Acquire the rate limiter - respects both concurrency and delay"""
@@ -775,7 +798,8 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     cache = SyncCache(ttl_seconds=1800)  # 30 minutes TTL
     logger.info(f"Fase 3: Caché de productos inicializada (TTL: 30 min)")
 
-    limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
+    # MEDIUM #16: Use platform-specific rate limiting
+    limiter = GlobalRateLimiter(platform="dolibarr")
 
     # MEDIUM #18: Chunk tasks to prevent memory exhaustion with large product counts
     # Create all items first, but process in chunks to control memory usage
@@ -1343,7 +1367,8 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
     cache = SyncCache(ttl_seconds=1800)  # 30 minutes TTL
     logger.info(f"Fase 3: Caché de productos Odoo inicializado (TTL: 30 min)")
 
-    limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
+    # MEDIUM #16: Use platform-specific rate limiting
+    limiter = GlobalRateLimiter(platform="odoo")
 
     # MEDIUM #18: Chunk tasks to prevent memory exhaustion (Odoo)
     all_tasks_items = []
