@@ -6,7 +6,7 @@ import logging
 import asyncio
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List
 
 from services.database import db
@@ -231,6 +231,60 @@ def _safe_to_string(value) -> str:
     # For complex types (dict, list), don't include in update
     logger.debug(f"Skipping complex type comparison: {type(value)}")
     return ""
+
+
+async def validate_and_cleanup_sync_jobs(user_id: str, max_age_days: int = 30):
+    """Validate sync job timestamps and cleanup old jobs - MEDIUM #22
+
+    Ensures:
+    - completed_at > started_at
+    - Removes sync jobs older than max_age_days
+    - Logs validation errors
+    """
+    try:
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        cutoff_iso = cutoff_date.isoformat()
+
+        # Find old or invalid jobs
+        invalid_jobs = await db.sync_jobs.find({
+            "user_id": user_id,
+            "$or": [
+                {"started_at": {"$lt": cutoff_iso}},  # Older than max_age_days
+                {
+                    "status": "completed",
+                    "$expr": {
+                        "$lte": ["$completed_at", "$started_at"]  # completed_at <= started_at (invalid)
+                    }
+                }
+            ]
+        }).to_list(1000)
+
+        if invalid_jobs:
+            logger.info(f"Found {len(invalid_jobs)} invalid or expired sync jobs for user {user_id}")
+            for job in invalid_jobs:
+                if job.get("started_at") and job.get("completed_at"):
+                    try:
+                        started = datetime.fromisoformat(job["started_at"].replace('Z', '+00:00'))
+                        completed = datetime.fromisoformat(job["completed_at"].replace('Z', '+00:00'))
+                        if completed <= started:
+                            logger.warning(
+                                f"Invalid sync job {job['id']}: "
+                                f"completed_at ({completed}) <= started_at ({started})"
+                            )
+                    except Exception as e:
+                        logger.warning(f"Error validating job {job['id']}: {e}")
+
+            # Delete old jobs (keep last 30 days)
+            result = await db.sync_jobs.delete_many({
+                "user_id": user_id,
+                "started_at": {"$lt": cutoff_iso}
+            })
+
+            if result.deleted_count > 0:
+                logger.info(f"Cleaned up {result.deleted_count} old sync jobs")
+
+    except Exception as e:
+        logger.error(f"Error in validate_and_cleanup_sync_jobs: {e}")
 
 
 def validate_margin_rules(rules: List[Dict]) -> List[Dict]:
@@ -713,7 +767,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
         else:
             to_create.append({"product": product, "product_data": product_data, "image_url": image_url})
 
-    # Phase 2B: Process creates and updates in parallel
+    # Phase 2B: Process creates and updates in parallel with memory optimization
     logger.info(f"Fase 2: Procesando en paralelo: {len(to_create)} creaciones, {len(to_update)} actualizaciones")
 
     # ========== FASE 3 OPTIMIZATION: In-memory cache with TTL ==========
@@ -722,22 +776,82 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     logger.info(f"Fase 3: Caché de productos inicializada (TTL: 30 min)")
 
     limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
-    tasks = []
 
+    # MEDIUM #18: Chunk tasks to prevent memory exhaustion with large product counts
+    # Create all items first, but process in chunks to control memory usage
+    all_tasks_items = []
     for item in to_create:
-        task = _sync_product_create_dolibarr(
-            client, item["product"], item["product_data"], item["image_url"], sync_settings, limiter, cache
-        )
-        tasks.append(task)
+        all_tasks_items.append({
+            "type": "create",
+            "item": item,
+            "client": client,
+            "sync_settings": sync_settings,
+            "limiter": limiter,
+            "cache": cache
+        })
 
     for item in to_update:
-        task = _sync_product_update_dolibarr(
-            client, item["product"], item["existing"], item["product_data"], item["image_url"], sync_settings, limiter, cache
-        )
-        tasks.append(task)
+        all_tasks_items.append({
+            "type": "update",
+            "item": item,
+            "client": client,
+            "sync_settings": sync_settings,
+            "limiter": limiter,
+            "cache": cache
+        })
 
-    # Execute all tasks in parallel
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Process in chunks to prevent OS limits on concurrent tasks
+    CHUNK_SIZE = 100  # Process 100 products at a time
+    results = []
+    total_chunks = (len(all_tasks_items) + CHUNK_SIZE - 1) // CHUNK_SIZE
+
+    for chunk_num in range(total_chunks):
+        start_idx = chunk_num * CHUNK_SIZE
+        end_idx = min((chunk_num + 1) * CHUNK_SIZE, len(all_tasks_items))
+        chunk = all_tasks_items[start_idx:end_idx]
+
+        logger.info(f"Procesando chunk {chunk_num + 1}/{total_chunks} ({len(chunk)} items)")
+
+        # Create tasks for this chunk only
+        chunk_tasks = []
+        for task_config in chunk:
+            if task_config["type"] == "create":
+                task = _sync_product_create_dolibarr(
+                    task_config["client"],
+                    task_config["item"]["product"],
+                    task_config["item"]["product_data"],
+                    task_config["item"]["image_url"],
+                    task_config["sync_settings"],
+                    task_config["limiter"],
+                    task_config["cache"]
+                )
+            else:  # update
+                task = _sync_product_update_dolibarr(
+                    task_config["client"],
+                    task_config["item"]["product"],
+                    task_config["item"]["existing"],
+                    task_config["item"]["product_data"],
+                    task_config["item"]["image_url"],
+                    task_config["sync_settings"],
+                    task_config["limiter"],
+                    task_config["cache"]
+                )
+            chunk_tasks.append(task)
+
+        # Execute chunk in parallel
+        chunk_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
+        results.extend(chunk_results)
+
+        # Update sync job progress
+        if sync_job_id:
+            progress = int(((start_idx + len(chunk)) / len(all_tasks_items)) * 90)
+            await db.sync_jobs.update_one(
+                {"id": sync_job_id},
+                {"$set": {
+                    "progress": progress,
+                    "current_step": f"Procesando chunk {chunk_num + 1}/{total_chunks}..."
+                }}
+            )
 
     # Process results and collect error details
     for result in results:
@@ -1222,7 +1336,7 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
         else:
             to_create.append({"product": product, "product_data": product_data})
 
-    # Phase 2B: Process in parallel
+    # Phase 2B: Process in parallel with memory optimization
     logger.info(f"Fase 2: Procesando en paralelo Odoo: {len(to_create)} creaciones, {len(to_update)} actualizaciones")
 
     # ========== FASE 3 OPTIMIZATION: In-memory cache with TTL ==========
@@ -1230,23 +1344,77 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
     logger.info(f"Fase 3: Caché de productos Odoo inicializado (TTL: 30 min)")
 
     limiter = GlobalRateLimiter(max_concurrent=5, min_delay=0.1)
-    tasks = []
 
+    # MEDIUM #18: Chunk tasks to prevent memory exhaustion (Odoo)
+    all_tasks_items = []
     for item in to_create:
-        task = _sync_product_create_odoo(
-            client, item["product"], item["product_data"], sync_settings, limiter, cache
-        )
-        tasks.append(task)
+        all_tasks_items.append({
+            "type": "create",
+            "item": item,
+            "client": client,
+            "sync_settings": sync_settings,
+            "limiter": limiter,
+            "cache": cache
+        })
 
     for item in to_update:
-        existing_product = item["existing_product"]
-        task = _sync_product_update_odoo(
-            client, item["product"], existing_product, item["product_data"], sync_settings, limiter, cache
-        )
-        tasks.append(task)
+        all_tasks_items.append({
+            "type": "update",
+            "item": item,
+            "client": client,
+            "sync_settings": sync_settings,
+            "limiter": limiter,
+            "cache": cache
+        })
 
-    # Execute all tasks in parallel
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Process in chunks
+    CHUNK_SIZE = 100
+    results = []
+    total_chunks = (len(all_tasks_items) + CHUNK_SIZE - 1) // CHUNK_SIZE
+
+    for chunk_num in range(total_chunks):
+        start_idx = chunk_num * CHUNK_SIZE
+        end_idx = min((chunk_num + 1) * CHUNK_SIZE, len(all_tasks_items))
+        chunk = all_tasks_items[start_idx:end_idx]
+
+        logger.info(f"Procesando chunk {chunk_num + 1}/{total_chunks} ({len(chunk)} items) - Odoo")
+
+        chunk_tasks = []
+        for task_config in chunk:
+            if task_config["type"] == "create":
+                task = _sync_product_create_odoo(
+                    task_config["client"],
+                    task_config["item"]["product"],
+                    task_config["item"]["product_data"],
+                    task_config["sync_settings"],
+                    task_config["limiter"],
+                    task_config["cache"]
+                )
+            else:  # update
+                task = _sync_product_update_odoo(
+                    task_config["client"],
+                    task_config["item"]["product"],
+                    task_config["item"]["existing_product"],
+                    task_config["item"]["product_data"],
+                    task_config["sync_settings"],
+                    task_config["limiter"],
+                    task_config["cache"]
+                )
+            chunk_tasks.append(task)
+
+        chunk_results = await asyncio.gather(*chunk_tasks, return_exceptions=True)
+        results.extend(chunk_results)
+
+        # Update progress
+        if sync_job_id:
+            progress = int(((start_idx + len(chunk)) / len(all_tasks_items)) * 90)
+            await db.sync_jobs.update_one(
+                {"id": sync_job_id},
+                {"$set": {
+                    "progress": progress,
+                    "current_step": f"Procesando chunk {chunk_num + 1}/{total_chunks} (Odoo)..."
+                }}
+            )
 
     # Process results and collect error details
     for result in results:

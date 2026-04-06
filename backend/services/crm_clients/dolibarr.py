@@ -13,6 +13,21 @@ from .base import _validate_crm_url
 logger = logging.getLogger(__name__)
 
 
+def _safe_json_parse(response, default=None):
+    """Safely parse JSON response with error handling - MEDIUM #19
+
+    Prevents JSONDecodeError from crashing the sync.
+    """
+    try:
+        return response.json()
+    except ValueError as json_err:
+        logger.warning(f"Failed to parse JSON response: {json_err}. Response text: {response.text[:100]}")
+        return default
+    except Exception as e:
+        logger.error(f"Unexpected error parsing JSON: {e}")
+        return default
+
+
 def _sanitize_error_message(error_text: str, max_length: int = 100) -> str:
     """Sanitize error messages to prevent information leakage - MEDIUM #15
 
@@ -127,12 +142,16 @@ class DolibarrClient:
         try:
             response = self._rate_limited_request('GET', f"{self.base_url}/status", timeout=30)
             if response.status_code == 200:
-                data = response.json()
-                return {
-                    "status": "success",
-                    "message": "Conexión exitosa a Dolibarr",
-                    "version": data.get("success", {}).get("dolibarr_version", "Unknown")
-                }
+                # MEDIUM #19: Safe JSON parsing
+                data = _safe_json_parse(response, default={})
+                if data:
+                    return {
+                        "status": "success",
+                        "message": "Conexión exitosa a Dolibarr",
+                        "version": data.get("success", {}).get("dolibarr_version", "Unknown")
+                    }
+                else:
+                    return {"status": "error", "message": "Respuesta inválida del servidor"}
             elif response.status_code == 401:
                 return {"status": "error", "message": "API Key inválida"}
             elif response.status_code == 403:

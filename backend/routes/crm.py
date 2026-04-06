@@ -228,6 +228,7 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
 
     # Create sync job for progress tracking
     sync_job_id = str(uuid.uuid4())
+    started_at = datetime.now(timezone.utc).isoformat()
     sync_job = {
         "id": sync_job_id,
         "user_id": user["id"],
@@ -240,10 +241,17 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
         "created": 0,
         "updated": 0,
         "errors": 0,
-        "started_at": datetime.now(timezone.utc).isoformat(),
+        "started_at": started_at,  # MEDIUM #22: Store as variable for validation
         "completed_at": None
     }
     await db.sync_jobs.insert_one(sync_job)
+
+    # MEDIUM #22: Cleanup old sync jobs in background (don't block request)
+    try:
+        from services.crm_sync import validate_and_cleanup_sync_jobs
+        asyncio.create_task(validate_and_cleanup_sync_jobs(user["id"], max_age_days=30))
+    except Exception as e:
+        logger.warning(f"Could not schedule sync job cleanup: {e}")
 
     # Run sync in background task with timeout protection (1 hour max)
     # HIGH: Wrap in timeout to prevent indefinite hanging
