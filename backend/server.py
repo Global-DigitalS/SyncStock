@@ -540,7 +540,15 @@ app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=500)  # Comprimir respuestas > 500 bytes
 
 _cors_origins_env = os.environ.get('CORS_ORIGINS', '')
+_environment = os.environ.get('ENVIRONMENT', 'development').lower()
 if not _cors_origins_env or _cors_origins_env.strip() == '*':
+    if _environment == 'production':
+        raise RuntimeError(
+            "CORS_ORIGINS es obligatorio en producción. "
+            "Define: CORS_ORIGINS=https://app.tudominio.com "
+            "El wildcard '*' no está permitido en producción porque "
+            "desactiva las cookies (withCredentials) y rompe la autenticación."
+        )
     logger.warning(
         "CORS_ORIGINS no está configurado o usa '*'. "
         "En producción DEBES definir orígenes explícitos (ej: CORS_ORIGINS=https://app.tudominio.com). "
