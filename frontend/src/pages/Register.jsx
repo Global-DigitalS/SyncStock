@@ -215,8 +215,12 @@ const Register = () => {
 
       // Step 3: Redirect to Stripe Checkout
       // User will be created AFTER confirming payment (on success_url)
+      const checkoutUrl = stripeRes.data.checkout_url;
+      if (!checkoutUrl || !checkoutUrl.startsWith("https://checkout.stripe.com/")) {
+        throw new Error("URL de checkout inválida");
+      }
       toast.success("Redirigiendo a la pasarela de pago...");
-      window.location.href = stripeRes.data.checkout_url;
+      window.location.href = checkoutUrl;
     } catch (error) {
       toast.error(error.response?.data?.detail || "Error al procesar la solicitud de pago");
     } finally {
