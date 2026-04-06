@@ -322,16 +322,23 @@ class DolibarrClient:
             # Download image with user agent and strict size limit (10 MB)
             headers = {"User-Agent": "Mozilla/5.0 (compatible; CatalogSync/1.0)"}
             img_response = requests.get(image_url, timeout=15, headers=headers, stream=True)
-            content_length = int(img_response.headers.get("Content-Length", 0))
-            if content_length > 10 * 1024 * 1024:
-                return {"status": "skip", "message": "Imagen demasiado grande (>10 MB)"}
-            img_response = requests.get(image_url, timeout=15, headers=headers)
-            if img_response.status_code != 200:
-                logger.warning(f"Failed to download image: {img_response.status_code}")
-                return {"status": "error", "message": f"No se pudo descargar la imagen: {img_response.status_code}"}
+            try:
+                # Check Content-Length BEFORE consuming response body
+                content_length = int(img_response.headers.get("Content-Length", 0))
+                if content_length > 10 * 1024 * 1024:
+                    logger.warning(f"Image too large: {content_length} > 10MB - skipping")
+                    return {"status": "skip", "message": "Imagen demasiado grande (>10 MB)"}
 
-            # Encode to base64
-            img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+                # Validate status code
+                if img_response.status_code != 200:
+                    logger.warning(f"Failed to download image: {img_response.status_code}")
+                    return {"status": "error", "message": f"No se pudo descargar la imagen: {img_response.status_code}"}
+
+                # Encode to base64 - reuse the streamed response (no second download!)
+                img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+            finally:
+                # CRITICAL: Always close the response to prevent resource leak
+                img_response.close()
 
             # Determine file extension from content type or URL
             content_type = img_response.headers.get('content-type', 'image/jpeg')

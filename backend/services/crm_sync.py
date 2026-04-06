@@ -508,6 +508,15 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
         # Use batch result to check if product exists
         existing = existing_products_batch.get(sku)
 
+        # CRITICAL: Double-check before creating to prevent race condition
+        # Between batch lookup and actual creation, another user/job might create the product
+        if not existing:
+            # Make one final check to catch concurrent creations
+            final_check = client.get_product_by_ref(sku)
+            if final_check:
+                logger.debug(f"Race condition prevented: {sku} was created by another sync job")
+                existing = final_check
+
         # Build product_data
         product_data = {
             "sku": sku,

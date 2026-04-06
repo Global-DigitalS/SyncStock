@@ -112,12 +112,19 @@ async def update_crm_connection(connection_id: str, request: dict, user: dict = 
 
     update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    await db.crm_connections.update_one(
-        {"id": connection_id},
+    # CRITICAL FIX: Always include user_id in update filter to prevent cross-user modification
+    result = await db.crm_connections.update_one(
+        {"id": connection_id, "user_id": user["id"]},
         {"$set": update_data}
     )
 
-    updated = await db.crm_connections.find_one({"id": connection_id}, {"_id": 0})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Conexión no encontrada")
+
+    updated = await db.crm_connections.find_one(
+        {"id": connection_id, "user_id": user["id"]},
+        {"_id": 0}
+    )
     return updated
 
 
