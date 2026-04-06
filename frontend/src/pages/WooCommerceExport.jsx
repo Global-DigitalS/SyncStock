@@ -614,14 +614,14 @@ const StoresPage = () => {
                       <TableCell className="text-sm text-slate-500">
                         {formatDate(config.last_sync)}
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2 flex-wrap">
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => handleSyncPriceStock(config)}
                             disabled={!config.catalog_id || syncing[config.id]}
-                            className="btn-secondary"
+                            className="btn-secondary whitespace-nowrap"
                             title="Sincronizar precio y stock"
                             data-testid={`sync-btn-${config.id}`}
                           >
@@ -629,8 +629,16 @@ const StoresPage = () => {
                           </Button>
                           <Button
                             size="sm"
+                            onClick={() => openCreateCatalog(config)}
+                            className="btn-secondary"
+                          >
+                            <Download className="w-3.5 h-3.5 mr-1" />
+                            Importar
+                          </Button>
+                          <Button
+                            size="sm"
                             onClick={() => openExport(config)}
-                            className="btn-primary"
+                            className="btn-primary whitespace-nowrap"
                             disabled={catalogs.length === 0}
                             data-testid={`export-btn-${config.id}`}
                           >
@@ -647,10 +655,6 @@ const StoresPage = () => {
                               <DropdownMenuItem onClick={() => handleTestConnection(config)} disabled={testing}>
                                 <Wifi className="w-4 h-4 mr-2" strokeWidth={1.5} />
                                 Probar Conexión
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => openCreateCatalog(config)}>
-                                <Download className="w-4 h-4 mr-2" strokeWidth={1.5} />
-                                Crear Catálogo desde Tienda
                               </DropdownMenuItem>
                               <DropdownMenuItem onClick={() => openEdit(config)}>
                                 <Settings className="w-4 h-4 mr-2" strokeWidth={1.5} />

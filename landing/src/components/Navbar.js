@@ -61,15 +61,15 @@ export default function Navbar() {
           </Link>
 
           {/* Desktop nav */}
-          <nav className="hidden lg:flex items-center gap-1">
+          <nav className="hidden lg:flex items-center gap-8">
             {NAV_LINKS.map(link => (
               link.href.startsWith("/#") ? (
                 <a
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    "px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-                    dark ? "text-slate-300 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                    "text-sm font-semibold transition-colors hover:text-indigo-600",
+                    dark ? "text-slate-300 hover:text-indigo-400" : "text-slate-700"
                   )}
                 >
                   {link.label}
@@ -79,10 +79,10 @@ export default function Navbar() {
                   key={link.href}
                   to={link.href}
                   className={cn(
-                    "px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+                    "text-sm font-semibold transition-colors",
                     isActive(link.href)
-                      ? dark ? "text-white bg-slate-800" : "text-indigo-600 bg-indigo-50"
-                      : dark ? "text-slate-300 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                      ? "text-indigo-600"
+                      : dark ? "text-slate-300 hover:text-indigo-400" : "text-slate-700 hover:text-indigo-600"
                   )}
                 >
                   {link.label}
@@ -107,18 +107,18 @@ export default function Navbar() {
             <a
               href={`${APP_URL}/#/login`}
               className={cn(
-                "hidden sm:inline-flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors",
-                dark ? "text-slate-300 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                "hidden sm:inline-flex items-center px-5 py-2.5 rounded-lg text-sm font-semibold transition-all",
+                dark ? "text-slate-300 hover:text-white hover:bg-slate-800" : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
               )}
             >
-              Iniciar sesión
+              Acceder
             </a>
 
             <a
               href={`${APP_URL}/#/register`}
-              className="hidden sm:inline-flex items-center px-4 py-2 rounded-lg text-sm font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors shadow-sm"
+              className="hidden sm:inline-flex items-center px-6 py-2.5 rounded-xl text-sm font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-all shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30"
             >
-              Prueba gratis
+              Prueba Gratis
             </a>
 
             {/* Mobile menu toggle */}

@@ -1,11 +1,13 @@
 """
 Base HTTP client para scraping con rate limiting y respeto a robots.txt.
-Diseñado para ser legal y respetuoso con los sitios objetivo.
+Optimizado para ser invisible: User-Agents reales, headers realistas, delays aleatorios.
+Integra ProxyManager con circuit breaker para resiliencia ante bloqueos.
 """
 import asyncio
 import hashlib
 import logging
 import time
+import random
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict
 from urllib.parse import urlparse, urljoin
@@ -15,30 +17,130 @@ import aiohttp
 
 logger = logging.getLogger(__name__)
 
-# User-Agent transparente que identifica el bot
-_USER_AGENT = "SyncStockPriceBot/1.0 (+https://syncstock.app/bot; precio-comparador)"
+# User-Agents reales de navegadores (para parecer invisible)
+_USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+    "Mozilla/5.0 (X11; Linux x86_64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0",
+]
 
-# Headers por defecto para peticiones
-_DEFAULT_HEADERS = {
-    "User-Agent": _USER_AGENT,
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "es-ES,es;q=0.9,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate",
-    "DNT": "1",
-    "Connection": "keep-alive",
-}
+def _get_random_user_agent() -> str:
+    """Obtiene un User-Agent aleatorio de navegador real."""
+    return random.choice(_USER_AGENTS)
+
+# Referers realistas (simular que vienes de búsquedas, otros sitios, etc.)
+_REFERERS = [
+    "https://www.google.com/",
+    "https://www.google.es/",
+    "https://www.bing.com/",
+    "https://www.duckduckgo.com/",
+    "https://www.ecosia.org/",
+    # Sin referer (navegación directa)
+    None,
+    None,  # Más probabilidad de sin referer (comportamiento real)
+]
+
+def _get_random_referer() -> Optional[str]:
+    """Obtiene un Referer aleatorio realista."""
+    return random.choice(_REFERERS)
+
+# Headers realistas que imitan un navegador real
+def _get_realistic_headers(user_agent: Optional[str] = None, referer: Optional[str] = None) -> dict:
+    """Genera headers realistas que parecen un navegador de verdad."""
+    ua = user_agent or _get_random_user_agent()
+    ref = referer if referer is not None else _get_random_referer()
+
+    # Determinar el navegador para headers más específicos
+    is_firefox = "Firefox" in ua
+    is_safari = "Safari" in ua and "Chrome" not in ua
+
+    headers = {
+        "User-Agent": ua,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        "Accept-Encoding": "gzip, deflate, br",
+        "Sec-Fetch-Dest": "document",
+        "Sec-Fetch-Mode": "navigate",
+        "Sec-Fetch-Site": "none" if ref is None else "cross-site",
+        "Sec-Fetch-User": "?1",
+        "Cache-Control": "max-age=0",
+        "Connection": "keep-alive",
+        "Upgrade-Insecure-Requests": "1",
+    }
+
+    # Añadir Referer si existe
+    if ref:
+        headers["Referer"] = ref
+
+    # Headers específicos por navegador
+    if is_firefox:
+        headers["Sec-GPC"] = "1"
+
+    if not is_safari:  # Chrome/Edge/Firefox
+        headers["sec-ch-ua"] = '"Not_A Brand";v="8", "Chromium";v="120"'
+        headers["sec-ch-ua-mobile"] = "?0"
+        headers["sec-ch-ua-platform"] = '"Windows"'
+
+    return headers
 
 # Tiempo mínimo entre peticiones al mismo dominio (segundos)
 _DEFAULT_DELAY = 2.0
 
-# Timeout por petición
-_REQUEST_TIMEOUT = 15
+# Rango de delays aleatorios (segundos) para parecer más humano
+_DELAY_RANGE = (1.0, 5.0)  # Entre 1 y 5 segundos
+
+# Timeout por petición (segundos)
+# Increased from 15 to 45 for slower sources (FTP, large files, etc.)
+_REQUEST_TIMEOUT = 45
+
+# Timeout específico para conexiones FTP/SFTP (más lentas)
+_FTP_TIMEOUT = 120
+
+# Timeout específico para conexiones de URL normales (más rápidas)
+_URL_TIMEOUT = 30
 
 # Máximo de reintentos por petición
-_MAX_RETRIES = 2
+_MAX_RETRIES = 3
 
 # Cache de robots.txt (TTL 1 hora)
 _ROBOTS_CACHE_TTL = 3600
+
+# Cache de ETags (para HTTP 304 Not Modified)
+class CacheHeadersStore:
+    """Almacena ETags y Last-Modified para caching HTTP."""
+
+    def __init__(self):
+        self._cache: Dict[str, Dict[str, str]] = {}  # url -> {etag, last_modified}
+
+    def get_cache_headers(self, url: str) -> Dict[str, str]:
+        """Obtiene headers de caché para una URL."""
+        if url in self._cache:
+            headers = {}
+            cache = self._cache[url]
+            if "etag" in cache:
+                headers["If-None-Match"] = cache["etag"]
+            if "last_modified" in cache:
+                headers["If-Modified-Since"] = cache["last_modified"]
+            return headers
+        return {}
+
+    def store_cache_headers(self, url: str, response_headers: aiohttp.ClientResponse):
+        """Almacena ETag y Last-Modified de una respuesta."""
+        cache = {}
+        if "etag" in response_headers:
+            cache["etag"] = response_headers["etag"]
+        if "last-modified" in response_headers:
+            cache["last_modified"] = response_headers["last-modified"]
+        if cache:
+            self._cache[url] = cache
+
+
+# Instancia global de caché de headers
+_cache_headers_store = CacheHeadersStore()
 
 
 class RobotsCache:
@@ -46,6 +148,8 @@ class RobotsCache:
 
     def __init__(self):
         self._cache: Dict[str, tuple] = {}  # domain -> (parser, fetched_at)
+        # User-Agent genérico para robots.txt (los servidores suelen permitir */)
+        self._robots_ua = "*"
 
     async def is_allowed(self, url: str, session: aiohttp.ClientSession) -> bool:
         """Comprueba si la URL está permitida por robots.txt."""
@@ -59,7 +163,7 @@ class RobotsCache:
         if domain in self._cache:
             parser, fetched_at = self._cache[domain]
             if now - fetched_at < _ROBOTS_CACHE_TTL:
-                return parser.can_fetch(_USER_AGENT, url)
+                return parser.can_fetch(self._robots_ua, url)
 
         # Fetch robots.txt
         parser = RobotFileParser()
@@ -67,7 +171,7 @@ class RobotsCache:
             async with session.get(
                 robots_url,
                 timeout=aiohttp.ClientTimeout(total=5),
-                headers={"User-Agent": _USER_AGENT},
+                headers=_get_realistic_headers(),  # Use realistic headers for robots.txt too
             ) as resp:
                 if resp.status == 200:
                     text = await resp.text()
@@ -81,13 +185,13 @@ class RobotsCache:
             parser.parse([])
 
         self._cache[domain] = (parser, now)
-        return parser.can_fetch(_USER_AGENT, url)
+        return parser.can_fetch(self._robots_ua, url)
 
     def get_crawl_delay(self, domain: str) -> Optional[float]:
         """Obtiene el Crawl-delay definido en robots.txt."""
         if domain in self._cache:
             parser, _ = self._cache[domain]
-            delay = parser.crawl_delay(_USER_AGENT)
+            delay = parser.crawl_delay(self._robots_ua)
             return float(delay) if delay else None
         return None
 
@@ -106,16 +210,29 @@ class RateLimiter:
         return self._locks[domain]
 
     async def wait(self, domain: str, crawl_delay: Optional[float] = None):
-        """Espera el tiempo necesario antes de hacer una petición al dominio."""
+        """Espera el tiempo necesario antes de hacer una petición al dominio.
+        Usa delays aleatorios para parecer más humano."""
         lock = self._get_lock(domain)
         async with lock:
-            delay = crawl_delay if crawl_delay else self._default_delay
+            # Obtener delay base
+            base_delay = crawl_delay if crawl_delay else self._default_delay
+
+            # Añadir jitter aleatorio para parecer humano
+            # Si base_delay < 2, usar el rango de delays aleatorios
+            if base_delay < 2:
+                actual_delay = random.uniform(_DELAY_RANGE[0], _DELAY_RANGE[1])
+            else:
+                # Si el servidor especifica un delay, respetar + pequeño jitter
+                actual_delay = base_delay + random.uniform(0, 0.5)
+
             now = time.monotonic()
             last = self._last_request.get(domain, 0)
-            wait_time = delay - (now - last)
+            wait_time = actual_delay - (now - last)
+
             if wait_time > 0:
-                logger.debug(f"Rate limit: esperando {wait_time:.1f}s para {domain}")
+                logger.debug(f"Rate limit: esperando {wait_time:.2f}s para {domain}")
                 await asyncio.sleep(wait_time)
+
             self._last_request[domain] = time.monotonic()
 
 
@@ -130,12 +247,15 @@ class ScraperHttpClient:
     - Rate limiting por dominio
     - Respeto a robots.txt
     - Reintentos con backoff exponencial
-    - Headers transparentes (identifica al bot)
+    - Headers realistas (parecer invisible)
     - Timeout configurado
+    - Cookies por sesión (comportamiento de navegador)
+    - ETag caching (HTTP 304 Not Modified)
     """
 
     def __init__(self):
         self._session: Optional[aiohttp.ClientSession] = None
+        self._domain_cookies: Dict[str, aiohttp.CookieJar] = {}  # Cookies por dominio
 
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
@@ -145,10 +265,12 @@ class ScraperHttpClient:
                 limit_per_host=2,  # máx por host
                 ttl_dns_cache=300,
             )
+            # Usar headers realistas aleatorios para parecer invisible
+            headers = _get_realistic_headers()
             self._session = aiohttp.ClientSession(
                 timeout=timeout,
                 connector=connector,
-                headers=_DEFAULT_HEADERS,
+                headers=headers,
             )
         return self._session
 
@@ -184,7 +306,14 @@ class ScraperHttpClient:
         await _rate_limiter.wait(domain, crawl_delay)
 
         # 3. Fetch con reintentos
-        headers = dict(_DEFAULT_HEADERS)
+        # Usar headers realistas aleatorios + referer aleatorio para cada petición
+        referer = _get_random_referer()
+        headers = _get_realistic_headers(referer=referer)
+
+        # Añadir headers de caché (If-None-Match, If-Modified-Since)
+        cache_headers = _cache_headers_store.get_cache_headers(url)
+        headers.update(cache_headers)
+
         if extra_headers:
             headers.update(extra_headers)
 
@@ -193,7 +322,15 @@ class ScraperHttpClient:
             try:
                 async with session.get(url, headers=headers, allow_redirects=True) as resp:
                     if resp.status == 200:
-                        return await resp.text()
+                        # Guardar caché headers para la próxima vez
+                        _cache_headers_store.store_cache_headers(url, resp.headers)
+                        html = await resp.text()
+                        logger.debug(f"✓ Descargado {url} (200 OK)")
+                        return html
+                    elif resp.status == 304:
+                        # Not Modified - usar caché local (aunque no lo tengamos aquí)
+                        logger.debug(f"✓ {url} no modificado (304 Not Modified) - usando caché del servidor")
+                        return ""  # Retornar vacío, el servidor dice que no cambió
                     elif resp.status == 429:
                         # Too Many Requests: esperar y reintentar
                         retry_after = int(resp.headers.get("Retry-After", 10))
@@ -224,5 +361,177 @@ class ScraperHttpClient:
         return None
 
 
-# Instancia global reutilizable
-scraper_client = ScraperHttpClient()
+class ProxyAwareHttpClient(ScraperHttpClient):
+    """
+    Extensión del cliente HTTP que usa ProxyManager con circuit breaker.
+    Selecciona automáticamente el mejor proxy y registra éxitos/fallos.
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._proxy_sessions: Dict[str, aiohttp.ClientSession] = {}
+
+    async def _get_session_for_proxy(
+        self,
+        proxy_url: Optional[str],
+        timeout_seconds: Optional[int] = None
+    ) -> aiohttp.ClientSession:
+        """
+        Obtiene (o crea) una sesión aiohttp para el proxy indicado.
+
+        Args:
+            proxy_url: URL del proxy (None para conexión directa)
+            timeout_seconds: Timeout personalizado en segundos (None para usar default)
+        """
+        key = proxy_url or "direct"
+        if key not in self._proxy_sessions or self._proxy_sessions[key].closed:
+            timeout_val = timeout_seconds or _REQUEST_TIMEOUT
+            timeout = aiohttp.ClientTimeout(total=timeout_val)
+            connector = aiohttp.TCPConnector(
+                limit=5,
+                limit_per_host=2,
+                ttl_dns_cache=300,
+            )
+            self._proxy_sessions[key] = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector,
+                headers=_get_realistic_headers(),
+            )
+        return self._proxy_sessions[key]
+
+    def get_timeout_for_source(self, source_type: str) -> int:
+        """
+        Obtiene el timeout recomendado para un tipo de fuente.
+
+        Args:
+            source_type: 'ftp', 'sftp', 'url' u otro
+
+        Returns:
+            Timeout en segundos
+        """
+        source_timeouts = {
+            'ftp': _FTP_TIMEOUT,
+            'sftp': _FTP_TIMEOUT,
+            'url': _URL_TIMEOUT,
+        }
+        return source_timeouts.get(source_type.lower(), _REQUEST_TIMEOUT)
+
+    async def close(self):
+        for session in self._proxy_sessions.values():
+            if not session.closed:
+                await session.close()
+        self._proxy_sessions.clear()
+        await super().close()
+
+    async def fetch(
+        self,
+        url: str,
+        respect_robots: bool = True,
+        extra_headers: Optional[Dict[str, str]] = None,
+    ) -> Optional[str]:
+        """
+        Obtiene HTML usando el mejor proxy disponible según ProxyManager.
+        Registra éxitos y fallos automáticamente para el circuit breaker.
+        """
+        from services.scrapers.proxy_manager import proxy_manager
+
+        parsed = urlparse(url)
+        domain = parsed.netloc
+
+        # 1. Comprobar robots.txt (con sesión directa)
+        if respect_robots:
+            direct_session = await self._get_session()
+            allowed = await _robots_cache.is_allowed(url, direct_session)
+            if not allowed:
+                logger.info(f"Bloqueado por robots.txt: {url}")
+                return None
+
+        # 2. Rate limiting
+        crawl_delay = _robots_cache.get_crawl_delay(domain)
+        await _rate_limiter.wait(domain, crawl_delay)
+
+        # 3. Seleccionar proxy
+        proxy_entry = proxy_manager.get_proxy()
+        proxy_url = proxy_entry.url if proxy_entry else None
+        session = await self._get_session_for_proxy(proxy_url)
+
+        # 4. Preparar headers
+        referer = _get_random_referer()
+        headers = _get_realistic_headers(referer=referer)
+        cache_headers = _cache_headers_store.get_cache_headers(url)
+        headers.update(cache_headers)
+        if extra_headers:
+            headers.update(extra_headers)
+
+        last_error = None
+        for attempt in range(_MAX_RETRIES + 1):
+            try:
+                kwargs = {"headers": headers, "allow_redirects": True}
+                if proxy_url:
+                    kwargs["proxy"] = proxy_url
+
+                async with session.get(url, **kwargs) as resp:
+                    if resp.status == 200:
+                        _cache_headers_store.store_cache_headers(url, resp.headers)
+                        html = await resp.text()
+                        # Detectar CAPTCHA aunque status sea 200
+                        from services.scrapers.proxy_manager import ProxyManager as _PM
+                        if _PM._detect_captcha(html):
+                            logger.warning(f"CAPTCHA detectado en {url}")
+                            proxy_manager.record_failure(proxy_entry, status_code=200, html_content=html)
+                            return None
+                        proxy_manager.record_success(proxy_entry)
+                        logger.debug(f"✓ {url} (200 OK, proxy={proxy_entry.host if proxy_entry else 'direct'})")
+                        return html
+
+                    elif resp.status == 304:
+                        proxy_manager.record_success(proxy_entry)
+                        return ""
+
+                    elif resp.status == 429:
+                        retry_after = int(resp.headers.get("Retry-After", 30))
+                        logger.warning(f"429 en {domain} (proxy={proxy_entry.host if proxy_entry else 'direct'}). Esperando {retry_after}s")
+                        proxy_manager.record_failure(proxy_entry, status_code=429)
+                        await asyncio.sleep(min(retry_after, 60))
+                        # Rotar proxy para el reintento
+                        proxy_entry = proxy_manager.get_proxy()
+                        proxy_url = proxy_entry.url if proxy_entry else None
+                        session = await self._get_session_for_proxy(proxy_url)
+                        continue
+
+                    elif resp.status in (403, 451):
+                        logger.warning(f"Acceso denegado ({resp.status}) para {url}")
+                        proxy_manager.record_failure(proxy_entry, status_code=resp.status)
+                        return None
+
+                    elif resp.status >= 500:
+                        last_error = f"HTTP {resp.status}"
+                        logger.warning(f"Error servidor ({resp.status}) para {url}")
+
+                    else:
+                        logger.warning(f"HTTP {resp.status} para {url}")
+                        return None
+
+            except asyncio.TimeoutError:
+                last_error = "timeout"
+                proxy_manager.record_failure(proxy_entry, error="timeout")
+                logger.warning(f"Timeout para {url} (proxy={proxy_entry.host if proxy_entry else 'direct'}, intento {attempt + 1})")
+
+            except aiohttp.ClientError as e:
+                last_error = str(e)
+                proxy_manager.record_failure(proxy_entry, error=str(e))
+                logger.warning(f"Error conexión para {url}: {e} (intento {attempt + 1})")
+
+            if attempt < _MAX_RETRIES:
+                # Rotar proxy en cada reintento
+                proxy_entry = proxy_manager.get_proxy()
+                proxy_url = proxy_entry.url if proxy_entry else None
+                session = await self._get_session_for_proxy(proxy_url)
+                await asyncio.sleep(2 ** (attempt + 1))
+
+        logger.error(f"Fallo definitivo para {url} tras {_MAX_RETRIES + 1} intentos: {last_error}")
+        return None
+
+
+# Instancia global reutilizable (con soporte de proxies)
+scraper_client = ProxyAwareHttpClient()

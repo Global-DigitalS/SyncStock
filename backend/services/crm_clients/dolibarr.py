@@ -4,12 +4,94 @@ Dolibarr ERP/CRM API Client.
 import logging
 import requests
 import base64
+import asyncio
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
 from .base import _validate_crm_url
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_json_parse(response, default=None):
+    """Safely parse JSON response with error handling - MEDIUM #19
+
+    Prevents JSONDecodeError from crashing the sync.
+    """
+    try:
+        return response.json()
+    except ValueError as json_err:
+        logger.warning(f"Failed to parse JSON response: {json_err}. Response text: {response.text[:100]}")
+        return default
+    except Exception as e:
+        logger.error(f"Unexpected error parsing JSON: {e}")
+        return default
+
+
+def _sanitize_error_message(error_text: str, max_length: int = 100) -> str:
+    """Sanitize error messages to prevent information leakage - MEDIUM #15
+
+    Removes sensitive details like internal paths, database info, etc.
+    Only shows safe, generic error information.
+    """
+    if not error_text:
+        return "Error en operación CRM"
+
+    # Remove potentially sensitive patterns
+    sanitized = error_text
+    sensitive_patterns = [
+        r'/home/\S+',  # File paths
+        r'/var/\S+',   # System paths
+        r'localhost:\d+',  # Local IPs
+        r'192\.168\.\S+',  # Private IPs
+        r'SELECT \*.*FROM',  # SQL queries
+        r'UPDATE.*SET',  # SQL queries
+        r'INSERT INTO',  # SQL queries
+    ]
+
+    import re
+    for pattern in sensitive_patterns:
+        sanitized = re.sub(pattern, '[REDACTED]', sanitized, flags=re.IGNORECASE)
+
+    # Truncate to safe length
+    sanitized = sanitized[:max_length]
+
+    # If result is empty or all redacted, return generic message
+    if not sanitized.strip() or sanitized == '[REDACTED]':
+        return "Error en operación CRM"
+
+    return sanitized
+
+
+def _escape_sql_string(value: str) -> str:
+    """Safely escape SQL string values to prevent SQL injection - MEDIUM #12
+
+    Handles both standard SQL and MySQL comment sequences.
+    """
+    if not isinstance(value, str):
+        return str(value)
+
+    # 1. Escape single quotes by doubling them (SQL standard)
+    escaped = value.replace("'", "''")
+
+    # 2. Remove SQL comment sequences (multiple methods)
+    # SQL Standard comments
+    escaped = escaped.replace("--", "")
+    # SQL Standard block comments
+    escaped = escaped.replace("/*", "")
+    escaped = escaped.replace("*/", "")
+    # MySQL-specific comments
+    escaped = escaped.replace("//", "")
+    escaped = escaped.replace("#", "")  # MySQL single-line comment
+    escaped = escaped.replace(";", "")  # Prevent statement termination
+
+    # 3. Remove null bytes
+    escaped = escaped.replace("\x00", "")
+
+    # 4. Limit length to prevent buffer overflow
+    escaped = escaped[:1000]
+
+    return escaped.strip()
 
 
 class DolibarrClient:
@@ -60,18 +142,24 @@ class DolibarrClient:
         try:
             response = self._rate_limited_request('GET', f"{self.base_url}/status", timeout=30)
             if response.status_code == 200:
-                data = response.json()
-                return {
-                    "status": "success",
-                    "message": "Conexión exitosa a Dolibarr",
-                    "version": data.get("success", {}).get("dolibarr_version", "Unknown")
-                }
+                # MEDIUM #19: Safe JSON parsing
+                data = _safe_json_parse(response, default={})
+                if data:
+                    return {
+                        "status": "success",
+                        "message": "Conexión exitosa a Dolibarr",
+                        "version": data.get("success", {}).get("dolibarr_version", "Unknown")
+                    }
+                else:
+                    return {"status": "error", "message": "Respuesta inválida del servidor"}
             elif response.status_code == 401:
                 return {"status": "error", "message": "API Key inválida"}
             elif response.status_code == 403:
                 return {"status": "error", "message": "Acceso denegado - verifica permisos del usuario API"}
             else:
-                return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+                # MEDIUM #15: Sanitize error message
+                safe_msg = _sanitize_error_message(response.text)
+                return {"status": "error", "message": f"Error de conexión ({response.status_code}): {safe_msg}"}
         except requests.exceptions.ConnectionError:
             return {"status": "error", "message": "No se puede conectar al servidor. Verifica la URL."}
         except requests.exceptions.Timeout:
@@ -92,14 +180,26 @@ class DolibarrClient:
                 timeout=60
             )
             if response.status_code == 200:
-                return response.json()
+                try:
+                    return response.json()
+                except ValueError as json_err:
+                    logger.error(f"Failed to parse JSON response from get_products: {json_err}")
+                    return []
+            # MEDIUM #13: Log non-200 responses instead of silently failing
+            logger.warning(f"get_products failed with status {response.status_code}: {response.text[:200]}")
             return []
         except Exception as e:
             logger.error(f"Dolibarr get_products error: {e}")
             return []
 
     def get_product_by_ref(self, ref: str) -> Optional[Dict]:
-        """Get a product by reference (SKU)"""
+        """Get a product by reference (SKU)
+
+        Returns:
+            Product dict if found
+            None if not found (404)
+            None if error (with logging)
+        """
         try:
             response = self._rate_limited_request(
                 'GET',
@@ -107,11 +207,56 @@ class DolibarrClient:
                 timeout=30
             )
             if response.status_code == 200:
-                return response.json()
-            return None
+                try:
+                    return response.json()
+                except ValueError as json_err:
+                    logger.error(f"Failed to parse JSON response for product {ref}: {json_err}")
+                    return None
+            elif response.status_code == 404:
+                # Product not found - this is expected, return None
+                logger.debug(f"Product with ref={ref} not found in Dolibarr (404)")
+                return None
+            else:
+                # MEDIUM #13: Log unexpected status codes
+                logger.warning(f"get_product_by_ref({ref}) failed with status {response.status_code}: {response.text[:200]}")
+                return None
         except Exception as e:
-            logger.error(f"Dolibarr get_product_by_ref error: {e}")
+            logger.error(f"Dolibarr get_product_by_ref error for ref={ref}: {e}")
             return None
+
+    def product_exists_by_ref(self, ref: str) -> bool:
+        """Check if a product exists by reference (SKU) - simpler method"""
+        return self.get_product_by_ref(ref) is not None
+
+    def search_products_by_name(self, name: str, limit: int = 10) -> List[Dict]:
+        """Search for products by name (useful as fallback if SKU lookup fails)"""
+        try:
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/products",
+                params={
+                    'limit': limit,
+                    'sqlfilters': f"t.label like '%{_escape_sql_string(name)}%'"  # FIXED: SQL injection prevention
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                try:
+                    results = response.json()
+                    if isinstance(results, list):
+                        return results
+                    elif isinstance(results, dict):
+                        # Some versions return {"data": [...]}
+                        return results.get("data", [])
+                except ValueError as json_err:
+                    logger.error(f"Failed to parse JSON response for search_products_by_name: {json_err}")
+                    return []
+            # MEDIUM #13: Log non-200 responses
+            logger.warning(f"search_products_by_name({name}) failed with status {response.status_code}")
+            return []
+        except Exception as e:
+            logger.error(f"Error searching products by name '{name}': {e}")
+            return []
 
     def get_products_by_refs_batch(self, refs: List[str]) -> Dict[str, Dict]:
         """Get multiple products by reference in batch - returns dict of ref -> product"""
@@ -267,16 +412,23 @@ class DolibarrClient:
             # Download image with user agent and strict size limit (10 MB)
             headers = {"User-Agent": "Mozilla/5.0 (compatible; CatalogSync/1.0)"}
             img_response = requests.get(image_url, timeout=15, headers=headers, stream=True)
-            content_length = int(img_response.headers.get("Content-Length", 0))
-            if content_length > 10 * 1024 * 1024:
-                return {"status": "skip", "message": "Imagen demasiado grande (>10 MB)"}
-            img_response = requests.get(image_url, timeout=15, headers=headers)
-            if img_response.status_code != 200:
-                logger.warning(f"Failed to download image: {img_response.status_code}")
-                return {"status": "error", "message": f"No se pudo descargar la imagen: {img_response.status_code}"}
+            try:
+                # Check Content-Length BEFORE consuming response body
+                content_length = int(img_response.headers.get("Content-Length", 0))
+                if content_length > 10 * 1024 * 1024:
+                    logger.warning(f"Image too large: {content_length} > 10MB - skipping")
+                    return {"status": "skip", "message": "Imagen demasiado grande (>10 MB)"}
 
-            # Encode to base64
-            img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+                # Validate status code
+                if img_response.status_code != 200:
+                    logger.warning(f"Failed to download image: {img_response.status_code}")
+                    return {"status": "error", "message": f"No se pudo descargar la imagen: {img_response.status_code}"}
+
+                # Encode to base64 - reuse the streamed response (no second download!)
+                img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+            finally:
+                # CRITICAL: Always close the response to prevent resource leak
+                img_response.close()
 
             # Determine file extension from content type or URL
             content_type = img_response.headers.get('content-type', 'image/jpeg')
@@ -324,41 +476,130 @@ class DolibarrClient:
             logger.error(f"Dolibarr upload_product_image error: {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> Dict:
-        """Update product stock in Dolibarr"""
+    def _get_warehouse_stock(self, product_id: int, warehouse_id: int) -> Optional[int]:
+        """
+        Get the REAL stock of a product in a specific warehouse using the stock endpoint.
+        This is more reliable than stock_reel from GET /products/{id} which can be stale/null.
+
+        CRITICAL: Only returns stock for the SPECIFIC warehouse, not a sum of all warehouses.
+        This prevents stock accumulation bugs.
+        """
         try:
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/products/{product_id}/stock",
+                timeout=30
+            )
+            if response.status_code == 200:
+                stock_data = response.json()
+
+                if isinstance(stock_data, dict):
+                    # Get stock for the SPECIFIC warehouse only
+                    warehouses = stock_data.get("stock_warehouses") or stock_data.get("stock_warehouse") or {}
+
+                    # Dolibarr returns warehouse IDs as string keys
+                    wh_key = str(warehouse_id)
+                    if wh_key in warehouses:
+                        wh_stock = warehouses[wh_key]
+                        real_stock = wh_stock.get("real") if isinstance(wh_stock, dict) else wh_stock
+                        if real_stock is not None:
+                            result = int(float(real_stock))
+                            logger.debug(f"[STOCK] Warehouse {warehouse_id} stock for product {product_id}: {result}")
+                            return result
+
+                    # CRITICAL FIX: Don't sum all warehouses - that causes accumulation!
+                    # Instead, if the specific warehouse isn't found, return None to trigger fallback
+                    logger.warning(
+                        f"[STOCK] Warehouse {warehouse_id} not found in stock response for product {product_id}. "
+                        f"Available warehouses: {list(warehouses.keys())}"
+                    )
+                    return None
+
+            logger.debug(f"[STOCK] Could not get warehouse {warehouse_id} stock for product {product_id}, response: {response.status_code}")
+            return None
+
+        except Exception as e:
+            logger.warning(f"[STOCK] Error getting warehouse stock for product {product_id}: {e}")
+            return None
+
+    def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> Dict:
+        """Update product stock in Dolibarr using absolute stock value.
+
+        IMPORTANT: This method sets stock to an absolute value by calculating
+        the difference with current stock. To avoid accumulation bugs, it uses
+        multiple methods to determine the REAL current stock before creating
+        any stock movement.
+
+        CRITICAL FIX: Only ever creates ONE movement per call, never sums across warehouses.
+        """
+        try:
+            # Validate input
+            if stock < 0:
+                logger.error(f"[STOCK] Cannot set negative stock: {stock}")
+                return {"status": "error", "message": "El stock no puede ser negativo"}
+
             # First get or create a warehouse
             if warehouse_id is None:
                 warehouse_id = self.get_or_create_default_warehouse()
                 if not warehouse_id:
-                    logger.warning("No warehouse available, cannot update stock")
+                    logger.warning("[STOCK] No warehouse available, cannot update stock")
                     return {"status": "warning", "message": "No hay almacén configurado en Dolibarr"}
 
-            # Get current stock
-            product = self.get_product_by_id(product_id)
-            if not product:
-                return {"status": "error", "message": "Producto no encontrado"}
+            logger.info(f"[STOCK] Starting stock update: product={product_id}, warehouse={warehouse_id}, desired_stock={stock}")
 
-            current_stock = int(float(product.get("stock_reel") or 0))
+            # === CRITICAL: Get current stock reliably ===
+            # Method 1: Use the dedicated stock endpoint (most reliable)
+            current_stock = self._get_warehouse_stock(product_id, warehouse_id)
+
+            # Method 2: Fallback to product's stock_reel field (ONLY if Method 1 fails)
+            if current_stock is None:
+                logger.debug(f"[STOCK] Falling back to stock_reel for product {product_id}")
+                product = self.get_product_by_id(product_id)
+                if not product:
+                    return {"status": "error", "message": "Producto no encontrado"}
+
+                stock_reel = product.get("stock_reel")
+
+                # For NEW products, stock_reel might be null/empty - in that case, assume current_stock = 0
+                if stock_reel is None or stock_reel == "" or stock_reel == "null":
+                    logger.info(
+                        f"[STOCK] Product {product_id}: stock_reel is null/empty. "
+                        f"Assuming current stock = 0 for new product. "
+                        f"Desired stock: {stock}"
+                    )
+                    current_stock = 0
+                else:
+                    try:
+                        current_stock = int(float(stock_reel))
+                        logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} (fallback)")
+                    except (ValueError, TypeError):
+                        logger.error(f"[STOCK] Invalid stock_reel value: {stock_reel}")
+                        return {"status": "error", "message": "Valor de stock inválido en Dolibarr"}
+
+            # Calculate difference
             diff = stock - current_stock
 
             if diff == 0:
+                logger.info(f"[STOCK] Product {product_id}: stock unchanged ({current_stock})")
                 return {"status": "success", "message": "Stock sin cambios"}
 
-            # Dolibarr does not allow stock movements with qty = 0
-            if abs(diff) == 0:
-                return {"status": "success", "message": "Stock sin cambios"}
+            # SAFETY: Log detailed info for debugging stock issues
+            logger.info(
+                f"[STOCK] Product {product_id}: "
+                f"current={current_stock}, desired={stock}, diff={diff}, "
+                f"movement={'ENTRADA' if diff > 0 else 'SALIDA'}"
+            )
 
-            # Create stock movement
+            # === CREATE STOCK MOVEMENT ===
+            # This is the ONLY place where stock is updated for this product/warehouse
             payload = {
                 "product_id": product_id,
                 "warehouse_id": warehouse_id,
                 "qty": abs(diff),
-                "type": 0 if diff > 0 else 1,  # 0 = entrada, 1 = salida
-                "label": "Sincronización desde catálogo"
+                "type": 0 if diff > 0 else 1,  # 0 = entrada (entrada de stock), 1 = salida (salida de stock)
+                "label": f"SyncStock: {current_stock} → {stock}",
+                "date": datetime.now(timezone.utc).isoformat()
             }
-
-            logger.info(f"Creating stock movement for product {product_id}: {current_stock} -> {stock} (diff: {diff})")
 
             response = self._rate_limited_request(
                 'POST',
@@ -368,14 +609,31 @@ class DolibarrClient:
             )
 
             if response.status_code in [200, 201]:
-                logger.info(f"Stock updated successfully: {current_stock} → {stock}")
+                logger.info(f"[STOCK] Movement created successfully for product {product_id}: {current_stock} → {stock}")
+
+                # VERIFICATION: After creating movement, verify the new stock
+                new_stock = self._get_warehouse_stock(product_id, warehouse_id)
+                if new_stock is not None:
+                    if new_stock == stock:
+                        logger.info(f"[STOCK] Verification OK: product {product_id} stock is now {new_stock}")
+                    else:
+                        logger.warning(
+                            f"[STOCK] Verification FAILED for product {product_id}: "
+                            f"expected={stock}, actual={new_stock}, diff={new_stock - stock}"
+                        )
+                        return {
+                            "status": "warning",
+                            "message": f"Movimiento creado pero stock verificación falló: esperado {stock}, actual {new_stock}"
+                        }
+
                 return {"status": "success", "message": f"Stock actualizado: {current_stock} → {stock}"}
             else:
-                logger.warning(f"Stock movement failed: {response.status_code} - {response.text[:200]}")
-                # Fallback: try to update product directly (won't work if stock is managed)
-                return {"status": "warning", "message": f"No se pudo crear movimiento: {response.text[:100]}"}
+                error_msg = response.text[:200] if response.text else f"HTTP {response.status_code}"
+                logger.error(f"[STOCK] Stock movement failed for product {product_id}: {error_msg}")
+                return {"status": "error", "message": f"Error al crear movimiento de stock: {error_msg}"}
+
         except Exception as e:
-            logger.error(f"update_stock error: {e}")
+            logger.error(f"[STOCK] update_stock error for product {product_id}: {e}", exc_info=True)
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
     def get_warehouses(self) -> List[Dict]:
@@ -561,7 +819,7 @@ class DolibarrClient:
                 response = self._rate_limited_request(
                     'GET',
                     f"{self.base_url}/thirdparties",
-                    params={'sqlfilters': f"(t.nom:=:'{name}')"},
+                    params={'sqlfilters': f"(t.nom:=:'{_escape_sql_string(name)}')"},  # FIXED: SQL injection prevention
                     timeout=30
                 )
                 if response.status_code == 200:
@@ -638,6 +896,34 @@ class DolibarrClient:
             return []
         except Exception as e:
             logger.error(f"Dolibarr get_orders error: {e}")
+            return []
+
+    def search_orders_by_external_id(self, external_id: str) -> List[Dict]:
+        """Search for orders by external_id (ref_client field)
+
+        HIGH #10: Check if order already exists in CRM to prevent duplicates
+        """
+        try:
+            # ref_client is used to store external order IDs
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/orders",
+                params={
+                    'sqlfilters': f"t.ref_client = '{_escape_sql_string(external_id)}'",
+                    'limit': 10
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                results = response.json()
+                if isinstance(results, list):
+                    return results
+                elif isinstance(results, dict):
+                    return results.get("data", [])
+            logger.debug(f"search_orders_by_external_id({external_id}): no results or error {response.status_code}")
+            return []
+        except Exception as e:
+            logger.error(f"Error searching orders by external_id {external_id}: {e}")
             return []
 
     def get_supplier_orders(self, limit: int = 100) -> List[Dict]:
@@ -746,3 +1032,25 @@ class DolibarrClient:
         except Exception as e:
             logger.error(f"Dolibarr get_stats error: {e}")
             return {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
+
+    # ==================== ASYNC METHODS (FASE 2) ====================
+
+    async def create_product_async(self, product_data: Dict) -> Dict:
+        """Async wrapper for create_product - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
+        return await loop.run_in_executor(None, self.create_product, product_data)
+
+    async def update_product_async(self, product_id: int, product_data: Dict) -> Dict:
+        """Async wrapper for update_product - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
+        return await loop.run_in_executor(None, self.update_product, product_id, product_data)
+
+    async def update_stock_async(self, product_id: int, stock_value: int) -> Dict:
+        """Async wrapper for update_stock - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
+        return await loop.run_in_executor(None, self.update_stock, product_id, stock_value)
+
+    async def upload_product_image_async(self, product_id: int, image_url: str) -> Dict:
+        """Async wrapper for upload_product_image - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
+        return await loop.run_in_executor(None, self.upload_product_image, product_id, image_url)

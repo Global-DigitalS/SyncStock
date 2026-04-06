@@ -13,6 +13,7 @@ from services.auth import (
     check_account_lockout, record_failed_login, reset_failed_logins,
     _DUMMY_HASH,
     create_access_token, create_refresh_token, verify_refresh_token,
+    verify_refresh_token_async, revoke_refresh_token,
     generate_csrf_token, REFRESH_TOKEN_DAYS,
 )
 from services.sanitizer import sanitize_string, sanitize_email, sanitize_password, sanitize_dict
@@ -253,8 +254,19 @@ async def login(request: Request, response: Response, credentials: UserLogin):
 
 
 @router.post("/auth/logout")
-async def logout(response: Response):
-    """Cierra sesión borrando todas las cookies de autenticación."""
+async def logout(request: Request, response: Response):
+    """Cierra sesión revocando el refresh token y borrando todas las cookies."""
+    # Revoke the refresh token so it cannot be reused
+    refresh_cookie = request.cookies.get("refresh_token")
+    if refresh_cookie:
+        try:
+            payload = verify_refresh_token(refresh_cookie)
+            jti = payload.get("jti")
+            if jti:
+                await revoke_refresh_token(jti)
+        except Exception:
+            pass  # Token may already be invalid; still clear cookies
+
     response.delete_cookie(key="auth_token", path="/")
     response.delete_cookie(key="refresh_token", path="/api/auth")
     response.delete_cookie(key="csrf_token", path="/")
@@ -268,7 +280,7 @@ async def refresh_token(request: Request, response: Response):
     if not token:
         raise HTTPException(status_code=401, detail="No hay refresh token")
 
-    payload = verify_refresh_token(token)
+    payload = await verify_refresh_token_async(token)  # checks revocation
     user_id = payload["user_id"]
 
     # Verify user still exists and is active
@@ -586,20 +598,97 @@ async def update_user_limits(user_id: str, limits: UserLimits, superadmin: dict 
 
 @router.delete("/users/{user_id}")
 async def delete_user(user_id: str, admin: dict = Depends(get_admin_user)):
-    """Delete user (admin/superadmin only)"""
+    """Delete user and ALL associated data (cascading delete)"""
     if user_id == admin["id"]:
         raise HTTPException(status_code=400, detail="No puedes eliminarte a ti mismo")
-    
+
     # Only superadmin can delete admins
     target_user = await db.users.find_one({"id": user_id})
     if target_user and target_user.get("role") in ["admin", "superadmin"] and admin.get("role") != "superadmin":
         raise HTTPException(status_code=403, detail="Solo SuperAdmin puede eliminar administradores")
-    
-    result = await db.users.delete_one({"id": user_id})
-    if result.deleted_count == 0:
+
+    if not target_user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
-    return {"message": "Usuario eliminado"}
+
+    # Delete all user-associated data in cascading order
+    # (respect foreign key relationships)
+    deletion_stats = {}
+
+    try:
+        # 1. Delete catalog items (references products)
+        result = await db.catalog_items.delete_many({"user_id": user_id})
+        deletion_stats["catalog_items"] = result.deleted_count
+
+        # 2. Delete price history
+        result = await db.price_history.delete_many({"user_id": user_id})
+        deletion_stats["price_history"] = result.deleted_count
+
+        # 3. Delete catalog margin rules
+        result = await db.catalog_margin_rules.delete_many({"user_id": user_id})
+        deletion_stats["catalog_margin_rules"] = result.deleted_count
+
+        # 4. Delete catalogs
+        result = await db.catalogs.delete_many({"user_id": user_id})
+        deletion_stats["catalogs"] = result.deleted_count
+
+        # 5. Delete products
+        result = await db.products.delete_many({"user_id": user_id})
+        deletion_stats["products"] = result.deleted_count
+
+        # 6. Delete suppliers
+        result = await db.suppliers.delete_many({"user_id": user_id})
+        deletion_stats["suppliers"] = result.deleted_count
+
+        # 7. Delete WooCommerce configs
+        result = await db.woocommerce_configs.delete_many({"user_id": user_id})
+        deletion_stats["woocommerce_configs"] = result.deleted_count
+
+        # 8. Delete store configs
+        result = await db.store_configs.delete_many({"user_id": user_id})
+        deletion_stats["store_configs"] = result.deleted_count
+
+        # 9. Delete CRM connections
+        result = await db.crm_connections.delete_many({"user_id": user_id})
+        deletion_stats["crm_connections"] = result.deleted_count
+
+        # 10. Delete notifications
+        result = await db.notifications.delete_many({"user_id": user_id})
+        deletion_stats["notifications"] = result.deleted_count
+
+        # 11. Delete subscriptions
+        result = await db.subscriptions.delete_many({"user_id": user_id})
+        deletion_stats["subscriptions"] = result.deleted_count
+
+        # 12. Delete user subscription/payment info
+        result = await db.user_subscriptions.delete_many({"user_id": user_id})
+        deletion_stats["user_subscriptions"] = result.deleted_count
+
+        # 13. Delete billing info
+        result = await db.billing_info.delete_many({"user_id": user_id})
+        deletion_stats["billing_info"] = result.deleted_count
+
+        # 14. Delete password reset tokens
+        result = await db.password_resets.delete_many({"user_id": user_id})
+        deletion_stats["password_resets"] = result.deleted_count
+
+        # 15. Delete the user itself (last)
+        result = await db.users.delete_one({"id": user_id})
+        deletion_stats["users"] = result.deleted_count
+
+        # Log the comprehensive deletion
+        logger.warning(
+            f"User {target_user.get('email')} (ID: {user_id}) and ALL associated data "
+            f"deleted by SuperAdmin {admin.get('email')}. Stats: {deletion_stats}"
+        )
+
+        return {
+            "message": f"Usuario {target_user.get('email')} y todos sus datos han sido eliminados",
+            "deleted_stats": deletion_stats
+        }
+
+    except Exception as e:
+        logger.error(f"Error during cascading user deletion for user {user_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al eliminar usuario y datos: {str(e)}")
 
 
 
@@ -731,4 +820,4 @@ async def verify_reset_token(token: str):
     if datetime.now(timezone.utc) > expires_at:
         raise HTTPException(status_code=400, detail="Token expirado")
     
-    return {"valid": True, "email": reset_record["email"]}
+    return {"valid": True}

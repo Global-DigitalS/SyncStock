@@ -250,6 +250,7 @@ const CRMPage = () => {
   const [expandedCard, setExpandedCard] = useState(null);
   const [syncProgress, setSyncProgress] = useState(null);
   const [showProgressDialog, setShowProgressDialog] = useState(false);
+  const [showErrorDetails, setShowErrorDetails] = useState(false);
 
   useEffect(() => {
     fetchConnections();
@@ -1155,6 +1156,30 @@ const CRMPage = () => {
                   </p>
                   <p className="text-xs text-red-600">Errores</p>
                 </div>
+              </div>
+            )}
+
+            {/* Error Details Section */}
+            {syncProgress?.errors > 0 && syncProgress?.error_details && (
+              <div className="border-t pt-4 space-y-2">
+                <button
+                  onClick={() => setShowErrorDetails(!showErrorDetails)}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-red-50 hover:bg-red-100 transition-colors text-red-700 font-medium text-sm"
+                >
+                  <span>Ver {syncProgress.errors} producto(s) con error</span>
+                  {showErrorDetails ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </button>
+
+                {showErrorDetails && (
+                  <div className="max-h-48 overflow-y-auto bg-red-50 rounded-lg p-3 space-y-2 text-sm">
+                    {Object.entries(syncProgress.error_details).map(([sku, errorMsg]) => (
+                      <div key={sku} className="border-l-2 border-red-500 pl-2 py-1">
+                        <p className="font-mono text-red-700 font-semibold">{sku}</p>
+                        <p className="text-red-600 text-xs">{errorMsg}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>

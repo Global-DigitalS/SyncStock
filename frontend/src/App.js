@@ -8,6 +8,7 @@ import posthog from "posthog-js";
 // Pages — lazy loaded for code splitting
 const Login = lazy(() => import("./pages/Login"));
 const Register = lazy(() => import("./pages/Register"));
+const CheckoutSuccess = lazy(() => import("./pages/CheckoutSuccess"));
 const Setup = lazy(() => import("./pages/Setup"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -33,6 +34,7 @@ const SyncSettings = lazy(() => import("./pages/SyncSettings"));
 const Profile = lazy(() => import("./pages/Profile"));
 const Support = lazy(() => import("./pages/Support"));
 const Landing = lazy(() => import("./pages/Landing"));
+const Orders = lazy(() => import("./pages/Orders"));
 
 // Admin Pages — lazy loaded
 const AdminBranding = lazy(() => import("./pages/AdminBranding"));
@@ -217,9 +219,27 @@ const AuthProvider = ({ children }) => {
       };
 
       ws.onmessage = (event) => {
+        // Handle server heartbeat
         if (event.data === "pong") return;
+
         try {
           const data = JSON.parse(event.data);
+
+          // Handle server-sent heartbeats
+          if (data.type === "heartbeat") {
+            // Send acknowledgment for heartbeat
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "heartbeat_ack", timestamp: Date.now() }));
+            }
+            return;
+          }
+
+          // Handle ping-pong messages
+          if (data.type === "pong") {
+            return;
+          }
+
+          // Handle actual notifications
           if (data.type === "notification") {
             const notif = data.data;
             if (notif.type === "sync_progress") {
@@ -372,6 +392,7 @@ function App() {
           {/* Public Routes */}
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/checkout-success" element={<CheckoutSuccess />} />
           <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/reset-password" element={<ForgotPassword />} />
 
@@ -510,6 +531,16 @@ function App() {
               <ProtectedRoute>
                 <MainLayout>
                   <SyncHistory />
+                </MainLayout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoute>
+                <MainLayout>
+                  <Orders />
                 </MainLayout>
               </ProtectedRoute>
             }

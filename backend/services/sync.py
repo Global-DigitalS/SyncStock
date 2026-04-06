@@ -7,6 +7,9 @@ import asyncio
 import zipfile
 import paramiko
 import requests
+import re
+import json
+from typing import Optional, List
 from datetime import datetime, timezone
 from openpyxl import load_workbook
 import xlrd
@@ -271,7 +274,9 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
     content = io.BytesIO()
     if schema == 'sftp':
         port = port or 22
-        transport = paramiko.Transport((host, port))
+        import socket
+        sock = socket.create_connection((host, port), timeout=30)
+        transport = paramiko.Transport(sock)
         transport.connect(username=user, password=password)
         transport.set_keepalive(30)
         sftp = paramiko.SFTPClient.from_transport(transport)
@@ -304,19 +309,54 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
 
 
 async def download_file_from_ftp(supplier: dict) -> bytes:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, download_file_from_ftp_sync, supplier)
+    """Download file from FTP/SFTP with retry logic and exponential backoff."""
+    loop = asyncio.get_running_loop()
+    max_retries = 3
+    timeout = 900  # 15 min max for FTP/SFTP downloads
+
+    for attempt in range(max_retries):
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, download_file_from_ftp_sync, supplier),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)  # Exponential backoff: 2s, 4s
+                logger.warning(f"FTP/SFTP timeout para '{supplier.get('name', '?')}' (intento {attempt + 1}/{max_retries}), esperando {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise Exception(f"Timeout descargando fichero FTP/SFTP del proveedor '{supplier.get('name', '?')}' tras {max_retries} intentos (límite: {timeout/60:.0f} minutos)")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                logger.warning(f"Error FTP/SFTP para '{supplier.get('name', '?')}': {e} (intento {attempt + 1}/{max_retries}), reintentando en {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
 
 
 def _build_browser_session(url: str, auth=None) -> tuple:
-    """Build a requests Session with full browser-like headers to avoid 403 blocks."""
+    """Build a requests Session with realistic browser headers to avoid 403 blocks."""
     from urllib.parse import urlparse
+    import random
+
     parsed = urlparse(url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
+
+    # Realistic User-Agents (same as in http_client.py)
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.1 Safari/605.1.15",
+    ]
+
     session = requests.Session()
     session.headers.update({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'User-Agent': random.choice(user_agents),
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
         'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8',
         'Accept-Encoding': 'gzip, deflate, br',
         'Connection': 'keep-alive',
@@ -326,6 +366,7 @@ def _build_browser_session(url: str, auth=None) -> tuple:
         'Sec-Fetch-Site': 'none',
         'Sec-Fetch-User': '?1',
         'Referer': origin,
+        'Cache-Control': 'max-age=0',
     })
     if auth:
         session.auth = auth
@@ -362,8 +403,31 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
 
 
 async def download_file_from_url(url: str, username: str = None, password: str = None) -> bytes:
-    loop = asyncio.get_event_loop()
-    return await loop.run_in_executor(None, download_file_from_url_sync, url, username, password)
+    """Download file from URL with retry logic and exponential backoff."""
+    loop = asyncio.get_running_loop()
+    max_retries = 3
+    timeout = 900  # 15 min max for URL downloads
+
+    for attempt in range(max_retries):
+        try:
+            return await asyncio.wait_for(
+                loop.run_in_executor(None, download_file_from_url_sync, url, username, password),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)  # Exponential backoff: 2s, 4s
+                logger.warning(f"Timeout descargando URL {url[:50]}... (intento {attempt + 1}/{max_retries}), esperando {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise Exception(f"Timeout descargando desde URL tras {max_retries} intentos (límite: {timeout/60:.0f} minutos): {url[:100]}")
+        except Exception as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** (attempt + 1)
+                logger.warning(f"Error descargando URL {url[:50]}...: {e} (intento {attempt + 1}/{max_retries}), reintentando en {wait_time}s...")
+                await asyncio.sleep(wait_time)
+            else:
+                raise
 
 
 # ==================== FILE PARSING ====================
@@ -647,7 +711,22 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             prices_merge_key = None
             prices_lookup = {}
             if prices_data:
-                prices_merge_key = list(prices_data[0].keys())[0] if prices_data else None
+                # Try to find a common merge key (SKU, Matnr, etc.) instead of just first column
+                sample_product = products_data[0] if products_data else {}
+                product_keys = list(sample_product.keys())
+
+                # Buscar una columna común entre productos y precios
+                common_merge_key = None
+                for pk in product_keys:
+                    if pk in prices_data[0]:
+                        common_merge_key = pk
+                        break
+
+                # Si no hay columna común, usar la primera
+                prices_merge_key = common_merge_key or list(prices_data[0].keys())[0]
+
+                logger.info(f"ZIP prices merge_key: {prices_merge_key} (common={common_merge_key is not None})")
+
                 if prices_merge_key:
                     for row in prices_data:
                         k = str(row.get(prices_merge_key, '')).strip()
@@ -657,14 +736,27 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             stock_merge_key = None
             stock_lookup = {}
             if stock_data:
-                stock_merge_key = list(stock_data[0].keys())[0] if stock_data else None
+                # Try to find a common merge key for stock too
+                sample_product = products_data[0] if products_data else {}
+                product_keys = list(sample_product.keys())
+
+                common_merge_key = None
+                for pk in product_keys:
+                    if pk in stock_data[0]:
+                        common_merge_key = pk
+                        break
+
+                stock_merge_key = common_merge_key or list(stock_data[0].keys())[0]
+
+                logger.info(f"ZIP stock merge_key: {stock_merge_key} (common={common_merge_key is not None})")
+
                 if stock_merge_key:
                     for row in stock_data:
                         k = str(row.get(stock_merge_key, '')).strip()
                         if k:
                             stock_lookup[k] = row
 
-            logger.info(f"ZIP merge: {len(products_data)} productos, {len(prices_lookup)} precios, {len(stock_lookup)} stock")
+            logger.info(f"ZIP merge: {len(products_data)} productos, {len(prices_lookup)} precios (key={prices_merge_key}), {len(stock_lookup)} stock (key={stock_merge_key})")
 
             # Build detected_columns from a sample merged row (product + prefixed prices/stock)
             # so the ColumnMappingDialog shows the real available columns
@@ -1113,7 +1205,7 @@ def format_file_size(size: int) -> str:
 
 
 async def browse_ftp_directory(config: dict, path: str = "/") -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, browse_ftp_sync, config, path)
 
 
@@ -1578,7 +1670,7 @@ def get_woocommerce_categories_sync(config: dict) -> list:
 
 
 async def get_woocommerce_categories(config: dict) -> list:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, get_woocommerce_categories_sync, config)
 
 
@@ -1602,7 +1694,7 @@ def create_woocommerce_category_sync(config: dict, category_data: dict) -> dict:
 
 
 async def create_woocommerce_category(config: dict, category_data: dict) -> dict:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, create_woocommerce_category_sync, config, category_data)
 
 
@@ -1700,8 +1792,77 @@ async def fetch_all_store_products(store_config: dict) -> list:
             batch = await asyncio.to_thread(
                 wc.get, "products", params={"per_page": 100, "page": page}
             )
+
+            # Parse JSON with proper encoding handling
             if hasattr(batch, 'json'):
-                batch = batch.json()
+                try:
+                    # First try: use requests' automatic encoding detection
+                    batch = batch.json()
+                except Exception as e:
+                    # Fallback: manually handle encoding and JSON structure issues
+                    logger.warning(f"JSON decode error on page {page}: {type(e).__name__}: {str(e)[:150]}")
+
+                    try:
+                        # Get raw content with explicit encoding handling
+                        if hasattr(batch, 'content'):
+                            raw_bytes = batch.content
+                            logger.info(f"Response size: {len(raw_bytes)} bytes on page {page}")
+
+                            # Try different encodings
+                            parsed_data = None
+                            text = None
+
+                            for encoding in ['utf-8', 'utf-8-sig', 'latin-1', 'iso-8859-1', 'cp1252']:
+                                try:
+                                    text = raw_bytes.decode(encoding)
+                                    parsed_data = json.loads(text)
+                                    logger.info(f"Successfully parsed page {page} with {encoding} encoding")
+                                    batch = parsed_data
+                                    break
+                                except (json.JSONDecodeError, UnicodeDecodeError) as encode_error:
+                                    logger.debug(f"  {encoding}: {type(encode_error).__name__}")
+                                    # Keep the text from UTF-8 for later sanitization
+                                    if encoding == 'utf-8' and text is None:
+                                        try:
+                                            text = raw_bytes.decode('utf-8', errors='replace')
+                                        except:
+                                            pass
+                                    continue
+
+                            # If standard parsing failed and we have text, try sanitizing
+                            if parsed_data is None and text:
+                                logger.warning(f"Standard parsing failed on page {page}, attempting JSON sanitization")
+                                try:
+                                    # Try to fix invalid escape sequences
+                                    # Replace invalid escapes like \x, \', etc. with their actual characters
+                                    # Match backslash followed by invalid escape
+                                    sanitized = re.sub(r'\\([^"\\/bfnrtu])', r'\1', text)
+                                    parsed_data = json.loads(sanitized)
+                                    logger.info(f"Successfully parsed page {page} after sanitization")
+                                    batch = parsed_data
+                                except Exception as sanitize_error:
+                                    logger.warning(f"Sanitization failed: {type(sanitize_error).__name__}")
+                                    # Last resort: try with errors='replace'
+                                    if text:
+                                        try:
+                                            # Re-encode with errors='replace' and try again
+                                            text_replaced = raw_bytes.decode('utf-8', errors='replace')
+                                            parsed_data = json.loads(text_replaced)
+                                            logger.info(f"Successfully parsed page {page} with utf-8 errors='replace'")
+                                            batch = parsed_data
+                                        except Exception as last_error:
+                                            logger.error(f"All parsing strategies failed on page {page}")
+                                            raise last_error
+
+                            if parsed_data is None:
+                                raise ValueError(f"Could not parse JSON response on page {page}")
+                        else:
+                            logger.error(f"Response object has no 'content' attribute on page {page}")
+                            raise e
+                    except Exception as fallback_error:
+                        logger.error(f"Failed to parse WooCommerce response on page {page}: {type(fallback_error).__name__}: {fallback_error}")
+                        raise
+
             if isinstance(batch, dict) and "body" in batch:
                 batch = batch["body"]
             if not batch or not isinstance(batch, list):
@@ -1721,21 +1882,32 @@ async def fetch_all_store_products(store_config: dict) -> list:
 
 
 def extract_store_product_info(store_prod: dict, platform: str) -> dict:
-    """Extract normalized SKU, EAN, name, price, stock from a store product."""
-    info = {"sku": "", "ean": "", "name": "", "price": 0, "stock": 0,
-            "description": "", "image_url": "", "category": "", "brand": ""}
+    """
+    Extract matching fields from store product.
+    Price and stock come from SyncStock supplier products, not the store.
+
+    Fields extracted: SKU, EAN, name, description, image, category, brand
+    """
+    info = {
+        "sku": "",
+        "ean": "",
+        "name": "",
+        "description": "",
+        "image_url": "",
+        "category": "",
+        "brand": ""
+    }
 
     if platform == "woocommerce":
         info["sku"] = (store_prod.get("sku") or "").strip()
         info["ean"] = (store_prod.get("ean") or "").strip()
         info["name"] = (store_prod.get("name") or "").strip()
-        info["price"] = float(store_prod.get("price") or store_prod.get("regular_price") or 0)
-        info["stock"] = int(store_prod.get("stock_quantity") or 0)
         info["description"] = store_prod.get("description") or store_prod.get("short_description") or ""
         images = store_prod.get("images") or []
         info["image_url"] = images[0].get("src", "") if images else ""
         cats = store_prod.get("categories") or []
         info["category"] = cats[0].get("name", "") if cats else ""
+        info["brand"] = store_prod.get("brands", [{}])[0].get("name", "") if store_prod.get("brands") else ""
     elif platform == "prestashop":
         info["sku"] = (store_prod.get("reference") or "").strip()
         info["ean"] = (store_prod.get("ean13") or "").strip()
@@ -1745,15 +1917,15 @@ def extract_store_product_info(store_prod: dict, platform: str) -> dict:
         elif isinstance(name_val, dict):
             name_val = name_val.get("value", "") or name_val.get("language", "")
         info["name"] = str(name_val).strip()
-        info["price"] = float(store_prod.get("price") or 0)
+        info["description"] = store_prod.get("description") or store_prod.get("description_short") or ""
+        info["category"] = store_prod.get("id_category_default", "")
+        info["brand"] = ""
     elif platform == "shopify":
         variants = store_prod.get("variants") or []
         first_variant = variants[0] if variants else {}
         info["sku"] = (first_variant.get("sku") or "").strip()
         info["ean"] = (first_variant.get("barcode") or "").strip()
         info["name"] = (store_prod.get("title") or "").strip()
-        info["price"] = float(first_variant.get("price") or 0)
-        info["stock"] = int(first_variant.get("inventory_quantity") or 0)
         info["description"] = store_prod.get("body_html") or ""
         info["brand"] = store_prod.get("vendor") or ""
         info["category"] = store_prod.get("product_type") or ""
@@ -1762,17 +1934,19 @@ def extract_store_product_info(store_prod: dict, platform: str) -> dict:
     elif platform == "magento":
         info["sku"] = (store_prod.get("sku") or "").strip()
         info["name"] = (store_prod.get("name") or "").strip()
-        info["price"] = float(store_prod.get("price") or 0)
-        ext = store_prod.get("extension_attributes") or {}
-        stock_item = ext.get("stock_item") or {}
-        info["stock"] = int(stock_item.get("qty") or 0)
+        info["description"] = store_prod.get("description") or ""
+        info["ean"] = ""
+        info["brand"] = ""
+        info["category"] = ""
     elif platform == "wix":
         info["sku"] = (store_prod.get("sku") or "").strip()
         info["name"] = (store_prod.get("name") or "").strip()
-        info["price"] = float(store_prod.get("price", {}).get("amount") or store_prod.get("price") or 0) if isinstance(store_prod.get("price"), (dict, int, float)) else 0
         info["description"] = store_prod.get("description") or ""
+        info["ean"] = ""
         media = store_prod.get("media", {}).get("items") or []
         info["image_url"] = media[0].get("url", "") if media else ""
+        info["category"] = ""
+        info["brand"] = ""
 
     return info
 
@@ -1787,6 +1961,10 @@ async def create_catalog_from_store_products(
 ) -> dict:
     """
     Create a catalog with products from a store by matching them with supplier products.
+
+    IMPORTANT: Only products that match supplier products are added to the catalog.
+    The price is always determined from the matched supplier product, not the store.
+
     Supports pagination for large stores and sends WebSocket progress notifications.
 
     Args:
@@ -1795,8 +1973,7 @@ async def create_catalog_from_store_products(
         catalog_name: Name for the new catalog (if creating new)
         catalog_id: Use existing catalog instead of creating new one
         match_by: List of fields to match by (sku, ean, name)
-        skip_unmatched: If True, skip products not found in suppliers.
-                        If False, create them as standalone products.
+        skip_unmatched: (Deprecated - always True) Skip products not found in suppliers
 
     Returns:
         dict with creation results
@@ -1952,40 +2129,8 @@ async def create_catalog_from_store_products(
                 added_items += 1
             else:
                 unmatched += 1
-                if not skip_unmatched and info["name"]:
-                    # Create product without supplier
-                    product_id = str(uuid.uuid4())
-                    new_product = {
-                        "id": product_id,
-                        "sku": info["sku"] or f"STORE-{product_id[:8]}",
-                        "name": info["name"],
-                        "description": info["description"],
-                        "price": info["price"],
-                        "stock": info["stock"],
-                        "category": info["category"],
-                        "brand": info["brand"],
-                        "ean": info["ean"],
-                        "image_url": info["image_url"],
-                        "supplier_id": "store_import",
-                        "supplier_name": store_name,
-                        "user_id": user_id,
-                        "is_selected": False,
-                        "created_at": now,
-                        "updated_at": now,
-                    }
-                    products_to_create.append(new_product)
-                    catalog_items.append({
-                        "id": str(uuid.uuid4()),
-                        "catalog_id": catalog_id,
-                        "product_id": product_id,
-                        "custom_price": None,
-                        "custom_name": None,
-                        "active": True,
-                        "category_ids": [],
-                        "created_at": now
-                    })
-                    added_items += 1
-                    created_products += 1
+                # No crear productos nuevos - solo hacer matching con proveedores
+                # El precio debe venir siempre de los productos del proveedor
 
             # Send progress every 50 products
             if (i + 1) % 50 == 0 or (i + 1) == total_store:
@@ -1999,13 +2144,33 @@ async def create_catalog_from_store_products(
                     "total": total_store,
                 })
 
-        # Bulk insert new products (unmatched, when skip_unmatched=False)
-        if products_to_create:
-            await db.products.insert_many(products_to_create)
+        # Note: No new products are created during store import
+        # All products must come from existing suppliers to ensure proper pricing
 
-        # Insert catalog items in bulk
+        # Insert catalog items in bulk (with duplicate handling)
         if catalog_items:
-            await db.catalog_items.insert_many(catalog_items)
+            try:
+                await db.catalog_items.insert_many(catalog_items, ordered=False)
+            except Exception as e:
+                # Handle duplicate key errors gracefully
+                if "duplicate" in str(e).lower() or "11000" in str(e):
+                    logger.warning(f"Some catalog items have duplicate keys, attempting individual inserts: {str(e)[:100]}")
+                    # Try inserting individually to skip duplicates
+                    inserted = 0
+                    for item in catalog_items:
+                        try:
+                            await db.catalog_items.insert_one(item)
+                            inserted += 1
+                        except Exception as item_error:
+                            if "duplicate" in str(item_error).lower() or "11000" in str(item_error):
+                                # Skip this item (it's a duplicate)
+                                logger.debug(f"Skipping duplicate catalog item: {item['id']}")
+                            else:
+                                logger.error(f"Error inserting catalog item {item['id']}: {item_error}")
+                    logger.info(f"Inserted {inserted}/{len(catalog_items)} catalog items (skipped duplicates)")
+                else:
+                    # Re-raise if it's not a duplicate key error
+                    raise
 
         # Step 5: Notify — complete
         await send_realtime_notification(user_id, {

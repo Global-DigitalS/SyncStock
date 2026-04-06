@@ -581,7 +581,7 @@ SUPPLIER_PRESETS = [
     {
         "id": "techdata_es",
         "name": "Tech Data (España)",
-        "description": "ZIP con GM_ES_C_Product + GM_ES_C_Prices — CSV punto y coma, sin cabecera. Stock requiere StockFile.txt por separado.",
+        "description": "ZIP con múltiples archivos (productos + precios) — CSV punto y coma, sin cabecera. Merge automático por columna común.",
         "config": {
             "file_format": "zip",
             "csv_separator": ";",
@@ -599,7 +599,7 @@ SUPPLIER_PRESETS = [
                 "category": "col_15",
                 "subcategory": "col_17",
                 "subcategory2": "col_19",
-                "price": "prices_col_3"
+                "price": "col_22"
             }
         }
     },
@@ -963,4 +963,113 @@ async def diagnose_supplier_zip(supplier_id: str, user: dict = Depends(get_curre
             result["mapping_ok"] = len(missing) == 0
 
     return result
+
+
+@router.get("/suppliers/{supplier_id}/diagnose-zip")
+async def diagnose_zip_merge(
+    supplier_id: str,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Diagnóstico para archivos ZIP multi-archivo.
+    Muestra qué hay en cada archivo y por qué el merge puede estar fallando.
+    """
+    supplier = await db.suppliers.find_one(
+        {"id": supplier_id, "user_id": user["id"]},
+        {"_id": 0}
+    )
+    if not supplier:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+
+    if supplier.get("file_format") != "zip":
+        raise HTTPException(status_code=400, detail="Este proveedor no usa archivos ZIP")
+
+    try:
+        # Download file
+        if supplier.get("file_format") == "zip" and supplier.get("file_url"):
+            import requests
+            response = requests.get(supplier["file_url"], timeout=30)
+            content = response.content
+        else:
+            raise HTTPException(status_code=400, detail="No se puede descargar el archivo")
+
+        from services.sync import extract_zip_files, parse_text_file
+        extracted = extract_zip_files(content)
+
+        if not extracted:
+            raise HTTPException(status_code=400, detail="ZIP vacío")
+
+        # Parse each file
+        diagnostics = {"files": {}, "merge_analysis": {}}
+        compatible_exts = ('.csv', '.txt', '.xlsx', '.xls', '.xml')
+        compatible_files = [
+            (fname, fcontent)
+            for fname, fcontent in extracted.items()
+            if fname.lower().endswith(compatible_exts)
+        ]
+
+        separator = supplier.get("separator", ",")
+        header_row = supplier.get("header_row", 0)
+
+        for fname, fcontent in compatible_files:
+            try:
+                if fname.lower().endswith(('.xlsx', '.xls')):
+                    from openpyxl import load_workbook
+                    import xlrd
+                    fmt = 'xlsx' if fname.lower().endswith('.xlsx') else 'xls'
+                    if fmt == 'xlsx':
+                        wb = load_workbook(filename=__import__('io').BytesIO(fcontent), read_only=True)
+                        ws = wb.active
+                        rows = list(ws.iter_rows(values_only=True))
+                        hdrs = [str(h).strip() if h else f'col_{i}' for i, h in enumerate(rows[0])]
+                        file_rows = [dict(zip(hdrs, r)) for r in rows[1:] if any(r)]
+                    else:
+                        wb = xlrd.open_workbook(file_contents=fcontent)
+                        ws = wb.sheet_by_index(0)
+                        hdrs = [str(ws.cell_value(0, c)).strip() or f'col_{c}' for c in range(ws.ncols)]
+                        file_rows = [{hdrs[c]: ws.cell_value(r, c) for c in range(ws.ncols)} for r in range(1, ws.nrows)]
+                else:
+                    file_rows = parse_text_file(fcontent, separator, header_row)
+
+                # Get diagnostic info
+                first_row = file_rows[0] if file_rows else {}
+                merge_key = list(first_row.keys())[0] if first_row else None
+                merge_values = list(set([str(r.get(merge_key, '')).strip() for r in file_rows[:10] if r.get(merge_key)]))
+
+                diagnostics["files"][fname] = {
+                    "row_count": len(file_rows),
+                    "columns": list(first_row.keys()) if first_row else [],
+                    "merge_key_detected": merge_key,
+                    "sample_merge_values": merge_values[:5],
+                    "first_row_sample": {k: str(v)[:50] for k, v in list(first_row.items())[:5]}
+                }
+
+            except Exception as e:
+                diagnostics["files"][fname] = {"error": str(e)}
+
+        # Analyze merge compatibility
+        if len(diagnostics["files"]) >= 2:
+            file_list = list(diagnostics["files"].keys())
+            for i, f1 in enumerate(file_list):
+                for f2 in file_list[i+1:]:
+                    d1 = diagnostics["files"][f1]
+                    d2 = diagnostics["files"][f2]
+                    if "error" in d1 or "error" in d2:
+                        continue
+                    key1 = d1.get("merge_key_detected")
+                    key2 = d2.get("merge_key_detected")
+                    vals1 = set(d1.get("sample_merge_values", []))
+                    vals2 = set(d2.get("sample_merge_values", []))
+                    overlap = vals1 & vals2
+                    diagnostics["merge_analysis"][f"{f1} <-> {f2}"] = {
+                        "key1": key1,
+                        "key2": key2,
+                        "sample_overlap_count": len(overlap),
+                        "key_mismatch": key1 != key2
+                    }
+
+        return diagnostics
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error en diagnóstico: {str(e)}")
 

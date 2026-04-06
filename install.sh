@@ -474,9 +474,27 @@ EOF
     mkdir -p "$PERSISTENT_CONFIG_DIR"
     chown -R $SERVICE_USER:$SERVICE_GROUP "$PERSISTENT_CONFIG_DIR" 2>/dev/null || true
     chmod 755 "$PERSISTENT_CONFIG_DIR"
-    
+
+    # Configurar permisos del archivo de configuración (solo lectura para el servicio)
+    if [ -f "$PERSISTENT_CONFIG_DIR/config.json" ]; then
+        chmod 600 "$PERSISTENT_CONFIG_DIR/config.json"
+        chown $SERVICE_USER:$SERVICE_GROUP "$PERSISTENT_CONFIG_DIR/config.json"
+    fi
+
     # Ajustar permisos del backend
     chown -R $SERVICE_USER:$SERVICE_GROUP "$APP_DIR/backend"
+
+    # Establecer permisos seguros en directorios del backend
+    # Directorios: 755 (rwxr-xr-x - propietario: leer+escribir+ejecutar, otros: solo lectura)
+    find "$APP_DIR/backend" -type d -exec chmod 755 {} \; 2>/dev/null || true
+    # Archivos: 644 (rw-r--r-- - propietario: leer+escribir, otros: solo lectura)
+    find "$APP_DIR/backend" -type f -exec chmod 644 {} \; 2>/dev/null || true
+
+    # Directorio de uploads: 755 (necesita escribir nuevos archivos)
+    if [ -d "$APP_DIR/backend/uploads" ]; then
+        chmod 755 "$APP_DIR/backend/uploads"
+        chown $SERVICE_USER:$SERVICE_GROUP "$APP_DIR/backend/uploads"
+    fi
     
     # Habilitar e iniciar servicio
     systemctl daemon-reload
@@ -520,7 +538,12 @@ EOF
         print_error "Error al compilar el frontend"
         exit 1
     fi
-    
+
+    # Establecer permisos en el directorio de build (legible por nginx)
+    chmod 755 "build"
+    find "build" -type d -exec chmod 755 {} \; 2>/dev/null || true
+    find "build" -type f -exec chmod 644 {} \; 2>/dev/null || true
+
     print_success "Frontend compilado correctamente"
 }
 
@@ -1082,9 +1105,170 @@ main() {
     
     # SSL
     setup_ssl
-    
+
+    # Log Rotation (FIX 8)
+    setup_logrotate
+
     # Mostrar resumen
     print_summary
+}
+
+#-------------------------------------------------------------------------------
+# Configuración de Log Rotation (FIX 8)
+#-------------------------------------------------------------------------------
+setup_logrotate() {
+    print_step "Configurando Log Rotation (FIX 8)"
+
+    # 1. Instalar logrotate si no existe
+    if ! command -v logrotate &> /dev/null; then
+        print_info "Instalando logrotate..."
+        apt-get update > /dev/null 2>&1
+        apt-get install -y logrotate > /dev/null 2>&1
+    fi
+    print_success "logrotate disponible"
+
+    # 2. Configurar logrotate para SyncStock
+    print_info "Configurando /etc/logrotate.d/syncstock..."
+    cat > /etc/logrotate.d/syncstock << 'LOGROTATE_EOF'
+# SyncStock Backend Logs
+/var/log/syncstock.log {
+    daily
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 root root
+    su root root
+    sharedscripts
+    postrotate
+        systemctl reload syncstock-backend > /dev/null 2>&1 || true
+    endscript
+}
+
+# Nginx Logs
+/var/log/nginx/*.log {
+    daily
+    rotate 5
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0640 www-data adm
+    su root root
+    sharedscripts
+    postrotate
+        [ -f /var/run/nginx.pid ] && kill -USR1 `cat /var/run/nginx.pid`
+    endscript
+}
+LOGROTATE_EOF
+    chmod 644 /etc/logrotate.d/syncstock
+    print_success "logrotate configurado"
+
+    # 3. Configurar systemd-journald para limitar tamaño
+    print_info "Configurando systemd-journald..."
+    mkdir -p /etc/systemd/journald.conf.d
+    cat > /etc/systemd/journald.conf.d/99-syncstock.conf << 'JOURNALD_EOF'
+[Journal]
+# Limitar tamaño máximo total a 300MB
+SystemMaxUse=300M
+
+# Limitar tamaño máximo individual a 50MB
+SystemMaxFileSize=50M
+
+# Mantener máximo 7 días
+MaxRetentionSec=7day
+
+# Comprimir journals viejos
+Compress=yes
+
+# Nivel de logging
+MaxLevelStore=info
+MaxLevelSyslog=warning
+JOURNALD_EOF
+
+    systemctl restart systemd-journald
+    print_success "systemd-journald configurado"
+
+    # 4. Crear script de limpieza automática
+    print_info "Creando script de limpieza automática..."
+    cat > /usr/local/bin/cleanup-logs.sh << 'CLEANUP_EOF'
+#!/bin/bash
+#
+# cleanup-logs.sh - Limpiar logs del sistema automáticamente
+# Se ejecuta diariamente vía cron (3 AM)
+
+LOG_FILE="/var/log/cleanup.log"
+DATE=$(date '+%Y-%m-%d %H:%M:%S')
+
+{
+    echo "[$DATE] ========== INICIO LIMPIEZA LOGS =========="
+
+    # 1. Vaciar journal (mantener solo 300MB)
+    echo "[$DATE] Limpiando journal..."
+    journalctl --vacuum-size=300M
+
+    # 2. Truncar btmp (intentos de login fallidos)
+    echo "[$DATE] Limpiando btmp..."
+    truncate -s 0 /var/log/btmp 2>/dev/null
+    truncate -s 0 /var/log/btmp.1 2>/dev/null
+
+    # 3. Limpiar logs de Plesk antiguos (>30 días)
+    echo "[$DATE] Limpiando logs de Plesk..."
+    find /var/log/plesk -type f -mtime +30 -delete 2>/dev/null
+
+    # 4. Rotar logs con logrotate
+    echo "[$DATE] Rotando logs con logrotate..."
+    logrotate -f /etc/logrotate.d/syncstock
+
+    # 5. Reportar espacio
+    SPACE=$(du -sh /var/log 2>/dev/null | cut -f1)
+    JOURNAL=$(journalctl --disk-usage | grep "Archived and active" | awk '{print $5}')
+
+    echo "[$DATE] ========== RESULTADO =========="
+    echo "[$DATE] Espacio total /var/log: $SPACE"
+    echo "[$DATE] Journal: $JOURNAL"
+    echo "[$DATE] ========== FIN LIMPIEZA =========="
+    echo ""
+
+} >> "$LOG_FILE" 2>&1
+CLEANUP_EOF
+
+    chmod +x /usr/local/bin/cleanup-logs.sh
+    print_success "Script de limpieza creado"
+
+    # 5. Validar configuración de logrotate
+    print_info "Validando configuración de logrotate..."
+    if logrotate -d /etc/logrotate.d/syncstock > /dev/null 2>&1; then
+        print_success "Configuración válida"
+    else
+        print_error "Error en configuración de logrotate"
+        logrotate -d /etc/logrotate.d/syncstock
+        return 1
+    fi
+
+    # 6. Agendar en cron (3 AM diariamente)
+    print_info "Agendando limpieza automática (3 AM diariamente)..."
+
+    CRON_JOB="0 3 * * * /usr/local/bin/cleanup-logs.sh"
+    CRON_TEMP="/tmp/cron_syncstock_$$"
+
+    crontab -l 2>/dev/null > "$CRON_TEMP" || true
+
+    if ! grep -q "cleanup-logs.sh" "$CRON_TEMP" 2>/dev/null; then
+        echo "$CRON_JOB" >> "$CRON_TEMP"
+        crontab "$CRON_TEMP"
+        print_success "Cron job agendado"
+    else
+        print_info "Cron job ya existe"
+    fi
+
+    rm -f "$CRON_TEMP"
+
+    # 7. Ejecutar limpieza inicial
+    print_info "Ejecutando limpieza inicial..."
+    /usr/local/bin/cleanup-logs.sh > /dev/null 2>&1
+    print_success "Log rotation completamente configurado"
 }
 
 #-------------------------------------------------------------------------------

@@ -41,6 +41,7 @@ class CheckoutRequest(BaseModel):
     plan_id: str
     origin_url: str
     billing_cycle: str = "monthly"  # monthly or yearly
+    billing_email: Optional[str] = None  # Required for new user registration
 
 
 class CheckoutResponse(BaseModel):
@@ -185,27 +186,27 @@ async def create_checkout_session(
     request: Request,
     user: dict = Depends(get_current_user)
 ):
-    """Create a Stripe checkout session for subscription"""
-    
+    """Create a Stripe checkout session for subscription (authenticated users)"""
+
     config = await get_configured_stripe()
-    
+
     # Get the plan from database (server-side - never trust frontend amounts)
     plan = await db.subscription_plans.find_one({"id": checkout_request.plan_id})
     if not plan:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
-    
+
     # Determine price based on billing cycle (server-side calculation)
     if checkout_request.billing_cycle == "yearly":
         amount = float(plan.get("price_yearly", 0))
     else:
         amount = float(plan.get("price_monthly", 0))
-    
+
     if amount <= 0:
         raise HTTPException(status_code=400, detail="Este plan no tiene precio configurado")
-    
+
     # Convert to cents (Stripe expects amounts in smallest currency unit)
     amount_cents = int(amount * 100)
-    
+
     # Build success and cancel URLs — validate origin against allowed domains to prevent open redirect
     raw_origin = (checkout_request.origin_url or "").strip().rstrip("/")
     if not re.match(r'^https?://[a-zA-Z0-9._-]+(:\d+)?$', raw_origin):
@@ -222,7 +223,7 @@ async def create_checkout_session(
     origin = raw_origin
     success_url = f"{origin}/#/subscriptions?session_id={{CHECKOUT_SESSION_ID}}&success=true"
     cancel_url = f"{origin}/#/subscriptions?canceled=true"
-    
+
     try:
         # Create checkout session using official Stripe SDK
         session = stripe.checkout.Session.create(
@@ -244,13 +245,12 @@ async def create_checkout_session(
             customer_email=user.get("email"),
             metadata={
                 "user_id": user.get("id"),
-                "user_email": user.get("email"),
                 "plan_id": checkout_request.plan_id,
                 "plan_name": plan.get("name"),
                 "billing_cycle": checkout_request.billing_cycle
             }
         )
-        
+
         # Record the transaction BEFORE redirect
         await db.payment_transactions.insert_one({
             "session_id": session.id,
@@ -265,14 +265,126 @@ async def create_checkout_session(
             "payment_status": "initiated",
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        
+
         logger.info(f"Checkout session created for user {user.get('email')}, plan {plan.get('name')}, session {session.id}")
-        
+
         return CheckoutResponse(
             checkout_url=session.url,
             session_id=session.id
         )
-        
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error creating checkout session: {e}")
+        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
+    except Exception as e:
+        logger.error(f"Error creating checkout session: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al crear sesión de pago: {str(e)}")
+
+
+@router.post("/stripe/create-checkout-new-user")
+async def create_checkout_session_new_user(
+    checkout_request: CheckoutRequest,
+    request: Request
+):
+    """
+    Create a Stripe checkout session for NEW users during registration.
+    This endpoint is PUBLIC (no authentication required).
+    Used when user is registering with a paid plan.
+    """
+
+    config = await get_configured_stripe()
+
+    # Get the plan from database (server-side - never trust frontend amounts)
+    plan = await db.subscription_plans.find_one({"id": checkout_request.plan_id})
+    if not plan:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+
+    # Determine price based on billing cycle (server-side calculation)
+    if checkout_request.billing_cycle == "yearly":
+        amount = float(plan.get("price_yearly", 0))
+    else:
+        amount = float(plan.get("price_monthly", 0))
+
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="Este plan no tiene precio configurado")
+
+    # Convert to cents (Stripe expects amounts in smallest currency unit)
+    amount_cents = int(amount * 100)
+
+    # Build success and cancel URLs — validate origin against allowed domains to prevent open redirect
+    raw_origin = (checkout_request.origin_url or "").strip().rstrip("/")
+    if not re.match(r'^https?://[a-zA-Z0-9._-]+(:\d+)?$', raw_origin):
+        raise HTTPException(status_code=400, detail="origin_url inválida")
+
+    # Block private / loopback addresses (SSRF guard)
+    _blocked = re.compile(
+        r'^https?://(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)',
+        re.IGNORECASE,
+    )
+    if _blocked.match(raw_origin):
+        raise HTTPException(status_code=400, detail="origin_url no permitida")
+
+    origin = raw_origin
+    # For new user registrations, redirect to checkout-success page for verification
+    success_url = f"{origin}/#/checkout-success?session_id={{CHECKOUT_SESSION_ID}}&success=true"
+    cancel_url = f"{origin}/#/register"
+
+    # Get customer email from request (for new users during registration)
+    customer_email = getattr(checkout_request, 'billing_email', None) or getattr(checkout_request, 'email', None)
+    if not customer_email:
+        raise HTTPException(status_code=400, detail="Email requerido para nueva registración")
+
+    try:
+        # Create checkout session using official Stripe SDK
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            line_items=[{
+                "price_data": {
+                    "currency": "eur",
+                    "unit_amount": amount_cents,
+                    "product_data": {
+                        "name": plan.get("name", "Suscripción"),
+                        "description": f"Plan {plan.get('name')} - {checkout_request.billing_cycle}",
+                    },
+                },
+                "quantity": 1,
+            }],
+            mode="payment",
+            success_url=success_url,
+            cancel_url=cancel_url,
+            customer_email=customer_email,
+            metadata={
+                "plan_id": checkout_request.plan_id,
+                "plan_name": plan.get("name"),
+                "billing_cycle": checkout_request.billing_cycle,
+                "is_new_registration": "true",  # Mark that this is a new user registration
+                "customer_email": customer_email  # Store email in metadata for webhook processing
+            }
+        )
+
+        # Record the transaction BEFORE redirect (user_id will be null for new registrations)
+        await db.payment_transactions.insert_one({
+            "session_id": session.id,
+            "user_id": None,  # New user - doesn't have ID yet
+            "user_email": customer_email,  # Store email for later matching
+            "plan_id": checkout_request.plan_id,
+            "plan_name": plan.get("name"),
+            "billing_cycle": checkout_request.billing_cycle,
+            "amount": amount,
+            "currency": "eur",
+            "status": "pending",
+            "payment_status": "initiated",
+            "is_new_registration": True,
+            "created_at": datetime.now(timezone.utc).isoformat()
+        })
+
+        logger.info(f"Checkout session created for new user registration, email {customer_email}, plan {plan.get('name')}, session {session.id}")
+
+        return CheckoutResponse(
+            checkout_url=session.url,
+            session_id=session.id
+        )
+
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error creating checkout session: {e}")
         raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
@@ -282,6 +394,40 @@ async def create_checkout_session(
 
 
 @router.get("/stripe/checkout-status/{session_id}")
+async def get_checkout_status_public(session_id: str, request: Request):
+    """
+    Get the status of a checkout session (PUBLIC - for new user registration verification)
+    Returns payment status without requiring authentication.
+    Used during registration flow to verify payment before creating user.
+    """
+
+    config = await get_configured_stripe()
+
+    try:
+        # Retrieve session from Stripe
+        session = stripe.checkout.Session.retrieve(session_id)
+
+        # Map Stripe status to our status
+        status = session.status  # complete, expired, open
+        payment_status = session.payment_status  # paid, unpaid, no_payment_required
+
+        return {
+            "status": status,
+            "payment_status": payment_status,
+            "amount_total": session.amount_total / 100 if session.amount_total else 0,  # Convert from cents
+            "currency": session.currency,
+            "customer_email": session.customer_email
+        }
+
+    except stripe.error.StripeError as e:
+        logger.error(f"Stripe error retrieving checkout status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
+    except Exception as e:
+        logger.error(f"Error retrieving checkout status: {e}")
+        raise HTTPException(status_code=500, detail=f"Error al verificar estado: {str(e)}")
+
+
+@router.get("/stripe/checkout-status-auth/{session_id}")
 async def get_checkout_status(session_id: str, request: Request, user: dict = Depends(get_current_user)):
     """Get the status of a checkout session and update user subscription if paid"""
     

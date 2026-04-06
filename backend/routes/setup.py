@@ -3,14 +3,14 @@ Módulo de configuración inicial de la aplicación.
 Permite configurar la conexión a MongoDB, JWT, CORS y crear el usuario SuperAdmin
 completamente desde la interfaz web cuando la aplicación se despliega por primera vez.
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timezone
 import uuid
 import secrets
 import logging
 
-from services.auth import hash_password, create_token
+from services.auth import hash_password, create_token, get_superadmin_user
 from services.config_manager import (
     get_config, update_config, save_config, generate_jwt_secret,
     is_app_configured, AppConfig, get_config_info, backup_config, list_backups
@@ -310,10 +310,11 @@ async def configure_app(setup: SetupRequest):
 
 
 @router.post("/setup/test-connection")
-async def test_mongo_connection(data: dict):
+async def test_mongo_connection(data: dict, _admin: dict = Depends(get_superadmin_user)):
     """
     Prueba la conexión a MongoDB sin crear ningún usuario.
     Útil para verificar la URL antes de completar la configuración.
+    Requiere autenticación de SuperAdmin.
     """
     from motor.motor_asyncio import AsyncIOMotorClient
     
@@ -373,19 +374,21 @@ async def test_mongo_connection(data: dict):
 
 
 @router.get("/setup/config-info")
-async def get_configuration_info():
+async def get_configuration_info(_admin: dict = Depends(get_superadmin_user)):
     """
     Devuelve información detallada sobre la ubicación y estado de la configuración.
     Útil para debugging y para que el usuario sepa dónde se guarda su configuración.
+    Requiere autenticación de SuperAdmin.
     """
     return get_config_info()
 
 
 @router.post("/setup/backup")
-async def create_backup():
+async def create_backup(_admin: dict = Depends(get_superadmin_user)):
     """
     Crea una copia de seguridad de la configuración actual.
     Útil antes de actualizar la aplicación.
+    Requiere autenticación de SuperAdmin.
     """
     backup_path = backup_config()
     
@@ -403,9 +406,10 @@ async def create_backup():
 
 
 @router.get("/setup/backups")
-async def get_backups():
+async def get_backups(_admin: dict = Depends(get_superadmin_user)):
     """
     Lista todas las copias de seguridad disponibles.
+    Requiere autenticación de SuperAdmin.
     """
     backups = list_backups()
     return {
@@ -417,10 +421,11 @@ async def get_backups():
 
 
 @router.post("/setup/reload-database")
-async def reload_database():
+async def reload_database(_admin: dict = Depends(get_superadmin_user)):
     """
     Recarga la configuración de la base de datos.
     Útil después de cambiar la URL de MongoDB sin reiniciar el servidor.
+    Requiere autenticación de SuperAdmin.
     """
     try:
         from services.database import reload_database_config

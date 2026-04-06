@@ -1,12 +1,15 @@
 import os
 import logging
 import json
+import asyncio
+import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Dict, Set
 
 from fastapi import FastAPI, APIRouter, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
@@ -43,6 +46,7 @@ from routes.crm import router as crm_router
 from routes.support import router as support_router
 from routes.marketplaces import router as marketplaces_router
 from routes.competitors import router as competitors_router
+from routes.orders import router as orders_router
 
 # Import sync functions for scheduler
 from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
@@ -119,6 +123,48 @@ async def _purge_expired_security_records():
     )
 
 
+async def _purge_old_database_records():
+    """Scheduled job: limpieza de datos antiguos como complemento a los TTL indexes.
+    Los TTL indexes de MongoDB limpian automáticamente, pero este job sirve como respaldo
+    y para colecciones donde el campo de fecha no es 'Date' nativo de MongoDB."""
+    from datetime import datetime, timezone, timedelta
+    from services.database import db as _db
+
+    now = datetime.now(timezone.utc)
+    cutoff_90d = (now - timedelta(days=90)).isoformat()
+    cutoff_180d = (now - timedelta(days=180)).isoformat()
+    cutoff_30d = (now - timedelta(days=30)).isoformat()
+
+    totals = {}
+    try:
+        # notifications > 90 días
+        r = await _db.notifications.delete_many({"created_at": {"$lt": cutoff_90d}})
+        totals["notifications"] = r.deleted_count
+        # price_history > 180 días
+        r = await _db.price_history.delete_many({"created_at": {"$lt": cutoff_180d}})
+        totals["price_history"] = r.deleted_count
+        # price_snapshots > 90 días
+        r = await _db.price_snapshots.delete_many({"scraped_at": {"$lt": cutoff_90d}})
+        totals["price_snapshots"] = r.deleted_count
+        # sync_history > 90 días
+        r = await _db.sync_history.delete_many({"started_at": {"$lt": cutoff_90d}})
+        totals["sync_history"] = r.deleted_count
+        # sync_status > 30 días
+        r = await _db.sync_status.delete_many({"created_at": {"$lt": cutoff_30d}})
+        totals["sync_status"] = r.deleted_count
+        # sync_jobs > 90 días
+        r = await _db.sync_jobs.delete_many({"started_at": {"$lt": cutoff_90d}})
+        totals["sync_jobs"] = r.deleted_count
+
+        deleted_total = sum(totals.values())
+        if deleted_total > 0:
+            logger.info(f"DB cleanup: {deleted_total} docs eliminados - {totals}")
+        else:
+            logger.debug("DB cleanup: sin documentos antiguos que eliminar")
+    except Exception as e:
+        logger.error(f"Error en limpieza de BD: {e}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -168,6 +214,8 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(_purge_expired_security_records, 'interval', hours=6, id='security_purge', replace_existing=True)
     # Cache cleanup: remove expired entries every 10 minutes
     scheduler.add_job(cache.cleanup_expired, 'interval', minutes=10, id='cache_cleanup', replace_existing=True)
+    # Database cleanup: purge old data daily at 4 AM (complemento de TTL indexes)
+    scheduler.add_job(_purge_old_database_records, 'interval', hours=24, id='db_cleanup', replace_existing=True)
     # Competitor price scraping - runs every 8 hours for all users with active competitors
     from services.scrapers.scheduler import run_scheduled_crawls
     scheduler.add_job(run_scheduled_crawls, 'interval', hours=8, id='competitor_crawl', replace_existing=True)
@@ -213,6 +261,7 @@ api_router.include_router(dashboard_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(stores_router)
 api_router.include_router(webhooks_router)
+api_router.include_router(orders_router)
 api_router.include_router(setup_router)
 api_router.include_router(email_router)
 api_router.include_router(admin_router)
@@ -255,6 +304,13 @@ async def health_check():
 # WebSocket endpoint for real-time notifications
 @app.websocket("/ws/notifications/{user_id}")
 async def websocket_notifications(websocket: WebSocket, user_id: str):
+    """
+    WebSocket endpoint para notificaciones en tiempo real.
+    Implementa heartbeat automático para detectar conexiones muertas.
+
+    Timeout Nginx: 300s (5 minutos)
+    Heartbeat interval: 60s (dentro del timeout)
+    """
     # Authenticate before accepting the connection.
     # The JWT token is expected as a query parameter: ?token=<jwt>
     # (browsers cannot set custom headers on WebSocket connections).
@@ -280,17 +336,64 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
         return
 
     await ws_manager.connect(websocket, user_id)
+
+    # Heartbeat configuration
+    HEARTBEAT_INTERVAL = 60  # segundos (debe ser menor que el timeout de Nginx: 300s)
+    heartbeat_task = None
+
+    async def send_heartbeat():
+        """Envía heartbeat periódicamente para mantener la conexión viva."""
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL)
+                try:
+                    await websocket.send_text(json.dumps({"type": "heartbeat", "timestamp": time.time()}))
+                except Exception as e:
+                    logger.debug(f"Error sending heartbeat to {user_id}: {e}")
+                    break
+        except asyncio.CancelledError:
+            pass
+
     try:
+        # Start heartbeat task
+        heartbeat_task = asyncio.create_task(send_heartbeat())
+
         while True:
-            # Keep connection alive, listen for pings
+            # Listen for messages from client
             data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
+
+            try:
+                message = json.loads(data)
+            except json.JSONDecodeError:
+                # Si no es JSON válido, tratar como ping simple
+                if data == "ping":
+                    await websocket.send_text("pong")
+                continue
+
+            # Handle different message types
+            if message.get("type") == "ping":
+                await websocket.send_text(json.dumps({"type": "pong", "timestamp": time.time()}))
+            elif message.get("type") == "heartbeat_ack":
+                # Acknowledge heartbeat - no es necesario responder
+                logger.debug(f"Heartbeat ACK from {user_id}")
+            else:
+                # Otros mensajes se ignoran, pero mantienen la conexión viva
+                logger.debug(f"Received message from {user_id}: {message.get('type')}")
+
     except WebSocketDisconnect:
+        logger.info(f"Client {user_id} disconnected normally")
         ws_manager.disconnect(websocket, user_id)
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error for {user_id}: {e}")
         ws_manager.disconnect(websocket, user_id)
+    finally:
+        # Cancel heartbeat task on disconnect
+        if heartbeat_task and not heartbeat_task.done():
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass
 
 
 app.include_router(api_router)
@@ -333,7 +436,8 @@ class CSRFMiddleware(BaseHTTPMiddleware):
     _EXEMPT_PREFIXES = (
         "/api/auth/login", "/api/auth/register", "/api/auth/refresh",
         "/api/auth/forgot-password", "/api/auth/reset-password",
-        "/api/webhooks", "/api/stripe/webhook", "/api/csp-report",
+        "/api/webhooks", "/api/stripe/webhook", "/api/stripe/create-checkout-new-user",
+        "/api/stripe/checkout-status", "/api/csp-report",
         "/api/setup",
     )
     _MUTATING_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
@@ -427,6 +531,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
+app.add_middleware(GZipMiddleware, minimum_size=500)  # Comprimir respuestas > 500 bytes
 
 _cors_origins_env = os.environ.get('CORS_ORIGINS', '')
 if not _cors_origins_env or _cors_origins_env.strip() == '*':

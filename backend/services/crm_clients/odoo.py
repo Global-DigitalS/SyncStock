@@ -4,6 +4,7 @@ Odoo ERP/CRM API Client.
 import logging
 import requests
 import base64
+import asyncio
 from typing import Dict, List, Optional
 
 from .base import _validate_crm_url
@@ -131,6 +132,15 @@ class OdooClient:
             logger.error(f"Odoo get_product_by_sku error: {e}")
             return None
 
+    def get_products_by_skus_batch(self, skus: List[str]) -> Dict[str, Dict]:
+        """Get multiple products by SKU in batch - returns dict of sku -> product"""
+        result = {}
+        for sku in skus:
+            product = self.get_product_by_sku(sku)
+            if product:
+                result[sku] = product
+        return result
+
     def create_product(self, product_data: Dict) -> Dict:
         """Create a new product in Odoo"""
         try:
@@ -153,10 +163,19 @@ class OdooClient:
             # Add image if available
             if product_data.get("image_url"):
                 try:
-                    img_response = requests.get(product_data["image_url"], timeout=10)
-                    if img_response.status_code == 200:
-                        img_base64 = base64.b64encode(img_response.content).decode('utf-8')
-                        payload["image_1920"] = img_base64
+                    img_response = requests.get(product_data["image_url"], timeout=10, stream=True)
+                    try:
+                        # FIXED: Check Content-Length BEFORE downloading to prevent DoS
+                        content_length = int(img_response.headers.get("Content-Length", 0))
+                        MAX_IMAGE_SIZE = 5 * 1024 * 1024  # 5MB limit
+
+                        if content_length > MAX_IMAGE_SIZE:
+                            logger.warning(f"Image too large: {content_length} > {MAX_IMAGE_SIZE}")
+                        elif img_response.status_code == 200:
+                            img_base64 = base64.b64encode(img_response.content).decode('utf-8')
+                            payload["image_1920"] = img_base64
+                    finally:
+                        img_response.close()  # FIXED: Always close to prevent resource leak
                 except Exception as img_err:
                     logger.warning(f"Failed to download product image: {img_err}")
 
@@ -461,7 +480,7 @@ class OdooClient:
                 f"{self.base_url}/api/sale.order/search_read",
                 params={
                     'domain': [['state', 'in', ['draft', 'sent', 'sale']]],
-                    'fields': ['id', 'name', 'partner_id', 'amount_total', 'date_order'],
+                    'fields': ['id', 'name', 'partner_id', 'amount_total', 'date_order', 'client_order_ref'],
                     'limit': limit,
                     'order': 'date_order desc'
                 },
@@ -472,6 +491,35 @@ class OdooClient:
             return []
         except Exception as e:
             logger.error(f"Odoo get_orders error: {e}")
+            return []
+
+    def search_orders_by_external_id(self, external_id: str) -> List[Dict]:
+        """Search for orders by external_id (client_order_ref field)
+
+        HIGH #10: Check if order already exists in CRM to prevent duplicates
+        """
+        try:
+            # client_order_ref is used to store external order IDs
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/api/sale.order/search_read",
+                params={
+                    'domain': [['client_order_ref', '=', external_id]],
+                    'fields': ['id', 'name', 'partner_id', 'amount_total', 'date_order', 'client_order_ref'],
+                    'limit': 10
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                results = response.json()
+                if isinstance(results, list):
+                    return results
+                elif isinstance(results, dict):
+                    return results.get("data", [])
+            logger.debug(f"search_orders_by_external_id({external_id}): no results or error {response.status_code}")
+            return []
+        except Exception as e:
+            logger.error(f"Error searching orders by external_id {external_id}: {e}")
             return []
 
     def get_purchase_orders(self, limit: int = 100) -> List[Dict]:
@@ -514,3 +562,20 @@ class OdooClient:
         except Exception as e:
             logger.error(f"Odoo get_stats error: {e}")
             return {"products": 0, "suppliers": 0, "clients": 0, "orders": 0}
+
+    # ==================== ASYNC METHODS (FASE 2) ====================
+
+    async def create_product_async(self, product_data: Dict) -> Dict:
+        """Async wrapper for create_product - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
+        return await loop.run_in_executor(None, self.create_product, product_data)
+
+    async def update_product_async(self, product_id: int, product_data: Dict) -> Dict:
+        """Async wrapper for update_product - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
+        return await loop.run_in_executor(None, self.update_product, product_id, product_data)
+
+    async def update_stock_async(self, product_id: int, stock_value: int) -> Dict:
+        """Async wrapper for update_stock - runs in thread pool to avoid blocking"""
+        loop = asyncio.get_running_loop()  # FIXED: Use get_running_loop() instead of deprecated get_event_loop()
+        return await loop.run_in_executor(None, self.update_stock, product_id, stock_value)

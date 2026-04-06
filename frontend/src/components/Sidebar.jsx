@@ -52,6 +52,7 @@ const navItems = [
   { path: "/price-history", label: "Historial de Precios", icon: TrendingUp },
   { path: "/sync-history", label: "Historial de Syncs", icon: History },
   { path: "/sync-settings", label: "Sincronización", icon: RefreshCw },
+  { path: "/orders", label: "Pedidos", icon: ShoppingCart },
   { path: "/notifications", label: "Notificaciones", icon: Bell },
   { path: "/subscriptions", label: "Suscripciones", icon: CreditCard },
 ];
