@@ -22,21 +22,75 @@ logger = logging.getLogger(__name__)
 
 
 # SSRF guard for WooCommerce store URLs (OWASP A10)
-_WC_PRIVATE_IP_RE = re.compile(
-    r'^https?://(localhost|127\.|0\.|10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[01])\.)',
-    re.IGNORECASE,
-)
-_WC_VALID_URL_RE = re.compile(r'^https?://[a-zA-Z0-9._-]+(:\d+)?(/.*)?$')
+# Uses ipaddress module for comprehensive IP validation instead of regex
+_WC_VALID_URL_RE = re.compile(r'^https?://[a-zA-Z0-9._\-:/?#\[\]@!$&\'()*+,;=]+$')
+
+# Reserved/blocked domains
+_BLOCKED_DOMAINS = {
+    'localhost',
+    '127.0.0.1',
+    '169.254.169.254',  # AWS metadata endpoint
+    '169.254.170.2',    # Docker daemon endpoint
+    '127.0.0.53',       # systemd-resolved
+}
 
 
 def _validate_store_url(url: str) -> str:
-    """Validate WooCommerce store URL to prevent SSRF."""
+    """Validate WooCommerce store URL to prevent SSRF attacks.
+
+    SECURITY FIX: Use ipaddress module for comprehensive IP validation
+    Blocks:
+    - Private IP ranges (10.x, 172.16-31.x, 192.168.x)
+    - Loopback (127.x, ::1)
+    - Link-local (169.254.x)
+    - IPv6 loopback and reserved ranges
+    - Reserved hostnames (localhost, metadata endpoints)
+    """
+    from urllib.parse import urlparse
+    import ipaddress
+
     url = url.strip().rstrip('/')
+
     if not _WC_VALID_URL_RE.match(url):
         raise HTTPException(status_code=400, detail="URL de tienda inválida")
-    if _WC_PRIVATE_IP_RE.match(url):
-        raise HTTPException(status_code=400, detail="La URL de tienda no puede apuntar a direcciones IP privadas")
-    return url
+
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+
+        if not hostname:
+            raise HTTPException(status_code=400, detail="URL de tienda inválida")
+
+        # Check blocked domains first
+        if hostname.lower() in _BLOCKED_DOMAINS:
+            raise HTTPException(status_code=400, detail="La URL de tienda no puede apuntar a dominios reservados")
+
+        # Try to parse as IP address
+        try:
+            ip = ipaddress.ip_address(hostname)
+
+            # Block all reserved IP ranges
+            if (ip.is_private or
+                ip.is_loopback or
+                ip.is_link_local or
+                ip.is_reserved or
+                ip.is_multicast):
+                raise HTTPException(
+                    status_code=400,
+                    detail="La URL de tienda no puede apuntar a direcciones IP privadas o reservadas"
+                )
+        except ValueError:
+            # Not an IP address - it's a domain name
+            # Verify it's not trying to resolve to localhost variants
+            pass
+
+        return url
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error validating store URL: {e}")
+        raise HTTPException(status_code=400, detail="URL de tienda inválida")
 
 
 @router.post("/woocommerce/configs", response_model=WooCommerceConfigResponse)

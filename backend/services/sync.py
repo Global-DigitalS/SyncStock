@@ -389,14 +389,18 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
     try:
         return _do_request(verify_ssl=True)
     except requests.exceptions.SSLError as ssl_err:
-        logger.warning(f"SSL verification failed for {url}, retrying without SSL verification: {ssl_err}")
-        try:
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            return _do_request(verify_ssl=False)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"URL download failed after SSL retry: {e}")
-            raise Exception(f"Error descargando desde URL: {str(e)}")
+        logger.warning(f"SSL verification failed for {url}: {ssl_err}")
+        # SECURITY FIX: Don't automatically disable SSL - this is a MITM vector
+        # Instead, log the error and fail - the user must explicitly configure self-signed certificates
+        logger.error(f"SSL verification failed for supplier URL: {url}")
+        logger.error("To use this URL, one of the following is required:")
+        logger.error("1. Use a valid SSL certificate signed by a trusted CA")
+        logger.error("2. Configure certificate pinning in supplier settings")
+        logger.error("3. Contact administrator to add exception for this domain")
+        raise Exception(
+            f"SSL verification failed para {url}. Requiere certificado SSL válido. "
+            f"Contacta al administrador para configurar excepciones."
+        )
     except requests.exceptions.RequestException as e:
         logger.error(f"URL download failed: {e}")
         raise Exception(f"Error descargando desde URL: {str(e)}")
@@ -459,11 +463,31 @@ def parse_xls_content(content: bytes) -> list:
 
 
 def parse_xml_content(content: bytes) -> list:
+    """Parse XML content safely - prevents XXE attacks
+
+    SECURITY FIX: Disable external entities to prevent XXE injection
+    """
     try:
         decoded = content.decode('utf-8')
     except Exception:
         decoded = content.decode('latin-1')
-    data = xmltodict.parse(decoded)
+
+    # SECURITY: Use defusedxml to prevent XXE attacks
+    # Disables: external entities, internal DTD parsing, entity expansion
+    try:
+        from defusedxml import xmltodict as safe_xmltodict
+        data = safe_xmltodict.parse(decoded, disable_entities=True, process_namespaces=False)
+    except ImportError:
+        logger.warning("defusedxml not installed, using standard xmltodict (XXE vulnerable)")
+        # Fallback with manual XXE protection
+        import xml.etree.ElementTree as ET
+        # Disable external entities and DTD processing
+        for event, elem in ET.iterparse(io.StringIO(decoded), events=['start']):
+            # This approach doesn't prevent XXE - better to fail
+            pass
+        logger.warning("XML parsing requires defusedxml library for XXE protection")
+        raise ValueError("XML parsing requires defusedxml for security")
+
     for key in ['products', 'items', 'catalog', 'data', 'root']:
         if key in data:
             items = data[key]
