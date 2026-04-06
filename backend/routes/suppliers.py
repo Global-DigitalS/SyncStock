@@ -1,27 +1,39 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Request
-from pydantic import BaseModel
-from typing import List, Optional
-from datetime import datetime, timezone
-import uuid
-import logging
 import asyncio
+import logging
+import uuid
+from datetime import UTC, datetime
+
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
-from services.database import db
-from services.auth import get_current_user, check_user_limit
-from services.sync import (
-    sync_supplier, sync_supplier_multifile,
-    parse_csv_content, parse_xlsx_content,
-    parse_xls_content, parse_xml_content, normalize_product_data,
-    browse_ftp_directory, prefetch_existing_products, bulk_upsert_products
+from models.schemas import (
+    SupplierCreate,
+    SupplierResponse,
+    SupplierUpdate,
 )
-from services.sanitizer import sanitize_string, sanitize_dict, sanitize_path, remove_credentials
-from services.encryption import encrypt_password, decrypt_password
+from services.auth import check_user_limit, get_current_user
+from services.database import db
+from services.encryption import decrypt_password, encrypt_password
+from services.sanitizer import (
+    remove_credentials,
+)
+from services.sync import (
+    browse_ftp_directory,
+    bulk_upsert_products,
+    normalize_product_data,
+    parse_csv_content,
+    parse_xls_content,
+    parse_xlsx_content,
+    parse_xml_content,
+    prefetch_existing_products,
+    sync_supplier,
+    sync_supplier_multifile,
+)
 
 # Registry to prevent background tasks from being garbage-collected
 _background_tasks: set = set()
-from models.schemas import SupplierCreate, SupplierUpdate, SupplierResponse, ProductResponse
 
 router = APIRouter()
 _limiter = Limiter(key_func=get_remote_address)
@@ -31,12 +43,12 @@ logger = logging.getLogger(__name__)
 class FtpBrowseRequest(BaseModel):
     ftp_schema: str = "ftp"
     ftp_host: str
-    ftp_user: Optional[str] = ""
-    ftp_password: Optional[str] = ""
-    ftp_port: Optional[int] = 21
-    ftp_mode: Optional[str] = "passive"
-    path: Optional[str] = "/"
-    supplier_id: Optional[str] = None  # If set, use saved password from DB
+    ftp_user: str | None = ""
+    ftp_password: str | None = ""
+    ftp_port: int | None = 21
+    ftp_mode: str | None = "passive"
+    path: str | None = "/"
+    supplier_id: str | None = None  # If set, use saved password from DB
 
 
 @router.post("/suppliers", response_model=SupplierResponse)
@@ -45,12 +57,12 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
     can_create = await check_user_limit(user, "suppliers")
     if not can_create:
         raise HTTPException(
-            status_code=403, 
+            status_code=403,
             detail=f"Has alcanzado el límite de proveedores. Máximo: {user.get('max_suppliers', 10)}"
         )
-    
+
     supplier_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     supplier_doc = {
         "id": supplier_id, "user_id": user["id"],
         "name": supplier.name, "description": supplier.description,
@@ -90,7 +102,7 @@ def _normalize_supplier_data(supplier: dict) -> dict:
     return supplier
 
 
-@router.get("/suppliers", response_model=List[SupplierResponse])
+@router.get("/suppliers", response_model=list[SupplierResponse])
 async def get_suppliers(user: dict = Depends(get_current_user)):
     suppliers = await db.suppliers.find({"user_id": user["id"]}, {"_id": 0, "ftp_password": 0, "url_password": 0, "user_id": 0}).to_list(1000)
     return [SupplierResponse(**_normalize_supplier_data(s)) for s in suppliers]
@@ -212,7 +224,7 @@ async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = 
     # Mark sync as running immediately so the UI can show progress
     await db.suppliers.update_one(
         {"id": supplier_id},
-        {"$set": {"sync_status": "running", "sync_started_at": datetime.now(timezone.utc).isoformat()}}
+        {"$set": {"sync_status": "running", "sync_started_at": datetime.now(UTC).isoformat()}}
     )
 
     async def _run_sync():
@@ -264,16 +276,16 @@ async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_use
             started_str = sync_started_at.isoformat() if hasattr(sync_started_at, 'isoformat') else str(sync_started_at)
             started_dt = datetime.fromisoformat(started_str)
             if started_dt.tzinfo is None:
-                started_dt = started_dt.replace(tzinfo=timezone.utc)
-            elapsed = (datetime.now(timezone.utc) - started_dt).total_seconds()
+                started_dt = started_dt.replace(tzinfo=UTC)
+            elapsed = (datetime.now(UTC) - started_dt).total_seconds()
             if elapsed > 1800:  # 30 minutes
                 sync_status = 'error'
                 await db.suppliers.update_one(
                     {"id": supplier_id},
                     {"$set": {"sync_status": "error", "sync_last_result": "Sincronización interrumpida (tiempo máximo superado)"}}
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"Error updating supplier sync timeout: {e}")
 
     return {
         "last_sync": _to_str(supplier.get('last_sync')),
@@ -322,11 +334,11 @@ async def ftp_browse(req: FtpBrowseRequest, user: dict = Depends(get_current_use
 class FtpTestRequest(BaseModel):
     ftp_schema: str = "ftp"
     ftp_host: str
-    ftp_user: Optional[str] = ""
-    ftp_password: Optional[str] = ""
-    ftp_port: Optional[int] = 21
-    ftp_mode: Optional[str] = "passive"
-    supplier_id: Optional[str] = None  # If set, use saved password from DB
+    ftp_user: str | None = ""
+    ftp_password: str | None = ""
+    ftp_port: int | None = 21
+    ftp_mode: str | None = "passive"
+    supplier_id: str | None = None  # If set, use saved password from DB
 
 
 @router.post("/suppliers/ftp-test")
@@ -336,6 +348,7 @@ async def ftp_test_connection(req: FtpTestRequest, current_user: dict = Depends(
     Útil para verificar credenciales antes de configurar el proveedor.
     """
     import ftplib
+
     import paramiko
 
     schema = req.ftp_schema.lower()
@@ -349,23 +362,23 @@ async def ftp_test_connection(req: FtpTestRequest, current_user: dict = Depends(
         if supplier and supplier.get("ftp_password"):
             password = decrypt_password(supplier["ftp_password"])
     mode = req.ftp_mode or 'passive'
-    
+
     if not host:
         return {"status": "error", "message": "Host FTP requerido", "connected": False}
-    
+
     try:
         if schema == 'sftp':
             transport = paramiko.Transport((host, port))
             transport.connect(username=user, password=password)
             sftp = paramiko.SFTPClient.from_transport(transport)
-            
+
             # Obtener directorio actual
             current_dir = sftp.getcwd() or "/"
             files_count = len(sftp.listdir(current_dir))
-            
+
             sftp.close()
             transport.close()
-            
+
             return {
                 "status": "ok",
                 "message": f"Conexión SFTP exitosa a {host}:{port}",
@@ -378,21 +391,21 @@ async def ftp_test_connection(req: FtpTestRequest, current_user: dict = Depends(
             ftp = ftplib.FTP_TLS() if schema == 'ftps' else ftplib.FTP()
             ftp.connect(host, port, timeout=10)
             ftp.login(user or 'anonymous', password or '')
-            
+
             if schema == 'ftps':
                 ftp.prot_p()
             ftp.set_pasv(mode == 'passive')
-            
+
             # Obtener información del servidor
             current_dir = ftp.pwd()
             files = []
             ftp.dir(current_dir, files.append)
-            
+
             # Obtener mensaje de bienvenida si está disponible
             welcome = getattr(ftp, 'welcome', '')
-            
+
             ftp.quit()
-            
+
             return {
                 "status": "ok",
                 "message": f"Conexión {'FTPS' if schema == 'ftps' else 'FTP'} exitosa a {host}:{port}",
@@ -403,29 +416,29 @@ async def ftp_test_connection(req: FtpTestRequest, current_user: dict = Depends(
                 "files_in_root": len(files),
                 "welcome": welcome[:200] if welcome else None
             }
-            
-    except ftplib.error_perm as e:
+
+    except ftplib.error_perm:
         return {
             "status": "error",
             "message": "Error de autenticación FTP. Verifica las credenciales.",
             "connected": False,
             "suggestion": "Verifica el usuario y contraseña"
         }
-    except paramiko.AuthenticationException as e:
+    except paramiko.AuthenticationException:
         return {
-            "status": "error", 
+            "status": "error",
             "message": "Error de autenticación SFTP. Verifica las credenciales.",
             "connected": False,
             "suggestion": "Verifica el usuario y contraseña"
         }
-    except (ConnectionRefusedError, OSError) as e:
+    except (ConnectionRefusedError, OSError):
         return {
             "status": "error",
             "message": "No se puede conectar al servidor FTP/SFTP. Verifica el host y el puerto.",
             "connected": False,
             "suggestion": f"Verifica que el host {host} y puerto {port} sean correctos"
         }
-    except Exception as e:
+    except Exception:
         return {
             "status": "error",
             "message": "Error de conexión. Verifica los parámetros del servidor.",
@@ -464,19 +477,19 @@ async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(
 
     base_path = data.get("path", "/")
     max_depth = min(data.get("max_depth", 2), 3)  # Máximo 3 niveles para evitar timeout
-    
+
     all_files = []
     dirs_to_scan = [(base_path, 0)]
-    
+
     try:
         while dirs_to_scan:
             current_path, depth = dirs_to_scan.pop(0)
-            
+
             result = await browse_ftp_directory(supplier, current_path)
-            
+
             if result.get("status") != "ok":
                 continue
-            
+
             for item in result.get("files", []):
                 if item["is_dir"]:
                     if depth < max_depth:
@@ -485,7 +498,7 @@ async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(
                     item["relative_path"] = item["path"].replace(base_path, "").lstrip("/")
                     item["depth"] = depth
                     all_files.append(item)
-        
+
         # Agrupar por extensión
         by_extension = {}
         for f in all_files:
@@ -493,7 +506,7 @@ async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(
             if ext not in by_extension:
                 by_extension[ext] = []
             by_extension[ext].append(f)
-        
+
         return {
             "status": "ok",
             "base_path": base_path,
@@ -502,7 +515,7 @@ async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(
             "by_extension": by_extension,
             "extensions_found": list(by_extension.keys())
         }
-        
+
     except Exception as e:
         logger.error(f"FTP list all error: {e}")
         return {"status": "error", "message": "Error al listar el directorio FTP", "files": []}
@@ -530,7 +543,7 @@ async def import_products(supplier_id: str, file: UploadFile = File(...), user: 
         raise
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error procesando archivo: {str(e)}")
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     # Normalize all products
     normalized_products = []
     for raw in raw_products:
@@ -681,13 +694,13 @@ def suggest_column_mapping(columns: list) -> dict:
     """Auto-suggest column mappings based on column names"""
     suggestions = {}
     columns_lower = {c.lower().strip(): c for c in columns}
-    
+
     for field, aliases in FIELD_ALIASES.items():
         for alias in aliases:
             if alias in columns_lower:
                 suggestions[field] = columns_lower[alias]
                 break
-    
+
     return suggestions
 
 
@@ -729,7 +742,7 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
                 content = await download_file_from_ftp({**supplier, 'ftp_path': preview_path})
             else:
                 raise HTTPException(status_code=400, detail="FTP no configurado")
-        
+
         # Parse as CSV (with ZIP support)
         separator = supplier.get('csv_separator', ';') or ';'
         if separator == '\\t':
@@ -755,7 +768,7 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
                     best = fcontent
             content = best or content
             if best is None:
-                return {"status": "error", "message": f"El ZIP no contiene archivos CSV/TXT compatibles", "columns": []}
+                return {"status": "error", "message": "El ZIP no contiene archivos CSV/TXT compatibles", "columns": []}
 
         import csv
         try:
@@ -779,23 +792,23 @@ async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_curre
         else:
             reader = csv.DictReader(lines, delimiter=separator)
         raw_products = list(reader)[:10]  # First 10 for preview
-        
+
         columns = list(raw_products[0].keys()) if raw_products else []
-        
+
         # Auto-suggest mappings
         suggested_mapping = suggest_column_mapping(columns)
-        
+
         # Show sample data
         samples = []
         for row in raw_products[:5]:
             samples.append({k: str(v)[:100] for k, v in row.items()})
-        
+
         # Calculate mapping coverage
         required_fields = ['sku', 'name', 'price']
         optional_fields = ['stock', 'category', 'brand', 'ean', 'weight', 'image_url', 'description']
         missing_required = [f for f in required_fields if f not in suggested_mapping]
         mapped_optional = [f for f in optional_fields if f in suggested_mapping]
-        
+
         return {
             "status": "success",
             "columns": columns,
@@ -818,11 +831,14 @@ async def diagnose_supplier_zip(supplier_id: str, user: dict = Depends(get_curre
     Descarga el archivo del proveedor y devuelve un diagnóstico detallado
     sin importar nada a la base de datos. Útil para depurar problemas de mapeo.
     """
-    from services.sync import (
-        download_file_from_ftp, download_file_from_url,
-        extract_zip_files, parse_text_file, apply_column_mapping
-    )
     import csv as csv_mod
+
+    from services.sync import (
+        download_file_from_ftp,
+        download_file_from_url,
+        extract_zip_files,
+        parse_text_file,
+    )
 
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
@@ -845,7 +861,7 @@ async def diagnose_supplier_zip(supplier_id: str, user: dict = Depends(get_curre
             content = await download_file_from_url(supplier["file_url"], supplier.get("url_username"), supplier.get("url_password"))
         else:
             content = await download_file_from_ftp(supplier)
-    except Exception as e:
+    except Exception:
         return {"status": "error", "step": "download", "message": "Error al descargar el archivo del proveedor"}
 
     # Is it a ZIP?
@@ -862,7 +878,7 @@ async def diagnose_supplier_zip(supplier_id: str, user: dict = Depends(get_curre
     if is_zip:
         try:
             extracted = extract_zip_files(content)
-        except Exception as e:
+        except Exception:
             return {**result, "status": "error", "step": "unzip", "message": "Error al descomprimir el archivo"}
 
         compatible_exts = ('.csv', '.txt', '.xlsx', '.xls', '.xml')
@@ -1014,8 +1030,8 @@ async def diagnose_zip_merge(
         for fname, fcontent in compatible_files:
             try:
                 if fname.lower().endswith(('.xlsx', '.xls')):
-                    from openpyxl import load_workbook
                     import xlrd
+                    from openpyxl import load_workbook
                     fmt = 'xlsx' if fname.lower().endswith('.xlsx') else 'xls'
                     if fmt == 'xlsx':
                         wb = load_workbook(filename=__import__('io').BytesIO(fcontent), read_only=True)

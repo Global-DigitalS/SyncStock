@@ -1,20 +1,25 @@
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Optional
-from datetime import datetime, timezone, timedelta
+import asyncio
+import logging
 import re
 import uuid
-import logging
-import asyncio
+from datetime import UTC, datetime, timedelta
 
-from services.database import db
-from services.auth import get_current_user, check_user_limit
-from services.sync import (
-    get_woocommerce_client, mask_key, calculate_final_price,
-    sync_woocommerce_store_price_stock
-)
+from fastapi import APIRouter, Depends, HTTPException
+
 from models.schemas import (
-    WooCommerceConfig, WooCommerceConfigUpdate, WooCommerceConfigResponse,
-    WooCommerceExportRequest, WooCommerceExportResult
+    WooCommerceConfig,
+    WooCommerceConfigResponse,
+    WooCommerceConfigUpdate,
+    WooCommerceExportRequest,
+    WooCommerceExportResult,
+)
+from services.auth import check_user_limit, get_current_user
+from services.database import db
+from services.sync import (
+    calculate_final_price,
+    get_woocommerce_client,
+    mask_key,
+    sync_woocommerce_store_price_stock,
 )
 
 router = APIRouter()
@@ -46,8 +51,8 @@ def _validate_store_url(url: str) -> str:
     - IPv6 loopback and reserved ranges
     - Reserved hostnames (localhost, metadata endpoints)
     """
-    from urllib.parse import urlparse
     import ipaddress
+    from urllib.parse import urlparse
 
     url = url.strip().rstrip('/')
 
@@ -99,12 +104,12 @@ async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depe
     can_create = await check_user_limit(user, "woocommerce_stores")
     if not can_create:
         raise HTTPException(
-            status_code=403, 
+            status_code=403,
             detail=f"Has alcanzado el límite de tiendas WooCommerce. Máximo: {user.get('max_woocommerce_stores', 2)}"
         )
-    
+
     config_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     catalog_name = None
     if config.catalog_id:
         catalog = await db.catalogs.find_one({"id": config.catalog_id, "user_id": user["id"]})
@@ -119,7 +124,7 @@ async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depe
         "is_connected": False, "last_sync": None, "products_synced": 0, "created_at": now
     }
     await db.woocommerce_configs.insert_one(config_doc)
-    next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat() if config.auto_sync_enabled else None
+    next_sync = (datetime.now(UTC) + timedelta(hours=12)).isoformat() if config.auto_sync_enabled else None
     return WooCommerceConfigResponse(
         id=config_id, name=config_doc["name"], store_url=config_doc["store_url"],
         consumer_key_masked=mask_key(config.consumer_key), is_connected=False,
@@ -144,7 +149,7 @@ async def get_woocommerce_configs(user: dict = Depends(get_current_user)):
             last_sync_dt = datetime.fromisoformat(c["last_sync"].replace('Z', '+00:00'))
             next_sync = (last_sync_dt + timedelta(hours=12)).isoformat()
         elif c.get("auto_sync_enabled"):
-            next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+            next_sync = (datetime.now(UTC) + timedelta(hours=12)).isoformat()
         result.append(WooCommerceConfigResponse(
             id=c["id"], name=c["name"], store_url=c["store_url"],
             consumer_key_masked=mask_key(c["consumer_key"]),
@@ -172,7 +177,7 @@ async def get_woocommerce_config(config_id: str, user: dict = Depends(get_curren
         last_sync_dt = datetime.fromisoformat(config["last_sync"].replace('Z', '+00:00'))
         next_sync = (last_sync_dt + timedelta(hours=12)).isoformat()
     elif config.get("auto_sync_enabled"):
-        next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+        next_sync = (datetime.now(UTC) + timedelta(hours=12)).isoformat()
     return WooCommerceConfigResponse(
         id=config["id"], name=config["name"], store_url=config["store_url"],
         consumer_key_masked=mask_key(config["consumer_key"]),
@@ -205,7 +210,7 @@ async def update_woocommerce_config(config_id: str, update: WooCommerceConfigUpd
         last_sync_dt = datetime.fromisoformat(updated["last_sync"].replace('Z', '+00:00'))
         next_sync = (last_sync_dt + timedelta(hours=12)).isoformat()
     elif updated.get("auto_sync_enabled"):
-        next_sync = (datetime.now(timezone.utc) + timedelta(hours=12)).isoformat()
+        next_sync = (datetime.now(UTC) + timedelta(hours=12)).isoformat()
     return WooCommerceConfigResponse(
         id=updated["id"], name=updated["name"], store_url=updated["store_url"],
         consumer_key_masked=mask_key(updated["consumer_key"]),
@@ -240,7 +245,7 @@ async def test_woocommerce_connection(config_id: str, user: dict = Depends(get_c
         else:
             await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": False}})
             return {"status": "error", "message": f"Error de conexión: {response.status_code}"}
-    except Exception as e:
+    except Exception:
         await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": False}})
         return {"status": "error", "message": "Error de conexión a WooCommerce. Verifica la URL y las claves API."}
 
@@ -301,7 +306,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
     errors = []
     existing_eans = {}
     existing_skus = {}
-    
+
     # ==================== STEP 1: CREATE/GET CATEGORIES ====================
     # Build category mapping: category_name -> wc_category_id
     wc_category_map = {}
@@ -317,10 +322,10 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                     # Build full path for each level
                     full_path = " > ".join(cat_parts[:i+1])
                     unique_categories.add(full_path)
-        
+
         if unique_categories:
             logger.info(f"Found {len(unique_categories)} unique categories to sync")
-            
+
             # Get existing WooCommerce categories
             existing_wc_cats = []
             page = 1
@@ -336,7 +341,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                         break
                 else:
                     break
-            
+
             # Build map of existing categories by name and parent
             existing_cats_by_name = {}
             for cat in existing_wc_cats:
@@ -344,27 +349,27 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                 existing_cats_by_name[key] = cat["id"]
                 # Also store by just name for simple lookup
                 existing_cats_by_name[cat.get("name", "").lower()] = cat["id"]
-            
+
             # Create categories that don't exist
             for full_cat_path in sorted(unique_categories):
                 cat_parts = [c.strip() for c in full_cat_path.split(">")]
                 parent_id = 0
-                
+
                 for i, cat_name in enumerate(cat_parts):
                     current_path = " > ".join(cat_parts[:i+1])
-                    
+
                     # Check if already in our map
                     if current_path in wc_category_map:
                         parent_id = wc_category_map[current_path]
                         continue
-                    
+
                     # Check if exists in WooCommerce
                     lookup_key = f"{cat_name.lower()}:{parent_id}"
                     if lookup_key in existing_cats_by_name:
                         wc_category_map[current_path] = existing_cats_by_name[lookup_key]
                         parent_id = existing_cats_by_name[lookup_key]
                         continue
-                    
+
                     # Create new category
                     # MEDIUM FIX #14: Handle race condition where another request creates the same category
                     cat_payload = {
@@ -401,11 +406,11 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                             logger.warning(f"Failed to create category {cat_name}: {response.text[:100]}")
                     except Exception as e:
                         logger.error(f"Error creating category {cat_name}: {e}")
-            
+
             logger.info(f"Category mapping complete: {len(wc_category_map)} categories mapped")
     except Exception as e:
         logger.error(f"Error syncing categories: {e}")
-    
+
     # ==================== STEP 2: GET EXISTING PRODUCTS ====================
     if request.update_existing:
         try:
@@ -432,14 +437,14 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                     break
         except Exception as e:
             logger.warning(f"Could not fetch existing products: {e}")
-    
+
     # ==================== STEP 3: EXPORT PRODUCTS IN BATCHES ====================
     # WooCommerce batch API allows up to 100 items per request
     BATCH_SIZE = 50  # Use 50 for better reliability
-    
+
     products_to_create = []
     products_to_update = []
-    
+
     for catalog_item in catalog_items:
         product = products_map.get(catalog_item["product_id"])
         if not product:
@@ -451,11 +456,11 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         try:
             ean = product.get("ean", "") or ""
             sku = product.get("sku", "")
-            
+
             # Use long_description if available, fallback to description
             description = product.get("long_description") or product.get("description", "")
             short_desc = product.get("short_description", "")
-            
+
             wc_product = {
                 "name": catalog_item.get("custom_name") or product.get("name", "Producto sin nombre"),
                 "type": "simple", "regular_price": str(round(final_price, 2)),
@@ -465,7 +470,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                 "stock_quantity": product.get("stock", 0),
                 "categories": [], "images": [], "meta_data": []
             }
-            
+
             # Add EAN meta data
             if ean:
                 wc_product["meta_data"].extend([
@@ -474,16 +479,16 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                     {"key": "gtin", "value": ean},
                     {"key": "_ean", "value": ean}
                 ])
-            
+
             # Add brand meta data
             if product.get("brand"):
                 wc_product["meta_data"].append({"key": "_brand", "value": product["brand"]})
-            
+
             # Add supplier name as custom field
             if product.get("supplier_name"):
                 wc_product["meta_data"].append({"key": "_supplier_name", "value": product["supplier_name"]})
                 wc_product["meta_data"].append({"key": "supplier_name", "value": product["supplier_name"]})
-            
+
             # Assign categories by ID (created in step 1)
             if product.get("category"):
                 cat_path = product["category"].strip()
@@ -497,40 +502,40 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                         if partial_path in wc_category_map:
                             wc_product["categories"] = [{"id": wc_category_map[partial_path]}]
                             break
-            
+
             # Add main image first
             if product.get("image_url"):
                 wc_product["images"].append({"src": product["image_url"]})
-            
+
             # Add gallery images
             gallery_images = product.get("gallery_images") or []
             for gallery_img in gallery_images:
                 if gallery_img:
                     wc_product["images"].append({"src": gallery_img})
-            
+
             # Legacy support for old image fields
             for img_field in ["image_url2", "image_url3"]:
                 if product.get(img_field):
                     wc_product["images"].append({"src": product[img_field]})
-            
+
             if product.get("weight"):
                 wc_product["weight"] = str(product["weight"])
-            
+
             # Determine if create or update
             existing_wc_id = existing_eans.get(ean) if ean else None
             if not existing_wc_id and sku:
                 existing_wc_id = existing_skus.get(sku)
-            
+
             if existing_wc_id and request.update_existing:
                 wc_product["id"] = existing_wc_id
                 products_to_update.append(wc_product)
             else:
                 products_to_create.append({"product": wc_product, "ean": ean})
-                
+
         except Exception as e:
             failed += 1
             errors.append(f"Error procesando {product.get('sku', '')}: {str(e)[:100]}")
-    
+
     def _extract_wc_error(response_text: str) -> str:
         """Extract a readable error message from WooCommerce response"""
         try:
@@ -593,20 +598,20 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         except Exception as e:
             failed += len(batch)
             errors.append(f"Error batch update (excepción): {str(e)[:200]}")
-        
+
         # Small delay between batches
         await asyncio.sleep(0.5)
-    
-    now = datetime.now(timezone.utc).isoformat()
+
+    now = datetime.now(UTC).isoformat()
     await db.woocommerce_configs.update_one({"id": request.config_id}, {"$set": {"last_sync": now, "products_synced": created + updated}})
-    
+
     # Store the category mapping for future use
     if wc_category_map and catalog_id:
         await db.woocommerce_configs.update_one(
             {"id": request.config_id},
             {"$set": {f"category_mapping_{catalog_id}": wc_category_map}}
         )
-    
+
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()), "type": "woocommerce_export",
         "message": f"Exportación WooCommerce: {created} creados, {updated} actualizados, {failed} errores, {len(wc_category_map)} categorías",

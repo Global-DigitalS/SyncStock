@@ -6,13 +6,14 @@ Optimizes:
 - Memory usage during large file transfers
 - Timeout and error handling for network operations
 """
-import logging
 import asyncio
-import tempfile
+import logging
 import os
-from typing import Tuple, Callable, Optional
-from datetime import datetime, timezone
-from config import SOCKET_CONNECTION_TIMEOUT, STREAMING_DEFAULT_TIMEOUT
+import tempfile
+from collections.abc import Callable
+from datetime import UTC, datetime
+
+from config import SOCKET_CONNECTION_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -24,19 +25,19 @@ class StreamingDownloadTracker:
         self.resource_name = resource_name
         self.total_bytes = 0
         self.downloaded_bytes = 0
-        self.start_time: Optional[datetime] = None
-        self.end_time: Optional[datetime] = None
+        self.start_time: datetime | None = None
+        self.end_time: datetime | None = None
         self.chunk_count = 0
 
     def start(self):
-        self.start_time = datetime.now(timezone.utc)
+        self.start_time = datetime.now(UTC)
 
     def add_chunk(self, chunk_size: int):
         self.downloaded_bytes += chunk_size
         self.chunk_count += 1
 
     def finish(self):
-        self.end_time = datetime.now(timezone.utc)
+        self.end_time = datetime.now(UTC)
 
     @property
     def duration_seconds(self) -> float:
@@ -66,7 +67,7 @@ async def download_file_streaming(
     chunk_size: int = 1024 * 1024,  # 1 MB chunks
     resource_name: str = "Unknown",
     timeout_seconds: int = 300,
-) -> Tuple[bytes, StreamingDownloadTracker]:
+) -> tuple[bytes, StreamingDownloadTracker]:
     """
     Download a file in chunks using a streaming approach.
 
@@ -108,7 +109,7 @@ async def download_file_streaming(
                 )
                 return content, tracker
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 raise Exception(f"Download timeout for {resource_name} after {timeout_seconds}s")
 
     except Exception as e:
@@ -118,10 +119,10 @@ async def download_file_streaming(
 
 async def download_from_url_streaming(
     url: str,
-    username: Optional[str] = None,
-    password: Optional[str] = None,
+    username: str | None = None,
+    password: str | None = None,
     timeout_seconds: int = 300,
-) -> Tuple[bytes, StreamingDownloadTracker]:
+) -> tuple[bytes, StreamingDownloadTracker]:
     """
     Download a file from a URL using streaming.
 
@@ -145,18 +146,17 @@ async def download_from_url_streaming(
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         }
 
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                url,
-                auth=auth,
-                headers=headers,
-                ssl=False,
-                timeout=aiohttp.ClientTimeout(total=timeout_seconds)
-            ) as response:
-                response.raise_for_status()
+        async with aiohttp.ClientSession() as session, session.get(
+            url,
+            auth=auth,
+            headers=headers,
+            ssl=False,
+            timeout=aiohttp.ClientTimeout(total=timeout_seconds)
+        ) as response:
+            response.raise_for_status()
 
-                async for chunk in response.content.iter_chunked(1024 * 1024):  # 1MB chunks
-                    yield chunk
+            async for chunk in response.content.iter_chunked(1024 * 1024):  # 1MB chunks
+                yield chunk
 
     return await download_file_streaming(
         stream_generator,
@@ -168,7 +168,7 @@ async def download_from_url_streaming(
 async def download_from_ftp_streaming(
     supplier: dict,
     timeout_seconds: int = 300,
-) -> Tuple[bytes, StreamingDownloadTracker]:
+) -> tuple[bytes, StreamingDownloadTracker]:
     """
     Download a file from FTP/SFTP using streaming.
 
@@ -179,8 +179,9 @@ async def download_from_ftp_streaming(
     Returns:
         (file_content: bytes, tracker: StreamingDownloadTracker)
     """
-    import paramiko
     import ftplib
+
+    import paramiko
 
     schema = supplier.get('ftp_schema', 'ftp').lower()
     host = supplier.get('ftp_host')

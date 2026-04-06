@@ -10,10 +10,11 @@
 #
 # =============================================================================
 
-import os
 import logging
-from dotenv import load_dotenv
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 # Cargar variables de entorno desde el archivo .env
 ROOT_DIR = Path(__file__).parent
@@ -63,7 +64,8 @@ JWT_SECRET = os.environ.get('JWT_SECRET')
 if not JWT_SECRET:
     # Fallback: intentar obtener de config.json persistente, generando si es necesario
     try:
-        from services.config_manager import get_config as _get_config, ensure_jwt_secret as _ensure_jwt_secret
+        from services.config_manager import ensure_jwt_secret as _ensure_jwt_secret
+        from services.config_manager import get_config as _get_config
         _app_cfg = _get_config()
         if _app_cfg.jwt_secret:
             JWT_SECRET = _app_cfg.jwt_secret
@@ -74,8 +76,8 @@ if not JWT_SECRET:
                 "JWT_SECRET no estaba configurado — se generó uno nuevo automáticamente. "
                 "Las sesiones de usuario anteriores se invalidarán."
             )
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Error loading JWT_SECRET from config: {e}")
 if not JWT_SECRET:
     raise RuntimeError(
         "La variable de entorno JWT_SECRET es obligatoria y no está configurada. "
