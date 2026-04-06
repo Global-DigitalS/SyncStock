@@ -785,7 +785,22 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
                 continue
             
             wc_orders = response.json()
-            
+
+            # HIGH #5 FIX: Batch lookup all SKUs from all orders BEFORE processing individual orders
+            # Prevents N+1 query problem: collect all unique SKUs, lookup in one batch call
+            all_skus = set()
+            for wc_order in wc_orders:
+                for item in wc_order.get("line_items", []):
+                    sku = item.get("sku", "")
+                    if sku:
+                        all_skus.add(sku)
+
+            # Single batch lookup for all products
+            products_batch = {}
+            if all_skus:
+                products_batch = client.get_products_by_refs_batch(list(all_skus))
+                logger.info(f"Batch lookup: {len(all_skus)} SKUs → {len(products_batch)} products found")
+
             for wc_order in wc_orders:
                 try:
                     # Check if order already synced
@@ -794,20 +809,21 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
                         "external_id": str(wc_order.get("id")),
                         "source": "woocommerce"
                     })
-                    
+
                     if existing:
                         continue
-                    
+
                     # Get or create customer in Dolibarr
                     customer_email = wc_order.get("billing", {}).get("email", "")
                     customer_name = f"{wc_order.get('billing', {}).get('first_name', '')} {wc_order.get('billing', {}).get('last_name', '')}".strip()
-                    
-                    # Build order lines
+
+                    # Build order lines - use pre-fetched products from batch
                     lines = []
                     for item in wc_order.get("line_items", []):
-                        # Try to find product by SKU in Dolibarr
-                        dolibarr_product = client.get_product_by_ref(item.get("sku", ""))
-                        
+                        sku = item.get("sku", "")
+                        # Look up in batch result instead of making individual API call
+                        dolibarr_product = products_batch.get(sku)
+
                         lines.append({
                             "product_id": int(dolibarr_product.get("id")) if dolibarr_product else None,
                             "quantity": item.get("quantity", 1),

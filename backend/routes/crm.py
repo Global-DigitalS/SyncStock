@@ -197,17 +197,38 @@ async def sync_crm_connection(connection_id: str, request: dict, user: dict = De
     }
     await db.sync_jobs.insert_one(sync_job)
 
-    # Run sync in background task (stored in registry to prevent GC)
-    task = asyncio.create_task(run_sync_in_background(
-        sync_job_id=sync_job_id,
-        user_id=user["id"],
-        connection_id=connection_id,
-        platform=platform,
-        config=config,
-        sync_settings=sync_settings,
-        sync_type=sync_type,
-        catalog_id=catalog_id
-    ))
+    # Run sync in background task with timeout protection (1 hour max)
+    # HIGH: Wrap in timeout to prevent indefinite hanging
+    async def sync_with_timeout():
+        try:
+            return await asyncio.wait_for(
+                run_sync_in_background(
+                    sync_job_id=sync_job_id,
+                    user_id=user["id"],
+                    connection_id=connection_id,
+                    platform=platform,
+                    config=config,
+                    sync_settings=sync_settings,
+                    sync_type=sync_type,
+                    catalog_id=catalog_id
+                ),
+                timeout=3600  # 1 hour max
+            )
+        except asyncio.TimeoutError:
+            logger.error(f"Sync job {sync_job_id} exceeded 1 hour timeout")
+            try:
+                await db.sync_jobs.update_one(
+                    {"id": sync_job_id},
+                    {"$set": {
+                        "status": "error",
+                        "current_step": "Sincronización excedió el tiempo máximo (1 hora)",
+                        "completed_at": datetime.now(timezone.utc).isoformat()
+                    }}
+                )
+            except Exception as e:
+                logger.error(f"Failed to update sync_job on timeout: {e}")
+
+    task = asyncio.create_task(sync_with_timeout())
     _background_tasks.add(task)
     task.add_done_callback(_background_tasks.discard)
 
