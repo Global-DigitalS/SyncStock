@@ -134,7 +134,7 @@ async def create_woocommerce_config(config: WooCommerceConfig, user: dict = Depe
     )
 
 
-@router.get("/woocommerce/configs", response_model=List[WooCommerceConfigResponse])
+@router.get("/woocommerce/configs", response_model=list[WooCommerceConfigResponse])
 async def get_woocommerce_configs(user: dict = Depends(get_current_user)):
     configs = await db.woocommerce_configs.find({"user_id": user["id"]}, {"_id": 0, "consumer_secret": 0}).to_list(100)
     catalog_ids = [c.get("catalog_id") for c in configs if c.get("catalog_id")]
