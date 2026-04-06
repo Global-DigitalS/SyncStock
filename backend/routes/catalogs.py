@@ -194,7 +194,9 @@ async def add_products_to_catalog(catalog_id: str, data: CatalogProductAdd, user
 async def get_catalog_products(
     catalog_id: str, active_only: bool = False, search: Optional[str] = None,
     category_id: Optional[str] = None,
-    skip: int = 0, limit: int = 100, user: dict = Depends(get_current_user)
+    skip: int = Query(0, ge=0, le=1000000),  # MEDIUM #12: Validate pagination
+    limit: int = Query(100, ge=1, le=1000),  # MEDIUM #12: Validate limit range
+    user: dict = Depends(get_current_user)
 ):
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
