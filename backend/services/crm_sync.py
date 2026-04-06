@@ -554,13 +554,39 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
 
             product_data["price"] = round(float(sale_price or 0), 2)
 
-        # Sync stock
+        # Sync stock - HIGH #9 & MEDIUM #21: Enhanced validation
         if sync_settings.get("stock", True):
             stock_value = product.get("stock", 0)
-            if isinstance(stock_value, (int, float)) and stock_value > 1000000:
-                logger.warning(f"Stock value suspiciously large for {sku}: {stock_value}. Capping at 1000000.")
-                stock_value = 1000000
-            product_data["stock"] = max(0, int(stock_value) if isinstance(stock_value, (int, float)) else 0)
+
+            # Convert to number if possible
+            if isinstance(stock_value, str):
+                try:
+                    stock_value = float(stock_value)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid stock value (non-numeric string) for {sku}: {stock_value}. Using 0.")
+                    stock_value = 0
+
+            # Validate numeric value
+            if isinstance(stock_value, (int, float)):
+                # Check for negative values (invalid)
+                if stock_value < 0:
+                    logger.warning(f"Negative stock value for {sku}: {stock_value}. Using 0.")
+                    stock_value = 0
+                # Check for suspiciously large values
+                elif stock_value > 1000000:
+                    logger.warning(f"Stock value suspiciously large for {sku}: {stock_value}. Capping at 1000000.")
+                    stock_value = 1000000
+                # Round down floats with proper rounding
+                elif isinstance(stock_value, float):
+                    stock_value = int(stock_value + 0.0)  # Round down
+                    if stock_value != float(product.get("stock", 0)):
+                        logger.debug(f"Rounded stock for {sku}: {product.get('stock')} → {stock_value}")
+            else:
+                # Non-numeric value
+                logger.warning(f"Non-numeric stock value for {sku}: {stock_value}. Using 0.")
+                stock_value = 0
+
+            product_data["stock"] = max(0, int(stock_value))
 
         # Sync descriptions
         if sync_settings.get("descriptions", True):
@@ -1056,13 +1082,35 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
             "description": product.get("description", ""),
         }
 
-        # Sync stock
+        # Sync stock - HIGH #9 & MEDIUM #21: Enhanced validation (Odoo)
         if sync_settings.get("stock", True):
             stock_value = product.get("stock", 0)
-            if isinstance(stock_value, (int, float)) and stock_value > 1000000:
-                logger.warning(f"Stock value suspiciously large for {product_sku}: {stock_value}. Capping at 1000000.")
-                stock_value = 1000000
-            product_data["stock"] = max(0, int(stock_value) if isinstance(stock_value, (int, float)) else 0)
+
+            # Convert to number if possible
+            if isinstance(stock_value, str):
+                try:
+                    stock_value = float(stock_value)
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid stock value (non-numeric string) for {product_sku}: {stock_value}. Using 0.")
+                    stock_value = 0
+
+            # Validate numeric value
+            if isinstance(stock_value, (int, float)):
+                if stock_value < 0:
+                    logger.warning(f"Negative stock value for {product_sku}: {stock_value}. Using 0.")
+                    stock_value = 0
+                elif stock_value > 1000000:
+                    logger.warning(f"Stock value suspiciously large for {product_sku}: {stock_value}. Capping at 1000000.")
+                    stock_value = 1000000
+                elif isinstance(stock_value, float):
+                    stock_value = int(stock_value + 0.0)
+                    if stock_value != float(product.get("stock", 0)):
+                        logger.debug(f"Rounded stock for {product_sku}: {product.get('stock')} → {stock_value}")
+            else:
+                logger.warning(f"Non-numeric stock value for {product_sku}: {stock_value}. Using 0.")
+                stock_value = 0
+
+            product_data["stock"] = max(0, int(stock_value))
 
         if sync_settings.get("images") and product.get("image_url"):
             product_data["image_url"] = product.get("image_url")
