@@ -1,6 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  User, Mail, Building2, Shield, Crown, Edit3, Eye, Save,
+  Truck, BookOpen, Package, ShoppingCart, CreditCard, History,
+  TrendingUp, Calendar, RefreshCw, CheckCircle, XCircle, Clock,
+  DollarSign, AlertTriangle, Globe
+} from "lucide-react";
+import { api } from "../App";
 import { sanitizeString, sanitizeEmail, sanitizeFormData } from "../utils/sanitizer";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
@@ -15,12 +21,6 @@ import { Switch } from "../components/ui/switch";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "../components/ui/select";
-import {
-  User, Mail, Building2, Shield, Crown, Edit3, Eye, Save,
-  Truck, BookOpen, Package, ShoppingCart, CreditCard, History,
-  TrendingUp, Calendar, RefreshCw, CheckCircle, XCircle, Clock,
-  DollarSign, AlertTriangle, Globe
-} from "lucide-react";
 
 const ROLE_CONFIG = {
   superadmin: { label: "SuperAdmin", color: "bg-purple-100 text-purple-700", icon: Crown },

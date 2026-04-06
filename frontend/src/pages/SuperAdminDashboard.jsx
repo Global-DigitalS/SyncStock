@@ -1,7 +1,19 @@
 import { useState, useEffect, useContext } from "react";
-import { api, AuthContext } from "../App";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import {
+  Users, Shield, Package, Truck, BookOpen, ShoppingCart,
+  RefreshCw, AlertCircle, TrendingUp, Crown, Eye, Edit3,
+  Activity, Database, Server, CheckCircle, XCircle, Trash2,
+  AlertTriangle, Mail, CreditCard, Palette, Globe, Settings,
+  UserPlus, BarChart2, Zap, ArrowRight, TrendingDown, Award,
+  FileText, Bell
+} from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area
+} from "recharts";
+import { api, AuthContext } from "../App";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -17,18 +29,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
-import {
-  Users, Shield, Package, Truck, BookOpen, ShoppingCart,
-  RefreshCw, AlertCircle, TrendingUp, Crown, Eye, Edit3,
-  Activity, Database, Server, CheckCircle, XCircle, Trash2,
-  AlertTriangle, Mail, CreditCard, Palette, Globe, Settings,
-  UserPlus, BarChart2, Zap, ArrowRight, TrendingDown, Award,
-  FileText, Bell
-} from "lucide-react";
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Legend, AreaChart, Area
-} from "recharts";
 
 const ROLE_COLORS = {
   superadmin: "#8b5cf6",

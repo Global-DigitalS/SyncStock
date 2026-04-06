@@ -1,6 +1,37 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  FolderTree,
+  Plus,
+  Pencil,
+  Trash2,
+  ChevronRight,
+  ChevronDown,
+  MoreVertical,
+  GripVertical,
+  FolderPlus,
+  RefreshCw,
+  Upload,
+  Store
+} from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { api } from "../App";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -37,39 +68,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "./ui/dropdown-menu";
-import {
-  FolderTree,
-  Plus,
-  Pencil,
-  Trash2,
-  ChevronRight,
-  ChevronDown,
-  MoreVertical,
-  GripVertical,
-  FolderPlus,
-  RefreshCw,
-  Upload,
-  Store
-} from "lucide-react";
 
 // DnD Kit imports
-import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragOverlay,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  useSortable,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
 
 // Sortable Category Item Component
 const SortableCategoryItem = ({ category, level, isExpanded, onToggle, onEdit, onDelete, onAddChild, children }) => {

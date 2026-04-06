@@ -247,3 +247,54 @@ def create_sanitization_middleware():
             return response
     
     return SanitizationMiddleware
+
+
+# ── Credential removal helper (MEDIUM FIX #13) ──────────────────────────────
+
+# Fields that should never be exposed in API responses
+SENSITIVE_FIELDS = {
+    "password", "ftp_password", "url_password", "api_key", "secret_key",
+    "webhook_secret", "access_token", "refresh_token", "private_key",
+    "client_secret", "smtp_password", "encryption_key", "jwt_secret"
+}
+
+
+def remove_credentials(data: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+    """
+    Recursively remove sensitive credentials from API responses.
+
+    MEDIUM FIX #13: Safer credential removal across all API endpoints.
+    Provides centralized, systematic removal of password, keys, tokens, and secrets.
+
+    Handles:
+    - Single dict: returns dict without credentials
+    - List of dicts: returns list with credentials removed from each
+    - Nested dicts and lists: recursively processes nested structures
+
+    Usage:
+        # Single object
+        user = {"id": "123", "name": "John", "password": "secret"}
+        user = remove_credentials(user)  # {"id": "123", "name": "John"}
+
+        # List of objects
+        suppliers = await db.suppliers.find(...).to_list(1000)
+        suppliers = remove_credentials(suppliers)
+
+        # Return from route
+        return remove_credentials(supplier_doc)
+
+    Args:
+        data: Dict, list of dicts, or nested structure
+
+    Returns:
+        Same structure with SENSITIVE_FIELDS removed
+    """
+    if isinstance(data, dict):
+        # Return new dict without sensitive fields
+        return {k: remove_credentials(v) for k, v in data.items() if k not in SENSITIVE_FIELDS}
+    elif isinstance(data, list):
+        # Process each item in list
+        return [remove_credentials(item) for item in data]
+    else:
+        # Return primitive values unchanged
+        return data

@@ -1,10 +1,10 @@
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Card, CardContent } from "../ui/card";
 import {
   Truck, RefreshCw, Settings, Trash2, Package,
   Globe, Server, CheckCircle, XCircle, AlertCircle, Clock
 } from "lucide-react";
+import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
+import { Card, CardContent } from "../ui/card";
 import IconDisplay from "../shared/IconDisplay";
 
 const SyncStatusBadge = ({ supplier }) => {

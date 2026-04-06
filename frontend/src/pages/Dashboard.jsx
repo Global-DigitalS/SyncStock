@@ -1,10 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
-import { api } from "../App";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Badge } from "../components/ui/badge";
 import {
   Truck,
   Package,
@@ -27,6 +23,10 @@ import {
   BellRing,
   ShieldCheck
 } from "lucide-react";
+import { api } from "../App";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 
 const Dashboard = () => {
   const [stats, setStats] = useState(null);

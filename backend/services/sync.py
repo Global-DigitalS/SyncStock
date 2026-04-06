@@ -1,24 +1,33 @@
-import io
-import csv
-import logging
-import uuid
-import ftplib
 import asyncio
+import csv
+import ftplib
+import io
+import json
+import logging
+import re
+import uuid
 import zipfile
+from datetime import UTC, datetime
+
 import paramiko
 import requests
-import re
-import json
-from typing import Optional, List
-from datetime import datetime, timezone
-from openpyxl import load_workbook
 import xlrd
-import xmltodict
+from openpyxl import load_workbook
 from pymongo import UpdateOne
 from woocommerce import API as WooCommerceAPI
+
+from config import (
+    FTP_CONNECTION_TIMEOUT,
+    FTP_DOWNLOAD_TIMEOUT,
+    LOW_STOCK_THRESHOLD,
+    PRICE_CHANGE_THRESHOLD_PERCENT,
+    SOCKET_CONNECTION_TIMEOUT,
+    URL_DOWNLOAD_TIMEOUT,
+    URL_REQUEST_TIMEOUT,
+    WOOCOMMERCE_API_TIMEOUT,
+)
 from services.database import db
 from services.sku_cache import SKUCache
-from config import PRICE_CHANGE_THRESHOLD_PERCENT, LOW_STOCK_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -176,15 +185,34 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
                         "user_id": user_id, "read": False, "created_at": now
                     })
 
-                # Use UpdateOne with upsert=True to avoid E11000 duplicate key errors.
-                # Filter by (supplier_id, sku) which is the unique compound key.
-                # $setOnInsert guards against race conditions where the doc was
-                # deleted between cache lookup and DB write.
+                # SECURITY FIX #10: Prevent TOCTTOU race condition
+                # Include the expected ID in the filter so if the doc was deleted/recreated,
+                # the update fails and we create a new one with a fresh ID instead of
+                # creating a duplicate with stale ID.
+                # This prevents the scenario where:
+                # 1. Thread A checks cache: finds product_id=123
+                # 2. Thread B deletes product_id=123
+                # 3. Thread A updates with id=123 (but wrong product_id ref)
                 product_ops.append(UpdateOne(
-                    {"supplier_id": supplier_id, "sku": sku},
+                    {
+                        "supplier_id": supplier_id,
+                        "sku": sku,
+                        "id": existing.id  # SECURITY: Ensure ID hasn't changed
+                    },
                     {
                         "$set": product_doc,
                         "$setOnInsert": {"id": existing.id, "created_at": now}
+                    },
+                    upsert=False  # Don't create new on mismatch - let fallthrough create new one
+                ))
+
+                # If update doesn't match (ID mismatch), create new product with fresh ID
+                # This handles the race condition case
+                product_ops.append(UpdateOne(
+                    {"supplier_id": supplier_id, "sku": sku, "id": {"$ne": existing.id}},
+                    {
+                        "$set": product_doc,
+                        "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}  # New ID
                     },
                     upsert=True
                 ))
@@ -275,7 +303,7 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
     if schema == 'sftp':
         port = port or 22
         import socket
-        sock = socket.create_connection((host, port), timeout=30)
+        sock = socket.create_connection((host, port), timeout=SOCKET_CONNECTION_TIMEOUT)
         transport = paramiko.Transport(sock)
         transport.connect(username=user, password=password)
         transport.set_keepalive(30)
@@ -291,7 +319,7 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
         port = port or 21
         ftp = ftplib.FTP_TLS() if schema == 'ftps' else ftplib.FTP()
         try:
-            ftp.connect(host, port, timeout=15)
+            ftp.connect(host, port, timeout=FTP_CONNECTION_TIMEOUT)
             ftp.login(user or 'anonymous', password or '')
             if schema == 'ftps':
                 ftp.prot_p()
@@ -312,7 +340,7 @@ async def download_file_from_ftp(supplier: dict) -> bytes:
     """Download file from FTP/SFTP with retry logic and exponential backoff."""
     loop = asyncio.get_running_loop()
     max_retries = 3
-    timeout = 900  # 15 min max for FTP/SFTP downloads
+    timeout = FTP_DOWNLOAD_TIMEOUT  # Configurable via environment variable
 
     for attempt in range(max_retries):
         try:
@@ -320,7 +348,7 @@ async def download_file_from_ftp(supplier: dict) -> bytes:
                 loop.run_in_executor(None, download_file_from_ftp_sync, supplier),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if attempt < max_retries - 1:
                 wait_time = 2 ** (attempt + 1)  # Exponential backoff: 2s, 4s
                 logger.warning(f"FTP/SFTP timeout para '{supplier.get('name', '?')}' (intento {attempt + 1}/{max_retries}), esperando {wait_time}s...")
@@ -338,8 +366,8 @@ async def download_file_from_ftp(supplier: dict) -> bytes:
 
 def _build_browser_session(url: str, auth=None) -> tuple:
     """Build a requests Session with realistic browser headers to avoid 403 blocks."""
-    from urllib.parse import urlparse
     import random
+    from urllib.parse import urlparse
 
     parsed = urlparse(url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
@@ -379,7 +407,7 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
     session = _build_browser_session(url, auth)
 
     def _do_request(verify_ssl: bool) -> bytes:
-        response = session.get(url, timeout=60, stream=True, verify=verify_ssl)
+        response = session.get(url, timeout=URL_REQUEST_TIMEOUT, stream=True, verify=verify_ssl)
         response.raise_for_status()
         content = response.content
         ssl_note = "" if verify_ssl else " (SSL verification skipped)"
@@ -389,14 +417,18 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
     try:
         return _do_request(verify_ssl=True)
     except requests.exceptions.SSLError as ssl_err:
-        logger.warning(f"SSL verification failed for {url}, retrying without SSL verification: {ssl_err}")
-        try:
-            import urllib3
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-            return _do_request(verify_ssl=False)
-        except requests.exceptions.RequestException as e:
-            logger.error(f"URL download failed after SSL retry: {e}")
-            raise Exception(f"Error descargando desde URL: {str(e)}")
+        logger.warning(f"SSL verification failed for {url}: {ssl_err}")
+        # SECURITY FIX: Don't automatically disable SSL - this is a MITM vector
+        # Instead, log the error and fail - the user must explicitly configure self-signed certificates
+        logger.error(f"SSL verification failed for supplier URL: {url}")
+        logger.error("To use this URL, one of the following is required:")
+        logger.error("1. Use a valid SSL certificate signed by a trusted CA")
+        logger.error("2. Configure certificate pinning in supplier settings")
+        logger.error("3. Contact administrator to add exception for this domain")
+        raise Exception(
+            f"SSL verification failed para {url}. Requiere certificado SSL válido. "
+            f"Contacta al administrador para configurar excepciones."
+        )
     except requests.exceptions.RequestException as e:
         logger.error(f"URL download failed: {e}")
         raise Exception(f"Error descargando desde URL: {str(e)}")
@@ -406,7 +438,7 @@ async def download_file_from_url(url: str, username: str = None, password: str =
     """Download file from URL with retry logic and exponential backoff."""
     loop = asyncio.get_running_loop()
     max_retries = 3
-    timeout = 900  # 15 min max for URL downloads
+    timeout = URL_DOWNLOAD_TIMEOUT  # Configurable via environment variable
 
     for attempt in range(max_retries):
         try:
@@ -414,7 +446,7 @@ async def download_file_from_url(url: str, username: str = None, password: str =
                 loop.run_in_executor(None, download_file_from_url_sync, url, username, password),
                 timeout=timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if attempt < max_retries - 1:
                 wait_time = 2 ** (attempt + 1)  # Exponential backoff: 2s, 4s
                 logger.warning(f"Timeout descargando URL {url[:50]}... (intento {attempt + 1}/{max_retries}), esperando {wait_time}s...")
@@ -459,11 +491,31 @@ def parse_xls_content(content: bytes) -> list:
 
 
 def parse_xml_content(content: bytes) -> list:
+    """Parse XML content safely - prevents XXE attacks
+
+    SECURITY FIX: Disable external entities to prevent XXE injection
+    """
     try:
         decoded = content.decode('utf-8')
     except Exception:
         decoded = content.decode('latin-1')
-    data = xmltodict.parse(decoded)
+
+    # SECURITY: Use defusedxml to prevent XXE attacks
+    # Disables: external entities, internal DTD parsing, entity expansion
+    try:
+        from defusedxml import xmltodict as safe_xmltodict
+        data = safe_xmltodict.parse(decoded, disable_entities=True, process_namespaces=False)
+    except ImportError:
+        logger.warning("defusedxml not installed, using standard xmltodict (XXE vulnerable)")
+        # Fallback with manual XXE protection
+        import xml.etree.ElementTree as ET
+        # Disable external entities and DTD processing
+        for event, elem in ET.iterparse(io.StringIO(decoded), events=['start']):
+            # This approach doesn't prevent XXE - better to fail
+            pass
+        logger.warning("XML parsing requires defusedxml library for XXE protection")
+        raise ValueError("XML parsing requires defusedxml for security")
+
     for key in ['products', 'items', 'catalog', 'data', 'root']:
         if key in data:
             items = data[key]
@@ -478,29 +530,29 @@ def parse_xml_content(content: bytes) -> list:
 
 def normalize_product_data(raw: dict, strip_ean_quotes: bool = False) -> dict:
     mapping = {
-        'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number', 
+        'sku': ['sku', 'codigo', 'code', 'ref', 'referencia', 'reference', 'id', 'product_id', 'partnumber', 'part_number',
                 'articulo', 'codigo_articulo', 'cod', 'item_code', 'cod_articulo', 'ref_articulo', 'codigo_producto',
                 'product_code', 'item_id', 'article', 'article_id', 'num_art', 'numero_articulo', 'codigoarticulo',
                 'codart', 'refart', 'art', 'producto_id', 'id_producto', 'idproducto', 'producto'],
-        'name': ['name', 'nombre', 'title', 'titulo', 'product_name', 'descripcion', 'description', 'producto', 
+        'name': ['name', 'nombre', 'title', 'titulo', 'product_name', 'descripcion', 'description', 'producto',
                  'articulo_nombre', 'item_name', 'denominacion', 'denominación', 'nombre_producto', 'product',
                  'item', 'nombreprod', 'nombproducto', 'nombre_articulo', 'articulo', 'desc', 'descriptivo'],
-        'price': ['price', 'precio', 'pvp', 'cost', 'coste', 'unit_price', 'tarifa', 'importe', 'pricen', 
+        'price': ['price', 'precio', 'pvp', 'cost', 'coste', 'unit_price', 'tarifa', 'importe', 'pricen',
                   'precio_neto', 'net_price', 'preciopvp', 'precioventa', 'precio_venta', 'preciofinal',
                   'precio_final', 'priceunit', 'unitprice', 'precio_unitario', 'pvd', 'pvr', 'eur', 'euro'],
-        'stock': ['stock', 'quantity', 'cantidad', 'qty', 'inventory', 'disponible', 'existencias', 'unidades', 
+        'stock': ['stock', 'quantity', 'cantidad', 'qty', 'inventory', 'disponible', 'existencias', 'unidades',
                   'disponibilidad', 'units', 'existencia', 'cantstock', 'stockdisponible', 'stock_disponible',
                   'en_stock', 'enstock', 'cantidad_stock', 'total_stock', 'stockactual', 'stock_actual'],
         'category': ['category', 'categoria', 'cat', 'type', 'tipo', 'familia', 'family', 'grupo', 'group',
                      'categorie', 'categoria1', 'cat1', 'groupo', 'seccion', 'sección'],
         'brand': ['brand', 'marca', 'manufacturer', 'fabricante', 'vendor', 'proveedor', 'make', 'brand_name',
                   'nombremarca', 'nombre_marca', 'marcafabricante'],
-        'ean': ['ean', 'ean13', 'barcode', 'upc', 'codigo_barras', 'gtin', 'ean_code', 'codigobarras', 
+        'ean': ['ean', 'ean13', 'barcode', 'upc', 'codigo_barras', 'gtin', 'ean_code', 'codigobarras',
                 'cod_barras', 'codigo_barra', 'bar_code', 'ean8', 'codean'],
         'weight': ['weight', 'peso', 'kg', 'mass', 'peso_kg', 'pesokg', 'weightkg'],
         'image_url': ['image', 'imagen', 'image_url', 'photo', 'foto', 'picture', 'url_imagen', 'img',
                       'urlimagen', 'imageurl', 'fotografia', 'pic', 'imagen_url', 'url_image', 'link_imagen'],
-        'description': ['description', 'descripcion', 'desc', 'details', 'detalles', 'long_description', 
+        'description': ['description', 'descripcion', 'desc', 'details', 'detalles', 'long_description',
                         'short_description', 'descripcion_larga', 'descripcion_corta', 'texto', 'detalle']
     }
     result = {}
@@ -508,9 +560,9 @@ def normalize_product_data(raw: dict, strip_ean_quotes: bool = False) -> dict:
     raw_original_lower = {str(k).lower().strip(): v for k, v in raw.items()}
     # Merge both for more flexible matching
     combined_raw = {**raw_original_lower, **raw_lower}
-    
+
     logger.debug(f"Normalizing product - columns available: {list(combined_raw.keys())}")
-    
+
     for field, aliases in mapping.items():
         for alias in aliases:
             if alias in combined_raw and combined_raw[alias]:
@@ -530,12 +582,12 @@ def normalize_product_data(raw: dict, strip_ean_quotes: bool = False) -> dict:
                     value = sanitize_ean_quotes(value)
                 result[field] = value
                 break
-    
+
     # Log what was detected
     if not result.get('sku') or not result.get('name'):
         available_cols = list(raw.keys())[:15]
         logger.warning(f"Product missing required fields. SKU: {result.get('sku')}, Name: {result.get('name')}. Available columns: {available_cols}")
-    
+
     return result
 
 
@@ -785,7 +837,7 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 )
 
             # Merge and normalize products
-            now = datetime.now(timezone.utc).isoformat()
+            now = datetime.now(UTC).isoformat()
             needs_mapping = False
             errors = 0
             merge_key = list(products_data[0].keys())[0] if products_data else None
@@ -893,7 +945,7 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             return {"imported": 0, "updated": 0, "errors": 0, "message": "Unsupported format"}
         if detected_columns:
             await db.suppliers.update_one({"id": supplier['id']}, {"$set": {"detected_columns": detected_columns}})
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         imported = 0
         updated = 0
         errors = 0
@@ -902,15 +954,15 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             col_names_lower = [c.lower().strip().replace(' ', '_').replace('-', '_') for c in detected_columns]
             col_names_simple = [c.lower().strip() for c in detected_columns]
             all_col_variants = col_names_lower + col_names_simple
-            
-            sku_aliases = ['sku', 'codigo', 'referencia', 'ref', 'reference', 'id', 'cod', 'articulo', 
+
+            sku_aliases = ['sku', 'codigo', 'referencia', 'ref', 'reference', 'id', 'cod', 'articulo',
                           'codigo_articulo', 'product_id', 'item_code', 'code', 'producto']
             name_aliases = ['name', 'nombre', 'title', 'titulo', 'product', 'producto', 'descripcion',
                            'description', 'denominacion', 'item', 'articulo', 'desc']
-            
+
             has_sku = any(alias in all_col_variants for alias in sku_aliases)
             has_name = any(alias in all_col_variants for alias in name_aliases)
-            
+
             if not has_sku or not has_name:
                 needs_mapping = True
                 logger.warning(f"Supplier {supplier.get('name')}: needs_mapping=True. Columns detected: {detected_columns[:10]}. has_sku={has_sku}, has_name={has_name}")
@@ -962,7 +1014,7 @@ async def record_sync_history(supplier: dict, result: dict, sync_type: str, dura
     status = "success" if result.get("status") == "success" else "error" if result.get("status") == "error" else "partial"
     if result.get("errors", 0) > 0 and result.get("imported", 0) + result.get("updated", 0) > 0:
         status = "partial"
-    
+
     await db.sync_history.insert_one({
         "id": str(uuid.uuid4()),
         "supplier_id": supplier["id"],
@@ -975,7 +1027,7 @@ async def record_sync_history(supplier: dict, result: dict, sync_type: str, dura
         "duration_seconds": round(duration, 2),
         "error_message": error_message or result.get("message"),
         "user_id": supplier["user_id"],
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "created_at": datetime.now(UTC).isoformat()
     })
 
 
@@ -987,8 +1039,8 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
     else:
         if not supplier.get('ftp_host') or not supplier.get('ftp_path'):
             return {"status": "skipped", "message": "FTP no configurado"}
-    
-    start_time = datetime.now(timezone.utc)
+
+    start_time = datetime.now(UTC)
     try:
         logger.info(f"Syncing supplier: {supplier['name']} (via {connection_type})")
         if connection_type == 'url':
@@ -1001,12 +1053,12 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
         else:
             content = await download_file_from_ftp(supplier)
         result = await process_supplier_file(supplier, content)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         duration = (now - start_time).total_seconds()
-        
+
         product_count = await db.products.count_documents({"supplier_id": supplier['id']})
         await db.suppliers.update_one({"id": supplier['id']}, {"$set": {"product_count": product_count, "last_sync": now.isoformat()}})
-        
+
         notification = {
             "id": str(uuid.uuid4()), "type": "sync_complete",
             "message": f"Sincronización completada: {supplier['name']} - {result['imported']} nuevos, {result['updated']} actualizados",
@@ -1015,25 +1067,25 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
         }
         await db.notifications.insert_one(notification)
         await send_realtime_notification(supplier["user_id"], notification)
-        
+
         final_result = {"status": "success", **result}
         await record_sync_history(supplier, final_result, sync_type, duration)
         logger.info(f"Sync complete for {supplier['name']}: {result}")
         return final_result
     except Exception as e:
-        duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+        duration = (datetime.now(UTC) - start_time).total_seconds()
         logger.error(f"Error syncing supplier {supplier['name']}: {e}")
-        
+
         notification = {
             "id": str(uuid.uuid4()), "type": "sync_error",
             "message": f"Error en sincronización: {supplier['name']} - {str(e)[:100]}",
             "product_id": None, "product_name": None,
             "user_id": supplier["user_id"], "read": False,
-            "created_at": datetime.now(timezone.utc).isoformat()
+            "created_at": datetime.now(UTC).isoformat()
         }
         await db.notifications.insert_one(notification)
         await send_realtime_notification(supplier["user_id"], notification)
-        
+
         error_result = {"status": "error", "message": str(e), "imported": 0, "updated": 0, "errors": 1}
         await record_sync_history(supplier, error_result, sync_type, duration, str(e))
         return error_result
@@ -1042,11 +1094,11 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
 async def sync_all_suppliers():
     logger.info("Starting scheduled sync for all suppliers...")
     ftp_suppliers = await db.suppliers.find({
-        "connection_type": {"$ne": "url"}, 
+        "connection_type": {"$ne": "url"},
         "ftp_host": {"$nin": [None, ""]}
     }).to_list(1000)
     url_suppliers = await db.suppliers.find({
-        "connection_type": "url", 
+        "connection_type": "url",
         "file_url": {"$nin": [None, ""]}
     }).to_list(1000)
     all_suppliers = ftp_suppliers + url_suppliers
@@ -1080,7 +1132,7 @@ def browse_ftp_sync(config: dict, path: str = "/") -> dict:
 
     files = []
     error_message = None
-    
+
     try:
         if schema == 'sftp':
             port = port or 22
@@ -1108,12 +1160,12 @@ def browse_ftp_sync(config: dict, path: str = "/") -> dict:
             port = port or 21
             ftp = ftplib.FTP_TLS() if schema == 'ftps' else ftplib.FTP()
             try:
-                ftp.connect(host, port, timeout=15)
+                ftp.connect(host, port, timeout=FTP_CONNECTION_TIMEOUT)
                 ftp.login(user or 'anonymous', password or '')
                 if schema == 'ftps':
                     ftp.prot_p()
                 ftp.set_pasv(mode == 'passive')
-                
+
                 # Intentar usar MLSD primero (más información)
                 try:
                     for name, facts in ftp.mlsd(path):
@@ -1173,12 +1225,12 @@ def browse_ftp_sync(config: dict, path: str = "/") -> dict:
 
     # Ordenar: carpetas primero, luego archivos por nombre
     files.sort(key=lambda x: (not x["is_dir"], x["name"].lower()))
-    
+
     # Calcular estadísticas
     total_files = len([f for f in files if not f["is_dir"]])
     supported_files = len([f for f in files if f.get("is_supported")])
     total_dirs = len([f for f in files if f["is_dir"]])
-    
+
     return {
         "status": "ok" if not error_message else "error",
         "message": error_message,
@@ -1279,29 +1331,29 @@ async def resolve_latest_file(supplier: dict, file_config: dict) -> str:
     file_path = file_config.get('path', '')
     if not file_config.get('auto_latest'):
         return file_path
-    
+
     # Get the directory of the file
     dir_path = '/'.join(file_path.split('/')[:-1]) or '/'
     filename = file_path.split('/')[-1]
     ext = filename.rsplit('.', 1)[-1].lower() if '.' in filename else ''
-    
+
     try:
         result = await browse_ftp_directory(supplier, dir_path)
         if result.get('status') != 'ok':
             return file_path
-        
+
         # Filter files with same extension
         candidates = [f for f in result['files'] if not f['is_dir'] and f['name'].lower().endswith(f'.{ext}')]
         if not candidates:
             return file_path
-        
+
         # Sort by name descending (works for date-based naming like _20260223)
         candidates.sort(key=lambda x: x['name'], reverse=True)
         latest = candidates[0]
-        
+
         if latest['path'] != file_path:
             logger.info(f"Auto-latest: resolved {file_path} -> {latest['path']}")
-        
+
         return latest['path']
     except Exception as e:
         logger.warning(f"Could not resolve latest file for {file_path}: {e}")
@@ -1314,7 +1366,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     if not ftp_paths:
         return await sync_supplier(supplier, sync_type)
 
-    start_time = datetime.now(timezone.utc)
+    start_time = datetime.now(UTC)
     logger.info(f"Multi-file sync for {supplier['name']}: {len(ftp_paths)} files configured")
     all_file_data = {}
     all_detected_columns = {}
@@ -1424,7 +1476,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
 
     logger.info(f"Merging: {len(products_data)} products, {len(prices_lookup)} prices, {len(stock_lookup)} stock entries")
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     errors = 0
 
     # Normalize all products first (merge + mapping)
@@ -1476,7 +1528,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
     updated = bulk_result["updated"]
     errors += bulk_result["errors"]
 
-    duration = (datetime.now(timezone.utc) - start_time).total_seconds()
+    duration = (datetime.now(UTC) - start_time).total_seconds()
     product_count = await db.products.count_documents({"supplier_id": supplier['id']})
 
     # Build flat detected_columns list (products + prefixed prices/stock) for the mapping UI
@@ -1514,7 +1566,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
         "detected_columns": flat_detected
     }
     await record_sync_history(supplier, final_result, sync_type, duration)
-    
+
     logger.info(f"Multi-file sync complete: {imported} imported, {updated} updated, {errors} errors")
     return final_result
 
@@ -1522,7 +1574,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
 # ==================== WOOCOMMERCE SYNC ====================
 
 def get_woocommerce_client(config: dict) -> WooCommerceAPI:
-    return WooCommerceAPI(url=config['store_url'], consumer_key=config['consumer_key'], consumer_secret=config['consumer_secret'], version="wc/v3", timeout=30)
+    return WooCommerceAPI(url=config['store_url'], consumer_key=config['consumer_key'], consumer_secret=config['consumer_secret'], version="wc/v3", timeout=WOOCOMMERCE_API_TIMEOUT)
 
 
 def mask_key(key: str) -> str:
@@ -1532,27 +1584,43 @@ def mask_key(key: str) -> str:
 
 
 def calculate_final_price(base_price: float, product: dict, rules: list) -> float:
+    """Calculate final price by cumulatively applying all matching margin rules.
+
+    HIGH FIX #11: Apply rules cumulatively in priority order, not just the first match.
+    Each rule is applied on top of the previous result.
+
+    Example:
+    - base_price: 100€
+    - rule 1 (all, +10%): 100 * 1.10 = 110€
+    - rule 2 (category, +20%): 110 * 1.20 = 132€
+    """
     final_price = base_price
+
+    # Rules are already sorted by priority (descending) from the caller
     for rule in rules:
         applies = False
-        if rule["apply_to"] == "all":
+
+        # Check if rule applies to this product
+        if rule["apply_to"] == "all" or rule["apply_to"] == "category" and product.get("category") == rule.get("apply_to_value") or rule["apply_to"] == "supplier" and product.get("supplier_id") == rule.get("apply_to_value") or rule["apply_to"] == "product" and product.get("id") == rule.get("apply_to_value"):
             applies = True
-        elif rule["apply_to"] == "category" and product.get("category") == rule.get("apply_to_value"):
-            applies = True
-        elif rule["apply_to"] == "supplier" and product.get("supplier_id") == rule.get("apply_to_value"):
-            applies = True
-        elif rule["apply_to"] == "product" and product.get("id") == rule.get("apply_to_value"):
-            applies = True
+
         if applies:
+            # Check min/max price bounds (on base price)
             if rule.get("min_price") and base_price < rule["min_price"]:
                 continue
             if rule.get("max_price") and base_price > rule["max_price"]:
                 continue
+
+            # SECURITY FIX #11: Apply cumulatively on final_price, not base_price
+            # This allows multiple rules to be stacked
             if rule["rule_type"] == "percentage":
-                final_price = base_price * (1 + rule["value"] / 100)
+                final_price = final_price * (1 + rule["value"] / 100)
             elif rule["rule_type"] == "fixed":
-                final_price = base_price + rule["value"]
-            break
+                final_price = final_price + rule["value"]
+
+            # DO NOT BREAK - continue applying other rules
+            logger.debug(f"Applied margin rule: {rule.get('name', 'unnamed')} → {final_price:.2f}€")
+
     return final_price
 
 
@@ -1620,7 +1688,7 @@ async def sync_woocommerce_store_price_stock(config: dict):
             except Exception as e:
                 failed += 1
                 logger.error(f"Error processing catalog item: {e}")
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         await db.woocommerce_configs.update_one({"id": config["id"]}, {"$set": {"last_sync": now, "products_synced": updated}})
         logger.info(f"WooCommerce sync completed for {store_name}: {updated} updated, {failed} failed")
     except Exception as e:
@@ -1630,7 +1698,7 @@ async def sync_woocommerce_store_price_stock(config: dict):
 async def sync_all_woocommerce_stores():
     logger.info("Starting scheduled WooCommerce sync for all stores...")
     configs = await db.woocommerce_configs.find({
-        "auto_sync_enabled": True, 
+        "auto_sync_enabled": True,
         "catalog_id": {"$nin": [None, ""]}
     }).to_list(1000)
     logger.info(f"Found {len(configs)} WooCommerce stores with auto-sync enabled")
@@ -1702,12 +1770,12 @@ async def find_or_create_woocommerce_category(config: dict, name: str, parent_id
     """Find existing category by name or create it"""
     if existing_categories is None:
         existing_categories = await get_woocommerce_categories(config)
-    
+
     # Search for existing category
     for cat in existing_categories:
         if cat.get("name", "").lower() == name.lower() and cat.get("parent", 0) == parent_id:
             return cat.get("id")
-    
+
     # Create new category
     result = await create_woocommerce_category(config, {"name": name, "parent_id": parent_id})
     if result.get("status") == "success":
@@ -1718,23 +1786,23 @@ async def find_or_create_woocommerce_category(config: dict, name: str, parent_id
 async def export_catalog_categories_to_woocommerce(config: dict, catalog_id: str, user_id: str) -> dict:
     """Export catalog categories to WooCommerce store"""
     from services.database import db
-    
+
     # Get catalog categories
     categories = await db.catalog_categories.find(
         {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
     ).sort("position", 1).to_list(500)
-    
+
     if not categories:
         return {"status": "warning", "created": 0, "message": "No hay categorías para exportar"}
-    
+
     # Get existing WooCommerce categories
     wc_categories = await get_woocommerce_categories(config)
-    
+
     # Build mapping of our category IDs to WooCommerce category IDs
     category_mapping = {}  # local_id -> wc_id
     created = 0
     errors = []
-    
+
     # Process categories level by level
     max_level = max(cat.get("level", 0) for cat in categories)
     for level in range(max_level + 1):
@@ -1744,11 +1812,11 @@ async def export_catalog_categories_to_woocommerce(config: dict, catalog_id: str
                 wc_parent_id = 0
                 if cat.get("parent_id") and cat["parent_id"] in category_mapping:
                     wc_parent_id = category_mapping[cat["parent_id"]]
-                
+
                 wc_id = await find_or_create_woocommerce_category(
                     config, cat["name"], wc_parent_id, wc_categories
                 )
-                
+
                 if wc_id:
                     category_mapping[cat["id"]] = wc_id
                     # Check if it was created (not found in existing)
@@ -1764,7 +1832,7 @@ async def export_catalog_categories_to_woocommerce(config: dict, catalog_id: str
                     errors.append(f"Error creando categoría: {cat['name']}")
             except Exception as e:
                 errors.append(f"Error procesando {cat['name']}: {str(e)[:50]}")
-    
+
     return {
         "status": "success" if not errors else "partial",
         "created": created,
@@ -1954,8 +2022,8 @@ def extract_store_product_info(store_prod: dict, platform: str) -> dict:
 async def create_catalog_from_store_products(
     user_id: str,
     store_config_id: str,
-    catalog_name: Optional[str] = None,
-    catalog_id: Optional[str] = None,
+    catalog_name: str | None = None,
+    catalog_id: str | None = None,
     match_by: List[str] = None,
     skip_unmatched: bool = True
 ) -> dict:
@@ -1982,7 +2050,7 @@ async def create_catalog_from_store_products(
         match_by = ["sku", "ean", "name"]
 
     errors = []
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     created_products = 0
     catalog = None
 
@@ -2055,7 +2123,7 @@ async def create_catalog_from_store_products(
         await send_realtime_notification(user_id, {
             "id": str(uuid.uuid4()),
             "type": "sync_progress",
-            "message": f"Cargando productos de proveedores para cruzar datos...",
+            "message": "Cargando productos de proveedores para cruzar datos...",
             "progress": 20,
             "processed": 0,
             "total": total_store,

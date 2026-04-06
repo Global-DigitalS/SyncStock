@@ -1,6 +1,13 @@
 import { useState, useEffect } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  Package, Eye, BookOpen, Star, RefreshCw, Truck, Save, Pencil, AlertTriangle,
+  Radar, TrendingDown, TrendingUp, Minus, Loader2
+} from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
+} from "recharts";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Card, CardContent } from "../components/ui/card";
 import { Badge } from "../components/ui/badge";
@@ -15,13 +22,6 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Label } from "../components/ui/label";
 import { Input } from "../components/ui/input";
-import {
-  Package, Eye, BookOpen, Star, RefreshCw, Truck, Save, Pencil, AlertTriangle,
-  Radar, TrendingDown, TrendingUp, Minus, Loader2
-} from "lucide-react";
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
-} from "recharts";
 
 // Toggle field component for switches
 export const ToggleField = ({ label, value, onChange, testId }) => (

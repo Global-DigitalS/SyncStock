@@ -294,7 +294,10 @@ async def check_account_lockout(email: str) -> None:
 
 
 async def record_failed_login(email: str) -> None:
-    """Increment failed-attempt counter and lock if threshold reached."""
+    """Increment failed-attempt counter and lock if threshold reached.
+
+    LOW FIX #19: Log failed login attempts for security monitoring
+    """
     try:
         now = datetime.now(timezone.utc)
         window_start = (now - timedelta(minutes=_ATTEMPT_WINDOW_MINUTES)).isoformat()
@@ -315,13 +318,18 @@ async def record_failed_login(email: str) -> None:
         }
         if attempts >= _MAX_FAILED_ATTEMPTS:
             update["locked_until"] = (now + timedelta(minutes=_LOCKOUT_MINUTES)).isoformat()
+            # LOG LOCK EVENT
+            logger.warning(f"Account locked due to {attempts} failed login attempts: {email}")
+        else:
+            # LOG FAILED ATTEMPT
+            logger.warning(f"Failed login attempt for {email} ({attempts}/{_MAX_FAILED_ATTEMPTS} allowed)")
 
         await db.login_attempts.update_one(
             {"email": email}, {"$set": update}, upsert=True
         )
-    except Exception:
+    except Exception as e:
         # Best-effort: don't crash login flow if lockout tracking fails
-        pass
+        logger.error(f"Error recording failed login for {email}: {e}")
 
 
 async def reset_failed_logins(email: str) -> None:

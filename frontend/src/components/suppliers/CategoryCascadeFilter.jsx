@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { ChevronRight } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -6,7 +7,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import { ChevronRight } from "lucide-react";
 
 const CategoryCascadeFilter = ({ 
   hierarchy = [], 

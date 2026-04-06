@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
-import { api } from "../../App";
 import { Zap, ChevronDown, ChevronUp, Check } from "lucide-react";
+import { api } from "../../App";
 
 const SupplierPresetSelector = ({ onApplyPreset, selectedId }) => {
   const [presets, setPresets] = useState([]);

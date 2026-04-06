@@ -294,7 +294,12 @@ const AuthProvider = ({ children }) => {
     // Inicializa usuario desde caché local y luego valida con el servidor (via cookie httpOnly)
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
-      try { setUser(JSON.parse(savedUser)); } catch (_) {}
+      try {
+        setUser(JSON.parse(savedUser));
+      } catch (e) {
+        // Ignore parse errors for cached user
+        console.debug("Failed to parse cached user", e);
+      }
     }
     // NO BLOQUEAR: setear loading=false inmediatamente, validar JWT en background
     setLoading(false);
@@ -338,7 +343,12 @@ const AuthProvider = ({ children }) => {
   const logout = async () => {
     userIdRef.current = null;
     disconnectWebSocket();
-    try { await api.post("/auth/logout"); } catch (_) {}
+    try {
+      await api.post("/auth/logout");
+    } catch (e) {
+      // Ignore logout errors (session may already be cleared)
+      console.debug("Logout error (expected)", e);
+    }
     localStorage.removeItem("user");
     setUser(null);
     posthog.reset();

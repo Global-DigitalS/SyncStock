@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import uuid
 import logging
 import asyncio
+import secrets
 
 from services.database import db
 from services.auth import get_current_user
@@ -92,6 +93,9 @@ async def create_crm_connection(request: dict, user: dict = Depends(get_current_
     if len(name) > 255:
         raise HTTPException(status_code=400, detail="El nombre es demasiado largo (máx 255 caracteres)")
 
+    # SECURITY FIX #8: Generate webhook secret for HMAC signature verification
+    webhook_secret = secrets.token_urlsafe(32)  # 32 bytes = 256-bit secret
+
     connection = {
         "id": str(uuid.uuid4()),
         "user_id": user["id"],
@@ -102,6 +106,7 @@ async def create_crm_connection(request: dict, user: dict = Depends(get_current_
         "auto_sync": bool(request.get("auto_sync", False)),
         "auto_sync_interval": request.get("auto_sync_interval", "daily"),
         "status": "active",
+        "webhook_secret": webhook_secret,  # SECURITY: Store for HMAC verification
         "created_at": datetime.now(timezone.utc).isoformat(),
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "last_sync": None
@@ -109,6 +114,13 @@ async def create_crm_connection(request: dict, user: dict = Depends(get_current_
 
     await db.crm_connections.insert_one(connection)
     connection.pop("_id", None)
+
+    # Return webhook URL for admin to configure in CRM
+    webhook_url = f"/webhooks/crm/{platform}/order-status"
+    connection["webhook_url"] = webhook_url
+    connection["webhook_secret"] = webhook_secret  # Include in response for setup
+    logger.info(f"Created CRM connection with webhook secret for {platform}")
+
     return connection
 
 

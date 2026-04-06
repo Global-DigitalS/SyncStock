@@ -1,7 +1,11 @@
 import { useState, useEffect, useContext } from "react";
-import { api, AuthContext } from "../App";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import {
+  FileText, Plus, Pencil, Trash2, RefreshCw, Eye, Code, 
+  Mail, Save, RotateCcw, Send, CheckCircle, AlertCircle
+} from "lucide-react";
+import { api, AuthContext } from "../App";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -16,10 +20,6 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "../components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
-import {
-  FileText, Plus, Pencil, Trash2, RefreshCw, Eye, Code, 
-  Mail, Save, RotateCcw, Send, CheckCircle, AlertCircle
-} from "lucide-react";
 
 const AdminEmailTemplates = () => {
   const { user } = useContext(AuthContext);

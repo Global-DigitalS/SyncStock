@@ -4,6 +4,9 @@ Order management routes
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks, Request
 from typing import List, Optional
 from datetime import datetime, timezone
+import logging
+import hmac
+import hashlib
 
 from services.auth import get_current_user
 from services.database import db
@@ -14,7 +17,73 @@ from services.orders.order_sync import (
     get_order_sync_status
 )
 
+# SECURITY: Rate limiting for webhook endpoints
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
+
+
+# ==================== SECURITY: WEBHOOK SIGNATURE VERIFICATION ====================
+
+async def verify_webhook_signature(
+    platform: str,
+    user_id: str,
+    payload_bytes: bytes,
+    signature: str
+) -> bool:
+    """Verify HMAC-SHA256 signature of webhook payload - SECURITY FIX #8
+
+    Args:
+        platform: CRM platform (dolibarr, odoo, etc)
+        user_id: User ID to find the correct connection
+        payload_bytes: Raw request body bytes
+        signature: Signature header value (format: "sha256=<hex>")
+
+    Returns:
+        True if signature is valid, False otherwise
+    """
+    try:
+        # Find the connection to get webhook secret
+        connection = await db.crm_connections.find_one({
+            "user_id": user_id,
+            "platform": platform
+        })
+
+        if not connection or "webhook_secret" not in connection:
+            logger.warning(f"Webhook signature verification failed: no secret for {platform}")
+            return False
+
+        webhook_secret = connection["webhook_secret"]
+
+        # Calculate expected signature
+        expected_sig = hmac.new(
+            webhook_secret.encode('utf-8'),
+            payload_bytes,
+            hashlib.sha256
+        ).hexdigest()
+
+        # Extract signature from header (format: "sha256=<hex>")
+        if not signature.startswith("sha256="):
+            logger.warning(f"Invalid signature format: {signature[:20]}...")
+            return False
+
+        provided_sig = signature[7:]  # Remove "sha256=" prefix
+
+        # Use constant-time comparison to prevent timing attacks
+        is_valid = hmac.compare_digest(expected_sig, provided_sig)
+
+        if not is_valid:
+            logger.warning(f"Webhook signature mismatch for {platform}")
+
+        return is_valid
+
+    except Exception as e:
+        logger.error(f"Error verifying webhook signature: {e}")
+        return False
 
 
 @router.get("/orders")
@@ -224,10 +293,17 @@ async def process_failed_orders_retries(user: dict = Depends(get_current_user)):
     from services.orders import process_order_webhook
 
     # Get all failed orders for this user that are eligible for retry
+    # SECURITY FIX: Limit unbounded query to prevent OOM
+    # Fetch failed orders in batches to prevent memory exhaustion
+    MAX_FAILED_ORDERS = 10000  # Process max 10k orders per request
+
     failed_orders = await db.orders.find(
         {"userId": user["id"], "status": "error"},
         {"_id": 0}
-    ).to_list(None)
+    ).sort("created_at", -1).limit(MAX_FAILED_ORDERS).to_list(MAX_FAILED_ORDERS)
+
+    if len(failed_orders) >= MAX_FAILED_ORDERS:
+        logger.warning(f"User {user['id']} has {MAX_FAILED_ORDERS}+ failed orders, capping at {MAX_FAILED_ORDERS}")
 
     # Filter orders that should be retried
     retryable_orders = RetryManager.get_retryable_orders(failed_orders)
@@ -350,6 +426,7 @@ async def get_order_sync_status_endpoint(
 
 
 @router.post("/webhooks/crm/dolibarr/order-status")
+@limiter.limit("30/minute")  # SECURITY FIX: Rate limit webhooks (30 per minute per IP)
 async def handle_dolibarr_order_webhook(request: Request):
     """
     Webhook endpoint for Dolibarr order status updates
@@ -365,20 +442,50 @@ async def handle_dolibarr_order_webhook(request: Request):
     }
     """
     try:
+        # SECURITY FIX #8: Verify webhook signature first (before parsing)
+        payload_bytes = await request.body()
+        signature = request.headers.get("X-Webhook-Signature", "")
+
         payload = await request.json()
 
-        # Verify webhook (in production, verify signature)
+        # Parse and validate all fields with safe type conversion
         user_id = payload.get("user_id")
         object_id = payload.get("object_id")
         new_status = payload.get("new_status")
 
         if not all([user_id, object_id, new_status is not None]):
+            logger.warning(f"Invalid webhook payload: missing required fields")
+            return {"status": "error", "message": "Invalid payload"}
+
+        # SECURITY FIX #8: Verify HMAC signature
+        is_valid = await verify_webhook_signature(
+            platform="dolibarr",
+            user_id=user_id,
+            payload_bytes=payload_bytes,
+            signature=signature
+        )
+
+        if not is_valid:
+            logger.warning(f"Webhook signature verification failed for user {user_id}")
+            return {"status": "error", "message": "Invalid webhook signature"}
+
+        # SECURITY FIX: Safe int conversion with error handling
+        try:
+            crm_order_id = int(object_id)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid object_id format: {object_id} (not an integer)")
+            return {"status": "error", "message": "Invalid payload"}
+
+        try:
+            status_code = int(new_status)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid status format: {new_status} (not an integer)")
             return {"status": "error", "message": "Invalid payload"}
 
         # Find order by CRM order ID
         order = await db.orders.find_one({
             "userId": user_id,
-            "crmData.dolibarr_order_id": int(object_id)
+            "crmData.dolibarr_order_id": crm_order_id
         })
 
         if not order:
@@ -393,8 +500,8 @@ async def handle_dolibarr_order_webhook(request: Request):
             user_id,
             {
                 "crm": "dolibarr",
-                "status": new_status,
-                "crm_order_id": object_id
+                "status": status_code,
+                "crm_order_id": crm_order_id
             }
         )
 
@@ -408,14 +515,16 @@ async def handle_dolibarr_order_webhook(request: Request):
         }
 
     except Exception as e:
-        logger.error(f"Error handling Dolibarr webhook: {e}")
+        # SECURITY FIX: Don't expose exception details to client
+        logger.error(f"Error handling Dolibarr webhook: {type(e).__name__}: {e}", exc_info=True)
         return {
             "status": "error",
-            "message": str(e)
+            "message": "Internal server error"
         }
 
 
 @router.post("/webhooks/crm/odoo/order-status")
+@limiter.limit("30/minute")  # SECURITY FIX: Rate limit webhooks (30 per minute per IP)
 async def handle_odoo_order_webhook(request: Request):
     """
     Webhook endpoint for Odoo order status updates
@@ -431,20 +540,44 @@ async def handle_odoo_order_webhook(request: Request):
     }
     """
     try:
+        # SECURITY FIX #8: Verify webhook signature first (before parsing)
+        payload_bytes = await request.body()
+        signature = request.headers.get("X-Webhook-Signature", "")
+
         payload = await request.json()
 
-        # Verify webhook (in production, verify signature)
+        # Parse and validate all fields with safe type conversion
         user_id = payload.get("user_id")
         object_id = payload.get("object_id")
         state = payload.get("state")
 
         if not all([user_id, object_id, state]):
+            logger.warning(f"Invalid webhook payload: missing required fields")
+            return {"status": "error", "message": "Invalid payload"}
+
+        # SECURITY FIX #8: Verify HMAC signature
+        is_valid = await verify_webhook_signature(
+            platform="odoo",
+            user_id=user_id,
+            payload_bytes=payload_bytes,
+            signature=signature
+        )
+
+        if not is_valid:
+            logger.warning(f"Webhook signature verification failed for user {user_id}")
+            return {"status": "error", "message": "Invalid webhook signature"}
+
+        # SECURITY FIX: Safe int conversion with error handling
+        try:
+            crm_order_id = int(object_id)
+        except (ValueError, TypeError):
+            logger.warning(f"Invalid object_id format: {object_id} (not an integer)")
             return {"status": "error", "message": "Invalid payload"}
 
         # Find order by CRM order ID
         order = await db.orders.find_one({
             "userId": user_id,
-            "crmData.odoo_order_id": int(object_id)
+            "crmData.odoo_order_id": crm_order_id
         })
 
         if not order:
@@ -460,7 +593,7 @@ async def handle_odoo_order_webhook(request: Request):
             {
                 "crm": "odoo",
                 "status": state,
-                "crm_order_id": object_id
+                "crm_order_id": crm_order_id
             }
         )
 
@@ -474,8 +607,9 @@ async def handle_odoo_order_webhook(request: Request):
         }
 
     except Exception as e:
-        logger.error(f"Error handling Odoo webhook: {e}")
+        # SECURITY FIX: Don't expose exception details to client
+        logger.error(f"Error handling Odoo webhook: {type(e).__name__}: {e}", exc_info=True)
         return {
             "status": "error",
-            "message": str(e)
+            "message": "Internal server error"
         }

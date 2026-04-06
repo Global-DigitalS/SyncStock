@@ -1,6 +1,11 @@
 import { useState, useRef } from "react";
-import { api } from "../../App";
 import { toast } from "sonner";
+import {
+  Package, Save, Pencil, Star, Truck, Upload, X, Image, Plus,
+  Barcode, DollarSign, Globe, Tag, Settings, Box, Search,
+  FileText, Video, Shield, MapPin, Clock, Layers,
+} from "lucide-react";
+import { api } from "../../App";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
@@ -15,11 +20,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "../ui/dialog";
-import {
-  Package, Save, Pencil, Star, Truck, Upload, X, Image, Plus,
-  Barcode, DollarSign, Globe, Tag, Settings, Box, Search,
-  FileText, Video, Shield, MapPin, Clock, Layers,
-} from "lucide-react";
 import StockBadge from "../shared/StockBadge";
 
 // ─── Collapsible Section ───────────────────────────────────────────

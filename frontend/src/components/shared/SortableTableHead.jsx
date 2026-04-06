@@ -2,8 +2,8 @@
  * Componente reutilizable para encabezados de tabla ordenables.
  * Muestra el icono de ordenación apropiado según el estado.
  */
-import { TableHead } from "../ui/table";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { TableHead } from "../ui/table";
 
 const SortableTableHead = ({
   column,

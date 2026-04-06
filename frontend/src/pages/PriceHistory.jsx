@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  TrendingUp, TrendingDown, ArrowRight, Search, Calendar, Package, Eye, X
+} from "lucide-react";
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  AreaChart, Area
+} from "recharts";
+import { api } from "../App";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
@@ -14,13 +21,6 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription
 } from "../components/ui/dialog";
-import {
-  TrendingUp, TrendingDown, ArrowRight, Search, Calendar, Package, Eye, X
-} from "lucide-react";
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  AreaChart, Area
-} from "recharts";
 
 const PriceHistory = () => {
   const [history, setHistory] = useState([]);

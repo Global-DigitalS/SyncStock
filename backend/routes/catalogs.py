@@ -19,6 +19,13 @@ from models.schemas import (
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# MEDIUM FIX #15: Hardcoded batch limits - now configurable constants
+# These limits prevent unbounded queries and memory exhaustion
+MAX_CATALOGS_PER_USER = 100      # User shouldn't have >100 catalogs
+MAX_CATALOG_ITEMS = 100          # Items per catalog summary
+MAX_MARGIN_RULES = 100           # Rules per catalog (UI limitation)
+MAX_CATEGORIES = 100             # Categories per catalog
+MAX_PRODUCTS_PAGE = 1000         # Products per page query
 
 # ==================== CATALOGS ====================
 
@@ -194,7 +201,9 @@ async def add_products_to_catalog(catalog_id: str, data: CatalogProductAdd, user
 async def get_catalog_products(
     catalog_id: str, active_only: bool = False, search: Optional[str] = None,
     category_id: Optional[str] = None,
-    skip: int = 0, limit: int = 100, user: dict = Depends(get_current_user)
+    skip: int = Query(0, ge=0, le=1000000),  # MEDIUM #12: Validate pagination
+    limit: int = Query(100, ge=1, le=1000),  # MEDIUM #12: Validate limit range
+    user: dict = Depends(get_current_user)
 ):
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
@@ -272,7 +281,7 @@ async def get_catalog_margin_rules(catalog_id: str, user: dict = Depends(get_cur
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}).sort("priority", -1).to_list(100)
+    rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}).sort("priority", -1).to_list(MAX_MARGIN_RULES)
     return [CatalogMarginRuleResponse(**r) for r in rules]
 
 
@@ -330,7 +339,7 @@ async def get_catalog(active_only: bool = False, search: Optional[str] = None,
     if active_only:
         query["active"] = True
     catalog_items = await db.catalog_items.find(query, {"_id": 0, "user_id": 0}).skip(skip).limit(limit).to_list(limit)
-    margin_rules = await db.catalog_margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(100)
+    margin_rules = await db.catalog_margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(MAX_MARGIN_RULES)
 
     # Batch: cargar todos los productos de una vez en lugar de N queries individuales
     product_ids = [item["product_id"] for item in catalog_items]
@@ -391,7 +400,7 @@ async def create_margin_rule(rule: MarginRuleCreate, user: dict = Depends(get_cu
 
 @router.get("/margin-rules", response_model=List[MarginRuleResponse])
 async def get_margin_rules(user: dict = Depends(get_current_user)):
-    rules = await db.catalog_margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(100)
+    rules = await db.catalog_margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(MAX_MARGIN_RULES)
     return [MarginRuleResponse(**r) for r in rules]
 
 

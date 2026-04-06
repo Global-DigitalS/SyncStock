@@ -1,4 +1,16 @@
 import { useNavigate } from "react-router-dom";
+import {
+  Truck,
+  Plus,
+  MoreVertical,
+  Pencil,
+  Trash2,
+  Server,
+  FileText,
+  Eye,
+  Globe,
+  Columns
+} from "lucide-react";
 import { Button } from "../ui/button";
 import { Card, CardContent } from "../ui/card";
 import {
@@ -15,18 +27,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "../ui/dropdown-menu";
-import {
-  Truck,
-  Plus,
-  MoreVertical,
-  Pencil,
-  Trash2,
-  Server,
-  FileText,
-  Eye,
-  Globe,
-  Columns
-} from "lucide-react";
 
 const formatDate = (dateStr) => {
   if (!dateStr) return "Nunca";

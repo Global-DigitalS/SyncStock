@@ -1,6 +1,9 @@
 import { useState, useEffect, useContext } from "react";
-import { api, AuthContext } from "../App";
 import { toast } from "sonner";
+import {
+  Users, Shield, UserCog, Trash2, Crown, Eye, Edit3, Settings, Truck, BookOpen, ShoppingCart, FileUser
+} from "lucide-react";
+import { api, AuthContext } from "../App";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
@@ -19,9 +22,6 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "../components/ui/alert-dialog";
-import {
-  Users, Shield, UserCog, Trash2, Crown, Eye, Edit3, Settings, Truck, BookOpen, ShoppingCart, FileUser
-} from "lucide-react";
 import UserDetailDialog from "../components/UserDetailDialog";
 
 const ROLE_CONFIG = {

@@ -2,19 +2,21 @@
 CRM sync functions for all supported platforms.
 Handles product, supplier, and order synchronization with Dolibarr, Odoo, and generic CRMs.
 """
-import logging
 import asyncio
+import logging
 import time
 import uuid
-from datetime import datetime, timezone, timedelta
-from typing import Dict, Optional, List
+from datetime import UTC, datetime, timedelta
 
+from config import WOOCOMMERCE_API_TIMEOUT
+from services.crm_clients import (
+    BASIC_SYNC_PLATFORMS,
+    DolibarrClient,
+    OdooClient,
+    create_crm_client,
+)
 from services.database import db
 from services.sync import calculate_final_price
-from services.crm_clients import (
-    DolibarrClient, OdooClient,
-    create_crm_client, FULL_SYNC_PLATFORMS, BASIC_SYNC_PLATFORMS,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -168,7 +170,6 @@ class SyncCache:
             Number of entries invalidated
         """
         async with self.lock:
-            import fnmatch
             prefix = pattern.replace('*', '')
             keys_to_remove = [k for k in self.cache.keys() if k.startswith(prefix)]
             for key in keys_to_remove:
@@ -187,7 +188,7 @@ class SyncCache:
             logger.info(f"Cleared entire cache ({size} entries)")
 
 
-def build_differential_update_payload(local_product: Dict, crm_product: Dict, fields_to_check: List[str] = None) -> Dict:
+def build_differential_update_payload(local_product: dict, crm_product: dict, fields_to_check: List[str] = None) -> dict:
     """
     Build update payload with only changed fields (FASE 3: Differential Updates) - SAFE TYPE HANDLING.
 
@@ -284,7 +285,7 @@ async def record_sync_statistics(
             "products_per_second": round(products_processed / max(duration_seconds, 1), 2),
             "error_count": errors,
             "success": success,
-            "recorded_at": datetime.now(timezone.utc).isoformat()
+            "recorded_at": datetime.now(UTC).isoformat()
         }
 
         # Insert into stats collection for analysis
@@ -310,7 +311,7 @@ async def validate_and_cleanup_sync_jobs(user_id: str, max_age_days: int = 30):
     - Logs validation errors
     """
     try:
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+        cutoff_date = datetime.now(UTC) - timedelta(days=max_age_days)
         cutoff_iso = cutoff_date.isoformat()
 
         # Find old or invalid jobs
@@ -355,7 +356,7 @@ async def validate_and_cleanup_sync_jobs(user_id: str, max_age_days: int = 30):
         logger.error(f"Error in validate_and_cleanup_sync_jobs: {e}")
 
 
-def validate_margin_rules(rules: List[Dict]) -> List[Dict]:
+def validate_margin_rules(rules: List[dict]) -> List[dict]:
     """Validate margin rules before use - MEDIUM #20
 
     Filters out invalid rules that would cause calculation errors.
@@ -448,7 +449,7 @@ async def run_sync_in_background(
                 {"$set": {
                     "status": "error",
                     "current_step": f"Plataforma no soportada: {platform}",
-                    "completed_at": datetime.now(timezone.utc).isoformat()
+                    "completed_at": datetime.now(UTC).isoformat()
                 }}
             )
             return
@@ -503,7 +504,7 @@ async def run_sync_in_background(
         # Update last sync time
         await db.crm_connections.update_one(
             {"id": connection_id},
-            {"$set": {"last_sync": datetime.now(timezone.utc).isoformat()}}
+            {"$set": {"last_sync": datetime.now(UTC).isoformat()}}
         )
 
         # Build summary message
@@ -519,7 +520,7 @@ async def run_sync_in_background(
                 "status": "completed",
                 "progress": 100,
                 "current_step": " | ".join(messages) if messages else "Sincronización completada",
-                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "completed_at": datetime.now(UTC).isoformat(),
                 "results": results
             }}
         )
@@ -532,7 +533,7 @@ async def run_sync_in_background(
             {"$set": {
                 "status": "error",
                 "current_step": f"Error: {str(e)[:100]}",
-                "completed_at": datetime.now(timezone.utc).isoformat()
+                "completed_at": datetime.now(UTC).isoformat()
             }}
         )
     finally:
@@ -548,13 +549,13 @@ async def run_sync_in_background(
 
 async def _sync_product_create_dolibarr(
     client: DolibarrClient,
-    product: Dict,
-    product_data: Dict,
+    product: dict,
+    product_data: dict,
     image_url: str,
-    sync_settings: Dict,
+    sync_settings: dict,
     limiter: GlobalRateLimiter,
     cache: SyncCache = None
-) -> Dict:
+) -> dict:
     """Create a single product with rate limiting"""
     try:
         await limiter.acquire()
@@ -591,14 +592,14 @@ async def _sync_product_create_dolibarr(
 
 async def _sync_product_update_dolibarr(
     client: DolibarrClient,
-    product: Dict,
-    existing: Dict,
-    product_data: Dict,
+    product: dict,
+    existing: dict,
+    product_data: dict,
     image_url: str,
-    sync_settings: Dict,
+    sync_settings: dict,
     limiter: GlobalRateLimiter,
     cache: SyncCache = None
-) -> Dict:
+) -> dict:
     """Update a single product with rate limiting and differential updates"""
     try:
         sku = product.get("sku")
@@ -644,7 +645,7 @@ async def _sync_product_update_dolibarr(
         return {"status": "error", "sku": product.get("sku"), "message": str(e)}
 
 
-async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> Dict:
+async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> dict:
     """Sync products from our catalog to Dolibarr with full data including purchase price, stock and images"""
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
@@ -854,7 +855,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     # ========== FASE 3 OPTIMIZATION: In-memory cache with TTL ==========
     # Cache products for repeated lookups during sync or future syncs
     cache = SyncCache(ttl_seconds=1800)  # 30 minutes TTL
-    logger.info(f"Fase 3: Caché de productos inicializada (TTL: 30 min)")
+    logger.info("Fase 3: Caché de productos inicializada (TTL: 30 min)")
 
     # MEDIUM #16: Use platform-specific rate limiting
     limiter = GlobalRateLimiter(platform="dolibarr")
@@ -998,27 +999,27 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     }
 
 
-async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
+async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> dict:
     """Sync suppliers from our system to Dolibarr and link products to suppliers"""
     # Get user's suppliers
     suppliers = await db.suppliers.find(
         {"user_id": user_id},
         {"_id": 0}
     ).to_list(1000)
-    
+
     if not suppliers:
         return {"status": "warning", "message": "No hay proveedores para sincronizar", "created": 0, "updated": 0}
-    
+
     created = 0
     updated = 0
     errors = 0
     supplier_mapping = {}  # our_id -> dolibarr_id
-    
+
     for supplier in suppliers:
         try:
             # Check if supplier exists in Dolibarr by name
             existing = client.get_supplier_by_name(supplier.get("name", ""))
-            
+
             supplier_data = {
                 "name": supplier.get("name", ""),
                 "email": supplier.get("email", ""),
@@ -1029,7 +1030,7 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
                 "country_code": supplier.get("country_code", "ES"),
                 "notes": f"Tipo conexión: {supplier.get('connection_type', 'N/A')}. Productos: {supplier.get('product_count', 0)}"
             }
-            
+
             if existing:
                 dolibarr_id = int(existing.get("id"))
                 result = client.update_supplier(dolibarr_id, supplier_data)
@@ -1056,7 +1057,7 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
         except Exception as e:
             logger.error(f"Error syncing supplier {supplier.get('name', 'unknown')} to Dolibarr: {e}")
             errors += 1
-    
+
     # Now link products to their suppliers in Dolibarr
     products_linked = 0
     if supplier_mapping:
@@ -1066,14 +1067,14 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
                 {"user_id": user_id, "is_selected": True},
                 {"_id": 0, "sku": 1, "supplier_id": 1, "price": 1}
             ).to_list(10000)
-            
+
             for product in products:
                 supplier_id = product.get("supplier_id")
                 if supplier_id and supplier_id in supplier_mapping:
                     dolibarr_supplier_id = supplier_mapping[supplier_id]
                     sku = product.get("sku", "")
                     purchase_price = product.get("price", 0)
-                    
+
                     if sku and dolibarr_supplier_id:
                         # Try to link product to supplier in Dolibarr
                         result = client.link_product_to_supplier(sku, dolibarr_supplier_id, purchase_price)
@@ -1081,7 +1082,7 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
                             products_linked += 1
         except Exception as e:
             logger.error(f"Error linking products to suppliers: {e}")
-    
+
     return {
         "status": "success" if errors == 0 else "partial",
         "message": f"{created} proveedores creados, {updated} actualizados, {errors} errores, {products_linked} productos vinculados",
@@ -1092,33 +1093,33 @@ async def sync_suppliers_to_dolibarr(client: DolibarrClient, user_id: str) -> Di
     }
 
 
-async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
+async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> dict:
     """Import orders from WooCommerce stores to Dolibarr"""
     # Get user's WooCommerce stores
     stores = await db.woocommerce_configs.find(
         {"user_id": user_id, "platform": "woocommerce"},
         {"_id": 0}
     ).to_list(100)
-    
+
     if not stores:
         return {"status": "info", "message": "No hay tiendas configuradas para importar pedidos", "imported": 0}
-    
+
     imported = 0
     errors = 0
-    
+
     for store in stores:
         try:
             # Get orders from WooCommerce
             from woocommerce import API as WooCommerceAPI
-            
+
             wcapi = WooCommerceAPI(
                 url=store.get("store_url", ""),
                 consumer_key=store.get("consumer_key", ""),
                 consumer_secret=store.get("consumer_secret", ""),
                 version="wc/v3",
-                timeout=30
+                timeout=WOOCOMMERCE_API_TIMEOUT
             )
-            
+
             # Get recent orders (last 30 days, pending/processing)
             response = wcapi.get("orders", params={
                 "per_page": 100,
@@ -1126,10 +1127,10 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
                 "orderby": "date",
                 "order": "desc"
             })
-            
+
             if response.status_code != 200:
                 continue
-            
+
             wc_orders = response.json()
 
             # HIGH #5 FIX: Batch lookup all SKUs from all orders BEFORE processing individual orders
@@ -1177,7 +1178,7 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
                                 "source": "woocommerce",
                                 "store_id": store.get("id"),
                                 "order_data": {"status": "already_synced"},
-                                "synced_at": datetime.now(timezone.utc).isoformat()
+                                "synced_at": datetime.now(UTC).isoformat()
                             })
                             continue
                     except Exception as check_err:
@@ -1201,7 +1202,7 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
                             "price": float(item.get("price", 0)),
                             "description": item.get("name", "")
                         })
-                    
+
                     # For now, we'll log the order - creating requires customer mapping
                     # Store synced order record
                     await db.crm_synced_orders.insert_one({
@@ -1218,9 +1219,9 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
                             "date": wc_order.get("date_created"),
                             "lines_count": len(lines)
                         },
-                        "synced_at": datetime.now(timezone.utc).isoformat()
+                        "synced_at": datetime.now(UTC).isoformat()
                     })
-                    
+
                     imported += 1
                 except Exception as e:
                     logger.error(f"Error importing order {wc_order.get('id')}: {e}")
@@ -1228,7 +1229,7 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
         except Exception as e:
             logger.error(f"Error fetching orders from store {store.get('id')}: {e}")
             errors += 1
-    
+
     return {
         "status": "success" if errors == 0 else "partial",
         "message": f"{imported} pedidos importados, {errors} errores",
@@ -1241,12 +1242,12 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
 
 async def _sync_product_create_odoo(
     client: OdooClient,
-    product: Dict,
-    product_data: Dict,
-    sync_settings: Dict,
+    product: dict,
+    product_data: dict,
+    sync_settings: dict,
     limiter: GlobalRateLimiter,
     cache: SyncCache = None
-) -> Dict:
+) -> dict:
     """Create a single Odoo product with rate limiting"""
     try:
         await limiter.acquire()
@@ -1278,13 +1279,13 @@ async def _sync_product_create_odoo(
 
 async def _sync_product_update_odoo(
     client: OdooClient,
-    product: Dict,
-    existing_product: Dict,
-    product_data: Dict,
-    sync_settings: Dict,
+    product: dict,
+    existing_product: dict,
+    product_data: dict,
+    sync_settings: dict,
     limiter: GlobalRateLimiter,
     cache: SyncCache = None
-) -> Dict:
+) -> dict:
     """Update a single Odoo product with rate limiting and differential updates"""
     try:
         sku = product.get("sku")
@@ -1314,7 +1315,7 @@ async def _sync_product_update_odoo(
 
 # ==================== ODOO SYNC FUNCTIONS ====================
 
-async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> Dict:
+async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> dict:
     """Sync products from our catalog to Odoo with full data including purchase price, stock and images"""
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
@@ -1442,7 +1443,7 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
 
     # ========== FASE 3 OPTIMIZATION: In-memory cache with TTL ==========
     cache = SyncCache(ttl_seconds=1800)  # 30 minutes TTL
-    logger.info(f"Fase 3: Caché de productos Odoo inicializado (TTL: 30 min)")
+    logger.info("Fase 3: Caché de productos Odoo inicializado (TTL: 30 min)")
 
     # MEDIUM #16: Use platform-specific rate limiting
     limiter = GlobalRateLimiter(platform="odoo")
@@ -1581,20 +1582,20 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
     }
 
 
-async def sync_suppliers_to_odoo(client: OdooClient, user_id: str) -> Dict:
+async def sync_suppliers_to_odoo(client: OdooClient, user_id: str) -> dict:
     """Sync suppliers from our database to Odoo"""
     suppliers = await db.suppliers.find(
         {"user_id": user_id},
         {"_id": 0}
     ).to_list(10000)
-    
+
     if not suppliers:
         return {"status": "info", "message": "No hay proveedores para sincronizar", "created": 0, "updated": 0}
-    
+
     created = 0
     updated = 0
     errors = 0
-    
+
     for supplier in suppliers:
         try:
             # Find supplier in Odoo by name
@@ -1604,7 +1605,7 @@ async def sync_suppliers_to_odoo(client: OdooClient, user_id: str) -> Dict:
                 if s.get("name") == supplier.get("name"):
                     existing = s
                     break
-            
+
             supplier_data = {
                 "name": supplier.get("name", ""),
                 "email": supplier.get("email", ""),
@@ -1612,7 +1613,7 @@ async def sync_suppliers_to_odoo(client: OdooClient, user_id: str) -> Dict:
                 "address": supplier.get("address", ""),
                 "city": supplier.get("city", "")
             }
-            
+
             if existing:
                 result = client.update_supplier(existing.get("id"), supplier_data)
                 if result.get("status") == "success":
@@ -1625,11 +1626,11 @@ async def sync_suppliers_to_odoo(client: OdooClient, user_id: str) -> Dict:
                     created += 1
                 else:
                     errors += 1
-        
+
         except Exception as e:
             logger.error(f"Error syncing supplier {supplier.get('name', 'Unknown')}: {e}")
             errors += 1
-    
+
     return {
         "status": "success" if errors == 0 else "partial",
         "message": f"{created} creados, {updated} actualizados, {errors} errores",
@@ -1639,31 +1640,31 @@ async def sync_suppliers_to_odoo(client: OdooClient, user_id: str) -> Dict:
     }
 
 
-async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
+async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> dict:
     """Import orders from WooCommerce stores to Odoo"""
     stores = await db.woocommerce_configs.find(
         {"user_id": user_id, "platform": "woocommerce"},
         {"_id": 0}
     ).to_list(100)
-    
+
     if not stores:
         return {"status": "info", "message": "No hay tiendas configuradas para importar pedidos", "imported": 0}
-    
+
     imported = 0
     errors = 0
-    
+
     for store in stores:
         try:
             from woocommerce import API as WooCommerceAPI
-            
+
             wcapi = WooCommerceAPI(
                 url=store.get("store_url", ""),
                 consumer_key=store.get("consumer_key", ""),
                 consumer_secret=store.get("consumer_secret", ""),
                 version="wc/v3",
-                timeout=30
+                timeout=WOOCOMMERCE_API_TIMEOUT
             )
-            
+
             # Get recent orders (pending/processing)
             response = wcapi.get("orders", params={
                 "per_page": 100,
@@ -1671,12 +1672,12 @@ async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
                 "orderby": "date",
                 "order": "desc"
             })
-            
+
             if response.status_code != 200:
                 continue
-            
+
             wc_orders = response.json()
-            
+
             for wc_order in wc_orders:
                 try:
                     order_external_id = str(wc_order.get("id"))
@@ -1706,7 +1707,7 @@ async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
                                 "source": "woocommerce",
                                 "store_id": store.get("id"),
                                 "order_data": {"status": "already_synced"},
-                                "synced_at": datetime.now(timezone.utc).isoformat()
+                                "synced_at": datetime.now(UTC).isoformat()
                             })
                             continue
                     except Exception as check_err:
@@ -1715,7 +1716,7 @@ async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
 
                     customer_email = wc_order.get("billing", {}).get("email", "")
                     customer_name = f"{wc_order.get('billing', {}).get('first_name', '')} {wc_order.get('billing', {}).get('last_name', '')}".strip()
-                    
+
                     # Store synced order record
                     await db.crm_synced_orders.insert_one({
                         "id": str(uuid.uuid4()),
@@ -1731,9 +1732,9 @@ async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
                             "date": wc_order.get("date_created"),
                             "lines_count": len(wc_order.get("line_items", []))
                         },
-                        "synced_at": datetime.now(timezone.utc).isoformat()
+                        "synced_at": datetime.now(UTC).isoformat()
                     })
-                    
+
                     imported += 1
                 except Exception as e:
                     logger.error(f"Error importing order {wc_order.get('id')}: {e}")
@@ -1741,7 +1742,7 @@ async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
         except Exception as e:
             logger.error(f"Error fetching orders from store {store.get('id')}: {e}")
             errors += 1
-    
+
     return {
         "status": "success" if errors == 0 else "partial",
         "message": f"{imported} pedidos importados, {errors} errores",
@@ -1752,7 +1753,7 @@ async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
 
 # ==================== GENERIC SYNC FOR NEW CRM PLATFORMS ====================
 
-async def sync_products_generic(client, platform: str, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> Dict:
+async def sync_products_generic(client, platform: str, user_id: str, sync_settings: dict = None, catalog_id: str = None, sync_job_id: str = None) -> dict:
     """Generic product sync for HubSpot, Salesforce, Zoho, Pipedrive, Monday, Freshsales"""
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
@@ -1870,7 +1871,7 @@ async def sync_products_generic(client, platform: str, user_id: str, sync_settin
     }
 
 
-def _build_product_data(platform: str, product: dict, name: str, sku: str, price: float, stock_qty: int, sync_settings: dict) -> Dict:
+def _build_product_data(platform: str, product: dict, name: str, sku: str, price: float, stock_qty: int, sync_settings: dict) -> dict:
     """Build platform-specific product data dict"""
     description = product.get("description", "") if sync_settings.get("descriptions") else ""
 
@@ -1924,7 +1925,7 @@ def _build_product_data(platform: str, product: dict, name: str, sku: str, price
     return {"name": name}
 
 
-def _get_product_id(platform: str, existing: dict) -> Optional[str]:
+def _get_product_id(platform: str, existing: dict) -> str | None:
     """Extract product ID from platform-specific response"""
     if platform == "hubspot":
         return existing.get("id")

@@ -1,6 +1,14 @@
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  Percent,
+  Plus,
+  Pencil,
+  Trash2,
+  ArrowUpRight,
+  Info
+} from "lucide-react";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -38,14 +46,6 @@ import {
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
 import { Badge } from "../components/ui/badge";
-import {
-  Percent,
-  Plus,
-  Pencil,
-  Trash2,
-  ArrowUpRight,
-  Info
-} from "lucide-react";
 
 const MarginRules = () => {
   const [rules, setRules] = useState([]);

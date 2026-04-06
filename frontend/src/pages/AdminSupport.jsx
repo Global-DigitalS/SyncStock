@@ -1,17 +1,17 @@
 import { useState, useEffect } from "react";
-import { useAuth, api } from "../App";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Badge } from "../components/ui/badge";
-import { Button } from "../components/ui/button";
-import { Textarea } from "../components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   TicketCheck, ArrowLeft, Send, Clock, CheckCircle2, MessageSquare,
   AlertCircle, HelpCircle, CreditCard, Lightbulb, ChevronRight,
   User, Shield, Inbox, Star, RefreshCw, Filter, Search, Eye,
   MailOpen, Reply, XCircle, LifeBuoy
 } from "lucide-react";
+import { useAuth, api } from "../App";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
+import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
+import { Textarea } from "../components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { Input } from "../components/ui/input";
 
 // ==================== CONSTANTS ====================

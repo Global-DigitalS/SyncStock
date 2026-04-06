@@ -1,19 +1,19 @@
 import { useState, useEffect, useContext, useRef } from "react";
-import { api, AuthContext } from "../App";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
-import { Button } from "../components/ui/button";
-import { Input } from "../components/ui/input";
-import { Label } from "../components/ui/label";
-import { Textarea } from "../components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import {
   Palette, Upload, Eye, Save, RefreshCw, Image, Type,
   Paintbrush, CheckCircle, Sparkles, LayoutTemplate, FileText,
   Globe, Server, ShoppingCart, ShoppingBag, Boxes, Building2,
   Package, Trash2, ImageIcon, Info
 } from "lucide-react";
+import { api, AuthContext } from "../App";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "../components/ui/card";
+import { Button } from "../components/ui/button";
+import { Input } from "../components/ui/input";
+import { Label } from "../components/ui/label";
+import { Textarea } from "../components/ui/textarea";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || "";
 

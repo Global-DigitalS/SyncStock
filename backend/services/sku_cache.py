@@ -76,7 +76,10 @@ class SKUCache:
         logger.debug(f"SKUCache: Fetching {len(uncached_skus)} uncached SKUs from DB")
 
         try:
-            # Fetch all at once
+            # SECURITY FIX: Limit unbounded query to prevent OOM
+            # Fetch products with safeguard - if we're loading too many, something is wrong
+            MAX_PRODUCTS_PER_BATCH = 100000
+
             docs = await db.products.find(
                 {
                     "supplier_id": self.supplier_id,
@@ -92,7 +95,10 @@ class SKUCache:
                     "brand": 1,
                     "_id": 0
                 }
-            ).to_list(None)
+            ).limit(MAX_PRODUCTS_PER_BATCH).to_list(MAX_PRODUCTS_PER_BATCH)
+
+            if len(docs) >= MAX_PRODUCTS_PER_BATCH:
+                logger.error(f"SKUCache: Retrieved {MAX_PRODUCTS_PER_BATCH}+ products, may be incomplete")
 
             # Cache results
             found_skus = set()

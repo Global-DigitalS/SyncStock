@@ -2,20 +2,22 @@
 Servicio de envío de correos electrónicos via SMTP.
 Soporta cualquier servidor SMTP (Gmail, Outlook, servidor propio, etc.)
 """
+import logging
 import smtplib
 import ssl
-import logging
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from typing import Optional, Dict, Any
 from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from typing import Any
+
+from config import SMTP_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
 
 class EmailService:
     """Servicio para envío de correos electrónicos via SMTP"""
-    
+
     def __init__(self, config: Dict[str, Any] = None):
         self.config = config or {}
         self.smtp_host = self.config.get('smtp_host', '')
@@ -26,11 +28,11 @@ class EmailService:
         self.smtp_from_name = self.config.get('smtp_from_name', 'SyncStock')
         self.smtp_use_tls = self.config.get('smtp_use_tls', True)
         self.smtp_use_ssl = self.config.get('smtp_use_ssl', False)
-    
+
     def is_configured(self) -> bool:
         """Verifica si el servicio de email está configurado"""
         return bool(self.smtp_host and self.smtp_user and self.smtp_password)
-    
+
     def test_connection(self) -> Dict[str, Any]:
         """Prueba la conexión SMTP"""
         if not self.is_configured():
@@ -38,19 +40,19 @@ class EmailService:
                 "success": False,
                 "message": "Configuración SMTP incompleta"
             }
-        
+
         try:
             if self.smtp_use_ssl:
                 context = ssl.create_default_context()
-                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context, timeout=10)
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context, timeout=SMTP_TIMEOUT)
             else:
-                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10)
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=SMTP_TIMEOUT)
                 if self.smtp_use_tls:
                     server.starttls()
-            
+
             server.login(self.smtp_user, self.smtp_password)
             server.quit()
-            
+
             return {
                 "success": True,
                 "message": f"Conexión exitosa a {self.smtp_host}:{self.smtp_port}"
@@ -73,7 +75,7 @@ class EmailService:
                 "success": False,
                 "message": f"Error: {str(e)}"
             }
-    
+
     def send_email(
         self,
         to_email: str,
@@ -85,38 +87,38 @@ class EmailService:
         if not self.is_configured():
             logger.warning("Email service not configured, skipping email send")
             return {"success": False, "message": "Servicio de email no configurado"}
-        
+
         try:
             msg = MIMEMultipart('alternative')
             msg['Subject'] = subject
             msg['From'] = f"{self.smtp_from_name} <{self.smtp_from_email or self.smtp_user}>"
             msg['To'] = to_email
-            
+
             # Texto plano como fallback
             if text_content:
                 part1 = MIMEText(text_content, 'plain', 'utf-8')
                 msg.attach(part1)
-            
+
             # HTML
             part2 = MIMEText(html_content, 'html', 'utf-8')
             msg.attach(part2)
-            
+
             # Conectar y enviar
             if self.smtp_use_ssl:
                 context = ssl.create_default_context()
-                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context, timeout=10)
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context, timeout=SMTP_TIMEOUT)
             else:
-                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10)
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=SMTP_TIMEOUT)
                 if self.smtp_use_tls:
                     server.starttls()
-            
+
             server.login(self.smtp_user, self.smtp_password)
             server.sendmail(self.smtp_from_email or self.smtp_user, to_email, msg.as_string())
             server.quit()
-            
+
             logger.info(f"Email sent successfully to {to_email}")
             return {"success": True, "message": "Email enviado correctamente"}
-            
+
         except Exception as e:
             logger.error(f"Failed to send email to {to_email}: {e}")
             return {"success": False, "message": f"Error al enviar: {str(e)}"}
@@ -188,7 +190,7 @@ def get_welcome_email_template(user_name: str, app_url: str) -> Dict[str, str]:
     </body>
     </html>
     """
-    
+
     text = f"""
     ¡Bienvenido a SyncStock, {user_name}!
     
@@ -198,7 +200,7 @@ def get_welcome_email_template(user_name: str, app_url: str) -> Dict[str, str]:
     
     © {datetime.now().year} SyncStock
     """
-    
+
     return {"html": html, "text": text, "subject": f"¡Bienvenido a SyncStock, {user_name}!"}
 
 
@@ -269,7 +271,7 @@ def get_password_reset_email_template(user_name: str, reset_link: str, app_url: 
     </body>
     </html>
     """
-    
+
     text = f"""
     Restablecer contraseña - SyncStock
     
@@ -285,21 +287,21 @@ def get_password_reset_email_template(user_name: str, reset_link: str, app_url: 
     
     © {datetime.now().year} SyncStock
     """
-    
+
     return {"html": html, "text": text, "subject": "Restablecer contraseña - SyncStock"}
 
 
 def get_subscription_change_email_template(
-    user_name: str, 
-    old_plan: str, 
-    new_plan: str, 
+    user_name: str,
+    old_plan: str,
+    new_plan: str,
     app_url: str
 ) -> Dict[str, str]:
     """Template para email de cambio de plan de suscripción"""
-    
+
     is_upgrade = True  # Podríamos determinar esto comparando los planes
     action_text = "actualizado" if is_upgrade else "modificado"
-    
+
     html = f"""
     <!DOCTYPE html>
     <html>
@@ -379,7 +381,7 @@ def get_subscription_change_email_template(
     </body>
     </html>
     """
-    
+
     text = f"""
     Cambio de plan - SyncStock
     
@@ -396,7 +398,7 @@ def get_subscription_change_email_template(
     
     © {datetime.now().year} SyncStock
     """
-    
+
     return {"html": html, "text": text, "subject": f"Tu plan ha sido {action_text} - SyncStock"}
 
 
@@ -737,16 +739,17 @@ def get_email_service(account_type: str = "transactional") -> EmailService:
     """
     try:
         import asyncio
+
         from services.database import db
-        
+
         async def get_email_config():
             # Try to get the specific account type
             config = await db.email_accounts.find_one({"type": account_type, "enabled": True})
-            
+
             # If not found or not enabled, fallback to transactional
             if not config and account_type != "transactional":
                 config = await db.email_accounts.find_one({"type": "transactional", "enabled": True})
-            
+
             # If still no config, try the legacy config_manager
             if not config:
                 from services.config_manager import get_config
@@ -761,7 +764,7 @@ def get_email_service(account_type: str = "transactional") -> EmailService:
                     'smtp_use_tls': getattr(legacy_config, 'smtp_use_tls', True),
                     'smtp_use_ssl': getattr(legacy_config, 'smtp_use_ssl', False),
                 }
-            
+
             return {
                 'smtp_host': config.get('smtp_host', ''),
                 'smtp_port': config.get('smtp_port', 587),
@@ -772,7 +775,7 @@ def get_email_service(account_type: str = "transactional") -> EmailService:
                 'smtp_use_tls': config.get('smtp_use_tls', True),
                 'smtp_use_ssl': config.get('smtp_use_ssl', False),
             }
-        
+
         # Run async function
         try:
             loop = asyncio.get_running_loop()
@@ -784,9 +787,9 @@ def get_email_service(account_type: str = "transactional") -> EmailService:
         except RuntimeError:
             # No running loop — safe to use asyncio.run() directly
             email_config = asyncio.run(get_email_config())
-        
+
         return EmailService(email_config)
-        
+
     except Exception as e:
         logger.error(f"Error creating email service for {account_type}: {e}")
         # Fallback to legacy config
@@ -815,15 +818,15 @@ async def get_email_service_async(account_type: str = "transactional") -> EmailS
     Versión asíncrona de get_email_service para usar en contextos async.
     """
     from services.database import db
-    
+
     try:
         # Try to get the specific account type
         config = await db.email_accounts.find_one({"type": account_type, "enabled": True})
-        
+
         # If not found or not enabled, fallback to transactional
         if not config and account_type != "transactional":
             config = await db.email_accounts.find_one({"type": "transactional", "enabled": True})
-        
+
         # If still no config, try the legacy config_manager
         if not config:
             from services.config_manager import get_config
@@ -839,7 +842,7 @@ async def get_email_service_async(account_type: str = "transactional") -> EmailS
                 'smtp_use_ssl': getattr(legacy_config, 'smtp_use_ssl', False),
             }
             return EmailService(email_config)
-        
+
         email_config = {
             'smtp_host': config.get('smtp_host', ''),
             'smtp_port': config.get('smtp_port', 587),
@@ -851,7 +854,7 @@ async def get_email_service_async(account_type: str = "transactional") -> EmailS
             'smtp_use_ssl': config.get('smtp_use_ssl', False),
         }
         return EmailService(email_config)
-        
+
     except Exception as e:
         logger.error(f"Error in get_email_service_async for {account_type}: {e}")
         return EmailService({})

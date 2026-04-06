@@ -2,6 +2,12 @@
  * Componente reutilizable de paginación para tablas de datos.
  * Usado en Products.jsx y Suppliers.jsx para mantener consistencia.
  */
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+} from "lucide-react";
 import { Button } from "../ui/button";
 import {
   Select,
@@ -10,12 +16,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../ui/select";
-import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
-} from "lucide-react";
 
 const DataTablePagination = ({
   currentPage,

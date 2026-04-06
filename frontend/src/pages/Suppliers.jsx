@@ -1,6 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
-import { api } from "../App";
 import { toast } from "sonner";
+import {
+  Plus,
+  RefreshCw,
+  Settings,
+  Database,
+  Link2,
+  Columns,
+  Globe,
+  ExternalLink,
+  Wifi,
+  Search,
+  X
+} from "lucide-react";
+import { api } from "../App";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
@@ -31,19 +44,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
-import {
-  Plus,
-  RefreshCw,
-  Settings,
-  Database,
-  Link2,
-  Columns,
-  Globe,
-  ExternalLink,
-  Wifi,
-  Search,
-  X
-} from "lucide-react";
 import ColumnMappingDialog from "../components/ColumnMappingDialog";
 import {
   SupplierTable,

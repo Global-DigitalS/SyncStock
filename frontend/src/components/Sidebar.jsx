@@ -1,5 +1,4 @@
 import { useLocation, Link, useNavigate } from "react-router-dom";
-import { useAuth, api } from "../App";
 import { useState, useEffect } from "react";
 import axios from "axios";
 import {
@@ -38,6 +37,7 @@ import {
   ShoppingCart,
   Radar
 } from "lucide-react";
+import { useAuth, api } from "../App";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 

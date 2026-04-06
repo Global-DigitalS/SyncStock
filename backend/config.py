@@ -10,10 +10,11 @@
 #
 # =============================================================================
 
-import os
 import logging
-from dotenv import load_dotenv
+import os
 from pathlib import Path
+
+from dotenv import load_dotenv
 
 # Cargar variables de entorno desde el archivo .env
 ROOT_DIR = Path(__file__).parent
@@ -63,7 +64,8 @@ JWT_SECRET = os.environ.get('JWT_SECRET')
 if not JWT_SECRET:
     # Fallback: intentar obtener de config.json persistente, generando si es necesario
     try:
-        from services.config_manager import get_config as _get_config, ensure_jwt_secret as _ensure_jwt_secret
+        from services.config_manager import ensure_jwt_secret as _ensure_jwt_secret
+        from services.config_manager import get_config as _get_config
         _app_cfg = _get_config()
         if _app_cfg.jwt_secret:
             JWT_SECRET = _app_cfg.jwt_secret
@@ -74,8 +76,8 @@ if not JWT_SECRET:
                 "JWT_SECRET no estaba configurado — se generó uno nuevo automáticamente. "
                 "Las sesiones de usuario anteriores se invalidarán."
             )
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger(__name__).error(f"Error loading JWT_SECRET from config: {e}")
 if not JWT_SECRET:
     raise RuntimeError(
         "La variable de entorno JWT_SECRET es obligatoria y no está configurada. "
@@ -130,3 +132,36 @@ SYNC_DB_BATCH_SIZE = int(os.environ.get('SYNC_DB_BATCH_SIZE', 5000))
 
 # Intervalo de reporte de progreso durante sync (cada N productos)
 SYNC_PROGRESS_REPORT_INTERVAL = int(os.environ.get('SYNC_PROGRESS_REPORT_INTERVAL', 10000))
+
+# =============================================================================
+# CONFIGURACIÓN DE TIMEOUTS
+# =============================================================================
+# LOW FIX #20: Moved hardcoded timeout values to configurable environment variables
+# for better control over connection and download limits in different environments.
+
+# Timeout para conexión de socket (FTP/SFTP) - en segundos
+SOCKET_CONNECTION_TIMEOUT = int(os.environ.get('SOCKET_CONNECTION_TIMEOUT', 30))
+
+# Timeout para conexión FTP - en segundos
+FTP_CONNECTION_TIMEOUT = int(os.environ.get('FTP_CONNECTION_TIMEOUT', 15))
+
+# Timeout para descarga de archivos por URL - en segundos
+URL_REQUEST_TIMEOUT = int(os.environ.get('URL_REQUEST_TIMEOUT', 60))
+
+# Timeout máximo para descargas FTP/SFTP - en segundos (15 minutos por defecto)
+FTP_DOWNLOAD_TIMEOUT = int(os.environ.get('FTP_DOWNLOAD_TIMEOUT', 900))
+
+# Timeout máximo para descargas por URL - en segundos (15 minutos por defecto)
+URL_DOWNLOAD_TIMEOUT = int(os.environ.get('URL_DOWNLOAD_TIMEOUT', 900))
+
+# Timeout para solicitudes API de WooCommerce - en segundos
+WOOCOMMERCE_API_TIMEOUT = int(os.environ.get('WOOCOMMERCE_API_TIMEOUT', 30))
+
+# Timeout para solicitudes SMTP - en segundos
+SMTP_TIMEOUT = int(os.environ.get('SMTP_TIMEOUT', 10))
+
+# Timeout para solicitudes CRM (Dolibarr, Odoo) - en segundos
+CRM_REQUEST_TIMEOUT = int(os.environ.get('CRM_REQUEST_TIMEOUT', 30))
+
+# Timeout por defecto para streaming de datos HTTP - en segundos
+STREAMING_DEFAULT_TIMEOUT = int(os.environ.get('STREAMING_DEFAULT_TIMEOUT', 300))
