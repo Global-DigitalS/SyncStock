@@ -66,13 +66,31 @@ async def get_crm_connections(user: dict = Depends(get_current_user)):
 @router.post("/crm/connections")
 async def create_crm_connection(request: dict, user: dict = Depends(get_current_user)):
     """Create a new CRM connection"""
-    platform = request.get("platform")
-    name = request.get("name", "")
+    # MEDIUM #11: Validate all inputs
+    platform = request.get("platform", "").strip()
+    name = request.get("name", "").strip()
     config = request.get("config", {})
     sync_settings = request.get("sync_settings", {})
 
-    if not platform or not config:
-        raise HTTPException(status_code=400, detail="Plataforma y configuración requeridas")
+    # Validate required fields
+    if not platform or not isinstance(platform, str):
+        raise HTTPException(status_code=400, detail="Plataforma requerida")
+
+    if not config or not isinstance(config, dict):
+        raise HTTPException(status_code=400, detail="Configuración requerida y debe ser un objeto")
+
+    if not isinstance(sync_settings, dict):
+        raise HTTPException(status_code=400, detail="sync_settings debe ser un objeto")
+
+    # Validate sync_settings contains valid boolean/string values
+    valid_sync_keys = {"products", "stock", "prices", "descriptions", "images", "suppliers", "orders"}
+    for key in sync_settings:
+        if key not in valid_sync_keys:
+            raise HTTPException(status_code=400, detail=f"sync_settings contiene clave inválida: {key}")
+
+    # Validate name length
+    if len(name) > 255:
+        raise HTTPException(status_code=400, detail="El nombre es demasiado largo (máx 255 caracteres)")
 
     connection = {
         "id": str(uuid.uuid4()),
@@ -81,7 +99,7 @@ async def create_crm_connection(request: dict, user: dict = Depends(get_current_
         "name": name or f"Conexión {platform.capitalize()}",
         "config": config,
         "sync_settings": sync_settings,
-        "auto_sync": request.get("auto_sync", False),
+        "auto_sync": bool(request.get("auto_sync", False)),
         "auto_sync_interval": request.get("auto_sync_interval", "daily"),
         "status": "active",
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -145,20 +163,50 @@ async def delete_crm_connection(connection_id: str, user: dict = Depends(get_cur
 @router.post("/crm/test-connection")
 async def test_crm_connection(request: dict, user: dict = Depends(get_current_user)):
     """Test CRM connection with provided credentials"""
-    platform = request.get("platform")
+    # MEDIUM #11 & HIGH #8: Validate input
+    platform = request.get("platform", "").strip()
     config = request.get("config", {})
 
-    client = create_crm_client(platform, config)
-    if not client:
-        raise HTTPException(status_code=400, detail=f"Plataforma no soportada: {platform}")
+    # Validate platform
+    if not platform or not isinstance(platform, str):
+        raise HTTPException(status_code=400, detail="Platform requerida")
 
+    # Validate config is dict
+    if not isinstance(config, dict):
+        raise HTTPException(status_code=400, detail="Config debe ser un objeto")
+
+    # Validate required config fields based on platform
+    required_fields = {
+        "dolibarr": ["api_url", "api_key"],
+        "odoo": ["api_url", "api_token"]
+    }
+
+    if platform in required_fields:
+        missing = [f for f in required_fields[platform] if not config.get(f)]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Campos requeridos: {', '.join(missing)}")
+
+    client = None
     try:
-        result = client.test_connection()
-        return result
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+        client = create_crm_client(platform, config)
+        if not client:
+            raise HTTPException(status_code=400, detail=f"Plataforma no soportada: {platform}")
+
+        try:
+            result = client.test_connection()
+            return result
+        except TimeoutError:
+            return {"status": "error", "message": "Timeout al conectar con CRM"}
+        except Exception as e:
+            # HIGH: Don't expose internal API structure in error messages
+            logger.error(f"Test connection error for {platform}: {e}")
+            return {"status": "error", "message": "No se pudo conectar con el CRM"}
     finally:
-        client.close()
+        if client:
+            try:
+                client.close()
+            except Exception as e:
+                logger.warning(f"Error closing test client: {e}")
 
 
 @router.post("/crm/connections/{connection_id}/sync")
