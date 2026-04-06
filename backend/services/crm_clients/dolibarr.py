@@ -824,6 +824,34 @@ class DolibarrClient:
             logger.error(f"Dolibarr get_orders error: {e}")
             return []
 
+    def search_orders_by_external_id(self, external_id: str) -> List[Dict]:
+        """Search for orders by external_id (ref_client field)
+
+        HIGH #10: Check if order already exists in CRM to prevent duplicates
+        """
+        try:
+            # ref_client is used to store external order IDs
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/orders",
+                params={
+                    'sqlfilters': f"t.ref_client = '{_escape_sql_string(external_id)}'",
+                    'limit': 10
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                results = response.json()
+                if isinstance(results, list):
+                    return results
+                elif isinstance(results, dict):
+                    return results.get("data", [])
+            logger.debug(f"search_orders_by_external_id({external_id}): no results or error {response.status_code}")
+            return []
+        except Exception as e:
+            logger.error(f"Error searching orders by external_id {external_id}: {e}")
+            return []
+
     def get_supplier_orders(self, limit: int = 100) -> List[Dict]:
         """Get supplier orders from Dolibarr"""
         try:

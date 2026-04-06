@@ -505,6 +505,10 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
             error_details[f"producto_{len(error_details)}"] = "Producto sin SKU"
             continue
 
+        # HIGH #7: Sanitize SKU for safe use as dict key
+        # Remove special characters that could cause issues in JSON/DB
+        safe_sku = sku.replace('"', '').replace("'", '').replace('\x00', '')[:100]
+
         # Use batch result to check if product exists
         existing = existing_products_batch.get(sku)
 
@@ -624,7 +628,9 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 # NEW: Store detailed error message for this product
                 sku = result.get("sku", f"unknown_{errors}")
                 error_msg = result.get("message", "Error desconocido")
-                error_details[sku] = error_msg
+                # HIGH #7: Sanitize SKU for safe database storage
+                safe_sku = sku.replace('"', '').replace("'", '').replace('\x00', '')[:100]
+                error_details[safe_sku] = error_msg
                 logger.error(f"Product {sku} sync error: {error_msg}")
     
     # Final progress update
@@ -803,15 +809,40 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
 
             for wc_order in wc_orders:
                 try:
-                    # Check if order already synced
+                    order_external_id = str(wc_order.get("id"))
+
+                    # HIGH #10: Check BOTH local DB AND CRM for idempotency
+                    # 1. Check local sync record
                     existing = await db.crm_synced_orders.find_one({
                         "user_id": user_id,
-                        "external_id": str(wc_order.get("id")),
+                        "external_id": order_external_id,
                         "source": "woocommerce"
                     })
 
                     if existing:
+                        logger.debug(f"Order {order_external_id} already synced locally")
                         continue
+
+                    # 2. Check if order already exists in Dolibarr (by external_id field)
+                    # This prevents duplicates if local record was deleted
+                    try:
+                        crm_orders = client.search_orders_by_external_id(order_external_id)
+                        if crm_orders:
+                            logger.info(f"Order {order_external_id} already exists in Dolibarr, skipping")
+                            # Update local record to reflect this
+                            await db.crm_synced_orders.insert_one({
+                                "id": str(uuid.uuid4()),
+                                "user_id": user_id,
+                                "external_id": order_external_id,
+                                "source": "woocommerce",
+                                "store_id": store.get("id"),
+                                "order_data": {"status": "already_synced"},
+                                "synced_at": datetime.now(timezone.utc).isoformat()
+                            })
+                            continue
+                    except Exception as check_err:
+                        logger.warning(f"Could not check CRM for existing order {order_external_id}: {check_err}")
+                        # Continue anyway - will be caught by unique constraint if duplicate
 
                     # Get or create customer in Dolibarr
                     customer_email = wc_order.get("billing", {}).get("email", "")
@@ -1084,7 +1115,9 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
                 # NEW: Store detailed error message for this product
                 sku = result.get("sku", f"unknown_{errors}")
                 error_msg = result.get("message", "Error desconocido")
-                error_details[sku] = error_msg
+                # HIGH #7: Sanitize SKU for safe database storage
+                safe_sku = sku.replace('"', '').replace("'", '').replace('\x00', '')[:100]
+                error_details[safe_sku] = error_msg
                 logger.error(f"Product {sku} sync error: {error_msg}")
 
     # Final progress update
@@ -1210,16 +1243,40 @@ async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
             
             for wc_order in wc_orders:
                 try:
-                    # Check if order already synced
+                    order_external_id = str(wc_order.get("id"))
+
+                    # HIGH #10: Check BOTH local DB AND CRM for idempotency (Odoo version)
+                    # 1. Check local sync record
                     existing = await db.crm_synced_orders.find_one({
                         "user_id": user_id,
-                        "external_id": str(wc_order.get("id")),
+                        "external_id": order_external_id,
                         "source": "woocommerce"
                     })
-                    
+
                     if existing:
+                        logger.debug(f"Order {order_external_id} already synced locally (Odoo)")
                         continue
-                    
+
+                    # 2. Check if order already exists in Odoo (by client_order_ref field)
+                    try:
+                        crm_orders = client.search_orders_by_external_id(order_external_id)
+                        if crm_orders:
+                            logger.info(f"Order {order_external_id} already exists in Odoo, skipping")
+                            # Update local record
+                            await db.crm_synced_orders.insert_one({
+                                "id": str(uuid.uuid4()),
+                                "user_id": user_id,
+                                "external_id": order_external_id,
+                                "source": "woocommerce",
+                                "store_id": store.get("id"),
+                                "order_data": {"status": "already_synced"},
+                                "synced_at": datetime.now(timezone.utc).isoformat()
+                            })
+                            continue
+                    except Exception as check_err:
+                        logger.warning(f"Could not check Odoo for existing order {order_external_id}: {check_err}")
+                        # Continue anyway
+
                     customer_email = wc_order.get("billing", {}).get("email", "")
                     customer_name = f"{wc_order.get('billing', {}).get('first_name', '')} {wc_order.get('billing', {}).get('last_name', '')}".strip()
                     

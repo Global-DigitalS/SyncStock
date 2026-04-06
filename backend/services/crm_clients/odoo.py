@@ -480,7 +480,7 @@ class OdooClient:
                 f"{self.base_url}/api/sale.order/search_read",
                 params={
                     'domain': [['state', 'in', ['draft', 'sent', 'sale']]],
-                    'fields': ['id', 'name', 'partner_id', 'amount_total', 'date_order'],
+                    'fields': ['id', 'name', 'partner_id', 'amount_total', 'date_order', 'client_order_ref'],
                     'limit': limit,
                     'order': 'date_order desc'
                 },
@@ -491,6 +491,35 @@ class OdooClient:
             return []
         except Exception as e:
             logger.error(f"Odoo get_orders error: {e}")
+            return []
+
+    def search_orders_by_external_id(self, external_id: str) -> List[Dict]:
+        """Search for orders by external_id (client_order_ref field)
+
+        HIGH #10: Check if order already exists in CRM to prevent duplicates
+        """
+        try:
+            # client_order_ref is used to store external order IDs
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/api/sale.order/search_read",
+                params={
+                    'domain': [['client_order_ref', '=', external_id]],
+                    'fields': ['id', 'name', 'partner_id', 'amount_total', 'date_order', 'client_order_ref'],
+                    'limit': 10
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                results = response.json()
+                if isinstance(results, list):
+                    return results
+                elif isinstance(results, dict):
+                    return results.get("data", [])
+            logger.debug(f"search_orders_by_external_id({external_id}): no results or error {response.status_code}")
+            return []
+        except Exception as e:
+            logger.error(f"Error searching orders by external_id {external_id}: {e}")
             return []
 
     def get_purchase_orders(self, limit: int = 100) -> List[Dict]:
