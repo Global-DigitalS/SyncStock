@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 from typing import Dict, Optional, List
 
+from config import CRM_REQUEST_TIMEOUT, WOOCOMMERCE_API_TIMEOUT
 from services.database import db
 from services.sync import calculate_final_price
 from services.crm_clients import (
@@ -1116,9 +1117,9 @@ async def sync_orders_to_dolibarr(client: DolibarrClient, user_id: str) -> Dict:
                 consumer_key=store.get("consumer_key", ""),
                 consumer_secret=store.get("consumer_secret", ""),
                 version="wc/v3",
-                timeout=30
+                timeout=WOOCOMMERCE_API_TIMEOUT
             )
-            
+
             # Get recent orders (last 30 days, pending/processing)
             response = wcapi.get("orders", params={
                 "per_page": 100,
@@ -1661,9 +1662,9 @@ async def sync_orders_to_odoo(client: OdooClient, user_id: str) -> Dict:
                 consumer_key=store.get("consumer_key", ""),
                 consumer_secret=store.get("consumer_secret", ""),
                 version="wc/v3",
-                timeout=30
+                timeout=WOOCOMMERCE_API_TIMEOUT
             )
-            
+
             # Get recent orders (pending/processing)
             response = wcapi.get("orders", params={
                 "per_page": 100,

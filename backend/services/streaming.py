@@ -12,6 +12,7 @@ import tempfile
 import os
 from typing import Tuple, Callable, Optional
 from datetime import datetime, timezone
+from config import SOCKET_CONNECTION_TIMEOUT, STREAMING_DEFAULT_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +204,7 @@ async def download_from_ftp_streaming(
 
                     if schema == 'sftp':
                         import socket
-                        sock = socket.create_connection((host, port or 22), timeout=30)
+                        sock = socket.create_connection((host, port or 22), timeout=SOCKET_CONNECTION_TIMEOUT)
                         transport = paramiko.Transport(sock)
                         transport.connect(username=user, password=password)
                         transport.set_keepalive(30)

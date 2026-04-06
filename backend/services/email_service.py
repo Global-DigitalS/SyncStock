@@ -9,6 +9,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from typing import Optional, Dict, Any
 from datetime import datetime
+from config import SMTP_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
@@ -42,9 +43,9 @@ class EmailService:
         try:
             if self.smtp_use_ssl:
                 context = ssl.create_default_context()
-                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context, timeout=10)
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context, timeout=SMTP_TIMEOUT)
             else:
-                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10)
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=SMTP_TIMEOUT)
                 if self.smtp_use_tls:
                     server.starttls()
             
@@ -104,9 +105,9 @@ class EmailService:
             # Conectar y enviar
             if self.smtp_use_ssl:
                 context = ssl.create_default_context()
-                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context, timeout=10)
+                server = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, context=context, timeout=SMTP_TIMEOUT)
             else:
-                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=10)
+                server = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=SMTP_TIMEOUT)
                 if self.smtp_use_tls:
                     server.starttls()
             

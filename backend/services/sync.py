@@ -18,7 +18,11 @@ from pymongo import UpdateOne
 from woocommerce import API as WooCommerceAPI
 from services.database import db
 from services.sku_cache import SKUCache
-from config import PRICE_CHANGE_THRESHOLD_PERCENT, LOW_STOCK_THRESHOLD
+from config import (
+    PRICE_CHANGE_THRESHOLD_PERCENT, LOW_STOCK_THRESHOLD,
+    SOCKET_CONNECTION_TIMEOUT, FTP_CONNECTION_TIMEOUT, URL_REQUEST_TIMEOUT,
+    FTP_DOWNLOAD_TIMEOUT, URL_DOWNLOAD_TIMEOUT, WOOCOMMERCE_API_TIMEOUT
+)
 
 logger = logging.getLogger(__name__)
 
@@ -294,7 +298,7 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
     if schema == 'sftp':
         port = port or 22
         import socket
-        sock = socket.create_connection((host, port), timeout=30)
+        sock = socket.create_connection((host, port), timeout=SOCKET_CONNECTION_TIMEOUT)
         transport = paramiko.Transport(sock)
         transport.connect(username=user, password=password)
         transport.set_keepalive(30)
@@ -310,7 +314,7 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
         port = port or 21
         ftp = ftplib.FTP_TLS() if schema == 'ftps' else ftplib.FTP()
         try:
-            ftp.connect(host, port, timeout=15)
+            ftp.connect(host, port, timeout=FTP_CONNECTION_TIMEOUT)
             ftp.login(user or 'anonymous', password or '')
             if schema == 'ftps':
                 ftp.prot_p()
@@ -331,7 +335,7 @@ async def download_file_from_ftp(supplier: dict) -> bytes:
     """Download file from FTP/SFTP with retry logic and exponential backoff."""
     loop = asyncio.get_running_loop()
     max_retries = 3
-    timeout = 900  # 15 min max for FTP/SFTP downloads
+    timeout = FTP_DOWNLOAD_TIMEOUT  # Configurable via environment variable
 
     for attempt in range(max_retries):
         try:
@@ -398,7 +402,7 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
     session = _build_browser_session(url, auth)
 
     def _do_request(verify_ssl: bool) -> bytes:
-        response = session.get(url, timeout=60, stream=True, verify=verify_ssl)
+        response = session.get(url, timeout=URL_REQUEST_TIMEOUT, stream=True, verify=verify_ssl)
         response.raise_for_status()
         content = response.content
         ssl_note = "" if verify_ssl else " (SSL verification skipped)"
@@ -429,7 +433,7 @@ async def download_file_from_url(url: str, username: str = None, password: str =
     """Download file from URL with retry logic and exponential backoff."""
     loop = asyncio.get_running_loop()
     max_retries = 3
-    timeout = 900  # 15 min max for URL downloads
+    timeout = URL_DOWNLOAD_TIMEOUT  # Configurable via environment variable
 
     for attempt in range(max_retries):
         try:
@@ -1151,7 +1155,7 @@ def browse_ftp_sync(config: dict, path: str = "/") -> dict:
             port = port or 21
             ftp = ftplib.FTP_TLS() if schema == 'ftps' else ftplib.FTP()
             try:
-                ftp.connect(host, port, timeout=15)
+                ftp.connect(host, port, timeout=FTP_CONNECTION_TIMEOUT)
                 ftp.login(user or 'anonymous', password or '')
                 if schema == 'ftps':
                     ftp.prot_p()
@@ -1565,7 +1569,7 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
 # ==================== WOOCOMMERCE SYNC ====================
 
 def get_woocommerce_client(config: dict) -> WooCommerceAPI:
-    return WooCommerceAPI(url=config['store_url'], consumer_key=config['consumer_key'], consumer_secret=config['consumer_secret'], version="wc/v3", timeout=30)
+    return WooCommerceAPI(url=config['store_url'], consumer_key=config['consumer_key'], consumer_secret=config['consumer_secret'], version="wc/v3", timeout=WOOCOMMERCE_API_TIMEOUT)
 
 
 def mask_key(key: str) -> str:

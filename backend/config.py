@@ -130,3 +130,36 @@ SYNC_DB_BATCH_SIZE = int(os.environ.get('SYNC_DB_BATCH_SIZE', 5000))
 
 # Intervalo de reporte de progreso durante sync (cada N productos)
 SYNC_PROGRESS_REPORT_INTERVAL = int(os.environ.get('SYNC_PROGRESS_REPORT_INTERVAL', 10000))
+
+# =============================================================================
+# CONFIGURACIÓN DE TIMEOUTS
+# =============================================================================
+# LOW FIX #20: Moved hardcoded timeout values to configurable environment variables
+# for better control over connection and download limits in different environments.
+
+# Timeout para conexión de socket (FTP/SFTP) - en segundos
+SOCKET_CONNECTION_TIMEOUT = int(os.environ.get('SOCKET_CONNECTION_TIMEOUT', 30))
+
+# Timeout para conexión FTP - en segundos
+FTP_CONNECTION_TIMEOUT = int(os.environ.get('FTP_CONNECTION_TIMEOUT', 15))
+
+# Timeout para descarga de archivos por URL - en segundos
+URL_REQUEST_TIMEOUT = int(os.environ.get('URL_REQUEST_TIMEOUT', 60))
+
+# Timeout máximo para descargas FTP/SFTP - en segundos (15 minutos por defecto)
+FTP_DOWNLOAD_TIMEOUT = int(os.environ.get('FTP_DOWNLOAD_TIMEOUT', 900))
+
+# Timeout máximo para descargas por URL - en segundos (15 minutos por defecto)
+URL_DOWNLOAD_TIMEOUT = int(os.environ.get('URL_DOWNLOAD_TIMEOUT', 900))
+
+# Timeout para solicitudes API de WooCommerce - en segundos
+WOOCOMMERCE_API_TIMEOUT = int(os.environ.get('WOOCOMMERCE_API_TIMEOUT', 30))
+
+# Timeout para solicitudes SMTP - en segundos
+SMTP_TIMEOUT = int(os.environ.get('SMTP_TIMEOUT', 10))
+
+# Timeout para solicitudes CRM (Dolibarr, Odoo) - en segundos
+CRM_REQUEST_TIMEOUT = int(os.environ.get('CRM_REQUEST_TIMEOUT', 30))
+
+# Timeout por defecto para streaming de datos HTTP - en segundos
+STREAMING_DEFAULT_TIMEOUT = int(os.environ.get('STREAMING_DEFAULT_TIMEOUT', 300))

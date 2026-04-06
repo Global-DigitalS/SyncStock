@@ -16,7 +16,7 @@ from services.sync import (
     parse_xls_content, parse_xml_content, normalize_product_data,
     browse_ftp_directory, prefetch_existing_products, bulk_upsert_products
 )
-from services.sanitizer import sanitize_string, sanitize_dict, sanitize_path
+from services.sanitizer import sanitize_string, sanitize_dict, sanitize_path, remove_credentials
 from services.encryption import encrypt_password, decrypt_password
 
 # Registry to prevent background tasks from being garbage-collected
@@ -72,7 +72,7 @@ async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_cur
         "product_count": 0, "last_sync": None, "created_at": now
     }
     await db.suppliers.insert_one(supplier_doc)
-    supplier_doc.pop("ftp_password", None)
+    supplier_doc = remove_credentials(supplier_doc)
     supplier_doc.pop("user_id", None)
     supplier_doc.pop("_id", None)
     return SupplierResponse(**supplier_doc)

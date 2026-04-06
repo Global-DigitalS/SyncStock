@@ -366,6 +366,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                         continue
                     
                     # Create new category
+                    # MEDIUM FIX #14: Handle race condition where another request creates the same category
                     cat_payload = {
                         "name": cat_name,
                         "parent": parent_id
@@ -377,6 +378,25 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                             wc_category_map[current_path] = new_cat["id"]
                             parent_id = new_cat["id"]
                             logger.info(f"Created WooCommerce category: {cat_name} (ID: {new_cat['id']})")
+                        elif response.status_code == 409:
+                            # Conflict: category already exists (race condition from concurrent request)
+                            # Re-fetch the category list to get the ID of the newly created category
+                            logger.warning(f"Race condition detected for category {cat_name} - refetching categories")
+                            try:
+                                resp = await asyncio.to_thread(wcapi.get, "products/categories", params={"search": cat_name, "parent": parent_id, "per_page": 100})
+                                if resp.status_code == 200:
+                                    matching_cats = resp.json()
+                                    if matching_cats:
+                                        cat_id = matching_cats[0]["id"]
+                                        wc_category_map[current_path] = cat_id
+                                        parent_id = cat_id
+                                        logger.info(f"Race condition resolved: using existing WooCommerce category {cat_name} (ID: {cat_id})")
+                                    else:
+                                        logger.warning(f"Could not find category {cat_name} after conflict")
+                                else:
+                                    logger.warning(f"Failed to refetch category {cat_name}: {resp.text[:100]}")
+                            except Exception as e:
+                                logger.error(f"Error resolving race condition for {cat_name}: {e}")
                         else:
                             logger.warning(f"Failed to create category {cat_name}: {response.text[:100]}")
                     except Exception as e:
