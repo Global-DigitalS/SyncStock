@@ -190,6 +190,7 @@ const AuthProvider = ({ children }) => {
   const [wsConnected, setWsConnected] = useState(false);
   const reconnectTimeoutRef = useRef(null);
   const userIdRef = useRef(null);
+  const wsRetriesRef = useRef(0);
 
   // WebSocket connection
   const connectWebSocket = useCallback((userId) => {
@@ -200,6 +201,7 @@ const AuthProvider = ({ children }) => {
       const ws = new WebSocket(`${WS_URL}/ws/notifications/${userId}`);
 
       ws.onopen = () => {
+        wsRetriesRef.current = 0;
         setWsConnected(true);
         // Send ping every 30 seconds to keep connection alive
         const pingInterval = setInterval(() => {
@@ -256,9 +258,14 @@ const AuthProvider = ({ children }) => {
       ws.onclose = () => {
         setWsConnected(false);
         if (ws.pingInterval) clearInterval(ws.pingInterval);
-        // Reconnect after 5 seconds using ref to avoid stale closure
+        // Reconexión con backoff exponencial + jitter para evitar thundering herd
         if (userIdRef.current) {
-          reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(userIdRef.current), 5000);
+          const retries = wsRetriesRef.current;
+          const baseDelay = Math.min(1000 * Math.pow(2, retries), 30000); // max 30s
+          const jitter = Math.random() * baseDelay * 0.5;
+          const delay = baseDelay + jitter;
+          wsRetriesRef.current = retries + 1;
+          reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(userIdRef.current), delay);
         }
       };
 
