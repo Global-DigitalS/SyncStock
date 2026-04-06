@@ -607,11 +607,29 @@ async def _sync_product_update_dolibarr(
 
         # ========== FASE 3: Differential Updates ==========
         # Only send fields that actually changed
-        update_payload = build_differential_update_payload(product_data, existing)
+        # NOTE: Do NOT include stock in differential updates for Dolibarr (stock is updated via stock movements)
+        update_payload = build_differential_update_payload(
+            product_data,
+            existing,
+            fields_to_check=["name", "price", "cost_price", "description", "short_description", "ean", "weight"]
+        )
 
         if not update_payload and not image_url:
             # No changes needed
             logger.debug(f"Producto {sku} sin cambios, omitiendo actualización")
+            # But still sync stock if configured (stock movements are independent of product updates)
+            if sync_settings.get("stock", True):
+                desired_stock = product_data.get("stock", 0)
+                try:
+                    current_stock = float(existing.get("stock_reel", 0) or 0)
+                    if abs(float(desired_stock) - current_stock) > 0.01:  # Only if truly different
+                        logger.info(f"[STOCK] Product {sku}: stock differs ({current_stock} → {desired_stock}), syncing")
+                        await limiter.acquire()
+                        stock_result = await client.update_stock_async(int(existing.get("id")), int(desired_stock))
+                        if stock_result.get("status") != "success":
+                            logger.warning(f"Stock warning for {sku}: {stock_result.get('message')}")
+                except (ValueError, TypeError) as e:
+                    logger.warning(f"Error comparing stock for {sku}: {e}")
             return {"status": "success", "sku": sku}
 
         # Only update if there are actual changes
@@ -627,12 +645,19 @@ async def _sync_product_update_dolibarr(
                 await cache.set(sku, {**existing, **update_payload})
 
         # Sync stock using stock movements for accurate tracking
-        if sync_settings.get("stock", True) and "stock" in update_payload:
-            validated_stock = product_data.get("stock", 0)
-            await limiter.acquire()
-            stock_result = await client.update_stock_async(product_id, validated_stock)
-            if stock_result.get("status") != "success":
-                logger.warning(f"Stock warning for {sku}: {stock_result.get('message')}")
+        # NOTE: Stock is synced INDEPENDENTLY via stock movements, NOT via product updates
+        if sync_settings.get("stock", True):
+            desired_stock = product_data.get("stock", 0)
+            try:
+                current_stock = float(existing.get("stock_reel", 0) or 0)
+                if abs(float(desired_stock) - current_stock) > 0.01:  # Only if truly different
+                    logger.info(f"[STOCK] Product {sku}: stock differs ({current_stock} → {desired_stock}), syncing")
+                    await limiter.acquire()
+                    stock_result = await client.update_stock_async(product_id, int(desired_stock))
+                    if stock_result.get("status") != "success":
+                        logger.warning(f"Stock warning for {sku}: {stock_result.get('message')}")
+            except (ValueError, TypeError) as e:
+                logger.warning(f"Error comparing stock for {sku}: {e}")
 
         # Upload image separately for better handling
         if image_url and sync_settings.get("images", True):
