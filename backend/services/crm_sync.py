@@ -256,6 +256,51 @@ def _safe_to_string(value) -> str:
     return ""
 
 
+async def record_sync_statistics(
+    sync_job_id: str,
+    platform: str,
+    sync_type: str,
+    duration_seconds: float,
+    products_processed: int = 0,
+    products_created: int = 0,
+    products_updated: int = 0,
+    errors: int = 0,
+    success: bool = True
+):
+    """Record sync job statistics for monitoring and analytics - OPTIMIZATION
+
+    Helps track performance trends and identify issues.
+    """
+    try:
+        stats = {
+            "id": str(uuid.uuid4()),
+            "sync_job_id": sync_job_id,
+            "platform": platform,
+            "sync_type": sync_type,
+            "duration_seconds": round(duration_seconds, 2),
+            "products_processed": products_processed,
+            "products_created": products_created,
+            "products_updated": products_updated,
+            "products_per_second": round(products_processed / max(duration_seconds, 1), 2),
+            "error_count": errors,
+            "success": success,
+            "recorded_at": datetime.now(timezone.utc).isoformat()
+        }
+
+        # Insert into stats collection for analysis
+        await db.sync_statistics.insert_one(stats)
+
+        # Log summary
+        logger.info(
+            f"Sync stats: platform={platform}, processed={products_processed}, "
+            f"created={products_created}, updated={products_updated}, "
+            f"errors={errors}, duration={duration_seconds:.1f}s, "
+            f"rate={stats['products_per_second']:.1f}/sec"
+        )
+    except Exception as e:
+        logger.warning(f"Failed to record sync statistics: {e}")
+
+
 async def validate_and_cleanup_sync_jobs(user_id: str, max_age_days: int = 30):
     """Validate sync job timestamps and cleanup old jobs - MEDIUM #22
 
@@ -377,12 +422,22 @@ async def run_sync_in_background(
     sync_type: str,
     catalog_id: str = None
 ):
-    """Background task for CRM sync with progress updates"""
+    """Background task for CRM sync with progress updates
+
+    OPTIMIZATION: Request ID tracing and performance monitoring
+    """
+    # Generate correlation ID for request tracing (for log debugging)
+    correlation_id = f"{sync_job_id[:8]}-{platform}"
+    logger.info(f"[{correlation_id}] Sync started: platform={platform}, type={sync_type}, user={user_id}")
+
     results = {
         "products": None,
         "suppliers": None,
         "orders": None
     }
+
+    # Track timing for performance monitoring
+    sync_start_time = time.time()
 
     client = None
     try:
@@ -593,6 +648,9 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
     """Sync products from our catalog to Dolibarr with full data including purchase price, stock and images"""
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
+
+    # Track timing for performance monitoring - OPTIMIZATION
+    sync_start_time = time.time()
 
     # Build query filter
     query = {"user_id": user_id, "is_selected": True}
@@ -898,7 +956,7 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 safe_sku = sku.replace('"', '').replace("'", '').replace('\x00', '')[:100]
                 error_details[safe_sku] = error_msg
                 logger.error(f"Product {sku} sync error: {error_msg}")
-    
+
     # Final progress update
     if sync_job_id:
         processed_items = len(to_create) + len(to_update)
@@ -913,6 +971,22 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 "error_details": error_details,  # NEW: Store detailed error information
                 "current_step": "Finalizando sincronización de productos..."
             }}
+        )
+
+    # Record sync statistics for monitoring - OPTIMIZATION
+    duration = time.time() - sync_start_time
+    processed = len(to_create) + len(to_update)
+    if sync_job_id:
+        await record_sync_statistics(
+            sync_job_id=sync_job_id,
+            platform="dolibarr",
+            sync_type="products",
+            duration_seconds=duration,
+            products_processed=processed,
+            products_created=created,
+            products_updated=updated,
+            errors=errors,
+            success=(errors == 0)
         )
 
     return {
@@ -1245,6 +1319,9 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
     if sync_settings is None:
         sync_settings = {"products": True, "stock": True, "prices": True, "descriptions": True, "images": True}
 
+    # Track timing for performance monitoring - OPTIMIZATION
+    sync_start_time = time.time()
+
     # Build query filter
     query = {"user_id": user_id, "is_selected": True}
     catalog_items_map = {}
@@ -1477,6 +1554,22 @@ async def sync_products_to_odoo(client: OdooClient, user_id: str, sync_settings:
                 "error_details": error_details,  # NEW: Store detailed error information
                 "current_step": "Finalizando sincronización de productos..."
             }}
+        )
+
+    # Record sync statistics for monitoring - OPTIMIZATION
+    duration = time.time() - sync_start_time
+    processed = len(to_create) + len(to_update)
+    if sync_job_id:
+        await record_sync_statistics(
+            sync_job_id=sync_job_id,
+            platform="odoo",
+            sync_type="products",
+            duration_seconds=duration,
+            products_processed=processed,
+            products_created=created,
+            products_updated=updated,
+            errors=errors,
+            success=(errors == 0)
         )
 
     return {

@@ -319,3 +319,140 @@ async def get_synced_orders(connection_id: str, user: dict = Depends(get_current
     ).sort("synced_at", -1).to_list(100)
 
     return orders
+
+
+# ==================== MONITORING & ANALYTICS ====================
+
+@router.get("/crm/statistics/{sync_job_id}")
+async def get_sync_statistics(sync_job_id: str, user: dict = Depends(get_current_user)):
+    """Get detailed statistics for a completed sync job - OPTIMIZATION"""
+    # First verify the sync job belongs to the user
+    job = await db.sync_jobs.find_one(
+        {"id": sync_job_id, "user_id": user["id"]},
+        {"_id": 0}
+    )
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Sync job no encontrado")
+
+    # Get statistics for this job
+    stats = await db.sync_statistics.find_one(
+        {"sync_job_id": sync_job_id},
+        {"_id": 0}
+    )
+
+    if not stats:
+        return {
+            "sync_job_id": sync_job_id,
+            "message": "Statistics not yet recorded",
+            "status": job.get("status")
+        }
+
+    return stats
+
+
+@router.get("/crm/statistics")
+async def get_recent_sync_statistics(user: dict = Depends(get_current_user), limit: int = 10):
+    """Get recent sync statistics for user - OPTIMIZATION
+
+    Returns the latest N sync operations with performance metrics.
+    Useful for monitoring sync trends and identifying performance issues.
+    """
+    if limit < 1 or limit > 100:
+        limit = 10
+
+    stats = await db.sync_statistics.find(
+        {},
+        {"_id": 0}
+    ).sort("recorded_at", -1).to_list(limit)
+
+    if not stats:
+        return {
+            "message": "No sync statistics available",
+            "count": 0,
+            "statistics": []
+        }
+
+    # Calculate aggregate metrics
+    total_duration = sum(s.get("duration_seconds", 0) for s in stats)
+    total_processed = sum(s.get("products_processed", 0) for s in stats)
+    total_created = sum(s.get("products_created", 0) for s in stats)
+    total_updated = sum(s.get("products_updated", 0) for s in stats)
+    total_errors = sum(s.get("error_count", 0) for s in stats)
+
+    return {
+        "count": len(stats),
+        "statistics": stats,
+        "aggregate_metrics": {
+            "total_duration_seconds": round(total_duration, 2),
+            "total_products_processed": total_processed,
+            "total_created": total_created,
+            "total_updated": total_updated,
+            "total_errors": total_errors,
+            "average_duration_seconds": round(total_duration / len(stats), 2) if stats else 0,
+            "average_products_per_sync": round(total_processed / len(stats), 2) if stats else 0
+        }
+    }
+
+
+@router.get("/crm/statistics/platform/{platform}")
+async def get_platform_statistics(platform: str, user: dict = Depends(get_current_user), days: int = 30):
+    """Get performance statistics for a specific CRM platform - OPTIMIZATION
+
+    Shows trends, success rates, and performance metrics for a platform.
+    Helps identify patterns and potential issues.
+    """
+    if days < 1 or days > 365:
+        days = 30
+
+    # Calculate cutoff date
+    from datetime import datetime, timezone, timedelta
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Get stats for platform in the time range
+    stats = await db.sync_statistics.find(
+        {
+            "platform": platform.lower(),
+            "recorded_at": {"$gte": cutoff.isoformat()}
+        },
+        {"_id": 0}
+    ).sort("recorded_at", -1).to_list(1000)
+
+    if not stats:
+        return {
+            "platform": platform,
+            "days": days,
+            "message": "No statistics available for this platform in the specified time range",
+            "count": 0
+        }
+
+    # Calculate metrics
+    success_count = sum(1 for s in stats if s.get("success", False))
+    error_count = len(stats) - success_count
+    total_duration = sum(s.get("duration_seconds", 0) for s in stats)
+    total_processed = sum(s.get("products_processed", 0) for s in stats)
+    total_errors = sum(s.get("error_count", 0) for s in stats)
+
+    # Find slowest and fastest syncs
+    slowest = max(stats, key=lambda s: s.get("duration_seconds", 0)) if stats else None
+    fastest = min(stats, key=lambda s: s.get("duration_seconds", float('inf'))) if stats else None
+
+    return {
+        "platform": platform,
+        "days": days,
+        "count": len(stats),
+        "success_rate_percent": round((success_count / len(stats) * 100), 2) if stats else 0,
+        "metrics": {
+            "total_syncs": len(stats),
+            "successful_syncs": success_count,
+            "failed_syncs": error_count,
+            "total_duration_seconds": round(total_duration, 2),
+            "total_products_processed": total_processed,
+            "total_errors": total_errors,
+            "average_duration_seconds": round(total_duration / len(stats), 2) if stats else 0,
+            "average_products_per_sync": round(total_processed / len(stats), 2) if stats else 0,
+            "slowest_sync_seconds": slowest.get("duration_seconds", 0) if slowest else 0,
+            "fastest_sync_seconds": fastest.get("duration_seconds", 0) if fastest else 0,
+        },
+        "recent_statistics": stats[:5]  # Return 5 most recent for detail
+    }

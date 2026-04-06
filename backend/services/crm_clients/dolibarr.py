@@ -5,12 +5,148 @@ import logging
 import requests
 import base64
 import asyncio
+import time
 from typing import Dict, List, Optional
 from datetime import datetime, timezone
 
 from .base import _validate_crm_url
 
 logger = logging.getLogger(__name__)
+
+
+# ==================== RETRY LOGIC WITH EXPONENTIAL BACKOFF ====================
+
+async def retry_async(
+    func,
+    max_retries: int = 3,
+    backoff_factor: float = 2.0,
+    initial_delay: float = 1.0,
+    max_delay: float = 16.0,
+    retryable_errors: tuple = (ConnectionError, TimeoutError, requests.exceptions.Timeout, requests.exceptions.ConnectionError),
+    retryable_status_codes: tuple = (429, 500, 502, 503, 504),
+    *args,
+    **kwargs
+):
+    """Retry async function with exponential backoff - OPTIMIZATION
+
+    Automatically retries on transient failures:
+    - Network errors (ConnectionError, TimeoutError)
+    - Rate limits (429)
+    - Server errors (500, 502, 503, 504)
+
+    Does NOT retry on permanent errors:
+    - 400 Bad Request
+    - 401 Unauthorized
+    - 403 Forbidden
+    - 404 Not Found
+
+    Args:
+        func: Async function to call
+        max_retries: Maximum number of retry attempts
+        backoff_factor: Exponential backoff multiplier
+        initial_delay: Initial delay in seconds
+        max_delay: Maximum delay in seconds (cap exponential growth)
+        retryable_errors: Exception types to retry on
+        retryable_status_codes: HTTP status codes to retry on
+        *args, **kwargs: Arguments to pass to func
+    """
+    attempt = 0
+    delay = initial_delay
+
+    while attempt < max_retries:
+        try:
+            return await func(*args, **kwargs)
+        except requests.exceptions.HTTPError as e:
+            # Check HTTP status code
+            status_code = e.response.status_code if hasattr(e, 'response') and e.response else None
+
+            if status_code and status_code not in retryable_status_codes:
+                # Permanent error - don't retry
+                logger.warning(f"Not retrying permanent HTTP error {status_code}: {e}")
+                raise
+
+            # Transient error - log and retry
+            attempt += 1
+            if attempt >= max_retries:
+                logger.error(f"Max retries ({max_retries}) exceeded for HTTP {status_code}: {e}")
+                raise
+
+            logger.warning(f"HTTP {status_code} error (attempt {attempt}/{max_retries}), retrying in {delay}s: {e}")
+            await asyncio.sleep(delay)
+            delay = min(delay * backoff_factor, max_delay)
+
+        except retryable_errors as e:
+            # Transient network error - log and retry
+            attempt += 1
+            if attempt >= max_retries:
+                logger.error(f"Max retries ({max_retries}) exceeded for {type(e).__name__}: {e}")
+                raise
+
+            logger.warning(f"{type(e).__name__} (attempt {attempt}/{max_retries}), retrying in {delay}s: {e}")
+            await asyncio.sleep(delay)
+            delay = min(delay * backoff_factor, max_delay)
+
+        except Exception as e:
+            # Unexpected error - don't retry
+            logger.error(f"Unexpected error (not retryable): {type(e).__name__}: {e}")
+            raise
+
+
+def retry_sync(
+    func,
+    max_retries: int = 3,
+    backoff_factor: float = 2.0,
+    initial_delay: float = 1.0,
+    max_delay: float = 16.0,
+    retryable_errors: tuple = (ConnectionError, TimeoutError, requests.exceptions.Timeout, requests.exceptions.ConnectionError),
+    retryable_status_codes: tuple = (429, 500, 502, 503, 504),
+    *args,
+    **kwargs
+):
+    """Retry synchronous function with exponential backoff - OPTIMIZATION
+
+    Same as retry_async but for blocking/sync operations.
+    """
+    attempt = 0
+    delay = initial_delay
+
+    while attempt < max_retries:
+        try:
+            return func(*args, **kwargs)
+        except requests.exceptions.HTTPError as e:
+            # Check HTTP status code
+            status_code = e.response.status_code if hasattr(e, 'response') and e.response else None
+
+            if status_code and status_code not in retryable_status_codes:
+                # Permanent error - don't retry
+                logger.warning(f"Not retrying permanent HTTP error {status_code}: {e}")
+                raise
+
+            # Transient error - log and retry
+            attempt += 1
+            if attempt >= max_retries:
+                logger.error(f"Max retries ({max_retries}) exceeded for HTTP {status_code}: {e}")
+                raise
+
+            logger.warning(f"HTTP {status_code} error (attempt {attempt}/{max_retries}), retrying in {delay}s: {e}")
+            time.sleep(delay)
+            delay = min(delay * backoff_factor, max_delay)
+
+        except retryable_errors as e:
+            # Transient network error - log and retry
+            attempt += 1
+            if attempt >= max_retries:
+                logger.error(f"Max retries ({max_retries}) exceeded for {type(e).__name__}: {e}")
+                raise
+
+            logger.warning(f"{type(e).__name__} (attempt {attempt}/{max_retries}), retrying in {delay}s: {e}")
+            time.sleep(delay)
+            delay = min(delay * backoff_factor, max_delay)
+
+        except Exception as e:
+            # Unexpected error - don't retry
+            logger.error(f"Unexpected error (not retryable): {type(e).__name__}: {e}")
+            raise
 
 
 def _safe_json_parse(response, default=None):
@@ -121,17 +257,34 @@ class DolibarrClient:
         self.last_request_time = 0
 
     def _rate_limited_request(self, method: str, url: str, **kwargs) -> requests.Response:
-        """Make a rate-limited request"""
-        import time
+        """Make a rate-limited request with automatic retry on transient failures - OPTIMIZATION
+
+        Retries on:
+        - Network errors (timeouts, connection errors)
+        - Rate limits (429)
+        - Server errors (500, 502, 503, 504)
+
+        Does NOT retry on:
+        - 400 Bad Request
+        - 401 Unauthorized
+        - 403 Forbidden
+        - 404 Not Found
+        """
         # Ensure minimum delay between requests
         elapsed = time.time() - self.last_request_time
         if elapsed < self.min_delay:
             time.sleep(self.min_delay - elapsed)
 
         kwargs.setdefault('timeout', 30)
-        response = self.session.request(method, url, **kwargs)
-        self.last_request_time = time.time()
-        return response
+
+        # Use retry logic for the actual request (lambda to avoid positional/keyword arg mismatch)
+        return retry_sync(
+            lambda: self.session.request(method, url, **kwargs),
+            max_retries=3,
+            backoff_factor=2.0,
+            initial_delay=1.0,
+            max_delay=16.0
+        )
 
     def close(self):
         """Close the session"""
