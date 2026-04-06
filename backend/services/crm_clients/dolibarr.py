@@ -106,7 +106,13 @@ class DolibarrClient:
                 timeout=60
             )
             if response.status_code == 200:
-                return response.json()
+                try:
+                    return response.json()
+                except ValueError as json_err:
+                    logger.error(f"Failed to parse JSON response from get_products: {json_err}")
+                    return []
+            # MEDIUM #13: Log non-200 responses instead of silently failing
+            logger.warning(f"get_products failed with status {response.status_code}: {response.text[:200]}")
             return []
         except Exception as e:
             logger.error(f"Dolibarr get_products error: {e}")
@@ -127,14 +133,18 @@ class DolibarrClient:
                 timeout=30
             )
             if response.status_code == 200:
-                return response.json()
+                try:
+                    return response.json()
+                except ValueError as json_err:
+                    logger.error(f"Failed to parse JSON response for product {ref}: {json_err}")
+                    return None
             elif response.status_code == 404:
                 # Product not found - this is expected, return None
                 logger.debug(f"Product with ref={ref} not found in Dolibarr (404)")
                 return None
             else:
-                # Unexpected status code
-                logger.warning(f"Unexpected status getting product ref={ref}: {response.status_code}")
+                # MEDIUM #13: Log unexpected status codes
+                logger.warning(f"get_product_by_ref({ref}) failed with status {response.status_code}: {response.text[:200]}")
                 return None
         except Exception as e:
             logger.error(f"Dolibarr get_product_by_ref error for ref={ref}: {e}")
@@ -157,15 +167,21 @@ class DolibarrClient:
                 timeout=30
             )
             if response.status_code == 200:
-                results = response.json()
-                if isinstance(results, list):
-                    return results
-                elif isinstance(results, dict):
-                    # Some versions return {"data": [...]}
-                    return results.get("data", [])
+                try:
+                    results = response.json()
+                    if isinstance(results, list):
+                        return results
+                    elif isinstance(results, dict):
+                        # Some versions return {"data": [...]}
+                        return results.get("data", [])
+                except ValueError as json_err:
+                    logger.error(f"Failed to parse JSON response for search_products_by_name: {json_err}")
+                    return []
+            # MEDIUM #13: Log non-200 responses
+            logger.warning(f"search_products_by_name({name}) failed with status {response.status_code}")
             return []
         except Exception as e:
-            logger.warning(f"Error searching products by name '{name}': {e}")
+            logger.error(f"Error searching products by name '{name}': {e}")
             return []
 
     def get_products_by_refs_batch(self, refs: List[str]) -> Dict[str, Dict]:
