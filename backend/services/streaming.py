@@ -9,6 +9,7 @@ Optimizes:
 import asyncio
 import logging
 import os
+import stat
 import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -202,6 +203,7 @@ async def download_from_ftp_streaming(
             try:
                 with tempfile.NamedTemporaryFile(delete=False) as tmp:
                     tmp_path = tmp.name
+                    os.chmod(tmp_path, stat.S_IRUSR | stat.S_IWUSR)
 
                     if schema == 'sftp':
                         import socket

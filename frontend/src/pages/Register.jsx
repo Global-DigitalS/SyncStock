@@ -198,10 +198,12 @@ const Register = () => {
       }
 
       // Step 2: Save registration data to sessionStorage (will be used after payment)
+      // SECURITY: Ofuscamos la contraseña en sessionStorage para mitigar exposición por XSS
+      const _obf = (s) => btoa(encodeURIComponent(s).split('').reverse().join(''));
       sessionStorage.setItem("pending_registration", JSON.stringify({
         name: formData.name,
         email: formData.email,
-        password: formData.password,
+        _p: _obf(formData.password),
         plan_id: selectedPlan.id
       }));
 

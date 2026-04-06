@@ -2,12 +2,16 @@ import asyncio
 import csv
 import ftplib
 import io
+import ipaddress
 import json
 import logging
+import os
 import re
+import socket
 import uuid
 import zipfile
 from datetime import UTC, datetime
+from urllib.parse import urlparse
 
 import paramiko
 import requests
@@ -401,7 +405,31 @@ def _build_browser_session(url: str, auth=None) -> tuple:
     return session
 
 
+def _validate_url_ssrf(url: str) -> None:
+    """Valida que la URL no apunte a IPs privadas/internas (prevención SSRF)."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ('http', 'https', 'ftp', 'sftp'):
+        raise ValueError(f"Esquema de URL no permitido: {parsed.scheme}")
+    hostname = parsed.hostname
+    if not hostname:
+        raise ValueError("URL sin hostname válido")
+    if '@' in (parsed.netloc.split(':')[0] if ':' in parsed.netloc else parsed.netloc):
+        raise ValueError("URLs con @ en el host no están permitidas")
+    try:
+        resolved_ips = socket.getaddrinfo(hostname, parsed.port or 443)
+        for family, _type, _proto, _canonname, sockaddr in resolved_ips:
+            ip = ipaddress.ip_address(sockaddr[0])
+            if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
+                raise ValueError(
+                    f"URL apunta a IP privada/reservada ({ip}). "
+                    f"No se permiten conexiones a redes internas."
+                )
+    except socket.gaierror:
+        raise ValueError(f"No se pudo resolver el hostname: {hostname}")
+
+
 def download_file_from_url_sync(url: str, username: str = None, password: str = None) -> bytes:
+    _validate_url_ssrf(url)
     logger.info(f"Downloading from URL: {url}")
     auth = (username, password) if username and password else None
     session = _build_browser_session(url, auth)
@@ -464,13 +492,25 @@ async def download_file_from_url(url: str, username: str = None, password: str =
 
 # ==================== FILE PARSING ====================
 
+def _sanitize_csv_cell(value):
+    """Previene CSV formula injection eliminando prefijos peligrosos."""
+    if isinstance(value, str) and value and value[0] in ('=', '+', '-', '@', '\t', '\r'):
+        return "'" + value
+    return value
+
+
 def parse_csv_content(content: bytes) -> list:
     try:
         decoded = content.decode('utf-8')
     except Exception:
         decoded = content.decode('latin-1')
     reader = csv.DictReader(io.StringIO(decoded))
-    return list(reader)
+    result = []
+    for row in reader:
+        sanitized = {k: _sanitize_csv_cell(v) if isinstance(v, str) else v
+                     for k, v in row.items()}
+        result.append(sanitized)
+    return result
 
 
 def parse_xlsx_content(content: bytes) -> list:
@@ -506,15 +546,10 @@ def parse_xml_content(content: bytes) -> list:
         from defusedxml import xmltodict as safe_xmltodict
         data = safe_xmltodict.parse(decoded, disable_entities=True, process_namespaces=False)
     except ImportError:
-        logger.warning("defusedxml not installed, using standard xmltodict (XXE vulnerable)")
-        # Fallback with manual XXE protection
-        import xml.etree.ElementTree as ET
-        # Disable external entities and DTD processing
-        for event, elem in ET.iterparse(io.StringIO(decoded), events=['start']):
-            # This approach doesn't prevent XXE - better to fail
-            pass
-        logger.warning("XML parsing requires defusedxml library for XXE protection")
-        raise ValueError("XML parsing requires defusedxml for security")
+        raise ImportError(
+            "El parseo de XML requiere la librería defusedxml para protección XXE. "
+            "Instalar con: pip install defusedxml"
+        )
 
     for key in ['products', 'items', 'catalog', 'data', 'root']:
         if key in data:
@@ -1316,13 +1351,19 @@ def parse_text_file(content: bytes, separator: str = ";", header_row: int = 1) -
 
 
 def extract_zip_files(content: bytes) -> dict:
-    """Extract all files from a ZIP archive, returns {filename: bytes}"""
+    """Extract all files from a ZIP archive, returns {filename: bytes}.
+    Valida paths para prevenir path traversal (Zip Slip)."""
     result = {}
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
         for info in zf.infolist():
-            if not info.is_dir():
-                with zf.open(info.filename) as f:
-                    result[info.filename] = f.read()
+            if info.is_dir():
+                continue
+            normalized = os.path.normpath(info.filename)
+            if normalized.startswith('..') or os.path.isabs(normalized):
+                logger.warning(f"Zip Slip: path sospechoso ignorado: {info.filename}")
+                continue
+            with zf.open(info.filename) as f:
+                result[info.filename] = f.read()
     return result
 
 

@@ -89,14 +89,18 @@ class DatabaseManager:
             except Exception:
                 pass
 
-        # Ocultar credenciales en el log
-        safe_url = self._mongo_url[:40] + "..." if len(self._mongo_url) > 40 else self._mongo_url
-        if "@" in safe_url:
-            # Ocultar la contraseña
-            parts = safe_url.split("@")
-            if ":" in parts[0]:
-                user_part = parts[0].split(":")
-                safe_url = f"{user_part[0]}:****@{parts[1]}" if len(parts) > 1 else safe_url
+        # Ocultar credenciales en el log usando urllib.parse
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(self._mongo_url)
+            if parsed.password:
+                safe_url = self._mongo_url.replace(parsed.password, '****')
+            elif "@" in self._mongo_url:
+                safe_url = self._mongo_url.split("@")[0].rsplit(":", 1)[0] + ":****@" + self._mongo_url.split("@", 1)[1]
+            else:
+                safe_url = self._mongo_url
+        except Exception:
+            safe_url = "mongodb://****"
 
         logger.info(f"MongoDB connection initialized: {safe_url} DB: {self._db_name}")
 

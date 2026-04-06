@@ -57,11 +57,15 @@ const CheckoutSuccess = () => {
         const regData = JSON.parse(pendingReg);
         const billingData = JSON.parse(pendingBilling || "{}");
 
+        // SECURITY: Desofuscar contraseña almacenada temporalmente
+        const _deobf = (s) => decodeURIComponent(atob(s).split('').reverse().join(''));
+        const password = regData._p ? _deobf(regData._p) : regData.password;
+
         // Step 1: Register the user
         const registerRes = await axios.post(`${BACKEND_URL}/api/auth/register`, {
           name: sanitizeString(regData.name),
           email: sanitizeEmail(regData.email),
-          password: regData.password,
+          password: password,
           company: null,
           plan_id: regData.plan_id
         });
