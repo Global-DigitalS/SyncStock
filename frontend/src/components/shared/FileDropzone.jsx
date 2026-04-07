@@ -1,17 +1,32 @@
 import { useState, useRef } from "react";
+import { toast } from "sonner";
 import { Upload, FileUp } from "lucide-react";
 import { Button } from "../ui/button";
 import { cn } from "../../lib/utils";
+
+const MAX_FILE_SIZE_DEFAULT = 50 * 1024 * 1024; // 50MB
 
 const FileDropzone = ({
   onFileDrop,
   accept = ".csv,.xlsx,.xls,.xml",
   multiple = false,
   uploading = false,
+  maxFileSize = MAX_FILE_SIZE_DEFAULT,
   className
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef(null);
+
+  const validateFileSize = (files) => {
+    for (const file of files) {
+      if (file.size > maxFileSize) {
+        const maxMB = Math.round(maxFileSize / (1024 * 1024));
+        toast.error(`El archivo "${file.name}" excede el tamaño máximo permitido (${maxMB}MB)`);
+        return false;
+      }
+    }
+    return true;
+  };
 
   const handleDrag = (e) => {
     e.preventDefault();
@@ -30,14 +45,14 @@ const FileDropzone = ({
     
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const files = multiple ? Array.from(e.dataTransfer.files) : [e.dataTransfer.files[0]];
-      onFileDrop(files);
+      if (validateFileSize(files)) onFileDrop(files);
     }
   };
 
   const handleChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const files = multiple ? Array.from(e.target.files) : [e.target.files[0]];
-      onFileDrop(files);
+      if (validateFileSize(files)) onFileDrop(files);
     }
   };
 
