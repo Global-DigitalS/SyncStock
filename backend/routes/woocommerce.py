@@ -444,6 +444,8 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
 
     products_to_create = []
     products_to_update = []
+    seen_skus = set()
+    seen_eans = set()
 
     for catalog_item in catalog_items:
         product = products_map.get(catalog_item["product_id"])
@@ -456,6 +458,41 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         try:
             ean = product.get("ean", "") or ""
             sku = product.get("sku", "")
+
+            # --- SKU: sanitizar y validar ---
+            # Eliminar espacios y caracteres no permitidos por WooCommerce
+            sku = sku.strip()
+            if not sku:
+                failed += 1
+                errors.append(f"Producto '{product.get('name', '')}' sin SKU, omitido")
+                continue
+            # Detectar SKUs duplicados en el lote
+            if sku.lower() in seen_skus:
+                failed += 1
+                errors.append(f"SKU '{sku}' duplicado en el lote, omitido")
+                continue
+            seen_skus.add(sku.lower())
+
+            # --- EAN/GTIN: sanitizar y validar ---
+            if ean:
+                # Limpiar comillas, espacios y caracteres no numéricos
+                ean = ean.strip()
+                quote_chars = "'''´`＇\"\u200b"
+                ean = ean.translate({ord(ch): None for ch in quote_chars})
+                # Solo dígitos
+                ean_digits = "".join(c for c in ean if c.isdigit())
+                # EAN válido: 8, 12, 13 o 14 dígitos
+                if ean_digits and len(ean_digits) in (8, 12, 13, 14):
+                    # Verificar duplicados en el lote
+                    if ean_digits in seen_eans:
+                        ean = ""  # Omitir EAN duplicado, pero sí crear el producto
+                        logger.warning(f"EAN duplicado '{ean_digits}' para SKU '{sku}', se omite el EAN")
+                    else:
+                        seen_eans.add(ean_digits)
+                        ean = ean_digits
+                else:
+                    logger.warning(f"EAN inválido '{ean}' para SKU '{sku}' (longitud {len(ean_digits)}), se omite")
+                    ean = ""
 
             # Use long_description if available, fallback to description
             description = product.get("long_description") or product.get("description", "")
@@ -471,7 +508,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                 "categories": [], "images": [], "meta_data": []
             }
 
-            # Add EAN meta data
+            # Add EAN meta data (ya validado)
             if ean:
                 wc_product["meta_data"].extend([
                     {"key": "_global_unique_id", "value": ean},
@@ -503,19 +540,20 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                             wc_product["categories"] = [{"id": wc_category_map[partial_path]}]
                             break
 
-            # Add main image first
-            if product.get("image_url"):
+            # Add images (solo URLs absolutas válidas)
+            def _is_valid_image_url(url: str) -> bool:
+                return bool(url and url.strip().startswith(("http://", "https://")))
+
+            if product.get("image_url") and _is_valid_image_url(product["image_url"]):
                 wc_product["images"].append({"src": product["image_url"]})
 
-            # Add gallery images
             gallery_images = product.get("gallery_images") or []
             for gallery_img in gallery_images:
-                if gallery_img:
+                if _is_valid_image_url(gallery_img):
                     wc_product["images"].append({"src": gallery_img})
 
-            # Legacy support for old image fields
             for img_field in ["image_url2", "image_url3"]:
-                if product.get(img_field):
+                if product.get(img_field) and _is_valid_image_url(product[img_field]):
                     wc_product["images"].append({"src": product[img_field]})
 
             if product.get("weight"):
