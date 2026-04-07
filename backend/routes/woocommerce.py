@@ -412,18 +412,21 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         logger.error(f"Error syncing categories: {e}")
 
     # ==================== STEP 2: GET EXISTING PRODUCTS ====================
-    # SIEMPRE obtener productos existentes para evitar crear duplicados
+    # SIEMPRE obtener productos existentes (todos los estados) para evitar crear duplicados
     try:
         page = 1
         while True:
-            response = await asyncio.to_thread(wcapi.get, "products", params={"per_page": 100, "page": page})
+            response = await asyncio.to_thread(
+                wcapi.get, "products",
+                params={"per_page": 100, "page": page, "status": "any"}
+            )
             if response.status_code == 200:
                 products_batch = response.json()
                 if not products_batch:
                     break
                 for p in products_batch:
                     for meta in p.get("meta_data", []):
-                        if meta.get("key") in ["_global_unique_id", "_gtin", "_ean", "gtin"]:
+                        if meta.get("key") in ["_global_unique_id", "global_unique_id", "_gtin", "_ean", "gtin"]:
                             ean_value = meta.get("value")
                             if ean_value:
                                 existing_eans[ean_value] = p["id"]
@@ -609,17 +612,47 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             response = await asyncio.to_thread(wcapi.post, "products/batch", batch_data)
             if response.status_code in [200, 201]:
                 result = response.json()
-                # Handle per-product errors within a successful batch response
+                retry_as_update = []
                 for j, created_product in enumerate(result.get("create", [])):
                     if created_product.get("error"):
-                        failed += 1
                         sku = batch[j]["product"].get("sku", "") if j < len(batch) else ""
                         err = created_product["error"]
-                        errors.append(f"SKU '{sku}': [{err.get('code','')}] {err.get('message','')}")
+                        err_code = err.get("code", "")
+                        # Si WooCommerce dice que el SKU/EAN ya existe, buscar el producto y actualizar
+                        if err_code in ("product_invalid_sku", "product_invalid_global_unique_id"):
+                            try:
+                                wc_resp = await asyncio.to_thread(
+                                    wcapi.get, "products", params={"sku": sku, "per_page": 1}
+                                )
+                                if wc_resp.status_code == 200 and wc_resp.json():
+                                    existing_id = wc_resp.json()[0]["id"]
+                                    update_product = dict(batch[j]["product"])
+                                    update_product["id"] = existing_id
+                                    retry_as_update.append(update_product)
+                                    continue
+                            except Exception:
+                                pass
+                        failed += 1
+                        errors.append(f"SKU '{sku}': [{err_code}] {err.get('message','')}")
                     else:
                         created += 1
                         if j < len(batch) and batch[j]["ean"]:
                             existing_eans[batch[j]["ean"]] = created_product.get("id")
+                # Reintentar como actualización los que fallaron por duplicado
+                if retry_as_update:
+                    retry_resp = await asyncio.to_thread(
+                        wcapi.post, "products/batch", {"update": retry_as_update}
+                    )
+                    if retry_resp.status_code in [200, 201]:
+                        for upd in retry_resp.json().get("update", []):
+                            if upd.get("error"):
+                                failed += 1
+                                err = upd["error"]
+                                errors.append(f"ID {upd.get('id','?')}: [{err.get('code','')}] {err.get('message','')}")
+                            else:
+                                updated += 1
+                    else:
+                        failed += len(retry_as_update)
             else:
                 failed += len(batch)
                 errors.append(f"Error batch create (HTTP {response.status_code}): {_extract_wc_error(response.text)}")
