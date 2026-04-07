@@ -83,7 +83,7 @@ async def create_store_config(config: dict, user: dict = Depends(get_current_use
     # Get catalog name if provided
     catalog_name = None
     if config.get("catalog_id"):
-        catalog = await db.catalogs.find_one({"id": config["catalog_id"], "user_id": user["id"]})
+        catalog = await db.catalogs.find_one({"id": config["catalog_id"], "user_id": user["id"]}, {"_id": 0})
         if catalog:
             catalog_name = catalog.get("name")
 
@@ -155,7 +155,7 @@ async def get_store_configs(user: dict = Depends(get_current_user)):
     catalog_ids = [c.get("catalog_id") for c in configs if c.get("catalog_id")]
     catalogs = {}
     if catalog_ids:
-        catalog_docs = await db.catalogs.find({"id": {"$in": catalog_ids}}).to_list(100)
+        catalog_docs = await db.catalogs.find({"id": {"$in": catalog_ids}}, {"_id": 0}).to_list(100)
         catalogs = {c["id"]: c.get("name") for c in catalog_docs}
 
     result = []
@@ -210,7 +210,7 @@ async def get_store_config(config_id: str, user: dict = Depends(get_current_user
     platform = config.get("platform", "woocommerce")
     catalog_name = None
     if config.get("catalog_id"):
-        catalog = await db.catalogs.find_one({"id": config["catalog_id"]})
+        catalog = await db.catalogs.find_one({"id": config["catalog_id"]}, {"_id": 0})
         if catalog:
             catalog_name = catalog.get("name")
 

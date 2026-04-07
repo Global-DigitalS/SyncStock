@@ -156,9 +156,9 @@ async def delete_catalog(catalog_id: str, user: dict = Depends(get_current_user)
     existing = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not existing:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    await db.catalog_items.delete_many({"catalog_id": catalog_id})
-    await db.catalog_margin_rules.delete_many({"catalog_id": catalog_id})
-    await db.catalogs.delete_one({"id": catalog_id})
+    await db.catalog_items.delete_many({"catalog_id": catalog_id, "user_id": user["id"]})
+    await db.catalog_margin_rules.delete_many({"catalog_id": catalog_id, "user_id": user["id"]})
+    await db.catalogs.delete_one({"id": catalog_id, "user_id": user["id"]})
     return {"message": "Catálogo eliminado"}
 
 
@@ -309,7 +309,7 @@ async def update_catalog_margin_rule(catalog_id: str, rule_id: str, rule: Catalo
         "min_price": rule.min_price, "max_price": rule.max_price,
         "priority": rule.priority
     }
-    await db.catalog_margin_rules.update_one({"id": rule_id}, {"$set": update_data})
+    await db.catalog_margin_rules.update_one({"id": rule_id, "user_id": user["id"]}, {"$set": update_data})
     updated = await db.catalog_margin_rules.find_one({"id": rule_id}, {"_id": 0, "user_id": 0})
     return CatalogMarginRuleResponse(**updated)
 
@@ -344,7 +344,7 @@ async def add_to_catalog(item: CatalogItemCreate, user: dict = Depends(get_curre
 
 @router.get("/catalog")
 async def get_catalog(active_only: bool = False, search: str | None = None,
-    skip: int = 0, limit: int = 100, user: dict = Depends(get_current_user)):
+    skip: int = Query(0, ge=0, le=100000), limit: int = Query(100, ge=1, le=500), user: dict = Depends(get_current_user)):
     query = {"user_id": user["id"]}
     if active_only:
         query["active"] = True
@@ -419,8 +419,8 @@ async def update_margin_rule(rule_id: str, rule: MarginRuleCreate, user: dict = 
     existing = await db.catalog_margin_rules.find_one({"id": rule_id, "user_id": user["id"]})
     if not existing:
         raise HTTPException(status_code=404, detail="Regla no encontrada")
-    await db.catalog_margin_rules.update_one({"id": rule_id}, {"$set": rule.model_dump()})
-    updated = await db.catalog_margin_rules.find_one({"id": rule_id}, {"_id": 0})
+    await db.catalog_margin_rules.update_one({"id": rule_id, "user_id": user["id"]}, {"$set": rule.model_dump()})
+    updated = await db.catalog_margin_rules.find_one({"id": rule_id, "user_id": user["id"]}, {"_id": 0})
     return MarginRuleResponse(**updated)
 
 

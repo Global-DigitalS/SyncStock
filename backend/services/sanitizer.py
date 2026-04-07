@@ -299,3 +299,17 @@ def remove_credentials(data: dict[str, Any] | list[dict[str, Any]]) -> dict[str,
     else:
         # Return primitive values unchanged
         return data
+
+
+# UUID v4 format pattern
+_UUID_PATTERN = re.compile(
+    r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+    re.IGNORECASE,
+)
+
+
+def validate_uuid(value: str) -> str:
+    """Valida que un string sea un UUID v4 válido. Lanza ValueError si no lo es."""
+    if not value or not _UUID_PATTERN.match(value):
+        raise ValueError(f"ID inválido: se esperaba UUID, se recibió '{value[:50]}'")
+    return value

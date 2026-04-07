@@ -210,7 +210,7 @@ async def register(request: Request, response: Response, user: UserCreate):
         raise
     except Exception as e:
         logger.error(f"Error inesperado en register: {type(e).__name__}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 @router.post("/auth/login", response_model=dict)
@@ -262,7 +262,7 @@ async def login(request: Request, response: Response, credentials: UserLogin):
         raise
     except Exception as e:
         logger.error(f"Error inesperado en login: {type(e).__name__}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error interno del servidor: {type(e).__name__}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
 
 
 @router.post("/auth/logout")

@@ -93,8 +93,8 @@ api.interceptors.request.use((config) => {
 });
 
 // Response interceptor: auto-refresh on 401, redirect on final failure
-let isRefreshing = false;
-let refreshQueue = [];
+// Usa una Promise compartida para evitar race conditions entre requests concurrentes
+let refreshPromise = null;
 
 api.interceptors.response.use(
   (response) => response,
@@ -111,30 +111,22 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      if (isRefreshing) {
-        // Queue this request until refresh completes
-        return new Promise((resolve, reject) => {
-          refreshQueue.push({ resolve, reject });
-        }).then(() => api(originalRequest));
+      originalRequest._retry = true;
+
+      // Si ya hay un refresh en curso, esperar a que termine
+      if (!refreshPromise) {
+        refreshPromise = api.post("/auth/refresh").finally(() => {
+          refreshPromise = null;
+        });
       }
 
-      originalRequest._retry = true;
-      isRefreshing = true;
-
       try {
-        await api.post("/auth/refresh");
-        // Refresh successful — retry queued requests
-        refreshQueue.forEach(({ resolve }) => resolve());
-        refreshQueue = [];
+        await refreshPromise;
         return api(originalRequest);
       } catch (refreshError) {
-        refreshQueue.forEach(({ reject }) => reject(refreshError));
-        refreshQueue = [];
         localStorage.removeItem("user");
         window.location.href = "/#/login";
         return Promise.reject(refreshError);
-      } finally {
-        isRefreshing = false;
       }
     }
 
@@ -198,6 +190,7 @@ const AuthProvider = ({ children }) => {
   const [wsConnected, setWsConnected] = useState(false);
   const reconnectTimeoutRef = useRef(null);
   const userIdRef = useRef(null);
+  const wsRetriesRef = useRef(0);
 
   // WebSocket connection
   const connectWebSocket = useCallback((userId) => {
@@ -208,6 +201,7 @@ const AuthProvider = ({ children }) => {
       const ws = new WebSocket(`${WS_URL}/ws/notifications/${userId}`);
 
       ws.onopen = () => {
+        wsRetriesRef.current = 0;
         setWsConnected(true);
         // Send ping every 30 seconds to keep connection alive
         const pingInterval = setInterval(() => {
@@ -264,9 +258,14 @@ const AuthProvider = ({ children }) => {
       ws.onclose = () => {
         setWsConnected(false);
         if (ws.pingInterval) clearInterval(ws.pingInterval);
-        // Reconnect after 5 seconds using ref to avoid stale closure
+        // Reconexión con backoff exponencial + jitter para evitar thundering herd
         if (userIdRef.current) {
-          reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(userIdRef.current), 5000);
+          const retries = wsRetriesRef.current;
+          const baseDelay = Math.min(1000 * Math.pow(2, retries), 30000); // max 30s
+          const jitter = Math.random() * baseDelay * 0.5;
+          const delay = baseDelay + jitter;
+          wsRetriesRef.current = retries + 1;
+          reconnectTimeoutRef.current = setTimeout(() => connectWebSocket(userIdRef.current), delay);
         }
       };
 

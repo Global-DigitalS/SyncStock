@@ -2,7 +2,7 @@ import csv
 import io
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.responses import StreamingResponse
 
 from services.auth import get_current_user, get_superadmin_user
@@ -342,7 +342,7 @@ async def get_dashboard_sync_status(user: dict = Depends(get_current_user)):
 # ==================== NOTIFICATIONS ====================
 
 @router.get("/notifications", response_model=list[NotificationResponse])
-async def get_notifications(unread_only: bool = False, skip: int = 0, limit: int = 50, user: dict = Depends(get_current_user)):
+async def get_notifications(unread_only: bool = False, skip: int = Query(0, ge=0, le=100000), limit: int = Query(50, ge=1, le=200), user: dict = Depends(get_current_user)):
     query = {"user_id": user["id"]}
     if unread_only:
         query["read"] = False
@@ -427,7 +427,7 @@ async def get_notification_stats(user: dict = Depends(get_current_user)):
 # ==================== PRICE HISTORY ====================
 
 @router.get("/price-history", response_model=list[PriceHistoryResponse])
-async def get_price_history(product_id: str | None = None, days: int = 30, skip: int = 0, limit: int = 100, user: dict = Depends(get_current_user)):
+async def get_price_history(product_id: str | None = None, days: int = 30, skip: int = Query(0, ge=0, le=100000), limit: int = Query(100, ge=1, le=500), user: dict = Depends(get_current_user)):
     start_date = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     query = {"user_id": user["id"], "created_at": {"$gte": start_date}}
     if product_id:
@@ -492,8 +492,8 @@ async def get_sync_history(
     supplier_id: str | None = None,
     status: str | None = None,
     days: int = 30,
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, le=100000),
+    limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(get_current_user)
 ):
     """Obtener historial de sincronizaciones"""

@@ -89,7 +89,6 @@ const Login = () => {
       reset();
       navigate("/");
     } catch (error) {
-      console.error("Login error:", error);
       const detail = error.response?.data?.detail;
       const status = error.response?.status;
 
@@ -100,9 +99,7 @@ const Login = () => {
       } else if (detail === "ACCOUNT_DISABLED") {
         toast.error("Tu cuenta ha sido desactivada. Contacta al administrador.");
       } else {
-        // Show more details for debugging
         const errorMsg = detail || error.message || "Error desconocido al iniciar sesión";
-        console.error("Full error details:", { status, detail, message: error.message });
         toast.error(`Error al iniciar sesión: ${errorMsg}`);
       }
     } finally {

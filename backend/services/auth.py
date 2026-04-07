@@ -232,6 +232,10 @@ async def get_current_user(
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Token inválido")
 
+    token_type = payload.get("type")
+    if token_type and token_type not in ("access",):
+        raise HTTPException(status_code=401, detail="Tipo de token inválido")
+
     try:
         user = await db.users.find_one({"id": payload["user_id"]}, {"_id": 0, "password": 0})
     except Exception:

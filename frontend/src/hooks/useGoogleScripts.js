@@ -193,7 +193,7 @@ function injectScripts(config) {
     // Si el código contiene HTML (meta tag), parsearlo
     if (validCode.includes('<')) {
       const tempDiv = document.createElement('div');
-      tempDiv.innerHTML = validCode;
+      tempDiv.innerHTML = DOMPurify.sanitize(validCode, { ALLOWED_TAGS: ['meta'], ALLOWED_ATTR: ['name', 'content'] });
       const metaTag = tempDiv.querySelector('meta[name="google-site-verification"]');
       if (metaTag && metaTag.content) {
         const meta = document.createElement("meta");

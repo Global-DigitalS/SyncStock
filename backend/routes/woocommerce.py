@@ -140,7 +140,7 @@ async def get_woocommerce_configs(user: dict = Depends(get_current_user)):
     catalog_ids = [c.get("catalog_id") for c in configs if c.get("catalog_id")]
     catalogs = {}
     if catalog_ids:
-        catalog_docs = await db.catalogs.find({"id": {"$in": catalog_ids}}).to_list(100)
+        catalog_docs = await db.catalogs.find({"id": {"$in": catalog_ids}}, {"_id": 0}).to_list(100)
         catalogs = {c["id"]: c.get("name") for c in catalog_docs}
     result = []
     for c in configs:
@@ -286,7 +286,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         catalog_items = await db.catalog_items.find({"catalog_id": request.catalog_id, "active": True}, {"_id": 0}).to_list(1000)
         margin_rules = await db.catalog_margin_rules.find({"catalog_id": request.catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
     else:
-        catalog = await db.catalogs.find_one({"user_id": user["id"], "is_default": True})
+        catalog = await db.catalogs.find_one({"user_id": user["id"], "is_default": True}, {"_id": 0})
         if catalog:
             catalog_id = catalog["id"]
             catalog_items = await db.catalog_items.find({"catalog_id": catalog["id"], "active": True}, {"_id": 0}).to_list(1000)

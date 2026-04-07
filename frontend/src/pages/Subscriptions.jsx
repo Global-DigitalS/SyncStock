@@ -196,8 +196,8 @@ const Subscriptions = () => {
           billing_cycle: billingCycle
         });
         
-        // Redirect to Stripe checkout
-        if (res.data.checkout_url) {
+        // Redirect to Stripe checkout (validar dominio)
+        if (res.data.checkout_url?.startsWith("https://checkout.stripe.com/")) {
           window.location.href = res.data.checkout_url;
           return;
         }

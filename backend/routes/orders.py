@@ -88,7 +88,7 @@ async def get_orders(
     status: str | None = None,
     source: str | None = None,
     limit: int = Query(50, ge=1, le=500),
-    skip: int = Query(0, ge=0)
+    skip: int = Query(0, ge=0, le=100000)
 ):
     """Get user's orders with optional filtering"""
     query = {"userId": user["id"]}
@@ -132,7 +132,7 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
 async def get_failed_orders(
     user: dict = Depends(get_current_user),
     limit: int = Query(50, ge=1, le=500),
-    skip: int = Query(0, ge=0)
+    skip: int = Query(0, ge=0, le=100000)
 ):
     """Get orders with errors"""
     query = {

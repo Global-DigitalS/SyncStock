@@ -89,14 +89,18 @@ class DatabaseManager:
             except Exception:
                 pass
 
-        # Ocultar credenciales en el log
-        safe_url = self._mongo_url[:40] + "..." if len(self._mongo_url) > 40 else self._mongo_url
-        if "@" in safe_url:
-            # Ocultar la contraseña
-            parts = safe_url.split("@")
-            if ":" in parts[0]:
-                user_part = parts[0].split(":")
-                safe_url = f"{user_part[0]}:****@{parts[1]}" if len(parts) > 1 else safe_url
+        # Ocultar credenciales en el log usando urllib.parse
+        try:
+            from urllib.parse import urlparse
+            parsed = urlparse(self._mongo_url)
+            if parsed.password:
+                safe_url = self._mongo_url.replace(parsed.password, '****')
+            elif "@" in self._mongo_url:
+                safe_url = self._mongo_url.split("@")[0].rsplit(":", 1)[0] + ":****@" + self._mongo_url.split("@", 1)[1]
+            else:
+                safe_url = self._mongo_url
+        except Exception:
+            safe_url = "mongodb://****"
 
         logger.info(f"MongoDB connection initialized: {safe_url} DB: {self._db_name}")
 
@@ -311,6 +315,27 @@ async def ensure_indexes():
         # TTL para limpieza automática de jobs completados/fallidos > 30 días
         await _db.crawl_jobs.create_index(
             [("created_at", 1)], expireAfterSeconds=2592000, name="ttl_crawl_jobs_30d"
+        )
+
+        # Índices para colecciones sin cobertura previa
+        await _db.orders.create_index([("user_id", 1), ("created_at", -1)])
+        await _db.orders.create_index([("user_id", 1), ("status", 1)])
+        await _db.orders.create_index([("user_id", 1), ("store_id", 1)])
+        await _db.orders.create_index([("id", 1)], unique=True)
+
+        await _db.webhook_configs.create_index([("user_id", 1)])
+        await _db.webhook_configs.create_index([("id", 1)], unique=True)
+
+        await _db.support_tickets.create_index([("user_id", 1), ("created_at", -1)])
+        await _db.support_tickets.create_index([("id", 1)], unique=True)
+        await _db.support_tickets.create_index([("status", 1), ("created_at", -1)])
+
+        await _db.subscriptions.create_index([("user_id", 1)], unique=True)
+        await _db.subscription_plans.create_index([("id", 1)], unique=True)
+
+        await _db.password_resets.create_index([("token", 1)], unique=True)
+        await _db.password_resets.create_index(
+            [("expires_at", 1)], expireAfterSeconds=0, name="ttl_password_resets"
         )
 
         logger.info("MongoDB indexes ensured (incluidos índices de optimización y TTL)")
