@@ -412,31 +412,31 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
         logger.error(f"Error syncing categories: {e}")
 
     # ==================== STEP 2: GET EXISTING PRODUCTS ====================
-    if request.update_existing:
-        try:
-            page = 1
-            while True:
-                response = await asyncio.to_thread(wcapi.get, "products", params={"per_page": 100, "page": page})
-                if response.status_code == 200:
-                    products_batch = response.json()
-                    if not products_batch:
-                        break
-                    for p in products_batch:
-                        for meta in p.get("meta_data", []):
-                            if meta.get("key") in ["_global_unique_id", "_gtin", "_ean", "gtin"]:
-                                ean_value = meta.get("value")
-                                if ean_value:
-                                    existing_eans[ean_value] = p["id"]
-                                    break
-                        if p.get("sku"):
-                            existing_skus[p["sku"]] = p["id"]
-                    page += 1
-                    if len(products_batch) < 100:
-                        break
-                else:
+    # SIEMPRE obtener productos existentes para evitar crear duplicados
+    try:
+        page = 1
+        while True:
+            response = await asyncio.to_thread(wcapi.get, "products", params={"per_page": 100, "page": page})
+            if response.status_code == 200:
+                products_batch = response.json()
+                if not products_batch:
                     break
-        except Exception as e:
-            logger.warning(f"Could not fetch existing products: {e}")
+                for p in products_batch:
+                    for meta in p.get("meta_data", []):
+                        if meta.get("key") in ["_global_unique_id", "_gtin", "_ean", "gtin"]:
+                            ean_value = meta.get("value")
+                            if ean_value:
+                                existing_eans[ean_value] = p["id"]
+                                break
+                    if p.get("sku"):
+                        existing_skus[p["sku"]] = p["id"]
+                page += 1
+                if len(products_batch) < 100:
+                    break
+            else:
+                break
+    except Exception as e:
+        logger.warning(f"Could not fetch existing products: {e}")
 
     # ==================== STEP 3: EXPORT PRODUCTS IN BATCHES ====================
     # WooCommerce batch API allows up to 100 items per request
@@ -481,17 +481,31 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
                 ean = ean.translate({ord(ch): None for ch in quote_chars})
                 # Solo dígitos
                 ean_digits = "".join(c for c in ean if c.isdigit())
-                # EAN válido: 8, 12, 13 o 14 dígitos
+                # EAN válido: 8, 12, 13 o 14 dígitos + checksum correcto
+                ean_valid = False
                 if ean_digits and len(ean_digits) in (8, 12, 13, 14):
+                    # Validar dígito de control (checksum)
+                    digits = [int(d) for d in ean_digits]
+                    check = digits[-1]
+                    if len(ean_digits) in (13, 14):
+                        total = sum(d * (1 if i % 2 == 0 else 3) for i, d in enumerate(digits[:-1]))
+                    elif len(ean_digits) == 12:
+                        total = sum(d * (1 if i % 2 == 0 else 3) for i, d in enumerate(digits[:-1]))
+                    else:  # 8
+                        total = sum(d * (3 if i % 2 == 0 else 1) for i, d in enumerate(digits[:-1]))
+                    expected = (10 - (total % 10)) % 10
+                    ean_valid = (check == expected)
+
+                if ean_valid:
                     # Verificar duplicados en el lote
                     if ean_digits in seen_eans:
                         ean = ""  # Omitir EAN duplicado, pero sí crear el producto
-                        logger.warning(f"EAN duplicado '{ean_digits}' para SKU '{sku}', se omite el EAN")
                     else:
                         seen_eans.add(ean_digits)
                         ean = ean_digits
                 else:
-                    logger.warning(f"EAN inválido '{ean}' para SKU '{sku}' (longitud {len(ean_digits)}), se omite")
+                    if ean_digits:
+                        logger.debug(f"EAN inválido '{ean_digits}' para SKU '{sku}', se omite")
                     ean = ""
 
             # Use long_description if available, fallback to description
@@ -564,7 +578,8 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
             if not existing_wc_id and sku:
                 existing_wc_id = existing_skus.get(sku)
 
-            if existing_wc_id and request.update_existing:
+            if existing_wc_id:
+                # Producto ya existe en WooCommerce: actualizar siempre
                 wc_product["id"] = existing_wc_id
                 products_to_update.append(wc_product)
             else:
