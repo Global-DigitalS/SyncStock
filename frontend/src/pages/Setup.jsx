@@ -222,9 +222,10 @@ const Setup = () => {
       if (res.data.success) {
         toast.success("¡Configuración completada!");
         
-        // Guardar token y usuario
-        localStorage.setItem("token", res.data.token);
-        localStorage.setItem("user", JSON.stringify(res.data.user));
+        // Guardar usuario (el token se maneja via cookie httpOnly)
+        if (res.data.user) {
+          localStorage.setItem("user", JSON.stringify(res.data.user));
+        }
         
         // Si requiere reinicio, mostrar mensaje y esperar
         if (res.data.requires_restart) {
