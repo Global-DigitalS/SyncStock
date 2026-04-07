@@ -1127,24 +1127,26 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
 
 
 async def sync_all_suppliers():
-    logger.info("Starting scheduled sync for all suppliers...")
-    ftp_suppliers = await db.suppliers.find({
-        "connection_type": {"$ne": "url"},
-        "ftp_host": {"$nin": [None, ""]}
-    }).to_list(1000)
-    url_suppliers = await db.suppliers.find({
-        "connection_type": "url",
-        "file_url": {"$nin": [None, ""]}
-    }).to_list(1000)
-    all_suppliers = ftp_suppliers + url_suppliers
-    logger.info(f"Found {len(all_suppliers)} suppliers to sync")
-    for supplier in all_suppliers:
-        if supplier.get('ftp_paths'):
-            await sync_supplier_multifile(supplier, sync_type="scheduled")
-        else:
-            await sync_supplier(supplier, sync_type="scheduled")
-        await asyncio.sleep(2)
-    logger.info("Scheduled sync completed")
+    from services.unified_sync import _global_sync_lock
+    logger.info("Starting scheduled sync for all suppliers (waiting for global lock)...")
+    async with _global_sync_lock:
+        ftp_suppliers = await db.suppliers.find({
+            "connection_type": {"$ne": "url"},
+            "ftp_host": {"$nin": [None, ""]}
+        }).to_list(1000)
+        url_suppliers = await db.suppliers.find({
+            "connection_type": "url",
+            "file_url": {"$nin": [None, ""]}
+        }).to_list(1000)
+        all_suppliers = ftp_suppliers + url_suppliers
+        logger.info(f"Found {len(all_suppliers)} suppliers to sync")
+        for supplier in all_suppliers:
+            if supplier.get('ftp_paths'):
+                await sync_supplier_multifile(supplier, sync_type="scheduled")
+            else:
+                await sync_supplier(supplier, sync_type="scheduled")
+            await asyncio.sleep(2)
+        logger.info("Scheduled sync completed")
 
 
 
@@ -1737,19 +1739,21 @@ async def sync_woocommerce_store_price_stock(config: dict):
 
 
 async def sync_all_woocommerce_stores():
-    logger.info("Starting scheduled WooCommerce sync for all stores...")
-    configs = await db.woocommerce_configs.find({
-        "auto_sync_enabled": True,
-        "catalog_id": {"$nin": [None, ""]}
-    }).to_list(1000)
-    logger.info(f"Found {len(configs)} WooCommerce stores with auto-sync enabled")
-    for config in configs:
-        try:
-            await sync_woocommerce_store_price_stock(config)
-            await asyncio.sleep(5)
-        except Exception as e:
-            logger.error(f"Error syncing WooCommerce store {config.get('name', config['id'])}: {e}")
-    logger.info("Scheduled WooCommerce sync completed")
+    from services.unified_sync import _global_sync_lock
+    logger.info("Starting scheduled WooCommerce sync for all stores (waiting for global lock)...")
+    async with _global_sync_lock:
+        configs = await db.woocommerce_configs.find({
+            "auto_sync_enabled": True,
+            "catalog_id": {"$nin": [None, ""]}
+        }).to_list(1000)
+        logger.info(f"Found {len(configs)} WooCommerce stores with auto-sync enabled")
+        for config in configs:
+            try:
+                await sync_woocommerce_store_price_stock(config)
+                await asyncio.sleep(5)
+            except Exception as e:
+                logger.error(f"Error syncing WooCommerce store {config.get('name', config['id'])}: {e}")
+        logger.info("Scheduled WooCommerce sync completed")
 
 
 # ==================== WOOCOMMERCE CATEGORY FUNCTIONS ====================
