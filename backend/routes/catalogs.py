@@ -344,7 +344,7 @@ async def add_to_catalog(item: CatalogItemCreate, user: dict = Depends(get_curre
 
 @router.get("/catalog")
 async def get_catalog(active_only: bool = False, search: str | None = None,
-    skip: int = 0, limit: int = 100, user: dict = Depends(get_current_user)):
+    skip: int = Query(0, ge=0, le=100000), limit: int = Query(100, ge=1, le=500), user: dict = Depends(get_current_user)):
     query = {"user_id": user["id"]}
     if active_only:
         query["active"] = True

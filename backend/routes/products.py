@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from models.schemas import ProductResponse, ProductUpdate, SupplierOffer, UnifiedProductResponse
 from services.auth import get_current_user
@@ -43,7 +43,7 @@ async def get_products(
     supplier_id: str | None = None, category: str | None = None,
     search: str | None = None, min_stock: int | None = None,
     max_stock: int | None = None, min_price: float | None = None,
-    max_price: float | None = None, skip: int = 0, limit: int = 100,
+    max_price: float | None = None, skip: int = Query(0, ge=0, le=100000), limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(get_current_user)
 ):
     query = {"user_id": user["id"]}
@@ -285,7 +285,7 @@ async def add_products_to_multiple_catalogs(
 @router.get("/products-unified", response_model=list[UnifiedProductResponse])
 async def get_unified_products(
     category: str | None = None, search: str | None = None,
-    min_stock: int | None = None, skip: int = 0, limit: int = 50,
+    min_stock: int | None = None, skip: int = Query(0, ge=0, le=100000), limit: int = Query(50, ge=1, le=500),
     sort_by: str | None = None, sort_order: str | None = "asc",
     include_all: bool | None = False,
     user: dict = Depends(get_current_user)
@@ -547,8 +547,8 @@ async def get_supplier_products(
     subcategory2: str | None = None,
     search: str | None = None,
     is_selected: bool | None = None,
-    skip: int = 0,
-    limit: int = 100,
+    skip: int = Query(0, ge=0, le=100000),
+    limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(get_current_user)
 ):
     """

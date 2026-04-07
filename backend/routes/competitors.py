@@ -432,7 +432,7 @@ async def get_crawl_status(
 
 @router.get("/competitors/matches/pending")
 async def list_pending_matches(
-    skip: int = Query(0, ge=0),
+    skip: int = Query(0, ge=0, le=100000),
     limit: int = Query(50, ge=1, le=200),
     user: dict = Depends(get_current_user),
 ):
