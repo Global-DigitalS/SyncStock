@@ -676,14 +676,12 @@ class DolibarrClient:
             return None
 
     def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> dict:
-        """Update product stock in Dolibarr using absolute stock value.
+        """Update product stock in Dolibarr using reset-then-set strategy.
 
-        IMPORTANT: This method sets stock to an absolute value by calculating
-        the difference with current stock. To avoid accumulation bugs, it uses
-        multiple methods to determine the REAL current stock before creating
-        any stock movement.
-
-        CRITICAL FIX: Only ever creates ONE movement per call, never sums across warehouses.
+        Strategy: First remove ALL existing stock (movement type 1 = salida),
+        then add the desired stock (movement type 0 = entrada).
+        This guarantees an absolute value and prevents accumulation bugs,
+        regardless of Dolibarr's reported current stock.
         """
         try:
             # Validate input
@@ -698,13 +696,12 @@ class DolibarrClient:
                     logger.warning("[STOCK] No warehouse available, cannot update stock")
                     return {"status": "warning", "message": "No hay almacén configurado en Dolibarr"}
 
-            logger.info(f"[STOCK] Starting stock update: product={product_id}, warehouse={warehouse_id}, desired_stock={stock}")
+            logger.info(f"[STOCK] Starting stock RESET+SET: product={product_id}, warehouse={warehouse_id}, desired_stock={stock}")
 
-            # === CRITICAL: Get current stock reliably ===
-            # Method 1: Use the dedicated stock endpoint (most reliable)
+            # === STEP 1: Get current stock and remove it entirely ===
             current_stock = self._get_warehouse_stock(product_id, warehouse_id)
 
-            # Method 2: Fallback to product's stock_reel field (ONLY if Method 1 fails)
+            # Fallback to stock_reel if dedicated endpoint fails
             if current_stock is None:
                 logger.debug(f"[STOCK] Falling back to stock_reel for product {product_id}")
                 product = self.get_product_by_id(product_id)
@@ -712,78 +709,82 @@ class DolibarrClient:
                     return {"status": "error", "message": "Producto no encontrado"}
 
                 stock_reel = product.get("stock_reel")
-
-                # For NEW products, stock_reel might be null/empty - in that case, assume current_stock = 0
                 if stock_reel is None or stock_reel == "" or stock_reel == "null":
-                    logger.info(
-                        f"[STOCK] Product {product_id}: stock_reel is null/empty. "
-                        f"Assuming current stock = 0 for new product. "
-                        f"Desired stock: {stock}"
-                    )
                     current_stock = 0
                 else:
                     try:
                         current_stock = int(float(stock_reel))
-                        logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} (fallback)")
                     except (ValueError, TypeError):
-                        logger.error(f"[STOCK] Invalid stock_reel value: {stock_reel}")
-                        return {"status": "error", "message": "Valor de stock inválido en Dolibarr"}
+                        current_stock = 0
 
-            # Calculate difference
-            diff = stock - current_stock
+            logger.info(f"[STOCK] Product {product_id}: current_stock={current_stock}, desired={stock}")
 
-            if diff == 0:
-                logger.info(f"[STOCK] Product {product_id}: stock unchanged ({current_stock})")
-                return {"status": "success", "message": "Stock sin cambios"}
+            # Remove all existing stock (salida) if there is any
+            if current_stock > 0:
+                remove_payload = {
+                    "product_id": product_id,
+                    "warehouse_id": warehouse_id,
+                    "qty": current_stock,
+                    "type": 1,  # 1 = salida (stock removal)
+                    "label": f"SyncStock RESET: vaciar stock ({current_stock} → 0)",
+                    "date": datetime.now(UTC).isoformat()
+                }
 
-            # SAFETY: Log detailed info for debugging stock issues
-            logger.info(
-                f"[STOCK] Product {product_id}: "
-                f"current={current_stock}, desired={stock}, diff={diff}, "
-                f"movement={'ENTRADA' if diff > 0 else 'SALIDA'}"
-            )
+                remove_response = self._rate_limited_request(
+                    'POST',
+                    f"{self.base_url}/stockmovements",
+                    json=remove_payload,
+                    timeout=30
+                )
 
-            # === CREATE STOCK MOVEMENT ===
-            # This is the ONLY place where stock is updated for this product/warehouse
-            payload = {
-                "product_id": product_id,
-                "warehouse_id": warehouse_id,
-                "qty": abs(diff),
-                "type": 0 if diff > 0 else 1,  # 0 = entrada (entrada de stock), 1 = salida (salida de stock)
-                "label": f"SyncStock: {current_stock} → {stock}",
-                "date": datetime.now(UTC).isoformat()
-            }
+                if remove_response.status_code not in [200, 201]:
+                    error_msg = remove_response.text[:200] if remove_response.text else f"HTTP {remove_response.status_code}"
+                    logger.error(f"[STOCK] Failed to reset stock for product {product_id}: {error_msg}")
+                    return {"status": "error", "message": f"Error al vaciar stock en Dolibarr: {error_msg}"}
 
-            response = self._rate_limited_request(
-                'POST',
-                f"{self.base_url}/stockmovements",
-                json=payload,
-                timeout=30
-            )
+                logger.info(f"[STOCK] Product {product_id}: stock reset to 0 (removed {current_stock})")
 
-            if response.status_code in [200, 201]:
-                logger.info(f"[STOCK] Movement created successfully for product {product_id}: {current_stock} → {stock}")
+            # === STEP 2: Add the desired stock (entrada) ===
+            if stock > 0:
+                add_payload = {
+                    "product_id": product_id,
+                    "warehouse_id": warehouse_id,
+                    "qty": stock,
+                    "type": 0,  # 0 = entrada (stock addition)
+                    "label": f"SyncStock SET: nuevo stock → {stock}",
+                    "date": datetime.now(UTC).isoformat()
+                }
 
-                # VERIFICATION: After creating movement, verify the new stock
-                new_stock = self._get_warehouse_stock(product_id, warehouse_id)
-                if new_stock is not None:
-                    if new_stock == stock:
-                        logger.info(f"[STOCK] Verification OK: product {product_id} stock is now {new_stock}")
-                    else:
-                        logger.warning(
-                            f"[STOCK] Verification FAILED for product {product_id}: "
-                            f"expected={stock}, actual={new_stock}, diff={new_stock - stock}"
-                        )
-                        return {
-                            "status": "warning",
-                            "message": f"Movimiento creado pero stock verificación falló: esperado {stock}, actual {new_stock}"
-                        }
+                add_response = self._rate_limited_request(
+                    'POST',
+                    f"{self.base_url}/stockmovements",
+                    json=add_payload,
+                    timeout=30
+                )
 
-                return {"status": "success", "message": f"Stock actualizado: {current_stock} → {stock}"}
-            else:
-                error_msg = response.text[:200] if response.text else f"HTTP {response.status_code}"
-                logger.error(f"[STOCK] Stock movement failed for product {product_id}: {error_msg}")
-                return {"status": "error", "message": f"Error al crear movimiento de stock: {error_msg}"}
+                if add_response.status_code not in [200, 201]:
+                    error_msg = add_response.text[:200] if add_response.text else f"HTTP {add_response.status_code}"
+                    logger.error(f"[STOCK] Failed to set new stock for product {product_id}: {error_msg}")
+                    return {"status": "error", "message": f"Error al establecer nuevo stock en Dolibarr: {error_msg}"}
+
+                logger.info(f"[STOCK] Product {product_id}: new stock set to {stock}")
+
+            # === STEP 3: Verify final stock ===
+            new_stock = self._get_warehouse_stock(product_id, warehouse_id)
+            if new_stock is not None:
+                if new_stock == stock:
+                    logger.info(f"[STOCK] Verification OK: product {product_id} stock is now {new_stock}")
+                else:
+                    logger.warning(
+                        f"[STOCK] Verification MISMATCH for product {product_id}: "
+                        f"expected={stock}, actual={new_stock}"
+                    )
+                    return {
+                        "status": "warning",
+                        "message": f"Stock establecido pero verificación difiere: esperado {stock}, actual {new_stock}"
+                    }
+
+            return {"status": "success", "message": f"Stock actualizado: {current_stock} → {stock}"}
 
         except Exception as e:
             logger.error(f"[STOCK] update_stock error for product {product_id}: {e}", exc_info=True)
