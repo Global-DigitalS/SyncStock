@@ -402,41 +402,65 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
 
 @router.post("/stores/configs/{config_id}/sync")
 async def sync_store_price_stock(config_id: str, user: dict = Depends(get_current_user)):
-    """Sync price and stock to a store"""
+    """
+    Sincroniza precio y stock con la tienda usando el algoritmo EAN > SKU > Borrador.
+
+    - Si la tienda está vacía: sube todos los productos publicados.
+    - Encontrado por EAN: actualiza solo precio y stock.
+    - Encontrado por SKU: actualiza solo precio y stock.
+    - No encontrado: crea borrador (requiere revisión manual).
+
+    Soporta: WooCommerce, PrestaShop, Shopify.
+    """
+    from services.multi_store_sync import sync_store
+
     config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
     if not config:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
 
     if not config.get("catalog_id"):
-        raise HTTPException(status_code=400, detail="No hay catálogo asociado a esta tienda. Configura un catálogo primero.")
+        raise HTTPException(
+            status_code=400,
+            detail="No hay catálogo asociado a esta tienda. Configura un catálogo primero."
+        )
 
     platform = config.get("platform", "woocommerce")
+    if platform not in ("woocommerce", "prestashop", "shopify"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Sincronización automática no disponible para '{platform}'. Usa la exportación manual."
+        )
 
     try:
-        if platform == "woocommerce":
-            await sync_woocommerce_store_price_stock(config)
-            updated = await db.woocommerce_configs.find_one({"id": config_id}, {"_id": 0})
-            return {
-                "status": "success",
-                "message": f"Sincronización completada. {updated.get('products_synced', 0)} productos actualizados.",
-                "products_synced": updated.get("products_synced", 0),
-                "last_sync": updated.get("last_sync")
-            }
-        else:
-            # For other platforms, simulate sync
-            now = datetime.now(UTC).isoformat()
-            await db.woocommerce_configs.update_one(
-                {"id": config_id},
-                {"$set": {"last_sync": now, "products_synced": 0}}
-            )
-            return {
-                "status": "success",
-                "message": f"Sincronización programada para {SUPPORTED_PLATFORMS.get(platform, {}).get('name', platform)}. La integración completa está en desarrollo.",
-                "products_synced": 0,
-                "last_sync": now
-            }
+        result = await sync_store(config)
+        s = result.get("summary", {})
+        total_synced = s.get("update_by_ean", 0) + s.get("update_by_sku", 0) + s.get("create_full", 0)
+
+        message_parts = []
+        if s.get("update_by_ean"):
+            message_parts.append(f"{s['update_by_ean']} actualizados por EAN")
+        if s.get("update_by_sku"):
+            message_parts.append(f"{s['update_by_sku']} actualizados por SKU")
+        if s.get("create_full"):
+            message_parts.append(f"{s['create_full']} subidos nuevos")
+        if s.get("create_draft"):
+            message_parts.append(f"{s['create_draft']} creados como borrador")
+        if s.get("failed"):
+            message_parts.append(f"{s['failed']} fallidos")
+
+        message = ". ".join(message_parts) if message_parts else "Sin cambios"
+
+        return {
+            "status": result.get("status", "success"),
+            "message": message,
+            "products_synced": total_synced,
+            "last_sync": result.get("end_time"),
+            "summary": s,
+            "draft_products": result.get("draft_products", []),
+            "errors": result.get("errors", [])[:10],
+        }
     except Exception as e:
-        logger.error(f"Error in store sync: {e}")
+        logger.error(f"Error in store sync for {config_id}: {e}")
         return {"status": "error", "message": "Error en la sincronización con la tienda"}
 
 

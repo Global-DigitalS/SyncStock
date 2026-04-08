@@ -351,4 +351,186 @@ class PrestaShopClient:
             return None
         except Exception as e:
             logger.error(f"PrestaShop find_or_create_category error: {e}")
+
+    # ==================== SYNC RESOLUTION METHODS ====================
+
+    def count_products(self) -> int:
+        """Return total number of products in the store."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/products",
+                auth=self.auth,
+                headers=self.headers,
+                params={
+                    'output_format': 'JSON',
+                    'display': '[id]',
+                    'limit': '1,1',
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                data = response.json()
+                products = data.get('products', [])
+                # Fallback: use a head request on page 1 to detect if there are any
+                return len(products) if products is None else (1 if products else 0)
+            # Alternative: get first page and check X-Total-Count header
+            response2 = requests.get(
+                f"{self.base_url}/products",
+                auth=self.auth,
+                headers=self.headers,
+                params={'output_format': 'JSON', 'display': '[id]', 'limit': '0,1'},
+                timeout=30
+            )
+            if response2.status_code == 200:
+                return len(response2.json().get('products', []))
+            return 0
+        except Exception as e:
+            logger.error(f"PrestaShop count_products error: {e}")
+            return 0
+
+    def has_products(self) -> bool:
+        """Return True if store has at least one product."""
+        try:
+            response = requests.get(
+                f"{self.base_url}/products",
+                auth=self.auth,
+                headers=self.headers,
+                params={'output_format': 'JSON', 'display': '[id]', 'limit': '1'},
+                timeout=30
+            )
+            if response.status_code == 200:
+                return bool(response.json().get('products'))
+            return False
+        except Exception as e:
+            logger.error(f"PrestaShop has_products error: {e}")
+            return False
+
+    def find_by_ean(self, ean: str) -> str | None:
+        """Find product ID by EAN13. Returns product id string or None."""
+        if not ean:
+            return None
+        try:
+            response = requests.get(
+                f"{self.base_url}/products",
+                auth=self.auth,
+                headers=self.headers,
+                params={
+                    'output_format': 'JSON',
+                    'display': '[id,ean13]',
+                    'filter[ean13]': ean,
+                    'limit': '1',
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                products = response.json().get('products', [])
+                if products:
+                    return str(products[0].get('id'))
+            return None
+        except Exception as e:
+            logger.error(f"PrestaShop find_by_ean error: {e}")
+            return None
+
+    def find_by_sku(self, sku: str) -> str | None:
+        """Find product ID by reference (SKU). Returns product id string or None."""
+        if not sku:
+            return None
+        try:
+            response = requests.get(
+                f"{self.base_url}/products",
+                auth=self.auth,
+                headers=self.headers,
+                params={
+                    'output_format': 'JSON',
+                    'display': '[id,reference]',
+                    'filter[reference]': sku,
+                    'limit': '1',
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                products = response.json().get('products', [])
+                if products:
+                    return str(products[0].get('id'))
+            return None
+        except Exception as e:
+            logger.error(f"PrestaShop find_by_sku error: {e}")
+            return None
+
+    def update_price_stock(self, product_id: str, price: float, stock: int) -> dict:
+        """Update only price and stock of an existing product (no other fields changed)."""
+        try:
+            pid = int(product_id)
+            # Update price via product PUT
+            price_xml = f'''<?xml version="1.0" encoding="UTF-8"?>
+            <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+                <product>
+                    <id>{pid}</id>
+                    <price>{round(price, 6)}</price>
+                </product>
+            </prestashop>'''
+
+            r_price = requests.put(
+                f"{self.base_url}/products/{pid}",
+                auth=self.auth,
+                headers={'Content-Type': 'application/xml'},
+                data=price_xml.encode('utf-8'),
+                timeout=30
+            )
+            if r_price.status_code not in [200, 201]:
+                return {"status": "error", "message": f"Error actualizando precio: {r_price.status_code}"}
+
+            # Update stock via stock_availables
+            stock_info = self.get_stock_available(pid)
+            if stock_info:
+                stock_id = stock_info.get('id')
+                if stock_id:
+                    r_stock = self.update_stock(int(stock_id), stock)
+                    if r_stock.get("status") != "success":
+                        return {"status": "error", "message": f"Precio OK, error en stock: {r_stock.get('message', '')}"}
+
+            return {"status": "success"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def create_draft_product(self, product_data: dict) -> dict:
+        """Create a product in draft state (active=0) with all available data."""
+        try:
+            short_desc = product_data.get("short_description", "")
+            long_desc = product_data.get("long_description", "") or product_data.get("description", "")
+            category_id = product_data.get("category_id", 2)
+
+            xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
+            <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
+                <product>
+                    <reference><![CDATA[{product_data.get("sku", "")}]]></reference>
+                    <ean13><![CDATA[{product_data.get("ean", "")}]]></ean13>
+                    <name><language id="1"><![CDATA[{product_data.get("name", "")}]]></language></name>
+                    <description><language id="1"><![CDATA[{long_desc}]]></language></description>
+                    <description_short><language id="1"><![CDATA[{short_desc}]]></language></description_short>
+                    <price>{product_data.get("price", 0)}</price>
+                    <weight>{product_data.get("weight", 0)}</weight>
+                    <active>0</active>
+                    <state>0</state>
+                    <id_category_default>{category_id}</id_category_default>
+                    <id_tax_rules_group>1</id_tax_rules_group>
+                </product>
+            </prestashop>'''
+
+            response = requests.post(
+                f"{self.base_url}/products",
+                auth=self.auth,
+                headers={'Content-Type': 'application/xml'},
+                data=xml_data.encode('utf-8'),
+                timeout=30
+            )
+            if response.status_code in [200, 201]:
+                match = re.search(r'<id><!\[CDATA\[(\d+)\]\]></id>', response.text)
+                product_id = match.group(1) if match else None
+                if product_id:
+                    self._upload_product_images(product_id, product_data)
+                return {"status": "success", "product_id": product_id}
+            return {"status": "error", "message": f"Error: {response.status_code}", "response": response.text[:300]}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
             return None
