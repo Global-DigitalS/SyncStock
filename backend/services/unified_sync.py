@@ -141,30 +141,54 @@ async def sync_user_suppliers(user_id: str, queue_task: Optional['SyncTask'] = N
 async def sync_user_stores(user_id: str, queue_task: Optional['SyncTask'] = None) -> dict:
     """
     Sync all stores for a user, one by one (sequential).
-    """
-    from services.sync import sync_woocommerce_store_price_stock
 
-    stores = await db.stores.find({"user_id": user_id, "is_connected": True}).to_list(100)
+    Uses the multi_store_sync service which implements the hierarchical
+    EAN > SKU > Draft algorithm for WooCommerce, PrestaShop and Shopify.
+    """
+    from services.multi_store_sync import sync_store
+
+    stores = await db.woocommerce_configs.find(
+        {"user_id": user_id, "is_connected": True}
+    ).to_list(100)
     results = {"total": len(stores), "synced": 0, "errors": 0, "details": []}
 
     for store in stores:
         try:
+            store_result = await sync_store(store)
             platform = store.get("platform", "woocommerce")
-            if platform == "woocommerce":
-                await sync_woocommerce_store_price_stock(store)
-            results["synced"] += 1
-            results["details"].append({
-                "name": store.get("name"),
-                "platform": platform,
-                "status": "success"
-            })
+
+            if store_result.get("status") in ("success", "partial", "skipped"):
+                results["synced"] += 1
+                summary = store_result.get("summary", {})
+                results["details"].append({
+                    "name": store.get("name"),
+                    "platform": platform,
+                    "status": store_result.get("status"),
+                    "update_by_ean": summary.get("update_by_ean", 0),
+                    "update_by_sku": summary.get("update_by_sku", 0),
+                    "create_full": summary.get("create_full", 0),
+                    "create_draft": summary.get("create_draft", 0),
+                    "failed": summary.get("failed", 0),
+                    "draft_products": store_result.get("draft_products", []),
+                })
+            else:
+                results["errors"] += 1
+                results["details"].append({
+                    "name": store.get("name"),
+                    "platform": platform,
+                    "status": "error",
+                    "message": store_result.get("message", "Error desconocido"),
+                    "errors": store_result.get("errors", [])[:5],
+                })
 
             if queue_task:
+                processed = results["synced"] + results["errors"]
                 queue_task.progress = {
-                    "processed": results["synced"],
+                    "processed": processed,
                     "total": results["total"],
-                    "pct": int((results["synced"] / results["total"]) * 100)
+                    "pct": int((processed / results["total"]) * 100) if results["total"] else 100,
                 }
+
         except Exception as e:
             logger.error(f"Error syncing store {store.get('name')}: {e}")
             results["errors"] += 1
@@ -172,7 +196,7 @@ async def sync_user_stores(user_id: str, queue_task: Optional['SyncTask'] = None
                 "name": store.get("name"),
                 "platform": store.get("platform"),
                 "status": "error",
-                "message": str(e)
+                "message": str(e),
             })
 
     return results
