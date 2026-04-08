@@ -570,4 +570,5 @@ class ShopifyClient:
                 product = response.json().get('product', {})
                 return {"status": "success", "product_id": product.get('id'), "message": "Borrador creado"}
             return {"status": "error", "message": f"Error: {response.status_code} - {response.text[:200]}"}
+        except Exception as e:
             return {"status": "error", "message": f"Error: {str(e)}"}
