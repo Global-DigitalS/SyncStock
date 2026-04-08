@@ -275,10 +275,10 @@ async def create_checkout_session(
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error creating checkout session: {e}")
-        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else 'Error al procesar el pago'}")
     except Exception as e:
         logger.error(f"Error creating checkout session: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al crear sesión de pago: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al crear sesión de pago")
 
 
 @router.post("/stripe/create-checkout-new-user")
@@ -387,10 +387,10 @@ async def create_checkout_session_new_user(
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error creating checkout session: {e}")
-        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else 'Error al procesar el pago'}")
     except Exception as e:
         logger.error(f"Error creating checkout session: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al crear sesión de pago: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al crear sesión de pago")
 
 
 @router.get("/stripe/checkout-status/{session_id}")
@@ -421,10 +421,10 @@ async def get_checkout_status_public(session_id: str, request: Request):
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error retrieving checkout status: {e}")
-        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else 'Error al verificar estado del pago'}")
     except Exception as e:
         logger.error(f"Error retrieving checkout status: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al verificar estado: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al verificar estado del pago")
 
 
 @router.get("/stripe/checkout-status-auth/{session_id}")
@@ -498,10 +498,10 @@ async def get_checkout_status(session_id: str, request: Request, user: dict = De
 
     except stripe.error.StripeError as e:
         logger.error(f"Stripe error retrieving checkout status: {e}")
-        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error de Stripe: {str(e.user_message) if hasattr(e, 'user_message') else 'Error al verificar estado del pago'}")
     except Exception as e:
         logger.error(f"Error retrieving checkout status: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al verificar estado: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error al verificar estado del pago")
 
 
 # ==================== WEBHOOK ENDPOINT ====================
