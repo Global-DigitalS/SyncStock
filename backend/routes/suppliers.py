@@ -1087,5 +1087,6 @@ async def diagnose_zip_merge(
         return diagnostics
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error en diagnóstico: {str(e)}")
+        logger.error(f"Error en diagnose-zip para supplier {supplier_id}: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al procesar el diagnóstico")
 

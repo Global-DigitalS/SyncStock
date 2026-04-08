@@ -99,13 +99,17 @@ async def update_branding(data: BrandingConfigUpdate, user: dict = Depends(get_s
     return {"success": True, "branding": config}
 
 
+_ALLOWED_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "gif", "svg", "ico", "webp"}
+
+
 @sub_router.post("/admin/branding/upload-logo")
 async def upload_logo(file: UploadFile = File(...), user: dict = Depends(get_superadmin_user)):
     """Upload logo image"""
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
 
-    ext = file.filename.split(".")[-1] if "." in file.filename else "png"
+    raw_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    ext = raw_ext if raw_ext in _ALLOWED_IMAGE_EXTENSIONS else "png"
     filename = f"logo_{uuid.uuid4().hex[:8]}.{ext}"
     filepath = os.path.join(UPLOAD_DIR, filename)
 
@@ -130,7 +134,8 @@ async def upload_favicon(file: UploadFile = File(...), user: dict = Depends(get_
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
 
-    ext = file.filename.split(".")[-1] if "." in file.filename else "ico"
+    raw_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    ext = raw_ext if raw_ext in _ALLOWED_IMAGE_EXTENSIONS else "ico"
     filename = f"favicon_{uuid.uuid4().hex[:8]}.{ext}"
     filepath = os.path.join(UPLOAD_DIR, filename)
 
@@ -155,7 +160,8 @@ async def upload_hero_image(file: UploadFile = File(...), user: dict = Depends(g
     if not file.content_type.startswith("image/"):
         raise HTTPException(status_code=400, detail="El archivo debe ser una imagen")
 
-    ext = file.filename.split(".")[-1] if "." in file.filename else "jpg"
+    raw_ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    ext = raw_ext if raw_ext in _ALLOWED_IMAGE_EXTENSIONS else "jpg"
     filename = f"hero_{uuid.uuid4().hex[:8]}.{ext}"
     filepath = os.path.join(UPLOAD_DIR, filename)
 

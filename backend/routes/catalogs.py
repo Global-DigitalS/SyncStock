@@ -561,7 +561,7 @@ async def get_catalog_categories(catalog_id: str, flat: bool = False, user: dict
         raise
     except Exception as e:
         logger.error(f"Error fetching categories for catalog {catalog_id}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error al cargar categorías: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error interno al cargar categorías")
 
 
 @router.get("/catalogs/{catalog_id}/categories/{category_id}", response_model=CatalogCategoryResponse)
