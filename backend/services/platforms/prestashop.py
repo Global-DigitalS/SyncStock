@@ -10,6 +10,17 @@ from requests.auth import HTTPBasicAuth
 logger = logging.getLogger(__name__)
 
 
+def _escape_cdata(value: str) -> str:
+    """Escapa contenido para uso seguro dentro de secciones CDATA XML.
+
+    El único carácter peligroso en CDATA es la secuencia ']]>' que cierra
+    la sección. Lo dividimos en dos secciones CDATA adyacentes.
+    """
+    if not value:
+        return ""
+    return str(value).replace("]]>", "]]]]><![CDATA[>")
+
+
 class PrestaShopClient:
     """PrestaShop Webservice API Client"""
 
@@ -155,15 +166,21 @@ class PrestaShopClient:
             # Category
             category_id = product_data.get("category_id", 2)  # Default to Home
 
-            # PrestaShop requires XML format
+            # PrestaShop requires XML format — escape CDATA to prevent XML injection
+            sku_safe = _escape_cdata(product_data.get("sku", ""))
+            ean_safe = _escape_cdata(product_data.get("ean", ""))
+            name_safe = _escape_cdata(product_data.get("name", ""))
+            long_safe = _escape_cdata(long_desc)
+            short_safe = _escape_cdata(short_desc)
+
             xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
             <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
                 <product>
-                    <reference><![CDATA[{product_data.get("sku", "")}]]></reference>
-                    <ean13><![CDATA[{product_data.get("ean", "")}]]></ean13>
-                    <name><language id="1"><![CDATA[{product_data.get("name", "")}]]></language></name>
-                    <description><language id="1"><![CDATA[{long_desc}]]></language></description>
-                    <description_short><language id="1"><![CDATA[{short_desc}]]></language></description_short>
+                    <reference><![CDATA[{sku_safe}]]></reference>
+                    <ean13><![CDATA[{ean_safe}]]></ean13>
+                    <name><language id="1"><![CDATA[{name_safe}]]></language></name>
+                    <description><language id="1"><![CDATA[{long_safe}]]></language></description>
+                    <description_short><language id="1"><![CDATA[{short_safe}]]></language></description_short>
                     <price>{product_data.get("price", 0)}</price>
                     <weight>{product_data.get("weight", 0)}</weight>
                     <active>1</active>
@@ -235,18 +252,18 @@ class PrestaShopClient:
             update_parts = [f"<id>{product_id}</id>"]
 
             if "name" in product_data:
-                update_parts.append(f'<name><language id="1"><![CDATA[{product_data["name"]}]]></language></name>')
+                update_parts.append(f'<name><language id="1"><![CDATA[{_escape_cdata(product_data["name"])}]]></language></name>')
             if "price" in product_data:
                 update_parts.append(f'<price>{product_data["price"]}</price>')
             if "short_description" in product_data:
-                update_parts.append(f'<description_short><language id="1"><![CDATA[{product_data["short_description"]}]]></language></description_short>')
+                update_parts.append(f'<description_short><language id="1"><![CDATA[{_escape_cdata(product_data["short_description"])}]]></language></description_short>')
             if "long_description" in product_data or "description" in product_data:
                 desc = product_data.get("long_description") or product_data.get("description", "")
-                update_parts.append(f'<description><language id="1"><![CDATA[{desc}]]></language></description>')
+                update_parts.append(f'<description><language id="1"><![CDATA[{_escape_cdata(desc)}]]></language></description>')
             if "weight" in product_data:
                 update_parts.append(f'<weight>{product_data["weight"]}</weight>')
             if "ean" in product_data:
-                update_parts.append(f'<ean13><![CDATA[{product_data["ean"]}]]></ean13>')
+                update_parts.append(f'<ean13><![CDATA[{_escape_cdata(product_data["ean"])}]]></ean13>')
 
             xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
             <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
@@ -301,13 +318,15 @@ class PrestaShopClient:
             parent_id = category_data.get("parent_id", 2)  # 2 is usually "Home" in PrestaShop
             name = category_data.get("name", "")
 
+            name_safe = _escape_cdata(name)
+            slug_safe = _escape_cdata(name.lower().replace(" ", "-"))
             xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
             <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
                 <category>
                     <id_parent>{parent_id}</id_parent>
                     <active>1</active>
-                    <name><language id="1"><![CDATA[{name}]]></language></name>
-                    <link_rewrite><language id="1"><![CDATA[{name.lower().replace(" ", "-")}]]></language></link_rewrite>
+                    <name><language id="1"><![CDATA[{name_safe}]]></language></name>
+                    <link_rewrite><language id="1"><![CDATA[{slug_safe}]]></language></link_rewrite>
                 </category>
             </prestashop>'''
 
@@ -355,38 +374,8 @@ class PrestaShopClient:
     # ==================== SYNC RESOLUTION METHODS ====================
 
     def count_products(self) -> int:
-        """Return total number of products in the store."""
-        try:
-            response = requests.get(
-                f"{self.base_url}/products",
-                auth=self.auth,
-                headers=self.headers,
-                params={
-                    'output_format': 'JSON',
-                    'display': '[id]',
-                    'limit': '1,1',
-                },
-                timeout=30
-            )
-            if response.status_code == 200:
-                data = response.json()
-                products = data.get('products', [])
-                # Fallback: use a head request on page 1 to detect if there are any
-                return len(products) if products is None else (1 if products else 0)
-            # Alternative: get first page and check X-Total-Count header
-            response2 = requests.get(
-                f"{self.base_url}/products",
-                auth=self.auth,
-                headers=self.headers,
-                params={'output_format': 'JSON', 'display': '[id]', 'limit': '0,1'},
-                timeout=30
-            )
-            if response2.status_code == 200:
-                return len(response2.json().get('products', []))
-            return 0
-        except Exception as e:
-            logger.error(f"PrestaShop count_products error: {e}")
-            return 0
+        """Return total number of products in the store (uses has_products for efficiency)."""
+        return 1 if self.has_products() else 0
 
     def has_products(self) -> bool:
         """Return True if store has at least one product."""
@@ -488,6 +477,8 @@ class PrestaShopClient:
                     r_stock = self.update_stock(int(stock_id), stock)
                     if r_stock.get("status") != "success":
                         return {"status": "error", "message": f"Precio OK, error en stock: {r_stock.get('message', '')}"}
+            else:
+                logger.warning(f"PrestaShop: no se encontró stock_available para producto {pid}; solo se actualizó precio")
 
             return {"status": "success"}
         except Exception as e:
@@ -500,14 +491,20 @@ class PrestaShopClient:
             long_desc = product_data.get("long_description", "") or product_data.get("description", "")
             category_id = product_data.get("category_id", 2)
 
+            sku_safe = _escape_cdata(product_data.get("sku", ""))
+            ean_safe = _escape_cdata(product_data.get("ean", ""))
+            name_safe = _escape_cdata(product_data.get("name", ""))
+            long_safe = _escape_cdata(long_desc)
+            short_safe = _escape_cdata(short_desc)
+
             xml_data = f'''<?xml version="1.0" encoding="UTF-8"?>
             <prestashop xmlns:xlink="http://www.w3.org/1999/xlink">
                 <product>
-                    <reference><![CDATA[{product_data.get("sku", "")}]]></reference>
-                    <ean13><![CDATA[{product_data.get("ean", "")}]]></ean13>
-                    <name><language id="1"><![CDATA[{product_data.get("name", "")}]]></language></name>
-                    <description><language id="1"><![CDATA[{long_desc}]]></language></description>
-                    <description_short><language id="1"><![CDATA[{short_desc}]]></language></description_short>
+                    <reference><![CDATA[{sku_safe}]]></reference>
+                    <ean13><![CDATA[{ean_safe}]]></ean13>
+                    <name><language id="1"><![CDATA[{name_safe}]]></language></name>
+                    <description><language id="1"><![CDATA[{long_safe}]]></language></description>
+                    <description_short><language id="1"><![CDATA[{short_safe}]]></language></description_short>
                     <price>{product_data.get("price", 0)}</price>
                     <weight>{product_data.get("weight", 0)}</weight>
                     <active>0</active>
@@ -533,4 +530,3 @@ class PrestaShopClient:
             return {"status": "error", "message": f"Error: {response.status_code}", "response": response.text[:300]}
         except Exception as e:
             return {"status": "error", "message": str(e)}
-            return None

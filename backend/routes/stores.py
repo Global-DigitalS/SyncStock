@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from services.auth import check_user_limit, get_current_user
 from services.database import db
 from services.platforms import MagentoClient, PrestaShopClient, ShopifyClient, WixClient
-from services.sync import calculate_final_price, get_woocommerce_client, mask_key, sync_woocommerce_store_price_stock
+from services.sync import calculate_final_price, get_woocommerce_client, mask_key
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

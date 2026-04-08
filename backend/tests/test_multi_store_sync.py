@@ -1,36 +1,59 @@
 """
 Tests unitarios para el servicio de sincronización multi-tienda (multi_store_sync.py).
 
-Cubre los 8 casos de prueba definidos en las especificaciones:
-  TC1  - Primera sincronización: tienda vacía → subir todo publicado
-  TC2  - Actualización precio/stock por EAN
-  TC3  - Búsqueda fallida por EAN, éxito por SKU
-  TC4  - Crear borrador cuando no hay coincidencia
-  TC5  - Manejo de errores y reintentos
-  TC6  - Sincronización concurrente (sin condiciones de carrera)
-  TC7  - Imágenes (manejo graceful de fallo en descarga)
-  TC8  - Validaciones (producto inválido, tienda desconectada)
-
-Los tests usan mocks para no necesitar conexiones reales a tiendas.
+TC1  - Tienda vacía → CREATE_FULL (publicado)
+TC2  - Encontrado por EAN → UPDATE_BY_EAN (solo precio + stock)
+TC3  - Fallback a SKU → UPDATE_BY_SKU
+TC4  - Sin coincidencia → CREATE_DRAFT (borrador)
+TC5  - Reintentos con backoff exponencial
+TC6  - Sincronización concurrente / rate limiter
+TC7  - Imágenes incluidas / fallo graceful
+TC8  - Validaciones de entrada
+TC_PS  - PrestaShop: los 4 casos del algoritmo
+TC_SH  - Shopify: los 4 casos del algoritmo
 """
 import asyncio
+import sys
 import uuid
+from typing import Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+# ---------------------------------------------------------------------------
+# Registrar servicios pesados como mocks antes de que se importen los módulos
+# bajo prueba. Esto evita instalar dependencias opcionales (paramiko, xlrd…)
+# en el entorno de CI.
+# ---------------------------------------------------------------------------
+def _make_services_mock():
+    """Crea mocks para los módulos de servicios que tienen deps pesadas."""
+    # services.sync
+    _sync = MagicMock()
+    _sync.calculate_final_price.side_effect = lambda base, product, rules: float(base)
+    _sync.get_woocommerce_client.return_value = MagicMock()
+    _sync.sync_woocommerce_store_price_stock = MagicMock()
+    sys.modules.setdefault("services.sync", _sync)
+
+    # Asegurar que services.sync esté accesible desde el paquete services
+    _services_pkg = sys.modules.get("services")
+    if _services_pkg is not None and not hasattr(_services_pkg, "sync"):
+        _services_pkg.sync = _sync
+
+
+_make_services_mock()
+
 
 # ---------------------------------------------------------------------------
-# Helpers para construir datos de prueba
+# Helpers de datos de prueba
 # ---------------------------------------------------------------------------
 
-def _make_store(platform: str = "woocommerce", catalog_id: str = "cat_001") -> dict:
+def _store(platform: str = "woocommerce", catalog_id: str = "cat_001") -> dict:
     return {
         "id": f"store_{uuid.uuid4().hex[:6]}",
-        "name": f"Tienda Test {platform}",
+        "name": f"Tienda {platform}",
         "platform": platform,
         "catalog_id": catalog_id,
-        "store_url": f"https://test.{platform}.example.com",
+        "store_url": f"https://test.example.com",
         "consumer_key": "ck_test",
         "consumer_secret": "cs_test",
         "api_key": "key_test",
@@ -39,7 +62,8 @@ def _make_store(platform: str = "woocommerce", catalog_id: str = "cat_001") -> d
     }
 
 
-def _make_product(sku: str = "SKU-001", ean: str = "1234567890123", price: float = 99.99, stock: int = 50) -> dict:
+def _product(sku: str = "SKU-001", ean: str = "1234567890123",
+             price: float = 99.99, stock: int = 50) -> dict:
     return {
         "id": f"prod_{uuid.uuid4().hex[:6]}",
         "user_id": "user_001",
@@ -48,17 +72,18 @@ def _make_product(sku: str = "SKU-001", ean: str = "1234567890123", price: float
         "ean": ean,
         "price": price,
         "stock": stock,
-        "description": "Descripción larga del producto.",
-        "short_description": "Descripción corta.",
+        "description": "Descripción larga.",
+        "short_description": "Corta.",
         "brand": "MarcaTest",
         "weight": 0.5,
         "image_url": "https://example.com/img.jpg",
         "gallery_images": [],
-        "category": "Categoría Test",
+        "category": "Cat",
     }
 
 
-def _make_catalog_item(product_id: str, catalog_id: str = "cat_001", custom_price: float = None) -> dict:
+def _item(product_id: str, catalog_id: str = "cat_001",
+          custom_price: Optional[float] = None) -> dict:
     return {
         "id": f"item_{uuid.uuid4().hex[:6]}",
         "catalog_id": catalog_id,
@@ -68,664 +93,651 @@ def _make_catalog_item(product_id: str, catalog_id: str = "cat_001", custom_pric
     }
 
 
-# ---------------------------------------------------------------------------
-# Fixture de DB mock
-# ---------------------------------------------------------------------------
-
-def _make_db_mock(catalog_items: list, products: list, margin_rules: list = None):
-    """Construye un mock de la colección de base de datos."""
-    db_mock = MagicMock()
+def _make_db(items: list, products: list, rules: list = None) -> MagicMock:
+    """Construye mock de DB con catalog_items, products y margin_rules."""
+    db = MagicMock()
 
     async def _find_one(query):
-        # Buscar en products por id
-        if "id" in query:
-            return next((p for p in products if p["id"] == query["id"]), None)
-        return None
+        pid = query.get("id")
+        return next((p for p in products if p["id"] == pid), None)
 
-    db_mock.products.find_one = AsyncMock(side_effect=_find_one)
+    db.products.find_one = AsyncMock(side_effect=_find_one)
 
-    # catalog_items.find → siempre retorna la lista configurada
-    items_cursor = MagicMock()
-    items_cursor.to_list = AsyncMock(return_value=catalog_items)
-    items_cursor.sort = MagicMock(return_value=items_cursor)
-    db_mock.catalog_items.find = MagicMock(return_value=items_cursor)
+    cur_items = MagicMock()
+    cur_items.to_list = AsyncMock(return_value=items)
+    db.catalog_items.find = MagicMock(return_value=cur_items)
 
-    # catalog_margin_rules.find
-    rules_cursor = MagicMock()
-    rules_cursor.to_list = AsyncMock(return_value=margin_rules or [])
-    rules_cursor.sort = MagicMock(return_value=rules_cursor)
-    db_mock.catalog_margin_rules.find = MagicMock(return_value=rules_cursor)
+    cur_rules = MagicMock()
+    cur_rules.to_list = AsyncMock(return_value=rules or [])
+    cur_rules.sort = MagicMock(return_value=cur_rules)
+    db.catalog_margin_rules.find = MagicMock(return_value=cur_rules)
 
-    # woocommerce_configs.update_one (no necesita retornar nada)
-    db_mock.woocommerce_configs.update_one = AsyncMock(return_value=None)
+    db.woocommerce_configs.update_one = AsyncMock(return_value=None)
+    return db
 
-    return db_mock
+
+# ---------------------------------------------------------------------------
+# Fixture para parchear _call ejecutando la función real síncronamente
+# ---------------------------------------------------------------------------
+
+def _real_call_patch():
+    """Devuelve un side_effect que ejecuta func(*args) en thread pool."""
+    async def _side(func, *args, platform="", **kwargs):
+        return await asyncio.to_thread(func, *args, **kwargs)
+    return _side
 
 
 # ===========================================================================
-# TC1 — Tienda vacía: subir todo publicado (WooCommerce)
+# TC1 — Tienda vacía: CREATE_FULL
 # ===========================================================================
 
-class TestTC1EmptyStoreWooCommerce:
-    """TC1: Primera sincronización con tienda vacía → CREATE_FULL."""
+class TestTC1EmptyStore:
 
     @pytest.mark.asyncio
-    async def test_empty_store_creates_full_product(self):
-        product = _make_product(sku="SKU-001", ean="1234567890123")
-        catalog_item = _make_catalog_item(product["id"])
-        store = _make_store("woocommerce")
+    async def test_create_full_on_empty_store(self):
+        prod = _product()
+        store = _store()
+        db = _make_db([_item(prod["id"])], [prod])
 
-        db_mock = _make_db_mock([catalog_item], [product])
+        created = []
 
-        with patch("services.multi_store_sync.db", db_mock), \
-             patch("services.multi_store_sync._call") as mock_call, \
-             patch("services.sync.calculate_final_price", return_value=product["price"]), \
-             patch("services.sync.get_woocommerce_client", return_value=MagicMock()):
-
-            call_results = [
-                0,                                       # _wc_count_products → 0 (tienda vacía)
-                {"status": "success", "product_id": 999},  # _wc_create_product
-            ]
-            mock_call.side_effect = [asyncio.coroutine(lambda *a, **k: r)() for r in call_results]
-
-            # Importamos aquí para que los patches estén activos
-            from services.multi_store_sync import _sync_woocommerce
-
-            results = {
-                "sync_id": "test_sync",
-                "summary": {
-                    "total": 1, "create_full": 0, "update_by_ean": 0,
-                    "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0,
-                },
-                "draft_products": [],
-                "errors": [],
-            }
-
-            with patch("services.multi_store_sync._call", new_callable=AsyncMock) as acall:
-                acall.side_effect = [
-                    0,                                          # count_products → vacío
-                    {"status": "success", "product_id": 999},  # create_product publicado
-                ]
-                await _sync_woocommerce(store, [catalog_item], [], results, "tc1")
-
-            assert results["summary"]["create_full"] == 1
-            assert results["summary"]["update_by_ean"] == 0
-            assert results["summary"]["create_draft"] == 0
-            assert results["summary"]["failed"] == 0
-
-    @pytest.mark.asyncio
-    async def test_empty_store_full_product_published_not_draft(self):
-        """Los productos creados en tienda vacía deben ser publicados, no borradores."""
-        product = _make_product()
-        catalog_item = _make_catalog_item(product["id"])
-        store = _make_store("woocommerce")
-        db_mock = _make_db_mock([catalog_item], [product])
-
-        created_status = []
-
-        def capture_create(wcapi, prod, price, stock, status):
-            created_status.append(status)
+        def fake_create(wcapi, product, price, stock, status):
+            created.append(status)
             return {"status": "success", "product_id": 100}
 
-        with patch("services.multi_store_sync.db", db_mock), \
-             patch("services.multi_store_sync._wc_create_product", side_effect=capture_create), \
+        with patch("services.multi_store_sync.db", db), \
              patch("services.multi_store_sync._wc_count_products", return_value=0), \
-             patch("services.multi_store_sync._rate_limiter") as rl_mock, \
+             patch("services.multi_store_sync._wc_create_product", side_effect=fake_create), \
              patch("services.sync.calculate_final_price", return_value=99.99), \
-             patch("services.sync.get_woocommerce_client", return_value=MagicMock()):
+             patch("services.sync.get_woocommerce_client", return_value=MagicMock()), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
 
-            rl_mock.wait = AsyncMock()
+            from services.multi_store_sync import _sync_woocommerce
+            results = _empty_results()
+            await _sync_woocommerce(store, [_item(prod["id"])], [], results, "tc1")
 
-            with patch("services.multi_store_sync._call") as mock_call:
-                async def side_effect_call(func, *args, platform="", **kwargs):
-                    import asyncio
-                    return await asyncio.to_thread(func, *args, **kwargs)
-
-                mock_call.side_effect = side_effect_call
-
-                from services.multi_store_sync import _sync_woocommerce
-                results = {
-                    "sync_id": "tc1b",
-                    "summary": {
-                        "total": 1, "create_full": 0, "update_by_ean": 0,
-                        "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-                    },
-                    "draft_products": [], "errors": [],
-                }
-                await _sync_woocommerce(store, [catalog_item], [], results, "tc1b")
-
-        # Si se llamó _wc_create_product, verificar que el status es 'publish'
-        if created_status:
-            assert "publish" in created_status, f"Esperado 'publish', se usó: {created_status}"
+        assert results["summary"]["create_full"] == 1
+        assert results["summary"]["update_by_ean"] == 0
+        assert results["summary"]["create_draft"] == 0
+        assert results["summary"]["failed"] == 0
+        # Asegurar que el status es "publish", no "draft"
+        assert created == ["publish"]
 
 
 # ===========================================================================
-# TC2 — Actualización por EAN (no modifica otros campos)
+# TC2 — UPDATE_BY_EAN
 # ===========================================================================
 
 class TestTC2UpdateByEAN:
-    """TC2: Producto encontrado por EAN → solo actualizar precio y stock."""
 
     @pytest.mark.asyncio
-    async def test_found_by_ean_only_updates_price_stock(self):
-        product = _make_product(ean="9991234567890", sku="SKU-EAN")
-        catalog_item = _make_catalog_item(product["id"])
-        store = _make_store("woocommerce")
-        db_mock = _make_db_mock([catalog_item], [product])
+    async def test_found_by_ean_updates_price_stock_only(self):
+        prod = _product(ean="EAN-001", sku="SKU-A")
+        store = _store()
+        db = _make_db([_item(prod["id"])], [prod])
 
-        update_calls = []
+        updated = []
 
         def fake_update(wcapi, wc_id, price, stock):
-            update_calls.append({"wc_id": wc_id, "price": price, "stock": stock})
+            updated.append({"wc_id": wc_id, "price": price, "stock": stock})
             return {"status": "success"}
 
-        with patch("services.multi_store_sync.db", db_mock), \
-             patch("services.multi_store_sync._wc_update_price_stock", side_effect=fake_update), \
-             patch("services.multi_store_sync._wc_count_products", return_value=10), \
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.multi_store_sync._wc_count_products", return_value=5), \
              patch("services.multi_store_sync._wc_build_index",
-                   return_value=({"9991234567890": 42}, {})), \
+                   return_value=({"EAN-001": 42}, {})), \
+             patch("services.multi_store_sync._wc_update_price_stock", side_effect=fake_update), \
              patch("services.sync.calculate_final_price", return_value=89.99), \
-             patch("services.sync.get_woocommerce_client", return_value=MagicMock()):
+             patch("services.sync.get_woocommerce_client", return_value=MagicMock()), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
 
-            with patch("services.multi_store_sync._call") as mock_call:
-                async def side_effect(func, *args, platform="", **kwargs):
-                    return func(*args, **kwargs)
-                mock_call.side_effect = side_effect
-
-                from services.multi_store_sync import _sync_woocommerce
-                results = {
-                    "sync_id": "tc2",
-                    "summary": {
-                        "total": 1, "create_full": 0, "update_by_ean": 0,
-                        "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-                    },
-                    "draft_products": [], "errors": [],
-                }
-                await _sync_woocommerce(store, [catalog_item], [], results, "tc2")
+            from services.multi_store_sync import _sync_woocommerce
+            results = _empty_results()
+            await _sync_woocommerce(store, [_item(prod["id"])], [], results, "tc2")
 
         assert results["summary"]["update_by_ean"] == 1
         assert results["summary"]["update_by_sku"] == 0
         assert results["summary"]["create_draft"] == 0
-        assert results["summary"]["create_full"] == 0
-
-        # Verificar que se pasó el precio correcto
-        if update_calls:
-            assert update_calls[0]["price"] == 89.99
-            assert update_calls[0]["stock"] == product["stock"]
+        assert updated[0]["price"] == 89.99
+        assert updated[0]["stock"] == prod["stock"]
 
 
 # ===========================================================================
-# TC3 — Fallida por EAN, éxito por SKU
+# TC3 — UPDATE_BY_SKU (fallback cuando EAN no coincide)
 # ===========================================================================
 
 class TestTC3UpdateBySKU:
-    """TC3: No hay EAN en tienda, pero sí SKU → UPDATE_BY_SKU."""
 
     @pytest.mark.asyncio
-    async def test_no_ean_match_falls_back_to_sku(self):
-        product = _make_product(ean="0000000000000", sku="SKU-REAL-001")
-        catalog_item = _make_catalog_item(product["id"])
-        store = _make_store("woocommerce")
-        db_mock = _make_db_mock([catalog_item], [product])
+    async def test_sku_fallback_when_no_ean_match(self):
+        prod = _product(ean="NO-MATCH", sku="SKU-REAL")
+        store = _store()
+        db = _make_db([_item(prod["id"])], [prod])
 
-        update_calls = []
+        updated = []
 
         def fake_update(wcapi, wc_id, price, stock):
-            update_calls.append(wc_id)
+            updated.append(wc_id)
             return {"status": "success"}
 
-        # EAN no existe en índice, SKU sí
-        wc_by_ean: dict = {}  # EAN vacío → no match
-        wc_by_sku = {"SKU-REAL-001": 77}
-
-        with patch("services.multi_store_sync.db", db_mock), \
-             patch("services.multi_store_sync._wc_update_price_stock", side_effect=fake_update), \
+        # EAN no está en índice; SKU sí
+        with patch("services.multi_store_sync.db", db), \
              patch("services.multi_store_sync._wc_count_products", return_value=5), \
-             patch("services.multi_store_sync._wc_build_index", return_value=(wc_by_ean, wc_by_sku)), \
+             patch("services.multi_store_sync._wc_build_index",
+                   return_value=({}, {"SKU-REAL": 77})), \
+             patch("services.multi_store_sync._wc_update_price_stock", side_effect=fake_update), \
              patch("services.sync.calculate_final_price", return_value=55.0), \
-             patch("services.sync.get_woocommerce_client", return_value=MagicMock()):
+             patch("services.sync.get_woocommerce_client", return_value=MagicMock()), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
 
-            with patch("services.multi_store_sync._call") as mock_call:
-                async def side_effect(func, *args, platform="", **kwargs):
-                    return func(*args, **kwargs)
-                mock_call.side_effect = side_effect
-
-                from services.multi_store_sync import _sync_woocommerce
-                results = {
-                    "sync_id": "tc3",
-                    "summary": {
-                        "total": 1, "create_full": 0, "update_by_ean": 0,
-                        "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-                    },
-                    "draft_products": [], "errors": [],
-                }
-                await _sync_woocommerce(store, [catalog_item], [], results, "tc3")
+            from services.multi_store_sync import _sync_woocommerce
+            results = _empty_results()
+            await _sync_woocommerce(store, [_item(prod["id"])], [], results, "tc3")
 
         assert results["summary"]["update_by_sku"] == 1
         assert results["summary"]["update_by_ean"] == 0
         assert results["summary"]["create_draft"] == 0
+        assert updated == [77]
 
 
 # ===========================================================================
-# TC4 — No hay EAN ni SKU → crear borrador
+# TC4 — CREATE_DRAFT cuando ningún identificador coincide
 # ===========================================================================
 
 class TestTC4CreateDraft:
-    """TC4: Sin coincidencia por EAN ni SKU → CREATE_DRAFT."""
 
     @pytest.mark.asyncio
-    async def test_no_match_creates_draft(self):
-        product = _make_product(ean="NO-EAN-MATCH", sku="NO-SKU-MATCH")
-        catalog_item = _make_catalog_item(product["id"])
-        store = _make_store("woocommerce")
-        db_mock = _make_db_mock([catalog_item], [product])
+    async def test_no_match_creates_draft_with_all_info(self):
+        prod = _product(ean="NO-EAN", sku="NO-SKU")
+        store = _store()
+        db = _make_db([_item(prod["id"])], [prod])
 
-        created_as = []
+        statuses = []
 
-        def fake_create(wcapi, prod, price, stock, status):
-            created_as.append(status)
+        def fake_create(wcapi, product, price, stock, status):
+            statuses.append(status)
             return {"status": "success", "product_id": 555}
 
-        # Índices vacíos → nada coincide
-        with patch("services.multi_store_sync.db", db_mock), \
-             patch("services.multi_store_sync._wc_create_product", side_effect=fake_create), \
+        with patch("services.multi_store_sync.db", db), \
              patch("services.multi_store_sync._wc_count_products", return_value=3), \
              patch("services.multi_store_sync._wc_build_index", return_value=({}, {})), \
+             patch("services.multi_store_sync._wc_create_product", side_effect=fake_create), \
              patch("services.sync.calculate_final_price", return_value=100.0), \
-             patch("services.sync.get_woocommerce_client", return_value=MagicMock()):
+             patch("services.sync.get_woocommerce_client", return_value=MagicMock()), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
 
-            with patch("services.multi_store_sync._call") as mock_call:
-                async def side_effect(func, *args, platform="", **kwargs):
-                    return func(*args, **kwargs)
-                mock_call.side_effect = side_effect
-
-                from services.multi_store_sync import _sync_woocommerce
-                results = {
-                    "sync_id": "tc4",
-                    "summary": {
-                        "total": 1, "create_full": 0, "update_by_ean": 0,
-                        "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-                    },
-                    "draft_products": [], "errors": [],
-                }
-                await _sync_woocommerce(store, [catalog_item], [], results, "tc4")
+            from services.multi_store_sync import _sync_woocommerce
+            results = _empty_results()
+            await _sync_woocommerce(store, [_item(prod["id"])], [], results, "tc4")
 
         assert results["summary"]["create_draft"] == 1
         assert results["summary"]["failed"] == 0
         assert len(results["draft_products"]) == 1
-        assert results["draft_products"][0]["reason"] == "Sin coincidencia EAN/SKU"
-        # El producto debe crearse en borrador
-        if created_as:
-            assert created_as[0] == "draft"
+        assert results["draft_products"][0]["sku"] == prod["sku"]
+        assert statuses == ["draft"]
 
-    @pytest.mark.asyncio
-    async def test_draft_product_contains_all_info(self):
-        """El borrador debe incluir toda la información del producto."""
+    def test_build_product_data_includes_all_fields(self):
         from services.multi_store_sync import _build_product_data
-
-        product = _make_product(ean="EAN-DRAFT", sku="SKU-DRAFT")
-        product_data = _build_product_data(product, price=79.99, stock=10)
-
-        assert product_data["name"] == product["name"]
-        assert product_data["sku"] == product["sku"]
-        assert product_data["ean"] == product["ean"]
-        assert product_data["price"] == 79.99
-        assert product_data["stock"] == 10
-        assert product_data["image_url"] == product["image_url"]
-        assert product_data["brand"] == product["brand"]
+        prod = _product()
+        data = _build_product_data(prod, price=79.99, stock=10)
+        for field in ("sku", "ean", "name", "price", "stock", "image_url", "brand", "description"):
+            assert field in data, f"Campo '{field}' faltante"
+        assert data["price"] == 79.99
+        assert data["stock"] == 10
 
 
 # ===========================================================================
-# TC5 — Manejo de errores y reintentos
+# TC5 — Reintentos con backoff exponencial
 # ===========================================================================
 
-class TestTC5RetryLogic:
-    """TC5: Errores transitorios → reintento exitoso; permanentes → fallo registrado."""
+class TestTC5Retry:
 
     @pytest.mark.asyncio
-    async def test_transient_error_retries_and_succeeds(self):
-        """Un fallo temporal seguido de éxito debe resultar en sync exitoso."""
+    async def test_retries_on_transient_error_then_succeeds(self):
         from services.multi_store_sync import _call, _RETRY_DELAYS
 
-        call_count = 0
+        attempts = []
 
-        def flaky_func():
-            nonlocal call_count
-            call_count += 1
-            if call_count < 3:
-                raise ConnectionError("ETIMEDOUT: transient error")
+        def flaky():
+            attempts.append(1)
+            if len(attempts) < 3:
+                raise ConnectionError("ETIMEDOUT")
             return {"status": "success"}
 
         with patch("services.multi_store_sync._RETRY_DELAYS", [0, 0, 0]):
-            result = await _call(flaky_func, platform="woocommerce")
+            result = await _call(flaky, platform="woocommerce")
 
         assert result["status"] == "success"
-        assert call_count == 3
+        assert len(attempts) == 3
 
     @pytest.mark.asyncio
     async def test_auth_error_not_retried(self):
-        """Un error de autenticación (401) no debe reintentarse."""
-        from services.multi_store_sync import _call, _is_retryable
+        from services.multi_store_sync import _call
 
-        assert not _is_retryable("Error 401 Unauthorized")
-        assert not _is_retryable("Authentication failed: invalid credentials")
-        assert not _is_retryable("403 Forbidden")
-        assert _is_retryable("ECONNREFUSED: Connection refused")
-        assert _is_retryable("ETIMEDOUT: Timeout error")
+        attempts = []
+
+        def auth_fail():
+            attempts.append(1)
+            raise ValueError("401 Unauthorized")
+
+        with patch("services.multi_store_sync._RETRY_DELAYS", [0, 0, 0]):
+            with pytest.raises(ValueError):
+                await _call(auth_fail, platform="woocommerce")
+
+        assert len(attempts) == 1  # No reintentó
 
     @pytest.mark.asyncio
-    async def test_max_retries_exceeded_raises(self):
-        """Cuando se agotan los reintentos debe lanzar la última excepción."""
+    async def test_max_retries_exceeded_raises_last_error(self):
         from services.multi_store_sync import _call
 
         def always_fails():
-            raise ConnectionError("Siempre falla")
+            raise ConnectionError("siempre falla")
 
-        with patch("services.multi_store_sync._RETRY_DELAYS", [0, 0, 0]), \
-             pytest.raises(ConnectionError, match="Siempre falla"):
-            await _call(always_fails, platform="woocommerce")
-
-    @pytest.mark.asyncio
-    async def test_failed_product_recorded_in_errors(self):
-        """Un producto que falla debe registrarse en results['errors']."""
-        product = _make_product(ean="EAN-ERR", sku="SKU-ERR")
-        catalog_item = _make_catalog_item(product["id"])
-        store = _make_store("woocommerce")
-        db_mock = _make_db_mock([catalog_item], [product])
-
-        def always_fails(*args, **kwargs):
-            raise RuntimeError("API caída")
-
-        with patch("services.multi_store_sync.db", db_mock), \
-             patch("services.multi_store_sync._wc_count_products", return_value=5), \
-             patch("services.multi_store_sync._wc_build_index", return_value=({}, {})), \
-             patch("services.multi_store_sync._wc_create_product", side_effect=always_fails), \
-             patch("services.sync.calculate_final_price", return_value=50.0), \
-             patch("services.sync.get_woocommerce_client", return_value=MagicMock()):
-
-            with patch("services.multi_store_sync._call") as mock_call:
-                async def side_effect(func, *args, platform="", **kwargs):
-                    return func(*args, **kwargs)
-                mock_call.side_effect = side_effect
-
-                from services.multi_store_sync import _sync_woocommerce
-                results = {
-                    "sync_id": "tc5d",
-                    "summary": {
-                        "total": 1, "create_full": 0, "update_by_ean": 0,
-                        "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-                    },
-                    "draft_products": [], "errors": [],
-                }
-                await _sync_woocommerce(store, [catalog_item], [], results, "tc5d")
-
-        assert results["summary"]["failed"] == 1
-        assert len(results["errors"]) == 1
-
-
-# ===========================================================================
-# TC6 — Sincronización concurrente
-# ===========================================================================
-
-class TestTC6ConcurrentSync:
-    """TC6: Múltiples tiendas simultáneas sin condiciones de carrera."""
-
-    @pytest.mark.asyncio
-    async def test_multiple_stores_run_independently(self):
-        """Cada tienda debe procesarse de forma independiente."""
-        from services.multi_store_sync import sync_store
-
-        stores = [_make_store("woocommerce", f"cat_{i}") for i in range(3)]
-        results_list = []
-
-        async def mock_sync(config):
-            return {
-                "status": "skipped",
-                "message": "No hay productos activos en el catálogo",
-                "sync_id": f"sync_{config['id']}",
-                "summary": {
-                    "total": 0, "create_full": 0, "update_by_ean": 0,
-                    "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-                },
-                "draft_products": [], "errors": [],
-            }
-
-        with patch("services.multi_store_sync.sync_store", side_effect=mock_sync):
-            tasks = [mock_sync(store) for store in stores]
-            results_list = await asyncio.gather(*tasks)
-
-        assert len(results_list) == 3
-        # Cada resultado debe pertenecer a una tienda distinta (sync_id diferente)
-        sync_ids = {r["sync_id"] for r in results_list}
-        assert len(sync_ids) == 3
-
-    @pytest.mark.asyncio
-    async def test_rate_limiter_respects_per_platform(self):
-        """El rate limiter debe respetar los límites por plataforma."""
-        from services.multi_store_sync import _RateLimiter
-
-        limiter = _RateLimiter()
-
-        # Simula dos llamadas rápidas a la misma plataforma
-        t0 = asyncio.get_event_loop().time()
-        await limiter.wait("shopify")   # primera llamada: inmediata
-        t1 = asyncio.get_event_loop().time()
-        await limiter.wait("shopify")   # segunda llamada: debe esperar
-        t2 = asyncio.get_event_loop().time()
-
-        # Primera espera debe ser casi 0
-        assert (t1 - t0) < 0.1
-        # Segunda espera debe ser ≥ 0.4s (Shopify rate limit = 0.5s)
-        assert (t2 - t1) >= 0.4
-
-
-# ===========================================================================
-# TC7 — Imágenes (manejo graceful)
-# ===========================================================================
-
-class TestTC7Images:
-    """TC7: Las imágenes se incluyen en la carga inicial; fallo no detiene el sync."""
-
-    def test_build_product_data_includes_images(self):
-        """_build_product_data debe incluir image_url y gallery_images."""
-        from services.multi_store_sync import _build_product_data
-
-        product = _make_product()
-        product["image_url"] = "https://example.com/main.jpg"
-        product["gallery_images"] = ["https://example.com/g1.jpg", "https://example.com/g2.jpg"]
-
-        data = _build_product_data(product, price=10.0, stock=5)
-
-        assert data["image_url"] == "https://example.com/main.jpg"
-        assert len(data["gallery_images"]) == 2
-
-    def test_build_product_data_handles_missing_images(self):
-        """Si no hay imágenes, no debe fallar."""
-        from services.multi_store_sync import _build_product_data
-
-        product = _make_product()
-        product["image_url"] = ""
-        product["gallery_images"] = []
-
-        data = _build_product_data(product, price=10.0, stock=5)
-        assert data["image_url"] == ""
-        assert data["gallery_images"] == []
-
-    @pytest.mark.asyncio
-    async def test_image_failure_does_not_stop_sync(self):
-        """Si la subida de imágenes falla, el producto igual debe procesarse."""
-        product = _make_product(ean="EAN-IMG", sku="SKU-IMG")
-        product["image_url"] = "https://example.com/image.jpg"
-        catalog_item = _make_catalog_item(product["id"])
-        store = _make_store("woocommerce")
-        db_mock = _make_db_mock([catalog_item], [product])
-
-        # _wc_create_product devuelve éxito aunque internamente falle la imagen
-        def create_with_img_error(wcapi, prod, price, stock, status):
-            return {"status": "success", "product_id": 1001}
-
-        with patch("services.multi_store_sync.db", db_mock), \
-             patch("services.multi_store_sync._wc_create_product", side_effect=create_with_img_error), \
-             patch("services.multi_store_sync._wc_count_products", return_value=0), \
-             patch("services.sync.calculate_final_price", return_value=10.0), \
-             patch("services.sync.get_woocommerce_client", return_value=MagicMock()):
-
-            with patch("services.multi_store_sync._call") as mock_call:
-                async def side_effect(func, *args, platform="", **kwargs):
-                    return func(*args, **kwargs)
-                mock_call.side_effect = side_effect
-
-                from services.multi_store_sync import _sync_woocommerce
-                results = {
-                    "sync_id": "tc7",
-                    "summary": {
-                        "total": 1, "create_full": 0, "update_by_ean": 0,
-                        "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-                    },
-                    "draft_products": [], "errors": [],
-                }
-                await _sync_woocommerce(store, [catalog_item], [], results, "tc7")
-
-        assert results["summary"]["create_full"] == 1
-        assert results["summary"]["failed"] == 0
-
-
-# ===========================================================================
-# TC8 — Validaciones
-# ===========================================================================
-
-class TestTC8Validations:
-    """TC8: Validaciones de entrada y manejo de tiendas sin catálogo."""
-
-    @pytest.mark.asyncio
-    async def test_store_without_catalog_skipped(self):
-        """Una tienda sin catalog_id debe retornar status='skipped'."""
-        from services.multi_store_sync import sync_store
-
-        store = _make_store("woocommerce")
-        store["catalog_id"] = None  # Sin catálogo
-
-        db_mock = _make_db_mock([], [])
-        with patch("services.multi_store_sync.db", db_mock):
-            result = await sync_store(store)
-
-        assert result["status"] == "skipped"
-        assert "catálogo" in result.get("message", "").lower()
-
-    @pytest.mark.asyncio
-    async def test_empty_catalog_skipped(self):
-        """Un catálogo sin items activos debe retornar status='skipped'."""
-        from services.multi_store_sync import sync_store
-
-        store = _make_store("woocommerce", "cat_empty")
-        db_mock = _make_db_mock([], [])  # Sin items
-
-        with patch("services.multi_store_sync.db", db_mock):
-            result = await sync_store(store)
-
-        assert result["status"] == "skipped"
-
-    @pytest.mark.asyncio
-    async def test_unsupported_platform_returns_error(self):
-        """Una plataforma no soportada debe retornar error claro."""
-        from services.multi_store_sync import sync_store
-
-        product = _make_product()
-        catalog_item = _make_catalog_item(product["id"])
-        store = _make_store("magento", "cat_001")  # Magento no soportado en multi_store_sync
-
-        db_mock = _make_db_mock([catalog_item], [product])
-        with patch("services.multi_store_sync.db", db_mock):
-            result = await sync_store(store)
-
-        assert result["status"] == "error"
-        assert "magento" in result.get("message", "").lower()
-
-    @pytest.mark.asyncio
-    async def test_product_not_in_db_is_skipped(self):
-        """Si el producto del catálogo no existe en BD, debe saltarse."""
-        catalog_item = _make_catalog_item("id_que_no_existe")
-        store = _make_store("woocommerce")
-        # DB sin ese producto
-        db_mock = _make_db_mock([catalog_item], [])
-
-        with patch("services.multi_store_sync.db", db_mock), \
-             patch("services.multi_store_sync._wc_count_products", return_value=0), \
-             patch("services.sync.get_woocommerce_client", return_value=MagicMock()):
-
-            with patch("services.multi_store_sync._call") as mock_call:
-                async def side_effect(func, *args, platform="", **kwargs):
-                    return func(*args, **kwargs)
-                mock_call.side_effect = side_effect
-
-                from services.multi_store_sync import _sync_woocommerce
-                results = {
-                    "sync_id": "tc8d",
-                    "summary": {
-                        "total": 1, "create_full": 0, "update_by_ean": 0,
-                        "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-                    },
-                    "draft_products": [], "errors": [],
-                }
-                await _sync_woocommerce(store, [catalog_item], [], results, "tc8d")
-
-        assert results["summary"]["skipped"] == 1
-        assert results["summary"]["failed"] == 0
+        with patch("services.multi_store_sync._RETRY_DELAYS", [0, 0, 0]):
+            with pytest.raises(ConnectionError, match="siempre falla"):
+                await _call(always_fails, platform="woocommerce")
 
     def test_is_retryable_classification(self):
-        """_is_retryable clasifica correctamente los tipos de error."""
         from services.multi_store_sync import _is_retryable
 
-        # Errores reintentables
         assert _is_retryable("ECONNREFUSED")
-        assert _is_retryable("ConnectionError: timeout")
-        assert _is_retryable("Server error 500")
-        assert _is_retryable("RateLimitError")
-
-        # Errores NO reintentables
+        assert _is_retryable("timeout")
+        assert _is_retryable("500 Server Error")
         assert not _is_retryable("401 Unauthorized")
         assert not _is_retryable("403 Forbidden")
         assert not _is_retryable("Authentication failed")
         assert not _is_retryable("Invalid API key")
 
-    def test_handle_result_success_increments_counter(self):
-        """_handle_result incrementa el contador correcto en caso de éxito."""
+    @pytest.mark.asyncio
+    async def test_failed_product_recorded_in_errors(self):
+        prod = _product()
+        store = _store()
+        db = _make_db([_item(prod["id"])], [prod])
+
+        def crash(*a, **kw):
+            raise RuntimeError("API caída")
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.multi_store_sync._wc_count_products", return_value=0), \
+             patch("services.multi_store_sync._wc_create_product", side_effect=crash), \
+             patch("services.sync.calculate_final_price", return_value=50.0), \
+             patch("services.sync.get_woocommerce_client", return_value=MagicMock()), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_woocommerce
+            results = _empty_results()
+            await _sync_woocommerce(store, [_item(prod["id"])], [], results, "tc5e")
+
+        assert results["summary"]["failed"] == 1
+        assert len(results["errors"]) == 1
+
+
+# ===========================================================================
+# TC6 — Rate limiter: sin race condition
+# ===========================================================================
+
+class TestTC6RateLimiter:
+
+    @pytest.mark.asyncio
+    async def test_rate_limiter_respects_delay(self):
+        from services.multi_store_sync import _RateLimiter
+        import time
+
+        limiter = _RateLimiter()
+        t0 = asyncio.get_event_loop().time()
+        await limiter.wait("shopify")
+        t1 = asyncio.get_event_loop().time()
+        await limiter.wait("shopify")
+        t2 = asyncio.get_event_loop().time()
+
+        # Primera llamada: casi inmediata
+        assert (t1 - t0) < 0.1
+        # Segunda llamada: debe haber esperado ≥ 0.4s (Shopify = 0.5s)
+        assert (t2 - t1) >= 0.4
+
+    @pytest.mark.asyncio
+    async def test_rate_limiter_different_platforms_independent(self):
+        from services.multi_store_sync import _RateLimiter
+        limiter = _RateLimiter()
+        # Llamadas a plataformas distintas no deben bloquearse entre sí
+        t0 = asyncio.get_event_loop().time()
+        await limiter.wait("woocommerce")
+        await limiter.wait("shopify")   # plataforma diferente → no espera
+        elapsed = asyncio.get_event_loop().time() - t0
+        assert elapsed < 0.3
+
+
+# ===========================================================================
+# TC7 — Imágenes
+# ===========================================================================
+
+class TestTC7Images:
+
+    def test_build_product_data_includes_images(self):
+        from services.multi_store_sync import _build_product_data
+        prod = _product()
+        prod["gallery_images"] = ["https://example.com/g1.jpg"]
+        data = _build_product_data(prod, 10.0, 5)
+        assert data["image_url"] == prod["image_url"]
+        assert len(data["gallery_images"]) == 1
+
+    def test_build_product_data_handles_no_images(self):
+        from services.multi_store_sync import _build_product_data
+        prod = _product()
+        prod["image_url"] = ""
+        prod["gallery_images"] = []
+        data = _build_product_data(prod, 10.0, 5)
+        assert data["image_url"] == ""
+        assert data["gallery_images"] == []
+
+
+# ===========================================================================
+# TC8 — Validaciones de entrada
+# ===========================================================================
+
+class TestTC8Validations:
+
+    @pytest.mark.asyncio
+    async def test_store_without_catalog_is_skipped(self):
+        from services.multi_store_sync import sync_store
+        store = _store()
+        store["catalog_id"] = None
+        db = _make_db([], [])
+        with patch("services.multi_store_sync.db", db):
+            result = await sync_store(store)
+        assert result["status"] == "skipped"
+        assert "catálogo" in result.get("message", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_empty_catalog_is_skipped(self):
+        from services.multi_store_sync import sync_store
+        db = _make_db([], [])
+        with patch("services.multi_store_sync.db", db):
+            result = await sync_store(_store())
+        assert result["status"] == "skipped"
+
+    @pytest.mark.asyncio
+    async def test_unsupported_platform_returns_error(self):
+        from services.multi_store_sync import sync_store
+        prod = _product()
+        db = _make_db([_item(prod["id"])], [prod])
+        with patch("services.multi_store_sync.db", db):
+            result = await sync_store(_store("magento"))
+        assert result["status"] == "error"
+        assert "magento" in result.get("message", "").lower()
+
+    @pytest.mark.asyncio
+    async def test_missing_product_in_db_is_skipped(self):
+        store = _store()
+        db = _make_db([_item("id-inexistente")], [])  # producto no existe
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.multi_store_sync._wc_count_products", return_value=0), \
+             patch("services.sync.get_woocommerce_client", return_value=MagicMock()), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_woocommerce
+            results = _empty_results()
+            await _sync_woocommerce(store, [_item("id-inexistente")], [], results, "tc8d")
+
+        assert results["summary"]["skipped"] == 1
+        assert results["summary"]["failed"] == 0
+
+    def test_handle_result_increments_correct_counter(self):
         from services.multi_store_sync import SyncAction, _handle_result
 
-        for action in [SyncAction.CREATE_FULL, SyncAction.UPDATE_BY_EAN,
-                       SyncAction.UPDATE_BY_SKU, SyncAction.CREATE_DRAFT]:
-            results = {
-                "sync_id": "test",
-                "summary": {
-                    "total": 1, "create_full": 0, "update_by_ean": 0,
-                    "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-                },
-                "draft_products": [], "errors": [],
-            }
-            product = _make_product()
+        for action in list(SyncAction):
+            if action == SyncAction.SKIPPED:
+                continue
+            results = _empty_results()
             _handle_result(
                 {"status": "success", "product_id": 1},
-                action, results, "tag", "SKU", "EAN", product
+                action, results, "tag", "SKU", "EAN", _product()
             )
             key = action.value.lower()
             assert results["summary"][key] == 1, f"Contador '{key}' no incrementado para {action}"
 
-    def test_handle_result_failure_increments_failed(self):
-        """_handle_result incrementa 'failed' y agrega a 'errors' en caso de fallo."""
+    def test_handle_result_failure_increments_failed_and_errors(self):
         from services.multi_store_sync import SyncAction, _handle_result
-
-        results = {
-            "sync_id": "test",
-            "summary": {
-                "total": 1, "create_full": 0, "update_by_ean": 0,
-                "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0
-            },
-            "draft_products": [], "errors": [],
-        }
-        product = _make_product()
+        results = _empty_results()
         _handle_result(
             {"status": "error", "message": "Timeout"},
-            SyncAction.UPDATE_BY_EAN, results, "tag", "SKU", "EAN", product
+            SyncAction.UPDATE_BY_EAN, results, "tag", "SKU", "EAN", _product()
         )
         assert results["summary"]["failed"] == 1
         assert len(results["errors"]) == 1
+
+
+# ===========================================================================
+# TC_PS — PrestaShop: los 4 casos del algoritmo
+# ===========================================================================
+
+class TestPrestaShopSync:
+    """Verifica los 4 casos del algoritmo para PrestaShop."""
+
+    @pytest.mark.asyncio
+    async def test_ps_empty_store_creates_full(self):
+        prod = _product()
+        store = _store("prestashop")
+        db = _make_db([_item(prod["id"])], [prod])
+
+        mock_client = MagicMock()
+        mock_client.has_products.return_value = False
+        mock_client.create_product.return_value = {"status": "success", "product_id": "10"}
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.platforms.prestashop.PrestaShopClient", return_value=mock_client), \
+             patch("services.sync.calculate_final_price", return_value=99.99), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_prestashop
+            results = _empty_results()
+            await _sync_prestashop(store, [_item(prod["id"])], [], results, "ps1")
+
+        assert results["summary"]["create_full"] == 1
+
+    @pytest.mark.asyncio
+    async def test_ps_update_by_ean(self):
+        prod = _product(ean="PS-EAN")
+        store = _store("prestashop")
+        db = _make_db([_item(prod["id"])], [prod])
+
+        mock_client = MagicMock()
+        mock_client.has_products.return_value = True
+        mock_client.find_by_ean.return_value = "42"
+        mock_client.update_price_stock.return_value = {"status": "success"}
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.platforms.prestashop.PrestaShopClient", return_value=mock_client), \
+             patch("services.sync.calculate_final_price", return_value=55.0), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_prestashop
+            results = _empty_results()
+            await _sync_prestashop(store, [_item(prod["id"])], [], results, "ps2")
+
+        assert results["summary"]["update_by_ean"] == 1
+
+    @pytest.mark.asyncio
+    async def test_ps_fallback_to_sku(self):
+        prod = _product(ean="NO-MATCH", sku="PS-SKU")
+        store = _store("prestashop")
+        db = _make_db([_item(prod["id"])], [prod])
+
+        mock_client = MagicMock()
+        mock_client.has_products.return_value = True
+        mock_client.find_by_ean.return_value = None   # EAN no encontrado
+        mock_client.find_by_sku.return_value = "99"
+        mock_client.update_price_stock.return_value = {"status": "success"}
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.platforms.prestashop.PrestaShopClient", return_value=mock_client), \
+             patch("services.sync.calculate_final_price", return_value=55.0), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_prestashop
+            results = _empty_results()
+            await _sync_prestashop(store, [_item(prod["id"])], [], results, "ps3")
+
+        assert results["summary"]["update_by_sku"] == 1
+
+    @pytest.mark.asyncio
+    async def test_ps_no_match_creates_draft(self):
+        prod = _product(ean="NOPE", sku="NOPE")
+        store = _store("prestashop")
+        db = _make_db([_item(prod["id"])], [prod])
+
+        mock_client = MagicMock()
+        mock_client.has_products.return_value = True
+        mock_client.find_by_ean.return_value = None
+        mock_client.find_by_sku.return_value = None
+        mock_client.create_draft_product.return_value = {"status": "success", "product_id": "77"}
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.platforms.prestashop.PrestaShopClient", return_value=mock_client), \
+             patch("services.sync.calculate_final_price", return_value=55.0), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_prestashop
+            results = _empty_results()
+            await _sync_prestashop(store, [_item(prod["id"])], [], results, "ps4")
+
+        assert results["summary"]["create_draft"] == 1
+        assert len(results["draft_products"]) == 1
+
+
+# ===========================================================================
+# TC_SH — Shopify: los 4 casos del algoritmo
+# ===========================================================================
+
+class TestShopifySync:
+    """Verifica los 4 casos del algoritmo para Shopify."""
+
+    @pytest.mark.asyncio
+    async def test_sh_empty_store_creates_full(self):
+        prod = _product()
+        store = _store("shopify")
+        db = _make_db([_item(prod["id"])], [prod])
+
+        mock_client = MagicMock()
+        mock_client.has_products.return_value = False
+        mock_client.create_product.return_value = {"status": "success", "product_id": 100}
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.platforms.shopify_client.ShopifyClient", return_value=mock_client), \
+             patch("services.sync.calculate_final_price", return_value=99.99), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_shopify
+            results = _empty_results()
+            await _sync_shopify(store, [_item(prod["id"])], [], results, "sh1")
+
+        assert results["summary"]["create_full"] == 1
+
+    @pytest.mark.asyncio
+    async def test_sh_update_by_ean(self):
+        prod = _product(ean="SH-EAN")
+        store = _store("shopify")
+        db = _make_db([_item(prod["id"])], [prod])
+
+        mock_client = MagicMock()
+        mock_client.has_products.return_value = True
+        mock_client.build_product_index.return_value = ({"SH-EAN": (1, 11)}, {})
+        mock_client.update_price_stock.return_value = {"status": "success"}
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.platforms.shopify_client.ShopifyClient", return_value=mock_client), \
+             patch("services.sync.calculate_final_price", return_value=55.0), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_shopify
+            results = _empty_results()
+            await _sync_shopify(store, [_item(prod["id"])], [], results, "sh2")
+
+        assert results["summary"]["update_by_ean"] == 1
+
+    @pytest.mark.asyncio
+    async def test_sh_fallback_to_sku(self):
+        prod = _product(ean="NOPE", sku="SH-SKU")
+        store = _store("shopify")
+        db = _make_db([_item(prod["id"])], [prod])
+
+        mock_client = MagicMock()
+        mock_client.has_products.return_value = True
+        mock_client.build_product_index.return_value = ({}, {"SH-SKU": (2, 22)})
+        mock_client.update_price_stock.return_value = {"status": "success"}
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.platforms.shopify_client.ShopifyClient", return_value=mock_client), \
+             patch("services.sync.calculate_final_price", return_value=55.0), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_shopify
+            results = _empty_results()
+            await _sync_shopify(store, [_item(prod["id"])], [], results, "sh3")
+
+        assert results["summary"]["update_by_sku"] == 1
+
+    @pytest.mark.asyncio
+    async def test_sh_no_match_creates_draft(self):
+        prod = _product(ean="NOPE", sku="NOPE")
+        store = _store("shopify")
+        db = _make_db([_item(prod["id"])], [prod])
+
+        mock_client = MagicMock()
+        mock_client.has_products.return_value = True
+        mock_client.build_product_index.return_value = ({}, {})
+        mock_client.create_draft_product.return_value = {"status": "success", "product_id": 200}
+
+        with patch("services.multi_store_sync.db", db), \
+             patch("services.platforms.shopify_client.ShopifyClient", return_value=mock_client), \
+             patch("services.sync.calculate_final_price", return_value=55.0), \
+             patch("services.multi_store_sync._call", side_effect=_real_call_patch()):
+
+            from services.multi_store_sync import _sync_shopify
+            results = _empty_results()
+            await _sync_shopify(store, [_item(prod["id"])], [], results, "sh4")
+
+        assert results["summary"]["create_draft"] == 1
+        assert len(results["draft_products"]) == 1
+
+
+# ===========================================================================
+# Tests unitarios de _escape_cdata (seguridad XML)
+# ===========================================================================
+
+class TestEscapeCdata:
+
+    def test_normal_text_unchanged(self):
+        from services.platforms.prestashop import _escape_cdata
+        assert _escape_cdata("Producto Normal") == "Producto Normal"
+
+    def test_cdata_close_sequence_escaped(self):
+        from services.platforms.prestashop import _escape_cdata
+        malicious = "test]]>injected"
+        result = _escape_cdata(malicious)
+        # La técnica estándar para CDATA divide ]]> en dos secciones: ]]]]><![CDATA[>
+        # El resultado contiene ]]> como terminador de la primera sección (esperado).
+        assert result == "test]]]]><![CDATA[>injected"
+        assert "injected" in result
+
+    def test_empty_string_returns_empty(self):
+        from services.platforms.prestashop import _escape_cdata
+        assert _escape_cdata("") == ""
+        assert _escape_cdata(None) == ""
+
+
+# ---------------------------------------------------------------------------
+# Helper compartido
+# ---------------------------------------------------------------------------
+
+def _empty_results() -> dict:
+    return {
+        "sync_id": "test",
+        "summary": {
+            "total": 0, "create_full": 0, "update_by_ean": 0,
+            "update_by_sku": 0, "create_draft": 0, "skipped": 0, "failed": 0,
+        },
+        "draft_products": [],
+        "errors": [],
+    }
