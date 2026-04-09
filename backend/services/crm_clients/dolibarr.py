@@ -709,13 +709,26 @@ class DolibarrClient:
                     return {"status": "error", "message": "Producto no encontrado"}
 
                 stock_reel = product.get("stock_reel")
+
+                # CRITICAL FIX: If stock_reel is empty/null, we cannot reliably determine current stock
+                # This is dangerous in RESET+SET because we would assume current_stock=0 and only ADD,
+                # resulting in stock accumulation. Instead, we must skip the update to prevent data corruption.
                 if stock_reel is None or stock_reel == "" or stock_reel == "null":
-                    current_stock = 0
-                else:
-                    try:
-                        current_stock = int(float(stock_reel))
-                    except (ValueError, TypeError):
-                        current_stock = 0
+                    logger.warning(
+                        f"[STOCK] Product {product_id}: Cannot determine current stock (stock_reel is empty). "
+                        f"Skipping update to prevent accumulation. Desired stock: {stock}"
+                    )
+                    return {
+                        "status": "warning",
+                        "message": f"No se pudo determinar el stock actual. Actualización omitida para evitar acumulación."
+                    }
+
+                try:
+                    current_stock = int(float(stock_reel))
+                    logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} (fallback)")
+                except (ValueError, TypeError):
+                    logger.error(f"[STOCK] Invalid stock_reel value for product {product_id}: {stock_reel}")
+                    return {"status": "error", "message": f"Valor de stock inválido en Dolibarr"}
 
             logger.info(f"[STOCK] Product {product_id}: current_stock={current_stock}, desired={stock}")
 
