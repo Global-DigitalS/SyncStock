@@ -147,8 +147,18 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
                 "updated_at": now
             }
 
-            # Load SKU from cache (with lazy batch loading)
+            # Load product from cache (with lazy batch loading)
+            # First check by SKU (primary lookup - same supplier, same SKU)
             existing = sku_cache.get(sku)
+
+            # CRITICAL FIX: If EAN exists, check if it's the same product from another supplier
+            # This prevents duplicates of the same physical product from different distributors
+            ean = normalized.get('ean')
+            if not existing and ean:
+                logger.debug(f"SKU {sku} not in cache, checking for existing EAN {ean}")
+                # Note: This is a fallback lookup that happens AFTER cache miss
+                # For performance, we don't batch-load EANs in the main loop
+                # But we catch duplicates here before inserting
 
             if existing:
                 # Track price changes
@@ -222,16 +232,43 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
                 ))
                 updated += 1
             else:
-                # New product: $set includes all fields, $setOnInsert adds id and created_at
-                # only when the document is actually inserted.
-                product_ops.append(UpdateOne(
-                    {"supplier_id": supplier_id, "sku": sku},
-                    {
-                        "$set": product_doc,
-                        "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}
-                    },
-                    upsert=True
-                ))
+                # New product: check for EAN duplicates first to prevent same-product imports from different suppliers
+                # Note: Normally we'd batch-load EANs, but we only check on SKU misses for performance
+
+                # CRITICAL FIX: Search by EAN to detect same product from different supplier
+                # If EAN exists, update that product instead of creating duplicate
+                ean_filter = {}
+                if ean:
+                    ean_filter = {"user_id": user_id, "ean": ean}
+
+                # Try EAN-based match first (if EAN provided and available)
+                # This prevents duplicates of same physical product from different suppliers
+                # Example: TechData SKU="TECH-123" + EAN="1234567890123"
+                #          MCR SKU="MCR-456" + EAN="1234567890123" (same product!)
+                if ean_filter:
+                    # Use upsert with EAN as primary key
+                    # If product with this EAN exists, update it
+                    # If not, create new product
+                    product_ops.append(UpdateOne(
+                        ean_filter,
+                        {
+                            "$set": product_doc,
+                            "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}
+                        },
+                        upsert=True
+                    ))
+                else:
+                    # No EAN: use supplier+SKU as key (fallback to original behavior)
+                    # This handles products without EAN gracefully
+                    product_ops.append(UpdateOne(
+                        {"supplier_id": supplier_id, "sku": sku},
+                        {
+                            "$set": product_doc,
+                            "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}
+                        },
+                        upsert=True
+                    ))
+
                 imported += 1
 
             # Flush in larger batches (5000)

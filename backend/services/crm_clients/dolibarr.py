@@ -381,6 +381,55 @@ class DolibarrClient:
         """Check if a product exists by reference (SKU) - simpler method"""
         return self.get_product_by_ref(ref) is not None
 
+    def get_product_by_barcode(self, barcode: str) -> dict | None:
+        """Get a product by barcode/EAN
+
+        Returns:
+            Product dict if found
+            None if not found (404)
+            None if error (with logging)
+
+        NOTE: This searches by barcode field in Dolibarr which typically contains EAN
+        """
+        try:
+            if not barcode or barcode.strip() == "":
+                return None
+
+            response = self._rate_limited_request(
+                'GET',
+                f"{self.base_url}/products",
+                params={
+                    'limit': 2,
+                    'sqlfilters': f"t.barcode='{_escape_sql_string(barcode)}'"
+                },
+                timeout=30
+            )
+            if response.status_code == 200:
+                try:
+                    products = response.json()
+                    if isinstance(products, list) and len(products) > 0:
+                        logger.debug(f"Found product by barcode={barcode} in Dolibarr: {products[0].get('id')}")
+                        return products[0]
+                    elif isinstance(products, dict):
+                        # Single product response
+                        logger.debug(f"Found product by barcode={barcode} in Dolibarr: {products.get('id')}")
+                        return products
+                    else:
+                        logger.debug(f"No product found with barcode={barcode}")
+                        return None
+                except ValueError as json_err:
+                    logger.error(f"Failed to parse JSON response for barcode {barcode}: {json_err}")
+                    return None
+            elif response.status_code == 404:
+                logger.debug(f"Product with barcode={barcode} not found in Dolibarr (404)")
+                return None
+            else:
+                logger.warning(f"get_product_by_barcode({barcode}) failed with status {response.status_code}")
+                return None
+        except Exception as e:
+            logger.error(f"Dolibarr get_product_by_barcode error for barcode={barcode}: {e}")
+            return None
+
     def search_products_by_name(self, name: str, limit: int = 10) -> list[dict]:
         """Search for products by name (useful as fallback if SKU lookup fails)"""
         try:
