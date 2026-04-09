@@ -6,7 +6,7 @@ Aplicación SaaS para gestionar catálogos de productos de proveedores. Permite 
 ## Estado Actual
 **Versión:** 3.5.0  
 **Última actualización:** 2026-03-07  
-**Estado:** ✅ Producción - Funcionando en menuboard.es
+**Estado:** ✅ Producción - Funcionando en sync-stock.com
 
 ---
 
@@ -430,13 +430,6 @@ Plesk NO carga automáticamente `nginx_custom.conf`. Se debe configurar manualme
 ├── config.json          # Config principal
 └── backups/             # Backups automáticos
 ```
-
----
-
-## Credenciales de Prueba
-- **Email:** test@test.com
-- **Password:** test123
-- **Rol:** superadmin
 
 ---
 
