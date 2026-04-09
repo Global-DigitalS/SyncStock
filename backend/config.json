@@ -1,7 +1,0 @@
-{
-  "mongo_url": "mongodb://localhost:27017",
-  "db_name": "syncstock_db",
-  "jwt_secret": "",
-  "cors_origins": "",
-  "is_configured": false
-}

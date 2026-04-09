@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import re
 import uuid
@@ -595,7 +596,7 @@ async def export_to_woocommerce(request: WooCommerceExportRequest, user: dict = 
     def _extract_wc_error(response_text: str) -> str:
         """Extract a readable error message from WooCommerce response"""
         try:
-            data = __import__("json").loads(response_text)
+            data = json.loads(response_text)
             if isinstance(data, dict):
                 msg = data.get("message") or data.get("error") or ""
                 code = data.get("code", "")

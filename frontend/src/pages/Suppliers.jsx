@@ -44,7 +44,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
-import ColumnMappingDialog from "../components/ColumnMappingDialog";
+import ColumnMappingDialog from "../components/dialogs/ColumnMappingDialog";
 import {
   SupplierTable,
   FtpFileBrowser,

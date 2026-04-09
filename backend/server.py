@@ -15,7 +15,6 @@ from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 load_dotenv()
@@ -55,8 +54,13 @@ from services.sync import sync_all_suppliers, sync_all_woocommerce_stores
 from services.sync_queue import SyncType, get_sync_queue
 from services.unified_sync import run_scheduled_syncs
 
+# WebSocket manager (módulo propio)
+from websocket.manager import ws_manager
+
+# Middlewares de seguridad (módulo propio)
+from middleware import CSRFMiddleware, SecurityHeadersMiddleware, UUIDValidationMiddleware
+
 # Initialize rate limiter with default limits for all endpoints
-# Endpoints individuales pueden sobrescribir con @limiter.limit()
 limiter = Limiter(
     key_func=get_remote_address,
     default_limits=["60/minute"],
@@ -67,65 +71,10 @@ limiter = Limiter(
 scheduler = AsyncIOScheduler()
 
 
-# ==================== WEBSOCKET MANAGER ====================
-
-class ConnectionManager:
-    """Manages WebSocket connections for real-time notifications.
-    Usa asyncio.Lock para prevenir race conditions en acceso concurrente."""
-
-    def __init__(self):
-        self.active_connections: dict[str, set[WebSocket]] = {}
-        self._lock = asyncio.Lock()
-
-    async def connect(self, websocket: WebSocket, user_id: str):
-        await websocket.accept()
-        async with self._lock:
-            if user_id not in self.active_connections:
-                self.active_connections[user_id] = set()
-            self.active_connections[user_id].add(websocket)
-        logger.info(f"WebSocket connected for user {user_id}")
-
-    async def disconnect(self, websocket: WebSocket, user_id: str):
-        async with self._lock:
-            if user_id in self.active_connections:
-                self.active_connections[user_id].discard(websocket)
-                if not self.active_connections[user_id]:
-                    del self.active_connections[user_id]
-        logger.info(f"WebSocket disconnected for user {user_id}")
-
-    async def send_to_user(self, user_id: str, message: dict):
-        """Send message to all connections of a specific user"""
-        async with self._lock:
-            connections = list(self.active_connections.get(user_id, []))
-        disconnected = []
-        for connection in connections:
-            try:
-                await connection.send_json(message)
-            except Exception as e:
-                logger.error(f"Error sending to websocket: {e}")
-                disconnected.append(connection)
-        if disconnected:
-            async with self._lock:
-                for conn in disconnected:
-                    if user_id in self.active_connections:
-                        self.active_connections[user_id].discard(conn)
-
-    async def broadcast(self, message: dict):
-        """Broadcast message to all connected users"""
-        async with self._lock:
-            user_ids = list(self.active_connections.keys())
-        for user_id in user_ids:
-            await self.send_to_user(user_id, message)
-
-
-# Global connection manager
-ws_manager = ConnectionManager()
-
+# ==================== JOBS PROGRAMADOS ====================
 
 async def _purge_expired_security_records():
     """Scheduled job: remove expired password-reset tokens and stale login-attempt records."""
-    from datetime import datetime
-
     from services.database import db as _db
     now = datetime.now(UTC).isoformat()
     result_tokens = await _db.password_resets.delete_many({"expires_at": {"$lt": now}})
@@ -137,11 +86,8 @@ async def _purge_expired_security_records():
 
 
 async def _purge_old_database_records():
-    """Scheduled job: limpieza de datos antiguos como complemento a los TTL indexes.
-    Los TTL indexes de MongoDB limpian automáticamente, pero este job sirve como respaldo
-    y para colecciones donde el campo de fecha no es 'Date' nativo de MongoDB."""
-    from datetime import datetime, timedelta
-
+    """Scheduled job: limpieza de datos antiguos como complemento a los TTL indexes."""
+    from datetime import timedelta
     from services.database import db as _db
 
     now = datetime.now(UTC)
@@ -151,22 +97,16 @@ async def _purge_old_database_records():
 
     totals = {}
     try:
-        # notifications > 90 días
         r = await _db.notifications.delete_many({"created_at": {"$lt": cutoff_90d}})
         totals["notifications"] = r.deleted_count
-        # price_history > 180 días
         r = await _db.price_history.delete_many({"created_at": {"$lt": cutoff_180d}})
         totals["price_history"] = r.deleted_count
-        # price_snapshots > 90 días
         r = await _db.price_snapshots.delete_many({"scraped_at": {"$lt": cutoff_90d}})
         totals["price_snapshots"] = r.deleted_count
-        # sync_history > 90 días
         r = await _db.sync_history.delete_many({"started_at": {"$lt": cutoff_90d}})
         totals["sync_history"] = r.deleted_count
-        # sync_status > 30 días
         r = await _db.sync_status.delete_many({"created_at": {"$lt": cutoff_30d}})
         totals["sync_status"] = r.deleted_count
-        # sync_jobs > 90 días
         r = await _db.sync_jobs.delete_many({"started_at": {"$lt": cutoff_90d}})
         totals["sync_jobs"] = r.deleted_count
 
@@ -179,6 +119,8 @@ async def _purge_old_database_records():
         logger.error(f"Error en limpieza de BD: {e}")
 
 
+# ==================== LIFESPAN ====================
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -187,12 +129,9 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB (continuando sin ellos): {e}")
 
-    # Initialize Sync Queue Manager (for optimized concurrent syncs)
     queue_manager = get_sync_queue()
 
-    # Register handlers for different sync types
     async def sync_supplier_handler(user_id: str, supplier_id: str, task):
-        """Handler for supplier sync via queue"""
         from services.sync import sync_supplier
         supplier = await app.state.db.suppliers.find_one({"id": supplier_id, "user_id": user_id})
         if not supplier:
@@ -200,7 +139,6 @@ async def lifespan(app: FastAPI):
         return await sync_supplier(supplier)
 
     async def sync_store_handler(user_id: str, store_id: str, task):
-        """Handler for store sync via queue"""
         from services.sync import sync_woocommerce_store_price_stock
         store = await app.state.db.stores.find_one({"id": store_id, "user_id": user_id})
         if not store:
@@ -208,7 +146,6 @@ async def lifespan(app: FastAPI):
         return await sync_woocommerce_store_price_stock(store)
 
     async def sync_crm_handler(user_id: str, connection_id: str, task):
-        """Handler for CRM sync via queue"""
         from services.crm_scheduler import sync_crm_connection
         return await sync_crm_connection(connection_id)
 
@@ -219,31 +156,28 @@ async def lifespan(app: FastAPI):
     await queue_manager.start_worker()
     logger.info("SyncQueueManager initialized and worker started")
 
-    # Legacy scheduled syncs (fallback for users without unified config)
+    # Scheduled jobs
     scheduler.add_job(sync_all_suppliers, 'interval', hours=6, id='sync_suppliers_legacy', replace_existing=True)
     scheduler.add_job(sync_all_woocommerce_stores, 'interval', hours=12, id='sync_woocommerce_legacy', replace_existing=True)
-    # Unified sync scheduler - runs every hour to check user-configured syncs
     scheduler.add_job(run_scheduled_syncs, 'interval', hours=1, id='unified_sync', replace_existing=True)
-    # Security maintenance: purge expired password-reset tokens and old login-attempt records
     scheduler.add_job(_purge_expired_security_records, 'interval', hours=6, id='security_purge', replace_existing=True)
-    # Cache cleanup: remove expired entries every 10 minutes
     scheduler.add_job(cache.cleanup_expired, 'interval', minutes=10, id='cache_cleanup', replace_existing=True)
-    # Database cleanup: purge old data daily at 4 AM (complemento de TTL indexes)
     scheduler.add_job(_purge_old_database_records, 'interval', hours=24, id='db_cleanup', replace_existing=True)
-    # Competitor price scraping - runs every 8 hours for all users with active competitors
     from services.scrapers.scheduler import run_scheduled_crawls
     scheduler.add_job(run_scheduled_crawls, 'interval', hours=8, id='competitor_crawl', replace_existing=True)
     scheduler.start()
     logger.info("Scheduler started - Unified sync 1h, Legacy: Suppliers 6h, WooCommerce 12h, Security purge 6h, Competitor crawl 8h")
 
-    # Store queue manager in app state for access in routes
     app.state.sync_queue = queue_manager
 
     yield
+
     # Shutdown
     await queue_manager.stop_worker()
     scheduler.shutdown()
 
+
+# ==================== APP ====================
 
 app = FastAPI(title="SyncStock", lifespan=lifespan)
 app.state.limiter = limiter
@@ -286,7 +220,7 @@ api_router.include_router(marketplaces_router)
 api_router.include_router(competitors_router)
 
 
-# Health check endpoint under /api
+# Health check endpoints
 @api_router.get("/health")
 async def api_health_check():
     from services.database import get_db
@@ -300,7 +234,6 @@ async def api_health_check():
     return {"status": status, "database": db_status, "timestamp": datetime.now(UTC).isoformat()}
 
 
-# Root-level health check for Kubernetes deployment
 @app.get("/health")
 async def health_check():
     """Health check endpoint at root level for Kubernetes liveness/readiness probes"""
@@ -315,21 +248,15 @@ async def health_check():
     return {"status": status, "database": db_status, "timestamp": datetime.now(UTC).isoformat()}
 
 
-# WebSocket endpoint for real-time notifications
+# ==================== WEBSOCKET ====================
+
 @app.websocket("/ws/notifications/{user_id}")
 async def websocket_notifications(websocket: WebSocket, user_id: str):
     """
     WebSocket endpoint para notificaciones en tiempo real.
     Implementa heartbeat automático para detectar conexiones muertas.
-
-    Timeout Nginx: 300s (5 minutos)
-    Heartbeat interval: 60s (dentro del timeout)
     """
-    # Authenticate before accepting the connection.
-    # The JWT token is expected as a query parameter: ?token=<jwt>
-    # (browsers cannot set custom headers on WebSocket connections).
     import jwt as _jwt
-
     from services.auth import JWT_ALGORITHM, JWT_SECRET
 
     # Priorizar cookie httpOnly sobre query parameter (más seguro)
@@ -338,8 +265,7 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
         token = websocket.query_params.get("token")
         if token:
             logger.warning(
-                "WebSocket auth via query parameter (inseguro, se registra en logs/proxies). "
-                "Migrar a cookie httpOnly. IP: %s",
+                "WebSocket auth via query parameter (inseguro). IP: %s",
                 websocket.client.host if websocket.client else "unknown",
             )
     if not token:
@@ -353,19 +279,16 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
         await websocket.close(code=4001)
         return
 
-    # Prevent a user from subscribing to another user's notification stream
     if token_user_id != user_id:
         await websocket.close(code=4003)
         return
 
     await ws_manager.connect(websocket, user_id)
 
-    # Heartbeat configuration
-    HEARTBEAT_INTERVAL = 60  # segundos (debe ser menor que el timeout de Nginx: 300s)
+    HEARTBEAT_INTERVAL = 60
     heartbeat_task = None
 
     async def send_heartbeat():
-        """Envía heartbeat periódicamente para mantener la conexión viva."""
         try:
             while True:
                 await asyncio.sleep(HEARTBEAT_INTERVAL)
@@ -378,29 +301,22 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
             pass
 
     try:
-        # Start heartbeat task
         heartbeat_task = asyncio.create_task(send_heartbeat())
 
         while True:
-            # Listen for messages from client
             data = await websocket.receive_text()
-
             try:
                 message = json.loads(data)
             except json.JSONDecodeError:
-                # Si no es JSON válido, tratar como ping simple
                 if data == "ping":
                     await websocket.send_text("pong")
                 continue
 
-            # Handle different message types
             if message.get("type") == "ping":
                 await websocket.send_text(json.dumps({"type": "pong", "timestamp": time.time()}))
             elif message.get("type") == "heartbeat_ack":
-                # Acknowledge heartbeat - no es necesario responder
                 logger.debug(f"Heartbeat ACK from {user_id}")
             else:
-                # Otros mensajes se ignoran, pero mantienen la conexión viva
                 logger.debug(f"Received message from {user_id}: {message.get('type')}")
 
     except WebSocketDisconnect:
@@ -410,7 +326,6 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
         logger.error(f"WebSocket error for {user_id}: {e}")
         await ws_manager.disconnect(websocket, user_id)
     finally:
-        # Cancel heartbeat task on disconnect
         if heartbeat_task and not heartbeat_task.done():
             heartbeat_task.cancel()
             try:
@@ -421,8 +336,7 @@ async def websocket_notifications(websocket: WebSocket, user_id: str):
 
 app.include_router(api_router)
 
-# Mount static files for uploads (logos, favicons, hero images)
-# Using /api/uploads to ensure proper routing through ingress
+# Mount static files for uploads
 app.mount("/api/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 
@@ -430,11 +344,7 @@ app.mount("/api/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
 
 @app.post("/api/csp-report")
 async def csp_report(request: Request):
-    """
-    Receive Content-Security-Policy violation reports from browsers.
-    Browsers POST a JSON body with a 'csp-report' key (CSP Level 2)
-    or a flat object (Reporting API / report-to).
-    """
+    """Receive Content-Security-Policy violation reports from browsers."""
     try:
         body = await request.json()
     except Exception:
@@ -448,134 +358,14 @@ async def csp_report(request: Request):
     )
     return Response(status_code=204)
 
-class CSRFMiddleware(BaseHTTPMiddleware):
-    """
-    Double-submit cookie CSRF protection.
-    For state-changing methods (POST, PUT, DELETE, PATCH), verifies that
-    the X-CSRF-Token header matches the csrf_token cookie.
-    Exempt paths: auth endpoints (login/register/refresh need to work without prior CSRF),
-    webhooks, Stripe webhooks, and CSP reports.
-    """
-    _EXEMPT_PREFIXES = (
-        "/api/auth/login", "/api/auth/register", "/api/auth/refresh",
-        "/api/auth/forgot-password", "/api/auth/reset-password",
-        "/api/webhooks", "/api/stripe/webhook", "/api/stripe/create-checkout-new-user",
-        "/api/stripe/checkout-status", "/api/csp-report",
-        "/api/setup",
-    )
-    _MUTATING_METHODS = {"POST", "PUT", "DELETE", "PATCH"}
 
-    async def dispatch(self, request: Request, call_next):
-        if request.method in self._MUTATING_METHODS:
-            path = request.url.path
-            if not any(path.startswith(p) for p in self._EXEMPT_PREFIXES):
-                cookie_token = request.cookies.get("csrf_token")
-                header_token = request.headers.get("x-csrf-token")
-                if not cookie_token or not header_token or cookie_token != header_token:
-                    return Response(
-                        content='{"detail":"Token CSRF inválido"}',
-                        status_code=403,
-                        media_type="application/json",
-                    )
-        return await call_next(request)
-
-
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    """
-    Adds security HTTP headers to every API response.
-
-    CSP note (MDN):
-    - This middleware protects API (JSON) responses.  The React SPA is served
-      by Nginx which applies its own, richer CSP for HTML/JS/CSS (see
-      scripts/nginx_config_plesk.conf).
-    - API endpoints don't render HTML, so `default-src 'none'` is the correct
-      baseline per MDN's "start with the most restrictive policy" guidance.
-    - `frame-ancestors 'none'` supersedes the deprecated X-Frame-Options header
-      (kept for older user agents that don't support CSP Level 2).
-    - `upgrade-insecure-requests` instructs the browser to upgrade any HTTP
-      sub-resource requests to HTTPS before fetching.
-    - `report-uri` / `report-to`: violation reports are sent to the dedicated
-      endpoint POST /api/csp-report which logs them server-side.
-    """
-
-    # Build the Reporting-Endpoints / Report-To header value once at class level.
-    _REPORT_URI = "/api/csp-report"
-
-    async def dispatch(self, request: Request, call_next):
-        response: Response = await call_next(request)
-
-        # --- Transport Security ---
-        response.headers["Strict-Transport-Security"] = (
-            "max-age=63072000; includeSubDomains; preload"
-        )
-
-        # --- Framing (CSP frame-ancestors + legacy X-Frame-Options) ---
-        # X-Frame-Options kept for browsers without CSP Level 2 support
-        response.headers["X-Frame-Options"] = "DENY"
-
-        # --- Sniffing / Content ---
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Permissions-Policy"] = (
-            "accelerometer=(), camera=(), geolocation=(), gyroscope=(), "
-            "magnetometer=(), microphone=(), payment=(), usb=()"
-        )
-
-        # --- Content Security Policy (API responses) ---
-        # Per MDN: for resources that do not serve HTML, use 'none' as the
-        # default and only open what is strictly necessary.
-        response.headers["Content-Security-Policy"] = (
-            # Fetch directives
-            "default-src 'none'; "
-            # API responses serve images from /api/uploads — allow same-origin
-            "img-src 'self'; "
-            # No scripts, styles, fonts or frames needed on API JSON responses
-            "object-src 'none'; "
-            # Navigation / document directives
-            "base-uri 'none'; "
-            "form-action 'none'; "
-            # Navigation directive: prevent embedding in any frame (MDN §frame-ancestors)
-            "frame-ancestors 'none'; "
-            # Instructs browsers to upgrade HTTP sub-resources to HTTPS (MDN §upgrade-insecure-requests)
-            "upgrade-insecure-requests; "
-            # Violation reporting — report-uri (CSP Level 2, broad support) +
-            # Reporting-Endpoints header (CSP Level 3, future-proof)
-            f"report-uri {self._REPORT_URI}"
-        )
-
-        # Reporting API v1 endpoint declaration (CSP Level 3 / MDN §report-to)
-        response.headers["Reporting-Endpoints"] = (
-            f'csp-endpoint="{self._REPORT_URI}"'
-        )
-
-        return response
-
-
-import re as _re
-
-_UUID_RE = _re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', _re.IGNORECASE)
-
-class UUIDValidationMiddleware(BaseHTTPMiddleware):
-    """Valida que path params terminados en _id sean UUIDs v4 válidos."""
-
-    async def dispatch(self, request: Request, call_next):
-        path_params = request.path_params
-        if path_params:
-            for key, value in path_params.items():
-                if key.endswith("_id") and isinstance(value, str) and not _UUID_RE.match(value):
-                    return Response(
-                        content=json.dumps({"detail": f"Parámetro '{key}' debe ser un UUID válido"}),
-                        status_code=400,
-                        media_type="application/json",
-                    )
-        return await call_next(request)
-
+# ==================== MIDDLEWARES ====================
 
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CSRFMiddleware)
 app.add_middleware(UUIDValidationMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
-app.add_middleware(GZipMiddleware, minimum_size=500)  # Comprimir respuestas > 500 bytes
+app.add_middleware(GZipMiddleware, minimum_size=500)
 
 _cors_origins_env = os.environ.get('CORS_ORIGINS', '')
 _environment = os.environ.get('ENVIRONMENT', 'development').lower()
@@ -583,14 +373,11 @@ if not _cors_origins_env or _cors_origins_env.strip() == '*':
     if _environment == 'production':
         raise RuntimeError(
             "CORS_ORIGINS es obligatorio en producción. "
-            "Define: CORS_ORIGINS=https://app.tudominio.com "
-            "El wildcard '*' no está permitido en producción porque "
-            "desactiva las cookies (withCredentials) y rompe la autenticación."
+            "Define: CORS_ORIGINS=https://app.tudominio.com"
         )
     logger.warning(
         "CORS_ORIGINS no está configurado o usa '*'. "
-        "En producción DEBES definir orígenes explícitos (ej: CORS_ORIGINS=https://app.tudominio.com). "
-        "Con '*' las cookies (withCredentials) NO funcionarán y la autenticación fallará silenciosamente."
+        "En producción DEBES definir orígenes explícitos."
     )
     _cors_origins = ["*"]
     _cors_credentials = False

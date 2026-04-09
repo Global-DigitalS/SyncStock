@@ -180,7 +180,7 @@ async def register(request: Request, response: Response, user: UserCreate):
 
         # Send welcome email (async, don't block registration)
         try:
-            from routes.email import send_welcome_email
+            from services.email_service import send_welcome_email
             await send_welcome_email(email, name)
         except Exception as e:
             logger.warning(f"Failed to send welcome email: {e}")
@@ -188,7 +188,7 @@ async def register(request: Request, response: Response, user: UserCreate):
         # Notify superadmins about the new registration (only for non-superadmin users)
         if role != "superadmin":
             try:
-                from routes.email import notify_superadmins_new_registration
+                from services.email_service import notify_superadmins_new_registration
                 await notify_superadmins_new_registration(name, email, company)
             except Exception as e:
                 logger.warning(f"Failed to notify superadmins of new registration: {e}")
@@ -544,7 +544,7 @@ async def update_user_full(user_id: str, update: UserFullUpdate, superadmin: dic
     # Notify superadmins if is_active changed
     if "is_active" in update_data:
         try:
-            from routes.email import notify_superadmins_status_change
+            from services.email_service import notify_superadmins_status_change
             await notify_superadmins_status_change(
                 user_name=user.get("name", user.get("email", user_id)),
                 user_email=user.get("email", ""),

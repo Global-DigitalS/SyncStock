@@ -22,7 +22,7 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle
 } from "../components/ui/alert-dialog";
-import UserDetailDialog from "../components/UserDetailDialog";
+import UserDetailDialog from "../components/dialogs/UserDetailDialog";
 
 const ROLE_CONFIG = {
   superadmin: { label: "SuperAdmin", color: "bg-purple-100 text-purple-700", icon: Crown },
