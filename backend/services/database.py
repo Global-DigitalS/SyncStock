@@ -188,7 +188,9 @@ async def ensure_indexes():
         # --- products ---
         await _db.products.create_index([("user_id", 1), ("id", 1)], unique=True)
         await _db.products.create_index([("user_id", 1), ("supplier_id", 1)])
-        await _db.products.create_index([("user_id", 1), ("ean", 1)])
+        # CRITICAL FIX: EAN must be unique to prevent duplicates from different suppliers
+        # sparse=True allows multiple products without EAN (empty string is treated as missing)
+        await _db.products.create_index([("user_id", 1), ("ean", 1)], unique=True, sparse=True)
         await _db.products.create_index([("user_id", 1), ("category", 1)])
         await _db.products.create_index([("user_id", 1), ("stock", 1)])
         await _db.products.create_index([("user_id", 1), ("price", 1)])

@@ -771,6 +771,21 @@ async def sync_products_to_dolibarr(client: DolibarrClient, user_id: str, sync_s
                 logger.debug(f"Race condition prevented: {sku} was created by another sync job")
                 existing = final_check
 
+            # CRITICAL FIX: If SKU not found, search by EAN to detect same product with different SKU
+            # This prevents duplicates in Dolibarr when the same physical product is imported from different distributors
+            # Example: TechData (SKU=TECH-123, EAN=1234567890123) vs MCR (SKU=MCR-456, EAN=1234567890123)
+            # Without this, both would be created as separate products in Dolibarr
+            if not existing:
+                ean = product.get("ean", "")
+                if ean and ean.strip():
+                    logger.debug(f"SKU {sku} not found, checking Dolibarr for EAN {ean}")
+                    barcode_match = client.get_product_by_barcode(ean)
+                    if barcode_match:
+                        logger.info(f"Found existing product in Dolibarr by EAN {ean}, updating instead of creating")
+                        existing = barcode_match
+                    else:
+                        logger.debug(f"EAN {ean} not found in Dolibarr either")
+
         # Build product_data
         product_data = {
             "sku": sku,
