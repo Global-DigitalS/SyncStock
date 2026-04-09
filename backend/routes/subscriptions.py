@@ -5,7 +5,7 @@ from datetime import UTC, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 
 from models.schemas import SubscriptionPlan
-from routes.email import send_subscription_change_email
+from services.email_service import send_subscription_change_email
 from services.auth import get_current_user, get_superadmin_user
 from services.database import db
 

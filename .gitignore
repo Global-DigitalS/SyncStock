@@ -84,3 +84,13 @@ frontend/node_modules/.cache/
 
 # Local configuration (should not be deployed)
 backend/config.json
+
+# Test reports históricos (generados automáticamente, no pertenecen al repo)
+test_reports/
+
+# Paquete de actualización obsoleto (versión desincronizada del backend)
+update_package/
+
+# Archivos residuales del sistema
+Personalizacion
+Sincronización

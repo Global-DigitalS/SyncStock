@@ -1,4 +1,5 @@
 import asyncio
+import io
 import logging
 import uuid
 from datetime import UTC, datetime
@@ -1034,7 +1035,7 @@ async def diagnose_zip_merge(
                     from openpyxl import load_workbook
                     fmt = 'xlsx' if fname.lower().endswith('.xlsx') else 'xls'
                     if fmt == 'xlsx':
-                        wb = load_workbook(filename=__import__('io').BytesIO(fcontent), read_only=True)
+                        wb = load_workbook(filename=io.BytesIO(fcontent), read_only=True)
                         ws = wb.active
                         rows = list(ws.iter_rows(values_only=True))
                         hdrs = [str(h).strip() if h else f'col_{i}' for i, h in enumerate(rows[0])]
