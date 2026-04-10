@@ -75,6 +75,91 @@ async def get_categories(user: dict = Depends(get_current_user)):
     return await db.products.distinct("category", {"user_id": user["id"], "category": {"$ne": None}})
 
 
+@router.get("/products/brands")
+async def get_brands(
+    supplier_id: str | None = None,
+    user: dict = Depends(get_current_user)
+):
+    """Obtener las marcas únicas disponibles, opcionalmente filtradas por proveedor."""
+    query = {"user_id": user["id"], "brand": {"$nin": [None, ""]}}
+    if supplier_id:
+        query["supplier_id"] = supplier_id
+    brands = await db.products.distinct("brand", query)
+    return sorted([b for b in brands if b])
+
+
+@router.get("/products/search/global")
+async def search_products_global(
+    q: str | None = None,
+    category: str | None = None,
+    brand: str | None = None,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    in_stock: bool | None = None,
+    limit_per_supplier: int = Query(10, ge=1, le=100),
+    user: dict = Depends(get_current_user)
+):
+    """
+    Búsqueda global de productos en todos los proveedores.
+    Devuelve resultados agrupados por proveedor con conteo total.
+    """
+    if not q and not category and not brand and min_price is None and max_price is None and in_stock is None:
+        return {"total": 0, "results": []}
+
+    query: dict = {"user_id": user["id"]}
+    if q:
+        _s = re.escape(q[:100])
+        query["$or"] = [
+            {"name": {"$regex": _s, "$options": "i"}},
+            {"sku": {"$regex": _s, "$options": "i"}},
+            {"ean": {"$regex": _s, "$options": "i"}},
+            {"brand": {"$regex": _s, "$options": "i"}},
+            {"part_number": {"$regex": _s, "$options": "i"}},
+        ]
+    if category:
+        query["category"] = category
+    if brand:
+        query["brand"] = {"$regex": re.escape(brand[:100]), "$options": "i"}
+    if min_price is not None:
+        query["price"] = {"$gte": min_price}
+    if max_price is not None:
+        query.setdefault("price", {})["$lte"] = max_price
+    if in_stock:
+        query["stock"] = {"$gt": 0}
+
+    pipeline = [
+        {"$match": query},
+        {"$group": {
+            "_id": "$supplier_id",
+            "supplier_name": {"$first": "$supplier_name"},
+            "count": {"$sum": 1},
+            "products": {"$push": {
+                "id": "$id",
+                "name": "$name",
+                "sku": "$sku",
+                "ean": "$ean",
+                "part_number": "$part_number",
+                "price": "$price",
+                "stock": "$stock",
+                "brand": "$brand",
+                "category": "$category",
+                "image_url": "$image_url",
+            }}
+        }},
+        {"$sort": {"count": -1}},
+        {"$project": {
+            "_id": 0,
+            "supplier": {"id": "$_id", "name": "$supplier_name"},
+            "count": 1,
+            "products": {"$slice": ["$products", limit_per_supplier]}
+        }}
+    ]
+
+    results = await db.products.aggregate(pipeline).to_list(500)
+    total = sum(r["count"] for r in results)
+    return {"total": total, "results": results}
+
+
 @router.get("/products/category-hierarchy")
 async def get_category_hierarchy(
     supplier_id: str | None = None,
@@ -547,6 +632,12 @@ async def get_supplier_products(
     subcategory2: str | None = None,
     search: str | None = None,
     is_selected: bool | None = None,
+    brand: str | None = None,
+    part_number: str | None = None,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    min_stock: int | None = None,
+    max_stock: int | None = None,
     skip: int = Query(0, ge=0, le=100000),
     limit: int = Query(100, ge=1, le=500),
     user: dict = Depends(get_current_user)
@@ -554,7 +645,8 @@ async def get_supplier_products(
     """
     Obtener productos de un proveedor específico con filtros opcionales.
     Incluye el estado de selección (is_selected) de cada producto.
-    Soporta filtrado jerárquico por categoría, subcategoría y subcategoría2.
+    Soporta filtrado jerárquico por categoría, subcategoría y subcategoría2,
+    así como filtros avanzados por marca, part_number, rango de precio y stock.
     """
     # Verificar que el proveedor pertenece al usuario
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
@@ -578,6 +670,18 @@ async def get_supplier_products(
         ]
     if is_selected is not None:
         query["is_selected"] = is_selected
+    if brand:
+        query["brand"] = {"$regex": re.escape(brand[:100]), "$options": "i"}
+    if part_number:
+        query["part_number"] = {"$regex": re.escape(part_number[:100]), "$options": "i"}
+    if min_price is not None:
+        query["price"] = {"$gte": min_price}
+    if max_price is not None:
+        query.setdefault("price", {})["$lte"] = max_price
+    if min_stock is not None:
+        query["stock"] = {"$gte": min_stock}
+    if max_stock is not None:
+        query.setdefault("stock", {})["$lte"] = max_stock
 
     products = await db.products.find(query, {"_id": 0, "user_id": 0}).skip(skip).limit(limit).to_list(limit)
 
@@ -592,11 +696,18 @@ async def get_supplier_products_count(
     subcategory2: str | None = None,
     search: str | None = None,
     is_selected: bool | None = None,
+    brand: str | None = None,
+    part_number: str | None = None,
+    min_price: float | None = None,
+    max_price: float | None = None,
+    min_stock: int | None = None,
+    max_stock: int | None = None,
     user: dict = Depends(get_current_user)
 ):
     """
     Obtener el conteo de productos de un proveedor con los mismos filtros.
-    Soporta filtrado jerárquico por categoría, subcategoría y subcategoría2.
+    Soporta filtrado jerárquico por categoría, subcategoría y subcategoría2,
+    así como filtros avanzados por marca, part_number, rango de precio y stock.
     """
     query = {"supplier_id": supplier_id, "user_id": user["id"]}
 
@@ -615,6 +726,18 @@ async def get_supplier_products_count(
         ]
     if is_selected is not None:
         query["is_selected"] = is_selected
+    if brand:
+        query["brand"] = {"$regex": re.escape(brand[:100]), "$options": "i"}
+    if part_number:
+        query["part_number"] = {"$regex": re.escape(part_number[:100]), "$options": "i"}
+    if min_price is not None:
+        query["price"] = {"$gte": min_price}
+    if max_price is not None:
+        query.setdefault("price", {})["$lte"] = max_price
+    if min_stock is not None:
+        query["stock"] = {"$gte": min_stock}
+    if max_stock is not None:
+        query.setdefault("stock", {})["$lte"] = max_stock
 
     count = await db.products.count_documents(query)
     return {"total": count}

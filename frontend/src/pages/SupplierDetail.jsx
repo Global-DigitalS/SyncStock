@@ -27,7 +27,10 @@ import {
   ArrowRight,
   Layers,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  X
 } from "lucide-react";
 import { api } from "../App";
 import { Button } from "../components/ui/button";
@@ -80,9 +83,16 @@ const SupplierDetail = () => {
     subcategory: "",
     subcategory2: "",
     stock: "all",
-    selection: "all" // all, selected, unselected
+    selection: "all", // all, selected, unselected
+    brand: "",
+    part_number: "",
+    min_price: "",
+    max_price: "",
+    min_stock: ""
   });
   const [categoryHierarchy, setCategoryHierarchy] = useState([]);
+  const [brands, setBrands] = useState([]);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showUploadDialog, setShowUploadDialog] = useState(false);
   const [showDetailDialog, setShowDetailDialog] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState(null);
@@ -112,8 +122,14 @@ const SupplierDetail = () => {
       if (filters.subcategory2) productParams.append("subcategory2", filters.subcategory2);
       if (filters.selection === "selected") productParams.append("is_selected", "true");
       if (filters.selection === "unselected") productParams.append("is_selected", "false");
+      // Filtros avanzados (backend)
+      if (filters.brand) productParams.append("brand", filters.brand);
+      if (filters.part_number) productParams.append("part_number", filters.part_number);
+      if (filters.min_price) productParams.append("min_price", filters.min_price);
+      if (filters.max_price) productParams.append("max_price", filters.max_price);
+      if (filters.min_stock) productParams.append("min_stock", filters.min_stock);
 
-      const [supplierRes, productsRes, countRes, categoriesRes, syncStatusRes, catalogsRes, hierarchyRes, selectionStatsRes] = await Promise.all([
+      const [supplierRes, productsRes, countRes, categoriesRes, syncStatusRes, catalogsRes, hierarchyRes, selectionStatsRes, brandsRes] = await Promise.all([
         api.get(`/suppliers/${supplierId}`),
         api.get(`/supplier/${supplierId}/products?${productParams.toString()}`),
         api.get(`/supplier/${supplierId}/products/count?${productParams.toString()}`),
@@ -121,7 +137,8 @@ const SupplierDetail = () => {
         api.get(`/suppliers/${supplierId}/sync-status`).catch(() => ({ data: null })),
         api.get("/catalogs"),
         api.get(`/products/category-hierarchy?supplier_id=${supplierId}`).catch(() => ({ data: [] })),
-        api.get("/products/selected-count", { params: { supplier_id: supplierId } }).catch(() => ({ data: { selected: 0, total: 0 } }))
+        api.get("/products/selected-count", { params: { supplier_id: supplierId } }).catch(() => ({ data: { selected: 0, total: 0 } })),
+        api.get("/products/brands", { params: { supplier_id: supplierId } }).catch(() => ({ data: [] }))
       ]);
       setSupplier(supplierRes.data);
       setProducts(productsRes.data);
@@ -131,6 +148,7 @@ const SupplierDetail = () => {
       setCatalogs(catalogsRes.data);
       setCategoryHierarchy(hierarchyRes.data || []);
       setSelectionStats(selectionStatsRes.data);
+      setBrands(brandsRes.data || []);
       setCurrentPage(page);
     } catch (error) {
       toast.error("Error al cargar los datos del proveedor");
@@ -901,7 +919,7 @@ const SupplierDetail = () => {
             </div>
             
             {/* Category cascade filters row */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-medium text-slate-600">Filtrar por categoría:</span>
               <CategoryCascadeFilter
                 hierarchy={categoryHierarchy}
@@ -917,6 +935,147 @@ const SupplierDetail = () => {
                   }));
                 }}
               />
+            </div>
+
+            {/* Toggle filtros avanzados */}
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedFilters((v) => !v)}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-sm border transition-colors ${
+                  (filters.brand || filters.part_number || filters.min_price || filters.max_price || filters.min_stock)
+                    ? "border-indigo-300 bg-indigo-50 text-indigo-700 font-medium"
+                    : "border-slate-200 bg-white text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                }`}
+                data-testid="toggle-advanced-filters"
+              >
+                {showAdvancedFilters ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                Filtros avanzados
+                {(filters.brand || filters.part_number || filters.min_price || filters.max_price || filters.min_stock) && (
+                  <span className="ml-1 px-1.5 py-0.5 text-xs bg-indigo-100 text-indigo-700 rounded-full">activos</span>
+                )}
+              </button>
+              {(filters.brand || filters.part_number || filters.min_price || filters.max_price || filters.min_stock) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilters(prev => ({ ...prev, brand: "", part_number: "", min_price: "", max_price: "", min_stock: "" }));
+                    setTimeout(() => handleSearch(), 0);
+                  }}
+                  className="flex items-center gap-1 text-xs text-slate-400 hover:text-rose-600 transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                  Limpiar avanzados
+                </button>
+              )}
+            </div>
+
+            {/* Panel filtros avanzados */}
+            {showAdvancedFilters && (
+              <div className="border border-slate-200 rounded-sm bg-slate-50 p-4">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                  {/* Part Number */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">Part Number / Ref.</Label>
+                    <Input
+                      placeholder="Ej. ABC-1234"
+                      value={filters.part_number}
+                      onChange={(e) => setFilters(prev => ({ ...prev, part_number: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      className="h-9 text-sm input-base"
+                      data-testid="part-number-filter"
+                    />
+                  </div>
+
+                  {/* Marca */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">Marca</Label>
+                    {brands.length > 0 ? (
+                      <Select
+                        value={filters.brand || "all"}
+                        onValueChange={(v) => setFilters(prev => ({ ...prev, brand: v === "all" ? "" : v }))}
+                      >
+                        <SelectTrigger className="h-9 text-sm input-base" data-testid="brand-filter">
+                          <SelectValue placeholder="Todas las marcas" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Todas las marcas</SelectItem>
+                          {brands.map((b) => (
+                            <SelectItem key={b} value={b}>{b}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Input
+                        placeholder="Ej. Samsung"
+                        value={filters.brand}
+                        onChange={(e) => setFilters(prev => ({ ...prev, brand: e.target.value }))}
+                        onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                        className="h-9 text-sm input-base"
+                        data-testid="brand-filter"
+                      />
+                    )}
+                  </div>
+
+                  {/* Precio mínimo */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">Precio mín. (€)</Label>
+                    <Input
+                      type="number"
+                      placeholder="0"
+                      min="0"
+                      step="0.01"
+                      value={filters.min_price}
+                      onChange={(e) => setFilters(prev => ({ ...prev, min_price: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      className="h-9 text-sm input-base"
+                      data-testid="min-price-filter"
+                    />
+                  </div>
+
+                  {/* Precio máximo */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">Precio máx. (€)</Label>
+                    <Input
+                      type="number"
+                      placeholder="9999"
+                      min="0"
+                      step="0.01"
+                      value={filters.max_price}
+                      onChange={(e) => setFilters(prev => ({ ...prev, max_price: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      className="h-9 text-sm input-base"
+                      data-testid="max-price-filter"
+                    />
+                  </div>
+
+                  {/* Stock mínimo */}
+                  <div className="space-y-1">
+                    <Label className="text-xs text-slate-600">Stock mínimo</Label>
+                    <Input
+                      type="number"
+                      placeholder="1"
+                      min="0"
+                      value={filters.min_stock}
+                      onChange={(e) => setFilters(prev => ({ ...prev, min_stock: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                      className="h-9 text-sm input-base"
+                      data-testid="min-stock-filter"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 mt-3">
+                  Los filtros avanzados se combinan entre sí (AND lógico). Pulsa <strong>Buscar</strong> o Enter para aplicarlos.
+                </p>
+              </div>
+            )}
+
+            {/* Botón buscar */}
+            <div>
+              <Button onClick={handleSearch} className="btn-primary" data-testid="search-btn">
+                <Search className="w-4 h-4 mr-2" strokeWidth={1.5} />
+                Buscar
+              </Button>
             </div>
           </div>
         </CardContent>

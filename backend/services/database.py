@@ -203,6 +203,9 @@ async def ensure_indexes():
         # Índice para filtrado por selección de productos
         await _db.products.create_index([("user_id", 1), ("supplier_id", 1), ("is_selected", 1)])
         await _db.products.create_index([("user_id", 1), ("is_selected", 1)])
+        # Índices para filtrado por marca
+        await _db.products.create_index([("user_id", 1), ("brand", 1)])
+        await _db.products.create_index([("user_id", 1), ("supplier_id", 1), ("brand", 1)])
         # text index para búsqueda full-text
         await _db.products.create_index(
             [("name", "text"), ("sku", "text"), ("ean", "text")],

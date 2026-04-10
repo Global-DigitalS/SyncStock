@@ -11,7 +11,8 @@ import {
   ExternalLink,
   Wifi,
   Search,
-  X
+  X,
+  Layers
 } from "lucide-react";
 import { api } from "../App";
 import { Button } from "../components/ui/button";
@@ -45,6 +46,7 @@ import {
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
 import ColumnMappingDialog from "../components/dialogs/ColumnMappingDialog";
+import GlobalProductSearch from "../components/products/GlobalProductSearch";
 import {
   SupplierTable,
   FtpFileBrowser,
@@ -101,6 +103,11 @@ const Suppliers = () => {
   const [ftpStats, setFtpStats] = useState(null);
   const [ftpListingAll, setFtpListingAll] = useState(false);
 
+  // Vista de la página: "suppliers" o "search"
+  const [pageView, setPageView] = useState("suppliers");
+  const [globalCategories, setGlobalCategories] = useState([]);
+  const [globalBrands, setGlobalBrands] = useState([]);
+
   const fetchSuppliers = useCallback(async () => {
     try {
       const res = await api.get("/suppliers");
@@ -112,9 +119,27 @@ const Suppliers = () => {
     }
   }, []);
 
+  const loadGlobalSearchData = useCallback(async () => {
+    if (globalCategories.length > 0) return; // ya cargado
+    try {
+      const [catRes, brandRes] = await Promise.all([
+        api.get("/products/categories").catch(() => ({ data: [] })),
+        api.get("/products/brands").catch(() => ({ data: [] }))
+      ]);
+      setGlobalCategories(catRes.data || []);
+      setGlobalBrands(brandRes.data || []);
+    } catch (_) {
+      // fallo silencioso — los campos del formulario funcionarán sin autocomplete
+    }
+  }, [globalCategories.length]);
+
   useEffect(() => {
     fetchSuppliers();
   }, [fetchSuppliers]);
+
+  useEffect(() => {
+    if (pageView === "search") loadGlobalSearchData();
+  }, [pageView, loadGlobalSearchData]);
 
   const resetForm = () => {
     setFormData(defaultFormData);
@@ -504,7 +529,7 @@ const Suppliers = () => {
   return (
     <div className="p-6 lg:p-8 animate-fade-in" data-testid="suppliers-page">
       {/* Page Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-6 gap-4">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 mb-2" style={{ fontFamily: 'Manrope, sans-serif' }}>
             Proveedores
@@ -513,43 +538,91 @@ const Suppliers = () => {
             Gestiona tus proveedores y sus configuraciones de conexión
           </p>
         </div>
-        <Button onClick={openCreate} className="btn-primary" data-testid="add-supplier-btn">
-          <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
-          Añadir Proveedor
-        </Button>
+        {pageView === "suppliers" && (
+          <Button onClick={openCreate} className="btn-primary" data-testid="add-supplier-btn">
+            <Plus className="w-4 h-4 mr-2" strokeWidth={1.5} />
+            Añadir Proveedor
+          </Button>
+        )}
       </div>
 
-      {/* Barra de búsqueda */}
-      <div className="mb-6 relative max-w-md">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-        <Input
-          placeholder="Buscar proveedores por nombre..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="pl-9 pr-9"
+      {/* Tabs de vista de página */}
+      <div className="flex gap-1 mb-6 border-b border-slate-200">
+        <button
+          type="button"
+          onClick={() => setPageView("suppliers")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            pageView === "suppliers"
+              ? "border-indigo-600 text-indigo-600"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+          data-testid="tab-suppliers"
+        >
+          <Layers className="w-4 h-4" />
+          Mis proveedores
+          <span className="ml-1 px-1.5 py-0.5 text-xs bg-slate-100 text-slate-600 rounded-full">
+            {suppliers.length}
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setPageView("search")}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+            pageView === "search"
+              ? "border-indigo-600 text-indigo-600"
+              : "border-transparent text-slate-500 hover:text-slate-700"
+          }`}
+          data-testid="tab-global-search"
+        >
+          <Search className="w-4 h-4" />
+          Búsqueda global de productos
+        </button>
+      </div>
+
+      {/* Vista: lista de proveedores */}
+      {pageView === "suppliers" && (
+        <>
+          {/* Barra de búsqueda de proveedor */}
+          <div className="mb-6 relative max-w-md">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              placeholder="Buscar proveedores por nombre..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-9 pr-9"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+
+          {/* Tabla de proveedores */}
+          <SupplierTable
+            suppliers={suppliers.filter(s =>
+              !searchQuery || s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              s.ftp_host?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              s.file_url?.toLowerCase().includes(searchQuery.toLowerCase())
+            )}
+            onEdit={openEdit}
+            onMapping={openMapping}
+            onDelete={openDelete}
+            onCreate={openCreate}
+          />
+        </>
+      )}
+
+      {/* Vista: búsqueda global de productos */}
+      {pageView === "search" && (
+        <GlobalProductSearch
+          allCategories={globalCategories}
+          allBrands={globalBrands}
         />
-        {searchQuery && (
-          <button
-            onClick={() => setSearchQuery("")}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        )}
-      </div>
-
-      {/* Suppliers Table */}
-      <SupplierTable
-        suppliers={suppliers.filter(s =>
-          !searchQuery || s.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          s.ftp_host?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          s.file_url?.toLowerCase().includes(searchQuery.toLowerCase())
-        )}
-        onEdit={openEdit}
-        onMapping={openMapping}
-        onDelete={openDelete}
-        onCreate={openCreate}
-      />
+      )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
