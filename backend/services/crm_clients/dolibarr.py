@@ -695,70 +695,23 @@ class DolibarrClient:
             logger.error(f"Dolibarr upload_product_image error: {e}")
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
-    def _get_warehouse_stock(self, product_id: int, warehouse_id: int) -> int | None:
-        """
-        Get the REAL stock of a product in a specific warehouse using the stock endpoint.
-        This is more reliable than stock_reel from GET /products/{id} which can be stale/null.
-
-        CRITICAL: Only returns stock for the SPECIFIC warehouse, not a sum of all warehouses.
-        This prevents stock accumulation bugs.
-        """
-        try:
-            response = self._rate_limited_request(
-                'GET',
-                f"{self.base_url}/products/{product_id}/stock",
-                timeout=30
-            )
-            if response.status_code == 200:
-                stock_data = response.json()
-
-                if isinstance(stock_data, dict):
-                    # Get stock for the SPECIFIC warehouse only
-                    warehouses = stock_data.get("stock_warehouses") or stock_data.get("stock_warehouse") or {}
-
-                    # Dolibarr returns warehouse IDs as string keys
-                    wh_key = str(warehouse_id)
-                    if wh_key in warehouses:
-                        wh_stock = warehouses[wh_key]
-                        real_stock = wh_stock.get("real") if isinstance(wh_stock, dict) else wh_stock
-                        if real_stock is not None:
-                            result = int(float(real_stock))
-                            logger.debug(f"[STOCK] Warehouse {warehouse_id} stock for product {product_id}: {result}")
-                            return result
-
-                    # CRITICAL FIX: Don't sum all warehouses - that causes accumulation!
-                    # Instead, if the specific warehouse isn't found, return None to trigger fallback
-                    logger.warning(
-                        f"[STOCK] Warehouse {warehouse_id} not found in stock response for product {product_id}. "
-                        f"Available warehouses: {list(warehouses.keys())}"
-                    )
-                    return None
-
-            logger.debug(f"[STOCK] Could not get warehouse {warehouse_id} stock for product {product_id}, response: {response.status_code}")
-            return None
-
-        except Exception as e:
-            logger.warning(f"[STOCK] Error getting warehouse stock for product {product_id}: {e}")
-            return None
-
     def update_stock(self, product_id: int, stock: int, warehouse_id: int = None) -> dict:
-        """Update product stock in Dolibarr using reset-then-set strategy.
+        """Update product stock in Dolibarr using delta approach.
 
-        Strategy: First remove ALL existing stock (movement type 1 = salida),
-        then add the desired stock (movement type 0 = entrada).
-        This guarantees an absolute value and prevents accumulation bugs,
-        regardless of Dolibarr's reported current stock.
+        Reads the current stock_reel from Dolibarr, calculates the difference
+        with the desired value, and sends a single corrective stock movement.
+        This prevents the accumulation bug where stock is summed instead of replaced.
+
+        Uses per-product threading locks to prevent race conditions when multiple
+        sync jobs run concurrently for the same product.
         """
         try:
-            # Validate input
             if stock < 0:
                 logger.error(f"[STOCK] Cannot set negative stock: {stock}")
                 return {"status": "error", "message": "El stock no puede ser negativo"}
 
-            # Serialise concurrent update_stock calls for the same product.
-            # Without this, N parallel syncs all read the same current_stock,
-            # only 1 removal sticks (Dolibarr floors at 0), but ALL N additions
-            # succeed → stock = desired × N (confirmed from production logs).
+            # Lock per-product to prevent concurrent reads of the same stock_reel
+            # leading to duplicate movements (e.g. two +50 instead of one +50).
             with _get_product_stock_lock(product_id):
                 return self._update_stock_impl(product_id, stock, warehouse_id)
 
@@ -767,151 +720,76 @@ class DolibarrClient:
             return {"status": "error", "message": "Error en la operacion CRM. Consulta los logs del servidor."}
 
     def _update_stock_impl(self, product_id: int, stock: int, warehouse_id: int = None) -> dict:
-        """Core RESET+SET logic. Called from update_stock with the per-product lock held."""
+        """Core delta logic. Called from update_stock with the per-product lock held.
+
+        delta = desired_stock - stock_reel
+          delta > 0 → entrada (type=3, qty=delta)
+          delta < 0 → salida  (type=2, qty=delta negativo)
+          delta = 0 → sin cambio
+        """
         try:
-            # First get or create a warehouse
             if warehouse_id is None:
                 warehouse_id = self.get_or_create_default_warehouse()
                 if not warehouse_id:
                     logger.warning("[STOCK] No warehouse available, cannot update stock")
                     return {"status": "warning", "message": "No hay almacén configurado en Dolibarr"}
 
-            logger.info(f"[STOCK] Starting stock RESET+SET: product={product_id}, warehouse={warehouse_id}, desired_stock={stock}")
+            # 1. Obtener el stock actual en Dolibarr
+            product = self.get_product_by_id(product_id)
+            if not product:
+                return {"status": "error", "message": "Producto no encontrado en Dolibarr"}
 
-            # === STEP 1: Get current stock and remove it entirely ===
-            current_stock = self._get_warehouse_stock(product_id, warehouse_id)
-
-            # Fallback to stock_reel if dedicated endpoint fails
-            if current_stock is None:
-                logger.debug(f"[STOCK] Falling back to stock_reel for product {product_id}")
-                product = self.get_product_by_id(product_id)
-                if not product:
-                    return {"status": "error", "message": "Producto no encontrado"}
-
-                stock_reel = product.get("stock_reel")
-
-                # CRITICAL FIX: If stock_reel is empty/null/zero, we cannot reliably determine current stock.
-                # stock_reel is the TOTAL across ALL warehouses and can be stale in Dolibarr.
-                # When _get_warehouse_stock already returned None (warehouse-specific endpoint failed),
-                # using stock_reel=0 as fallback is DANGEROUS: we skip the removal step and ADD on top
-                # of existing stock, causing accumulation (e.g., 50 + 100 = 150 instead of 100).
-                # The only safe values from stock_reel are positive integers; zero is treated as unknown.
-                # With the per-product lock held (see update_stock), concurrent races are
-                # impossible. Treat any unresolvable stock_reel as 0 and proceed; step-3
-                # verification will auto-correct any real over-count from stale data.
-                try:
-                    current_stock = (
-                        int(float(stock_reel))
-                        if stock_reel not in (None, "", "null")
-                        else 0
-                    )
-                except (ValueError, TypeError):
-                    logger.warning(f"[STOCK] Invalid stock_reel for product {product_id}: {stock_reel!r}. Treating as 0.")
-                    current_stock = 0
-
-                logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} as fallback (step-3 will auto-correct if needed)")
-
-            logger.info(f"[STOCK] Product {product_id}: current_stock={current_stock}, desired={stock}")
-
-            # Remove all existing stock (salida) if there is any
-            if current_stock > 0:
-                remove_payload = {
-                    "product_id": product_id,
-                    "warehouse_id": warehouse_id,
-                    "qty": current_stock,
-                    "type": 1,  # 1 = salida (stock removal)
-                    "label": f"SyncStock RESET: vaciar stock ({current_stock} → 0)",
-                    "date": datetime.now(UTC).isoformat()
-                }
-
-                remove_response = self._rate_limited_request(
-                    'POST',
-                    f"{self.base_url}/stockmovements",
-                    json=remove_payload,
-                    timeout=30
+            stock_reel_raw = product.get("stock_reel")
+            try:
+                stock_actual = (
+                    int(float(stock_reel_raw))
+                    if stock_reel_raw not in (None, "", "null")
+                    else 0
                 )
+            except (ValueError, TypeError):
+                logger.warning(f"[STOCK] Invalid stock_reel for product {product_id}: {stock_reel_raw!r}. Treating as 0.")
+                stock_actual = 0
 
-                if remove_response.status_code not in [200, 201]:
-                    error_msg = remove_response.text[:200] if remove_response.text else f"HTTP {remove_response.status_code}"
-                    logger.error(f"[STOCK] Failed to reset stock for product {product_id}: {error_msg}")
-                    return {"status": "error", "message": f"Error al vaciar stock en Dolibarr: {error_msg}"}
+            # 2. Calcular el delta
+            delta = stock - stock_actual
 
-                logger.info(f"[STOCK] Product {product_id}: stock reset to 0 (removed {current_stock})")
+            logger.info(
+                f"[STOCK] Product {product_id}: warehouse={warehouse_id}, "
+                f"stock_actual={stock_actual}, desired={stock}, delta={delta:+d}"
+            )
 
-            # === STEP 2: Add the desired stock (entrada) ===
-            if stock > 0:
-                add_payload = {
-                    "product_id": product_id,
-                    "warehouse_id": warehouse_id,
-                    "qty": stock,
-                    "type": 0,  # 0 = entrada (stock addition)
-                    "label": f"SyncStock SET: nuevo stock → {stock}",
-                    "date": datetime.now(UTC).isoformat()
-                }
+            # 3. Si no hay diferencia, no hacer nada
+            if delta == 0:
+                logger.info(f"[STOCK] Product {product_id}: stock ya correcto ({stock}), sin actualización necesaria")
+                return {"status": "success", "message": f"Stock ya correcto: {stock}"}
 
-                add_response = self._rate_limited_request(
-                    'POST',
-                    f"{self.base_url}/stockmovements",
-                    json=add_payload,
-                    timeout=30
-                )
+            # 4. Enviar el movimiento correcto
+            # delta > 0 → entrada (type=3), delta < 0 → salida (type=2)
+            movement_type = 3 if delta > 0 else 2
 
-                if add_response.status_code not in [200, 201]:
-                    error_msg = add_response.text[:200] if add_response.text else f"HTTP {add_response.status_code}"
-                    logger.error(f"[STOCK] Failed to set new stock for product {product_id}: {error_msg}")
-                    return {"status": "error", "message": f"Error al establecer nuevo stock en Dolibarr: {error_msg}"}
+            payload = {
+                "product_id": product_id,
+                "warehouse_id": warehouse_id,
+                "qty": delta,
+                "type": movement_type,
+                "movementcode": "SYNCSTOCK",
+                "movementlabel": f"Sincronización SyncStock - delta: {delta:+d} ({stock_actual} → {stock})",
+            }
 
-                logger.info(f"[STOCK] Product {product_id}: new stock set to {stock}")
+            response = self._rate_limited_request(
+                'POST',
+                f"{self.base_url}/stockmovements",
+                json=payload,
+                timeout=30
+            )
 
-            # === STEP 3: Verify final stock and auto-correct if mismatch ===
-            new_stock = self._get_warehouse_stock(product_id, warehouse_id)
-            if new_stock is not None:
-                if new_stock == stock:
-                    logger.info(f"[STOCK] Verification OK: product {product_id} stock is now {new_stock}")
-                elif new_stock > stock:
-                    # ACCUMULATION DETECTED: Dolibarr has more stock than expected.
-                    # This means the removal step was incomplete (stale data caused us to remove less
-                    # than the actual stock). Auto-correct by removing the excess.
-                    excess = new_stock - stock
-                    logger.warning(
-                        f"[STOCK] ACCUMULATION detected for product {product_id}: "
-                        f"expected={stock}, actual={new_stock}, removing excess={excess}"
-                    )
-                    corrective_payload = {
-                        "product_id": product_id,
-                        "warehouse_id": warehouse_id,
-                        "qty": excess,
-                        "type": 1,  # 1 = salida (stock removal)
-                        "label": f"SyncStock CORRECCIÓN: eliminar exceso ({new_stock} → {stock})",
-                        "date": datetime.now(UTC).isoformat()
-                    }
-                    corrective_response = self._rate_limited_request(
-                        'POST',
-                        f"{self.base_url}/stockmovements",
-                        json=corrective_payload,
-                        timeout=30
-                    )
-                    if corrective_response.status_code in [200, 201]:
-                        logger.info(f"[STOCK] Auto-correction OK: product {product_id} excess removed, stock={stock}")
-                    else:
-                        err = corrective_response.text[:200] if corrective_response.text else f"HTTP {corrective_response.status_code}"
-                        logger.error(f"[STOCK] Auto-correction FAILED for product {product_id}: {err}")
-                        return {
-                            "status": "warning",
-                            "message": f"Acumulación detectada y corrección fallida: esperado {stock}, actual {new_stock}"
-                        }
-                else:
-                    # new_stock < stock: fewer units than expected
-                    logger.warning(
-                        f"[STOCK] Verification MISMATCH for product {product_id}: "
-                        f"expected={stock}, actual={new_stock}"
-                    )
-                    return {
-                        "status": "warning",
-                        "message": f"Stock establecido pero verificación difiere: esperado {stock}, actual {new_stock}"
-                    }
+            if response.status_code not in [200, 201]:
+                error_msg = response.text[:200] if response.text else f"HTTP {response.status_code}"
+                logger.error(f"[STOCK] Failed to update stock for product {product_id}: {error_msg}")
+                return {"status": "error", "message": f"Error al actualizar stock en Dolibarr: {error_msg}"}
 
-            return {"status": "success", "message": f"Stock actualizado: {current_stock} → {stock}"}
+            logger.info(f"[STOCK] Product {product_id}: stock actualizado {stock_actual} → {stock}")
+            return {"status": "success", "message": f"Stock actualizado: {stock_actual} → {stock}"}
 
         except Exception as e:
             logger.error(f"[STOCK] _update_stock_impl error for product {product_id}: {e}", exc_info=True)
