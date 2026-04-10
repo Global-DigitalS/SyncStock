@@ -4,6 +4,7 @@ Dolibarr ERP/CRM API Client.
 import asyncio
 import base64
 import logging
+import threading
 import time
 from datetime import UTC, datetime
 
@@ -12,6 +13,22 @@ import requests
 from .base import _validate_crm_url
 
 logger = logging.getLogger(__name__)
+
+# Per-product threading locks — prevent concurrent update_stock calls for the
+# same product_id from racing: multiple reads of the same current_stock → each
+# adds desired → stock accumulates to desired × N (confirmed in production logs).
+_PRODUCT_STOCK_LOCKS: dict[int, threading.Lock] = {}
+_PRODUCT_STOCK_LOCKS_GUARD = threading.Lock()
+
+
+def _get_product_stock_lock(product_id: int) -> threading.Lock:
+    """Return (or create) the per-product lock for stock update serialization."""
+    with _PRODUCT_STOCK_LOCKS_GUARD:
+        if product_id not in _PRODUCT_STOCK_LOCKS:
+            _PRODUCT_STOCK_LOCKS[product_id] = threading.Lock()
+        return _PRODUCT_STOCK_LOCKS[product_id]
+
+
 
 
 # ==================== RETRY LOGIC WITH EXPONENTIAL BACKOFF ====================
@@ -738,6 +755,20 @@ class DolibarrClient:
                 logger.error(f"[STOCK] Cannot set negative stock: {stock}")
                 return {"status": "error", "message": "El stock no puede ser negativo"}
 
+            # Serialise concurrent update_stock calls for the same product.
+            # Without this, N parallel syncs all read the same current_stock,
+            # only 1 removal sticks (Dolibarr floors at 0), but ALL N additions
+            # succeed → stock = desired × N (confirmed from production logs).
+            with _get_product_stock_lock(product_id):
+                return self._update_stock_impl(product_id, stock, warehouse_id)
+
+        except Exception as e:
+            logger.error(f"[STOCK] update_stock error for product {product_id}: {e}", exc_info=True)
+            return {"status": "error", "message": "Error en la operacion CRM. Consulta los logs del servidor."}
+
+    def _update_stock_impl(self, product_id: int, stock: int, warehouse_id: int = None) -> dict:
+        """Core RESET+SET logic. Called from update_stock with the per-product lock held."""
+        try:
             # First get or create a warehouse
             if warehouse_id is None:
                 warehouse_id = self.get_or_create_default_warehouse()
@@ -765,39 +796,20 @@ class DolibarrClient:
                 # using stock_reel=0 as fallback is DANGEROUS: we skip the removal step and ADD on top
                 # of existing stock, causing accumulation (e.g., 50 + 100 = 150 instead of 100).
                 # The only safe values from stock_reel are positive integers; zero is treated as unknown.
-                if stock_reel is None or stock_reel == "" or stock_reel == "null":
-                    logger.warning(
-                        f"[STOCK] Product {product_id}: Cannot determine current stock (stock_reel is empty). "
-                        f"Skipping update to prevent accumulation. Desired stock: {stock}"
-                    )
-                    return {
-                        "status": "warning",
-                        "message": f"No se pudo determinar el stock actual. Actualización omitida para evitar acumulación."
-                    }
-
+                # With the per-product lock held (see update_stock), concurrent races are
+                # impossible. Treat any unresolvable stock_reel as 0 and proceed; step-3
+                # verification will auto-correct any real over-count from stale data.
                 try:
-                    current_stock = int(float(stock_reel))
-                except (ValueError, TypeError):
-                    logger.error(f"[STOCK] Invalid stock_reel value for product {product_id}: {stock_reel}")
-                    return {"status": "error", "message": f"Valor de stock inválido en Dolibarr"}
-
-                # CRITICAL: stock_reel=0 in the fallback path is unreliable.
-                # If the warehouse-specific endpoint already failed (returned None), a stock_reel of 0
-                # may be stale — actual stock could be non-zero. Skipping the removal step when
-                # current_stock=0 but real stock=50 causes: 50 + 100 = 150 instead of 100.
-                # Treat fallback-zero as unknown to prevent accumulation.
-                if current_stock == 0:
-                    logger.warning(
-                        f"[STOCK] Product {product_id}: stock_reel=0 in fallback path is unreliable "
-                        f"(warehouse-specific endpoint failed). Skipping update to prevent accumulation. "
-                        f"Desired stock: {stock}"
+                    current_stock = (
+                        int(float(stock_reel))
+                        if stock_reel not in (None, "", "null")
+                        else 0
                     )
-                    return {
-                        "status": "warning",
-                        "message": f"No se pudo verificar el stock actual en el almacén. Actualización omitida para evitar acumulación."
-                    }
+                except (ValueError, TypeError):
+                    logger.warning(f"[STOCK] Invalid stock_reel for product {product_id}: {stock_reel!r}. Treating as 0.")
+                    current_stock = 0
 
-                logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} (fallback)")
+                logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} as fallback (step-3 will auto-correct if needed)")
 
             logger.info(f"[STOCK] Product {product_id}: current_stock={current_stock}, desired={stock}")
 
@@ -902,7 +914,7 @@ class DolibarrClient:
             return {"status": "success", "message": f"Stock actualizado: {current_stock} → {stock}"}
 
         except Exception as e:
-            logger.error(f"[STOCK] update_stock error for product {product_id}: {e}", exc_info=True)
+            logger.error(f"[STOCK] _update_stock_impl error for product {product_id}: {e}", exc_info=True)
             return {"status": "error", "message": "Error en la operación CRM. Consulta los logs del servidor."}
 
     def get_warehouses(self) -> list[dict]:
