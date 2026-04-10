@@ -759,9 +759,12 @@ class DolibarrClient:
 
                 stock_reel = product.get("stock_reel")
 
-                # CRITICAL FIX: If stock_reel is empty/null, we cannot reliably determine current stock
-                # This is dangerous in RESET+SET because we would assume current_stock=0 and only ADD,
-                # resulting in stock accumulation. Instead, we must skip the update to prevent data corruption.
+                # CRITICAL FIX: If stock_reel is empty/null/zero, we cannot reliably determine current stock.
+                # stock_reel is the TOTAL across ALL warehouses and can be stale in Dolibarr.
+                # When _get_warehouse_stock already returned None (warehouse-specific endpoint failed),
+                # using stock_reel=0 as fallback is DANGEROUS: we skip the removal step and ADD on top
+                # of existing stock, causing accumulation (e.g., 50 + 100 = 150 instead of 100).
+                # The only safe values from stock_reel are positive integers; zero is treated as unknown.
                 if stock_reel is None or stock_reel == "" or stock_reel == "null":
                     logger.warning(
                         f"[STOCK] Product {product_id}: Cannot determine current stock (stock_reel is empty). "
@@ -774,10 +777,27 @@ class DolibarrClient:
 
                 try:
                     current_stock = int(float(stock_reel))
-                    logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} (fallback)")
                 except (ValueError, TypeError):
                     logger.error(f"[STOCK] Invalid stock_reel value for product {product_id}: {stock_reel}")
                     return {"status": "error", "message": f"Valor de stock inválido en Dolibarr"}
+
+                # CRITICAL: stock_reel=0 in the fallback path is unreliable.
+                # If the warehouse-specific endpoint already failed (returned None), a stock_reel of 0
+                # may be stale — actual stock could be non-zero. Skipping the removal step when
+                # current_stock=0 but real stock=50 causes: 50 + 100 = 150 instead of 100.
+                # Treat fallback-zero as unknown to prevent accumulation.
+                if current_stock == 0:
+                    logger.warning(
+                        f"[STOCK] Product {product_id}: stock_reel=0 in fallback path is unreliable "
+                        f"(warehouse-specific endpoint failed). Skipping update to prevent accumulation. "
+                        f"Desired stock: {stock}"
+                    )
+                    return {
+                        "status": "warning",
+                        "message": f"No se pudo verificar el stock actual en el almacén. Actualización omitida para evitar acumulación."
+                    }
+
+                logger.info(f"[STOCK] Product {product_id}: using stock_reel={current_stock} (fallback)")
 
             logger.info(f"[STOCK] Product {product_id}: current_stock={current_stock}, desired={stock}")
 
@@ -831,12 +851,45 @@ class DolibarrClient:
 
                 logger.info(f"[STOCK] Product {product_id}: new stock set to {stock}")
 
-            # === STEP 3: Verify final stock ===
+            # === STEP 3: Verify final stock and auto-correct if mismatch ===
             new_stock = self._get_warehouse_stock(product_id, warehouse_id)
             if new_stock is not None:
                 if new_stock == stock:
                     logger.info(f"[STOCK] Verification OK: product {product_id} stock is now {new_stock}")
+                elif new_stock > stock:
+                    # ACCUMULATION DETECTED: Dolibarr has more stock than expected.
+                    # This means the removal step was incomplete (stale data caused us to remove less
+                    # than the actual stock). Auto-correct by removing the excess.
+                    excess = new_stock - stock
+                    logger.warning(
+                        f"[STOCK] ACCUMULATION detected for product {product_id}: "
+                        f"expected={stock}, actual={new_stock}, removing excess={excess}"
+                    )
+                    corrective_payload = {
+                        "product_id": product_id,
+                        "warehouse_id": warehouse_id,
+                        "qty": excess,
+                        "type": 1,  # 1 = salida (stock removal)
+                        "label": f"SyncStock CORRECCIÓN: eliminar exceso ({new_stock} → {stock})",
+                        "date": datetime.now(UTC).isoformat()
+                    }
+                    corrective_response = self._rate_limited_request(
+                        'POST',
+                        f"{self.base_url}/stockmovements",
+                        json=corrective_payload,
+                        timeout=30
+                    )
+                    if corrective_response.status_code in [200, 201]:
+                        logger.info(f"[STOCK] Auto-correction OK: product {product_id} excess removed, stock={stock}")
+                    else:
+                        err = corrective_response.text[:200] if corrective_response.text else f"HTTP {corrective_response.status_code}"
+                        logger.error(f"[STOCK] Auto-correction FAILED for product {product_id}: {err}")
+                        return {
+                            "status": "warning",
+                            "message": f"Acumulación detectada y corrección fallida: esperado {stock}, actual {new_stock}"
+                        }
                 else:
+                    # new_stock < stock: fewer units than expected
                     logger.warning(
                         f"[STOCK] Verification MISMATCH for product {product_id}: "
                         f"expected={stock}, actual={new_stock}"
