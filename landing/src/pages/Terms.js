@@ -1,5 +1,6 @@
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel } from "../components/ui";
+import { useSEO } from "../hooks/useSEO";
 
 const SECTIONS = [
   {
@@ -125,6 +126,12 @@ export default function Terms() {
   const dark = theme === "dark";
   const appName = branding.app_name || "SyncStock";
   const today = new Date().toLocaleDateString("es-ES", { year: "numeric", month: "long", day: "numeric" });
+
+  useSEO({
+    title: "Términos y Condiciones",
+    description: "Términos y Condiciones de uso de SyncStock. Condiciones legales para el acceso y uso de la plataforma de gestión de inventario B2B.",
+    canonical: "/terminos",
+  });
 
   const render = (text) => text.replace(/{app_name}/g, appName);
 

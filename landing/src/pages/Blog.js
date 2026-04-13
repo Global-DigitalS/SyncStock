@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Clock, Tag, Rss } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
+import { useSEO } from "../hooks/useSEO";
 
 const SAMPLE_POSTS = [
   {
@@ -60,6 +61,12 @@ const CATEGORIES = ["Todos", "Guías", "Integraciones", "Estrategia", "Novedades
 export default function Blog() {
   const { branding, theme, APP_URL } = useApp();
   const dark = theme === "dark";
+
+  useSEO({
+    title: "Blog",
+    description: "Guías, estrategias e integraciones para automatizar tu gestión de inventario B2B. Artículos sobre WooCommerce, Shopify, ERP y gestión de proveedores.",
+    canonical: "/blog",
+  });
 
   const featured = SAMPLE_POSTS.find(p => p.featured);
   const rest = SAMPLE_POSTS.filter(p => !p.featured);

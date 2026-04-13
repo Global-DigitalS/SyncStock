@@ -27,14 +27,52 @@ function PostHogPageviewTracker() {
   return null;
 }
 
+// Observador global de scroll-reveal: añade .visible a los elementos
+// con clases .reveal-up/.reveal-left/.reveal-right/.reveal-scale
+// cuando entran en el viewport. Funciona con contenido cargado dinámicamente.
+function ScrollReveal() {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    const SELECTOR = ".reveal-up, .reveal-left, .reveal-right, .reveal-scale";
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add("visible");
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: "0px 0px -60px 0px" }
+    );
+
+    const observeAll = () => {
+      document.querySelectorAll(SELECTOR).forEach((el) => {
+        if (!el.classList.contains("visible")) observer.observe(el);
+      });
+    };
+
+    // Observar elementos iniciales y los que se rendericen después
+    observeAll();
+    const mutation = new MutationObserver(observeAll);
+    mutation.observe(document.body, { childList: true, subtree: true });
+
+    return () => {
+      observer.disconnect();
+      mutation.disconnect();
+    };
+  }, [pathname]); // Re-ejecutar al cambiar de página
+
+  return null;
+}
+
 function AppLayout() {
-  const { branding, theme } = useApp();
+  const { theme } = useApp();
   const dark = theme === "dark";
 
-  // Update page title from branding
-  useEffect(() => {
-    document.title = branding.page_title || `${branding.app_name} — Sincronización de Inventario B2B`;
-  }, [branding.page_title, branding.app_name]);
+  // El título y meta tags son gestionados por el hook useSEO en cada página.
 
   return (
     <div className={dark ? "dark bg-slate-950 text-white" : "bg-white text-slate-900"}>
@@ -64,6 +102,7 @@ export default function App() {
       <BrowserRouter>
         <ScrollToTop />
         <PostHogPageviewTracker />
+        <ScrollReveal />
         <AppLayout />
       </BrowserRouter>
     </AppProvider>

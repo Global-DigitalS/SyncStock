@@ -2,11 +2,24 @@ import { useState } from "react";
 import { CheckCircle2, AlertCircle } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
+import { useSEO } from "../hooks/useSEO";
 import axios from "axios";
 
 export default function Contact() {
   const { branding, theme, API_URL } = useApp();
   const dark = theme === "dark";
+
+  useSEO({
+    title: "Contacto",
+    description: "¿Tienes dudas sobre SyncStock? Contacta con nuestro equipo. Respondemos en menos de 24 horas laborables.",
+    canonical: "/contacto",
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": "ContactPage",
+      "name": "Contacto — SyncStock",
+      "description": "Página de contacto de SyncStock. Formulario de contacto para soporte y consultas."
+    }
+  });
 
   const [form, setForm] = useState({ name: "", email: "", subject: "", message: "" });
   const [status, setStatus] = useState(null); // null | "loading" | "success" | "error"

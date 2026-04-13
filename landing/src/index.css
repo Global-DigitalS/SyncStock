@@ -2,11 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Base styles */
+/* ══════════════════════════════════════════════════════════════════════
+   BASE
+══════════════════════════════════════════════════════════════════════ */
 * {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
@@ -15,209 +21,420 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Custom scrollbar - Dark theme */
-.bg-slate-900 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* ══════════════════════════════════════════════════════════════════════
+   SCROLLBAR
+══════════════════════════════════════════════════════════════════════ */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(100,116,139,0.3); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(100,116,139,0.5); }
+
+/* ══════════════════════════════════════════════════════════════════════
+   SELECTION
+══════════════════════════════════════════════════════════════════════ */
+::selection {
+  background: rgba(99, 102, 241, 0.25);
+  color: #1e293b;
+}
+.dark ::selection {
+  background: rgba(99, 102, 241, 0.35);
+  color: #f8fafc;
 }
 
-.bg-slate-900 ::-webkit-scrollbar-track {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.bg-slate-900 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+/* ══════════════════════════════════════════════════════════════════════
+   FOCUS
+══════════════════════════════════════════════════════════════════════ */
+:focus-visible {
+  outline: 2px solid #6366f1;
+  outline-offset: 2px;
   border-radius: 4px;
 }
 
-.bg-slate-900 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Custom scrollbar - Light theme */
-.bg-slate-50 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.bg-slate-50 ::-webkit-scrollbar-track {
-  background: rgba(0, 0, 0, 0.05);
-}
-
-.bg-slate-50 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.1);
-  border-radius: 4px;
-}
-
-.bg-slate-50 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 0, 0, 0.2);
-}
-
-/* Animations */
+/* ══════════════════════════════════════════════════════════════════════
+   KEYFRAMES
+══════════════════════════════════════════════════════════════════════ */
 @keyframes fadeIn {
   from { opacity: 0; }
-  to { opacity: 1; }
+  to   { opacity: 1; }
 }
 
 @keyframes slideUp {
-  from { 
-    opacity: 0; 
-    transform: translateY(20px); 
-  }
-  to { 
-    opacity: 1; 
-    transform: translateY(0); 
-  }
+  from { opacity: 0; transform: translateY(32px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideLeft {
+  from { opacity: 0; transform: translateX(40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(-40px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-10px); }
+  0%, 100% { transform: translateY(0px); }
+  50%       { transform: translateY(-12px); }
 }
 
-@keyframes gradient-shift {
-  0%, 100% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
+@keyframes floatSlow {
+  0%, 100% { transform: translateY(0px) rotate(0deg); }
+  50%       { transform: translateY(-8px) rotate(1deg); }
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.3); }
-  50% { box-shadow: 0 0 40px rgba(99, 102, 241, 0.5); }
+  0%, 100% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.25); }
+  50%       { box-shadow: 0 0 48px rgba(99, 102, 241, 0.5); }
 }
 
-.animate-fade-in {
-  animation: fadeIn 0.5s ease-out forwards;
-}
-
-.animate-slide-up {
-  animation: slideUp 0.6s ease-out forwards;
-}
-
-.animate-float {
-  animation: float 6s ease-in-out infinite;
-}
-
-.animate-gradient {
-  background-size: 200% 200%;
-  animation: gradient-shift 8s ease infinite;
-}
-
-.animate-pulse-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
-}
-
-/* Spinner */
-.spinner {
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position: 200% center; }
 }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
 
-/* Focus styles */
-:focus-visible {
-  outline: 2px solid #6366f1;
-  outline-offset: 2px;
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-12px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Selection - Dark */
-.bg-slate-900 ::selection {
-  background: rgba(99, 102, 241, 0.3);
-  color: white;
+@keyframes borderGlow {
+  0%, 100% { border-color: rgba(99, 102, 241, 0.3); }
+  50%       { border-color: rgba(99, 102, 241, 0.7); }
 }
 
-/* Selection - Light */
-.bg-slate-50 ::selection {
-  background: rgba(99, 102, 241, 0.2);
-  color: #1e293b;
+@keyframes ticker {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
 }
 
-/* Glass effect - Dark */
-.glass-dark {
-  background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+/* ══════════════════════════════════════════════════════════════════════
+   CLASES DE ANIMACIÓN SIMPLES
+══════════════════════════════════════════════════════════════════════ */
+.animate-fade-in    { animation: fadeIn 0.5s ease-out forwards; }
+.animate-slide-up   { animation: slideUp 0.65s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-slide-left { animation: slideLeft 0.65s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-slide-right{ animation: slideRight 0.65s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-scale-in   { animation: scaleIn 0.5s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-float      { animation: float 6s ease-in-out infinite; }
+.animate-float-slow { animation: floatSlow 8s ease-in-out infinite; }
+.animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
+.animate-spin       { animation: spin 0.8s linear infinite; }
+
+/* Delays escalonados */
+.animate-delay-100  { animation-delay: 100ms; }
+.animate-delay-200  { animation-delay: 200ms; }
+.animate-delay-300  { animation-delay: 300ms; }
+.animate-delay-400  { animation-delay: 400ms; }
+.animate-delay-500  { animation-delay: 500ms; }
+.animate-delay-600  { animation-delay: 600ms; }
+.animate-delay-700  { animation-delay: 700ms; }
+.animate-delay-800  { animation-delay: 800ms; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   SCROLL REVEAL — sistema de animación disparado por IntersectionObserver
+   Uso: añade la clase .reveal[-up|left|right|scale] al elemento JSX
+        y complementa con .reveal-delay-N.
+        El hook useInView añade la clase .visible cuando entra al viewport.
+══════════════════════════════════════════════════════════════════════ */
+
+/* Estado inicial: oculto */
+.reveal-up,
+.reveal-left,
+.reveal-right,
+.reveal-scale {
+  opacity: 0;
+  transition-property: opacity, transform;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-duration: 700ms;
+  will-change: opacity, transform;
 }
 
-/* Glass effect - Light */
-.glass-light {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+.reveal-up    { transform: translateY(40px); }
+.reveal-left  { transform: translateX(50px); }
+.reveal-right { transform: translateX(-50px); }
+.reveal-scale { transform: scale(0.90); }
+
+/* Estado visible */
+.reveal-up.visible,
+.reveal-left.visible,
+.reveal-right.visible,
+.reveal-scale.visible {
+  opacity: 1;
+  transform: translateY(0) translateX(0) scale(1);
 }
 
-/* Smooth transitions for theme switching */
-.transition-colors {
-  transition-property: background-color, border-color, color, fill, stroke;
-  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-  transition-duration: 300ms;
+/* Delays para stagger */
+.reveal-delay-100 { transition-delay: 100ms; }
+.reveal-delay-150 { transition-delay: 150ms; }
+.reveal-delay-200 { transition-delay: 200ms; }
+.reveal-delay-250 { transition-delay: 250ms; }
+.reveal-delay-300 { transition-delay: 300ms; }
+.reveal-delay-400 { transition-delay: 400ms; }
+.reveal-delay-500 { transition-delay: 500ms; }
+.reveal-delay-600 { transition-delay: 600ms; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   DOT GRID — fondo de puntos para secciones hero
+══════════════════════════════════════════════════════════════════════ */
+.dot-grid {
+  background-image: radial-gradient(circle, #e2e8f0 1.5px, transparent 1.5px);
+  background-size: 28px 28px;
 }
 
-/* Card hover effects */
-.card-hover {
-  transition: all 0.3s ease;
+.dot-grid-dark {
+  background-image: radial-gradient(circle, rgba(255,255,255,0.06) 1.5px, transparent 1.5px);
+  background-size: 28px 28px;
 }
 
-.card-hover:hover {
-  transform: translateY(-4px);
+/* ══════════════════════════════════════════════════════════════════════
+   SHIMMER — texto con efecto brillo
+══════════════════════════════════════════════════════════════════════ */
+.shimmer-text {
+  background: linear-gradient(
+    90deg,
+    #4f46e5 0%,
+    #7c3aed 25%,
+    #4f46e5 50%,
+    #7c3aed 75%,
+    #4f46e5 100%
+  );
+  background-size: 200% auto;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: shimmer 3s linear infinite;
 }
 
-/* Button base styles */
-button {
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-button:active {
-  transform: scale(0.98);
-}
-
-/* Gradient text */
+/* ══════════════════════════════════════════════════════════════════════
+   GRADIENT TEXT
+══════════════════════════════════════════════════════════════════════ */
 .gradient-text {
   background-clip: text;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* Mobile menu animation */
-@keyframes slideDown {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* ══════════════════════════════════════════════════════════════════════
+   GLASS EFFECT
+══════════════════════════════════════════════════════════════════════ */
+.glass-dark {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
+.glass-light {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   CARD HOVER
+══════════════════════════════════════════════════════════════════════ */
+.card-hover {
+  transition: transform 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 280ms ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08), 0 8px 16px rgba(99, 102, 241, 0.06);
+}
+
+.card-hover-subtle {
+  transition: transform 250ms cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 250ms ease;
+}
+
+.card-hover-subtle:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   FEATURE CARD — borde izquierdo accent
+══════════════════════════════════════════════════════════════════════ */
+.feature-card {
+  transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 260ms ease,
+              border-color 260ms ease;
+  border-left: 2px solid transparent;
+}
+
+.feature-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.07), 0 4px 12px rgba(99, 102, 241, 0.08);
+  border-left-color: #4f46e5;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════════════════════════════════ */
+button {
+  cursor: pointer;
+}
+
+button:active {
+  transform: scale(0.97);
+  transition: transform 100ms ease;
+}
+
+.btn-primary-landing {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 14px 32px;
+  background: #4f46e5;
+  color: white;
+  font-weight: 700;
+  font-size: 1rem;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.35), 0 1px 3px rgba(0,0,0,0.1);
+  transition: background 200ms ease,
+              box-shadow 200ms ease,
+              transform 200ms cubic-bezier(0.16,1,0.3,1);
+  text-decoration: none;
+}
+
+.btn-primary-landing:hover {
+  background: #4338ca;
+  box-shadow: 0 8px 24px rgba(79, 70, 229, 0.45), 0 2px 6px rgba(0,0,0,0.12);
+  transform: translateY(-2px);
+}
+
+.btn-primary-landing:active {
+  transform: scale(0.97) translateY(0);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   NAVBAR blur on scroll (clase aplicada por JS en Navbar.js)
+══════════════════════════════════════════════════════════════════════ */
+.navbar-scrolled {
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   TICKER / MARQUEE para logos de integraciones
+══════════════════════════════════════════════════════════════════════ */
+.ticker-track {
+  display: flex;
+  width: max-content;
+  animation: ticker 30s linear infinite;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MOBILE MENU
+══════════════════════════════════════════════════════════════════════ */
 .mobile-menu-enter {
-  animation: slideDown 0.2s ease-out;
+  animation: slideDown 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* FAQ accordion animation */
-@keyframes expandDown {
-  from {
-    opacity: 0;
-    max-height: 0;
-  }
-  to {
-    opacity: 1;
-    max-height: 500px;
-  }
-}
-
+/* ══════════════════════════════════════════════════════════════════════
+   FAQ ACCORDION
+══════════════════════════════════════════════════════════════════════ */
 .faq-content-enter {
-  animation: expandDown 0.3s ease-out;
+  animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Theme toggle animation */
+/* ══════════════════════════════════════════════════════════════════════
+   THEME TOGGLE
+══════════════════════════════════════════════════════════════════════ */
 .theme-toggle-icon {
-  transition: transform 0.3s ease, color 0.3s ease;
+  transition: transform 300ms cubic-bezier(0.16,1,0.3,1),
+              color 200ms ease;
 }
 
 .theme-toggle-icon:hover {
-  transform: rotate(15deg);
+  transform: rotate(20deg) scale(1.1);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SPINNER
+══════════════════════════════════════════════════════════════════════ */
+.spinner {
+  border: 2px solid rgba(99,102,241,0.15);
+  border-top-color: #4f46e5;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   STAT NUMBER — accent bar debajo del número
+══════════════════════════════════════════════════════════════════════ */
+.stat-number::after {
+  content: '';
+  display: block;
+  height: 3px;
+  width: 40px;
+  background: #4f46e5;
+  border-radius: 2px;
+  margin: 8px auto 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   STEP CONNECTOR — línea entre pasos de "Cómo funciona"
+══════════════════════════════════════════════════════════════════════ */
+.step-connector {
+  position: relative;
+}
+
+.step-connector::after {
+  content: '';
+  position: absolute;
+  top: 32px;
+  left: calc(50% + 40px);
+  width: calc(100% - 80px);
+  height: 1px;
+  background: linear-gradient(90deg, #4f46e5, transparent);
+  opacity: 0.3;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   PRICING CARD GLOW — el plan popular
+══════════════════════════════════════════════════════════════════════ */
+.pricing-popular {
+  animation: borderGlow 3s ease-in-out infinite;
+  position: relative;
+}
+
+.pricing-popular::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: linear-gradient(135deg, #4f46e5, #7c3aed);
+  opacity: 0.15;
+  pointer-events: none;
+  border-radius: 16px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   SMOOTH TRANSITIONS (theme switching)
+══════════════════════════════════════════════════════════════════════ */
+.transition-theme {
+  transition-property: background-color, border-color, color;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 250ms;
 }
