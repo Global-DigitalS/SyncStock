@@ -1,7 +1,6 @@
 import { Link } from "react-router-dom";
 import { Twitter, Linkedin, Facebook, Mail, ExternalLink } from "lucide-react";
 import { useApp } from "../context/AppContext";
-import { cn } from "./ui";
 
 const PRODUCT_LINKS = [
   { label: "Características", href: "/caracteristicas" },
@@ -20,9 +19,11 @@ const LEGAL_LINKS = [
   { label: "Términos", href: "/terminos" },
 ];
 
+const SOCIAL_CLASS = "p-2.5 rounded-lg transition-all hover:scale-110 text-slate-500 hover:text-white hover:bg-slate-800";
+const LINK_CLASS = "text-sm text-slate-500 hover:text-slate-300 transition-colors";
+
 export default function Footer() {
-  const { branding, content, theme, APP_URL, API_URL } = useApp();
-  const dark = theme === "dark";
+  const { branding, content, APP_URL, API_URL } = useApp();
   const year = new Date().getFullYear();
 
   const logoSrc = branding.logo_url
@@ -34,10 +35,7 @@ export default function Footer() {
   const footerText = branding.footer_text;
 
   return (
-    <footer className={cn(
-      "border-t",
-      dark ? "bg-slate-900 border-slate-800" : "bg-slate-50 border-slate-200"
-    )}>
+    <footer className="bg-slate-950 border-t border-slate-900">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-8 lg:gap-12">
 
@@ -51,35 +49,31 @@ export default function Footer() {
                   <span className="text-white font-bold text-base">{branding.app_name?.[0] || "S"}</span>
                 </div>
               )}
-              <span className={cn("font-bold text-lg", dark ? "text-white" : "text-slate-900")}>
+              <span className="font-display font-bold text-lg text-white">
                 {branding.app_name}
               </span>
             </Link>
-            <p className={cn("text-sm leading-relaxed mb-6 font-medium", dark ? "text-slate-400" : "text-slate-600")}>
+            <p className="text-sm leading-relaxed mb-6 text-slate-400">
               {companyDesc}
             </p>
             {/* Social links */}
             <div className="flex items-center gap-3">
               {social.twitter && (
-                <a href={social.twitter} target="_blank" rel="noopener noreferrer"
-                  className={cn("p-2.5 rounded-lg transition-all hover:scale-110", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-50")}>
+                <a href={social.twitter} target="_blank" rel="noopener noreferrer" className={SOCIAL_CLASS}>
                   <Twitter size={18} />
                 </a>
               )}
               {social.linkedin && (
-                <a href={social.linkedin} target="_blank" rel="noopener noreferrer"
-                  className={cn("p-2.5 rounded-lg transition-all hover:scale-110", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-50")}>
+                <a href={social.linkedin} target="_blank" rel="noopener noreferrer" className={SOCIAL_CLASS}>
                   <Linkedin size={18} />
                 </a>
               )}
               {social.facebook && (
-                <a href={social.facebook} target="_blank" rel="noopener noreferrer"
-                  className={cn("p-2.5 rounded-lg transition-all hover:scale-110", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-50")}>
+                <a href={social.facebook} target="_blank" rel="noopener noreferrer" className={SOCIAL_CLASS}>
                   <Facebook size={18} />
                 </a>
               )}
-              <a href="/contacto"
-                className={cn("p-2.5 rounded-lg transition-all hover:scale-110", dark ? "text-slate-400 hover:text-white hover:bg-slate-800" : "text-slate-600 hover:text-indigo-600 hover:bg-indigo-50")}>
+              <a href="/contacto" className={SOCIAL_CLASS}>
                 <Mail size={18} />
               </a>
             </div>
@@ -87,25 +81,25 @@ export default function Footer() {
 
           {/* Producto */}
           <div>
-            <h3 className={cn("font-bold text-base mb-5", dark ? "text-white" : "text-slate-900")}>
+            <h3 className="font-display font-bold text-sm uppercase tracking-widest text-slate-500 mb-5">
               Producto
             </h3>
             <ul className="space-y-3">
               {PRODUCT_LINKS.map(link => (
                 <li key={link.href}>
                   {link.href.startsWith("/#") ? (
-                    <a href={link.href} className={cn("text-sm font-medium transition-colors hover:text-indigo-600", dark ? "text-slate-400" : "text-slate-600")}>
+                    <a href={link.href} className={LINK_CLASS}>
                       {link.label}
                     </a>
                   ) : (
-                    <Link to={link.href} className={cn("text-sm font-medium transition-colors hover:text-indigo-600", dark ? "text-slate-400" : "text-slate-600")}>
+                    <Link to={link.href} className={LINK_CLASS}>
                       {link.label}
                     </Link>
                   )}
                 </li>
               ))}
               <li>
-                <a href={`${APP_URL}/#/register`} className={cn("text-sm font-semibold transition-colors flex items-center gap-2 text-indigo-600 hover:text-indigo-700", dark ? "text-indigo-400 hover:text-indigo-300" : "")}>
+                <a href={`${APP_URL}/#/register`} className="text-sm font-semibold transition-colors flex items-center gap-2 text-indigo-400 hover:text-indigo-300">
                   Prueba Gratuita <ExternalLink size={14} />
                 </a>
               </li>
@@ -114,13 +108,13 @@ export default function Footer() {
 
           {/* Empresa */}
           <div>
-            <h3 className={cn("font-bold text-base mb-5", dark ? "text-white" : "text-slate-900")}>
+            <h3 className="font-display font-bold text-sm uppercase tracking-widest text-slate-500 mb-5">
               Empresa
             </h3>
             <ul className="space-y-3">
               {COMPANY_LINKS.map(link => (
                 <li key={link.href}>
-                  <Link to={link.href} className={cn("text-sm font-medium transition-colors hover:text-indigo-600", dark ? "text-slate-400" : "text-slate-600")}>
+                  <Link to={link.href} className={LINK_CLASS}>
                     {link.label}
                   </Link>
                 </li>
@@ -130,13 +124,13 @@ export default function Footer() {
 
           {/* Legal */}
           <div>
-            <h3 className={cn("font-bold text-base mb-5", dark ? "text-white" : "text-slate-900")}>
+            <h3 className="font-display font-bold text-sm uppercase tracking-widest text-slate-500 mb-5">
               Legal
             </h3>
             <ul className="space-y-3">
               {LEGAL_LINKS.map(link => (
                 <li key={link.href}>
-                  <Link to={link.href} className={cn("text-sm font-medium transition-colors hover:text-indigo-600", dark ? "text-slate-400" : "text-slate-600")}>
+                  <Link to={link.href} className={LINK_CLASS}>
                     {link.label}
                   </Link>
                 </li>
@@ -146,16 +140,21 @@ export default function Footer() {
         </div>
 
         {/* Bottom bar */}
-        <div className={cn("border-t mt-10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4", dark ? "border-slate-800" : "border-slate-200")}>
-          <p className={cn("text-sm", dark ? "text-slate-500" : "text-slate-400")}>
+        <div className="border-t border-slate-900 mt-10 pt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="text-xs text-slate-600">
             {footerText || `© ${year} ${branding.app_name}. Todos los derechos reservados.`}
           </p>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] border border-slate-800 text-slate-600 px-2 py-0.5 rounded">🔒 SSL</span>
+            <span className="text-[10px] border border-slate-800 text-slate-600 px-2 py-0.5 rounded">🇪🇺 RGPD</span>
+            <span className="text-[10px] border border-slate-800 text-slate-600 px-2 py-0.5 rounded">99.9% SLA</span>
+          </div>
           <div className="flex items-center gap-4">
             {LEGAL_LINKS.map(link => (
               <Link
                 key={link.href}
                 to={link.href}
-                className={cn("text-xs transition-colors", dark ? "text-slate-500 hover:text-slate-300" : "text-slate-400 hover:text-slate-600")}
+                className="text-xs text-slate-600 hover:text-slate-400 transition-colors"
               >
                 {link.label}
               </Link>
