@@ -39,12 +39,13 @@ export default function Navbar() {
   return (
     <header className={cn(
       "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-      scrolled
-        ? dark ? "bg-slate-900/95 backdrop-blur-md shadow-lg border-b border-slate-800" : "bg-white/95 backdrop-blur-md shadow-sm border-b border-slate-100"
-        : dark ? "bg-transparent" : "bg-transparent"
+      dark
+        ? "bg-slate-900/95 backdrop-blur-md border-b border-slate-800"
+        : "bg-white/92 backdrop-blur-xl border-b border-slate-100",
+      scrolled && (dark ? "shadow-lg shadow-slate-900/50" : "shadow-sm shadow-slate-200/60")
     )}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16 lg:h-18">
+        <div className="flex items-center justify-between h-16">
 
           {/* Logo */}
           <Link to="/" className="flex items-center gap-2.5 flex-shrink-0">
@@ -55,7 +56,7 @@ export default function Navbar() {
                 <span className="text-white font-bold text-sm">{branding.app_name?.[0] || "S"}</span>
               </div>
             )}
-            <span className={cn("font-bold text-lg hidden sm:block", dark ? "text-white" : "text-slate-900")}>
+            <span className={cn("font-display font-bold text-lg hidden sm:block", dark ? "text-white" : "text-slate-900")}>
               {branding.app_name}
             </span>
           </Link>
