@@ -29,8 +29,8 @@ export default function LogosSection() {
       <p className="text-center text-xs uppercase tracking-widest text-slate-400 mb-6">
         Integra con las plataformas que ya usas
       </p>
-      <div className="overflow-hidden">
-        <div className="animate-ticker flex gap-6 w-max">
+      <div className="overflow-hidden" role="region" aria-label="Plataformas integradas">
+        <div className="animate-ticker flex gap-6 w-max" aria-hidden="true">
           {TRACK.map((logo, i) => (
             <LogoPill key={i} logo={logo} />
           ))}
