@@ -42,14 +42,17 @@ const AdminLanding = () => {
       title: "",
       subtitle: "",
       cta_primary: "",
-      cta_secondary: ""
+      cta_secondary: "",
+      badge: "",
+      social_proof_text: ""
     },
     features: [],
     benefits: { title: "", items: [] },
     testimonials: [],
     faq: [],
     cta_final: { title: "", subtitle: "", button_text: "" },
-    footer: { company_description: "", links: [] }
+    footer: { company_description: "", links: [] },
+    how_it_works: []
   });
 
   useEffect(() => {
@@ -218,6 +221,29 @@ const AdminLanding = () => {
     }));
   };
 
+  const updateHowItWorksStep = (index, field, value) => {
+    const newSteps = [...(content.how_it_works || [])];
+    newSteps[index] = { ...newSteps[index], [field]: value };
+    setContent(prev => ({ ...prev, how_it_works: newSteps }));
+  };
+
+  const addHowItWorksStep = () => {
+    setContent(prev => ({
+      ...prev,
+      how_it_works: [
+        ...(prev.how_it_works || []),
+        { title: "", description: "" }
+      ]
+    }));
+  };
+
+  const removeHowItWorksStep = (index) => {
+    setContent(prev => ({
+      ...prev,
+      how_it_works: (prev.how_it_works || []).filter((_, i) => i !== index)
+    }));
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -259,7 +285,7 @@ const AdminLanding = () => {
       </div>
 
       <Tabs defaultValue="hero" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-6 lg:w-[720px]">
+        <TabsList className="grid w-full grid-cols-7 lg:w-[840px]">
           <TabsTrigger value="hero">
             <Layout className="w-4 h-4 mr-2" />
             Hero
@@ -267,6 +293,9 @@ const AdminLanding = () => {
           <TabsTrigger value="features">
             <Star className="w-4 h-4 mr-2" />
             Features
+          </TabsTrigger>
+          <TabsTrigger value="how_it_works">
+            Cómo funciona
           </TabsTrigger>
           <TabsTrigger value="testimonials">
             <MessageSquare className="w-4 h-4 mr-2" />
@@ -310,6 +339,24 @@ const AdminLanding = () => {
                   placeholder="Conecta proveedores, gestiona catálogos..."
                   rows={3}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Texto del badge</Label>
+                <Input
+                  value={content.hero?.badge || ""}
+                  onChange={(e) => updateHero("badge", e.target.value)}
+                  placeholder="Sincronización en tiempo real"
+                />
+                <p className="text-xs text-slate-400">Aparece encima del título principal como pill destacado</p>
+              </div>
+              <div className="space-y-2">
+                <Label>Texto de social proof</Label>
+                <Input
+                  value={content.hero?.social_proof_text || ""}
+                  onChange={(e) => updateHero("social_proof_text", e.target.value)}
+                  placeholder="Usado por 500+ empresas en España y LATAM"
+                />
+                <p className="text-xs text-slate-400">Aparece debajo de los botones junto a los avatares</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -420,6 +467,59 @@ const AdminLanding = () => {
                 <Plus className="w-4 h-4 mr-2" />
                 Añadir Característica
               </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* How It Works Section */}
+        <TabsContent value="how_it_works">
+          <Card>
+            <CardHeader>
+              <CardTitle>Cómo funciona</CardTitle>
+              <CardDescription>Los pasos que explican cómo usar SyncStock (máximo 3)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(content.how_it_works || []).map((step, idx) => (
+                <div key={idx} className="p-4 border border-slate-200 rounded-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold text-slate-700 flex items-center gap-2">
+                      <span className="w-6 h-6 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">
+                        {idx + 1}
+                      </span>
+                      Paso {idx + 1}
+                    </span>
+                    <Button variant="ghost" size="sm" onClick={() => removeHowItWorksStep(idx)}>
+                      <Trash2 className="w-4 h-4 text-red-500" />
+                    </Button>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Título del paso</Label>
+                    <Input
+                      value={step.title}
+                      onChange={(e) => updateHowItWorksStep(idx, "title", e.target.value)}
+                      placeholder="Conecta un proveedor"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Descripción</Label>
+                    <Textarea
+                      value={step.description}
+                      onChange={(e) => updateHowItWorksStep(idx, "description", e.target.value)}
+                      placeholder="Añade la URL, FTP o sube el archivo CSV..."
+                      rows={2}
+                    />
+                  </div>
+                </div>
+              ))}
+              {(content.how_it_works || []).length < 3 && (
+                <Button variant="outline" onClick={addHowItWorksStep}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  Añadir Paso
+                </Button>
+              )}
+              {(content.how_it_works || []).length >= 3 && (
+                <p className="text-xs text-slate-400">Máximo 3 pasos recomendado para buena UX</p>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
