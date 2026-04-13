@@ -117,6 +117,21 @@ body {
   100% { transform: translateX(-50%); }
 }
 
+@keyframes revealScale {
+  from { opacity: 0; transform: scale(0.94) translateY(14px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
 /* ══════════════════════════════════════════════════════════════════════
    CLASES DE ANIMACIÓN SIMPLES
 ══════════════════════════════════════════════════════════════════════ */
@@ -129,6 +144,10 @@ body {
 .animate-float-slow { animation: floatSlow 8s ease-in-out infinite; }
 .animate-pulse-glow { animation: pulse-glow 2.5s ease-in-out infinite; }
 .animate-spin       { animation: spin 0.8s linear infinite; }
+.animate-ticker      { animation: marquee 22s linear infinite; }
+.animate-reveal      { opacity: 0; }
+.animate-reveal.revealed { animation: revealScale 0.55s cubic-bezier(0.16,1,0.3,1) forwards; }
+.animate-pulse-dot   { animation: pulseDot 2s ease-in-out infinite; }
 
 /* Delays escalonados */
 .animate-delay-100  { animation-delay: 100ms; }
