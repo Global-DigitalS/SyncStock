@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dirección de Diseño — SyncStock Landing</title>
+<script src="/helper.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0a0a0f; color: #e2e8f0; min-height: 100vh; padding: 40px 24px; }
+
+  .page-title { text-align: center; font-size: 22px; font-weight: 700; color: #f8fafc; margin-bottom: 8px; letter-spacing: -0.5px; }
+  .page-sub { text-align: center; font-size: 14px; color: #64748b; margin-bottom: 40px; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1100px; margin: 0 auto; }
+
+  .card {
+    border-radius: 16px;
+    overflow: hidden;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: all 0.25s ease;
+    background: #0f1117;
+  }
+  .card:hover { transform: translateY(-4px); border-color: #4f46e5; }
+  .card.selected { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.15); }
+
+  .card-preview {
+    height: 280px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* OPCIÓN A — Dark Impact (Vercel/Linear style) */
+  .preview-a {
+    background: #000;
+  }
+  .preview-a .nav-a {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid #1a1a1a;
+  }
+  .preview-a .logo-a { display: flex; align-items: center; gap: 6px; }
+  .preview-a .logo-dot { width: 8px; height: 8px; background: #fff; border-radius: 2px; }
+  .preview-a .logo-text { font-size: 11px; font-weight: 700; color: #fff; letter-spacing: 0.5px; }
+  .preview-a .nav-links-a { display: flex; gap: 14px; }
+  .preview-a .nav-link-a { font-size: 9px; color: #666; }
+  .preview-a .nav-cta-a { font-size: 9px; color: #fff; background: #fff; color: #000; padding: 3px 8px; border-radius: 4px; font-weight: 600; }
+  .preview-a .hero-a {
+    padding: 24px 20px 0;
+    text-align: center;
+  }
+  .preview-a .badge-a {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #111; border: 1px solid #222; border-radius: 20px;
+    padding: 3px 10px; font-size: 8px; color: #888; margin-bottom: 14px;
+  }
+  .preview-a .h1-a {
+    font-size: 22px; font-weight: 800; line-height: 1.1;
+    color: #fff; letter-spacing: -1px; margin-bottom: 10px;
+  }
+  .preview-a .h1-a span { color: #4f46e5; }
+  .preview-a .sub-a { font-size: 9px; color: #555; line-height: 1.5; max-width: 180px; margin: 0 auto 14px; }
+  .preview-a .btns-a { display: flex; gap: 6px; justify-content: center; }
+  .preview-a .btn-primary-a { background: #fff; color: #000; font-size: 8px; font-weight: 700; padding: 6px 14px; border-radius: 6px; }
+  .preview-a .btn-ghost-a { background: transparent; border: 1px solid #222; color: #888; font-size: 8px; padding: 6px 14px; border-radius: 6px; }
+  .preview-a .grid-bg {
+    position: absolute; inset: 0; opacity: 0.04;
+    background-image: linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .preview-a .glow-a {
+    position: absolute; top: 60px; left: 50%; transform: translateX(-50%);
+    width: 200px; height: 200px; background: radial-gradient(ellipse, rgba(79,70,229,0.3) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  /* OPCIÓN B — Clean Enterprise (Stripe/Notion style) */
+  .preview-b { background: #fff; }
+  .preview-b .nav-b {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px; border-bottom: 1px solid #f0f0f0;
+  }
+  .preview-b .logo-b { display: flex; align-items: center; gap: 5px; }
+  .preview-b .logo-icon-b { width: 14px; height: 14px; background: linear-gradient(135deg, #4f46e5, #7c3aed); border-radius: 3px; }
+  .preview-b .logo-text-b { font-size: 10px; font-weight: 700; color: #1a1a2e; }
+  .preview-b .nav-links-b { display: flex; gap: 12px; }
+  .preview-b .nav-link-b { font-size: 9px; color: #888; }
+  .preview-b .nav-cta-b { font-size: 9px; background: #4f46e5; color: #fff; padding: 3px 10px; border-radius: 5px; font-weight: 600; }
+  .preview-b .hero-b { padding: 22px 18px 0; }
+  .preview-b .badge-b {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: #eef2ff; border: 1px solid #c7d2fe;
+    border-radius: 20px; padding: 3px 8px; font-size: 8px; color: #4f46e5; margin-bottom: 12px;
+  }
+  .preview-b .h1-b { font-size: 20px; font-weight: 800; line-height: 1.15; color: #0f172a; letter-spacing: -0.8px; margin-bottom: 8px; }
+  .preview-b .sub-b { font-size: 9px; color: #64748b; line-height: 1.5; max-width: 200px; margin-bottom: 14px; }
+  .preview-b .btns-b { display: flex; gap: 6px; }
+  .preview-b .btn-p-b { background: #4f46e5; color: #fff; font-size: 8px; font-weight: 700; padding: 6px 14px; border-radius: 6px; }
+  .preview-b .btn-s-b { background: #f8fafc; border: 1px solid #e2e8f0; color: #475569; font-size: 8px; padding: 6px 12px; border-radius: 6px; }
+  .preview-b .mockup-b {
+    position: absolute; bottom: -30px; right: -10px;
+    width: 160px; background: #fff; border: 1px solid #e2e8f0;
+    border-radius: 8px; padding: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+    transform: rotate(3deg);
+  }
+  .preview-b .mock-bar-b { height: 4px; border-radius: 2px; margin-bottom: 4px; }
+
+  /* OPCIÓN C — Bold Gradient (Shopify/HubSpot style) */
+  .preview-c { background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%); }
+  .preview-c .nav-c {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 18px;
+  }
+  .preview-c .logo-c { display: flex; align-items: center; gap: 5px; }
+  .preview-c .logo-icon-c { width: 14px; height: 14px; background: linear-gradient(135deg, #818cf8, #c084fc); border-radius: 3px; }
+  .preview-c .logo-text-c { font-size: 10px; font-weight: 700; color: #fff; }
+  .preview-c .nav-links-c { display: flex; gap: 12px; }
+  .preview-c .nav-link-c { font-size: 9px; color: rgba(255,255,255,0.5); }
+  .preview-c .nav-cta-c { font-size: 9px; background: rgba(255,255,255,0.15); backdrop-filter: blur(4px); color: #fff; padding: 3px 10px; border-radius: 5px; font-weight: 600; border: 1px solid rgba(255,255,255,0.2); }
+  .preview-c .hero-c { padding: 18px 18px 0; text-align: center; position: relative; }
+  .preview-c .badge-c {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: rgba(129,140,248,0.15); border: 1px solid rgba(129,140,248,0.3);
+    border-radius: 20px; padding: 3px 8px; font-size: 8px; color: #a5b4fc; margin-bottom: 12px;
+  }
+  .preview-c .h1-c {
+    font-size: 20px; font-weight: 800; line-height: 1.1; color: #fff;
+    letter-spacing: -0.8px; margin-bottom: 6px;
+  }
+  .preview-c .h1-c span { background: linear-gradient(90deg, #818cf8, #c084fc); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .preview-c .sub-c { font-size: 9px; color: rgba(255,255,255,0.5); line-height: 1.5; max-width: 180px; margin: 0 auto 14px; }
+  .preview-c .btns-c { display: flex; gap: 6px; justify-content: center; }
+  .preview-c .btn-p-c { background: linear-gradient(90deg, #6366f1, #a855f7); color: #fff; font-size: 8px; font-weight: 700; padding: 6px 14px; border-radius: 6px; box-shadow: 0 4px 15px rgba(99,102,241,0.4); }
+  .preview-c .btn-s-c { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.15); color: rgba(255,255,255,0.7); font-size: 8px; padding: 6px 12px; border-radius: 6px; }
+  .preview-c .orb1 { position: absolute; top: 0; left: 30%; width: 120px; height: 120px; background: radial-gradient(ellipse, rgba(168,85,247,0.25) 0%, transparent 70%); pointer-events: none; }
+  .preview-c .orb2 { position: absolute; top: 20px; right: 20%; width: 80px; height: 80px; background: radial-gradient(ellipse, rgba(99,102,241,0.2) 0%, transparent 70%); pointer-events: none; }
+
+  .card-body { padding: 18px; }
+  .card-letter {
+    display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center;
+    border-radius: 6px; font-size: 11px; font-weight: 700; margin-bottom: 10px;
+    background: #1e1e2e; color: #94a3b8; border: 1px solid #2a2a3e;
+  }
+  .card.selected .card-letter { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+  .card-name { font-size: 14px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+  .card-desc { font-size: 12px; color: #64748b; line-height: 1.5; margin-bottom: 10px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag {
+    font-size: 10px; padding: 2px 8px; border-radius: 20px;
+    background: #1e1e2e; color: #94a3b8; border: 1px solid #2a2a3e;
+  }
+  .tag.accent { background: rgba(79,70,229,0.15); color: #818cf8; border-color: rgba(79,70,229,0.25); }
+
+  .confirm-bar {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    margin: 32px auto 0; max-width: 400px;
+  }
+  .confirm-btn {
+    background: #4f46e5; color: #fff; border: none; border-radius: 8px;
+    padding: 10px 28px; font-size: 13px; font-weight: 600; cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .confirm-btn:hover { opacity: 0.85; }
+  .confirm-hint { font-size: 12px; color: #475569; }
+</style>
+</head>
+<body>
+
+<p class="page-title" style="color:#f8fafc;font-size:20px;font-weight:700;text-align:center;margin-bottom:6px;">¿Qué personalidad visual quieres para la landing?</p>
+<p class="page-sub" style="text-align:center;font-size:13px;color:#64748b;margin-bottom:32px;">Haz clic en la que más te represente como empresa</p>
+
+<div class="cards">
+
+  <!-- OPCIÓN A -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="card-preview preview-a">
+      <div class="grid-bg"></div>
+      <div class="glow-a"></div>
+      <div class="nav-a" style="position:relative;z-index:2;">
+        <div class="logo-a">
+          <div class="logo-dot"></div>
+          <span class="logo-text">SYNCSTOCK</span>
+        </div>
+        <div class="nav-links-a">
+          <span class="nav-link-a">Features</span>
+          <span class="nav-link-a">Precios</span>
+          <span class="nav-link-a" style="color:#fff">Docs</span>
+        </div>
+        <span class="nav-cta-a">Comenzar</span>
+      </div>
+      <div class="hero-a" style="position:relative;z-index:2;">
+        <div class="badge-a">⚡ Sincronización en tiempo real</div>
+        <div class="h1-a">El inventario<br>que <span>nunca falla</span></div>
+        <div class="sub-a">Conecta proveedores, sincroniza tiendas, olvida el trabajo manual.</div>
+        <div class="btns-a">
+          <span class="btn-primary-a">Empieza gratis</span>
+          <span class="btn-ghost-a">Ver demo →</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="card-letter">A</div>
+      <div class="card-name">Dark Impact</div>
+      <div class="card-desc">Fondo negro puro, tipografía masiva, contraste máximo. Como Vercel, Linear o Railway.</div>
+      <div class="tags">
+        <span class="tag accent">Moderno</span>
+        <span class="tag accent">Tech-first</span>
+        <span class="tag">Audaz</span>
+        <span class="tag">Alto contraste</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPCIÓN B -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="card-preview preview-b">
+      <div class="nav-b">
+        <div class="logo-b">
+          <div class="logo-icon-b"></div>
+          <span class="logo-text-b">SyncStock</span>
+        </div>
+        <div class="nav-links-b">
+          <span class="nav-link-b">Funciones</span>
+          <span class="nav-link-b">Precios</span>
+          <span class="nav-link-b">Blog</span>
+        </div>
+        <span class="nav-cta-b">Comenzar gratis</span>
+      </div>
+      <div class="hero-b" style="position:relative;">
+        <div class="badge-b">🚀 Nuevo — Integración con Shopify</div>
+        <div class="h1-b">Sincroniza tu inventario.<br>Escala sin límites.</div>
+        <div class="sub-b">Conecta proveedores y tiendas online desde un solo panel. Sin código, sin fricciones.</div>
+        <div class="btns-b">
+          <span class="btn-p-b">Prueba 14 días gratis</span>
+          <span class="btn-s-b">Ver demo</span>
+        </div>
+        <div class="mockup-b">
+          <div class="mock-bar-b" style="background:#4f46e5;width:70%;"></div>
+          <div class="mock-bar-b" style="background:#e2e8f0;width:100%;"></div>
+          <div class="mock-bar-b" style="background:#e2e8f0;width:85%;"></div>
+          <div style="display:flex;gap:4px;margin-top:6px;">
+            <div style="flex:1;height:20px;background:#f0f4ff;border-radius:3px;"></div>
+            <div style="flex:1;height:20px;background:#f0f4ff;border-radius:3px;"></div>
+            <div style="flex:1;height:20px;background:#4f46e5;border-radius:3px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="card-letter">B</div>
+      <div class="card-name">Clean Enterprise</div>
+      <div class="card-desc">Fondo blanco, colores azul/indigo, tipografía clara. Como Stripe, Notion o Intercom.</div>
+      <div class="tags">
+        <span class="tag accent">Profesional</span>
+        <span class="tag accent">Confiable</span>
+        <span class="tag">B2B clásico</span>
+        <span class="tag">Legible</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- OPCIÓN C -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="card-preview preview-c">
+      <div class="orb1"></div>
+      <div class="orb2"></div>
+      <div class="nav-c" style="position:relative;z-index:2;">
+        <div class="logo-c">
+          <div class="logo-icon-c"></div>
+          <span class="logo-text-c">SyncStock</span>
+        </div>
+        <div class="nav-links-c">
+          <span class="nav-link-c">Features</span>
+          <span class="nav-link-c">Precios</span>
+          <span class="nav-link-c">Blog</span>
+        </div>
+        <span class="nav-cta-c">Empezar</span>
+      </div>
+      <div class="hero-c" style="position:relative;z-index:2;">
+        <div class="badge-c">✨ Sincronización automática · IA</div>
+        <div class="h1-c">Tu inventario,<br><span>siempre al día</span></div>
+        <div class="sub-c">Automatiza la sincronización entre proveedores y tiendas. Cero trabajo manual.</div>
+        <div class="btns-c">
+          <span class="btn-p-c">Empieza gratis</span>
+          <span class="btn-s-c">Ver cómo funciona</span>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="card-letter">C</div>
+      <div class="card-name">Bold Gradient</div>
+      <div class="card-desc">Fondo oscuro con gradientes indigo/violeta, glassmorphism y orbs de luz. Como Shopify o HubSpot.</div>
+      <div class="tags">
+        <span class="tag accent">Vibrante</span>
+        <span class="tag accent">Impactante</span>
+        <span class="tag">Visual</span>
+        <span class="tag">Premium</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div class="confirm-bar">
+  <span class="confirm-hint">Selecciona una opción y dime cuál elegiste en el chat</span>
+</div>
+
+</body>
+</html>
