@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Diseño Completo — SyncStock Landing</title>
+<script src="/helper.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Inter',system-ui,sans-serif; background:#0a0a0f; color:#e2e8f0; padding: 32px 20px 60px; }
+
+.page-header { text-align:center; margin-bottom:32px; }
+.page-header h1 { font-size:20px; font-weight:700; color:#f8fafc; margin-bottom:6px; }
+.page-header p { font-size:13px; color:#64748b; }
+
+/* ── MOCKUP WRAPPER ─────────────────────────────────── */
+.mockup-phone {
+  max-width: 900px;
+  margin: 0 auto;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid #1e293b;
+  box-shadow: 0 32px 80px rgba(0,0,0,0.5);
+  font-family: 'Inter', sans-serif;
+}
+
+/* ── NAVBAR ─────────────────────────────────────────── */
+.nav {
+  background: rgba(255,255,255,0.92);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid #f1f5f9;
+  padding: 0 32px;
+  height: 60px;
+  display: flex; align-items: center; justify-content: space-between;
+  position: sticky; top: 0; z-index: 10;
+}
+.nav-logo { display:flex; align-items:center; gap:8px; }
+.nav-logo-icon { width:28px; height:28px; background: linear-gradient(135deg,#4f46e5,#7c3aed); border-radius:7px; display:flex; align-items:center; justify-content:center; }
+.nav-logo-icon svg { color:white; }
+.nav-logo-text { font-family:'Manrope',sans-serif; font-size:15px; font-weight:800; color:#0f172a; letter-spacing:-0.3px; }
+.nav-links { display:flex; gap:24px; }
+.nav-link { font-size:13px; color:#64748b; font-weight:500; cursor:pointer; }
+.nav-link:hover { color:#0f172a; }
+.nav-actions { display:flex; align-items:center; gap:10px; }
+.nav-login { font-size:13px; color:#475569; font-weight:500; cursor:pointer; }
+.nav-cta { background:#4f46e5; color:#fff; font-size:13px; font-weight:600; padding:8px 18px; border-radius:8px; cursor:pointer; }
+.nav-cta:hover { background:#4338ca; }
+
+/* ── HERO ─────────────────────────────────────────── */
+.hero {
+  background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%);
+  padding: 72px 32px 64px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 48px;
+  align-items: center;
+}
+.hero-left { display:flex; flex-direction:column; gap:20px; }
+
+.hero-badge {
+  display:inline-flex; align-items:center; gap:6px;
+  background:#eef2ff; border:1px solid #c7d2fe; border-radius:40px;
+  padding:5px 14px; font-size:12px; color:#4338ca; font-weight:600; width:fit-content;
+}
+.hero-badge-dot { width:6px; height:6px; background:#4f46e5; border-radius:50%; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+.hero-h1 {
+  font-family:'Manrope',sans-serif;
+  font-size:44px; font-weight:800; line-height:1.05;
+  color:#0f172a; letter-spacing:-2px;
+}
+.hero-h1 span { color:#4f46e5; }
+
+.hero-sub { font-size:16px; color:#64748b; line-height:1.65; max-width:420px; }
+
+.hero-btns { display:flex; gap:12px; align-items:center; }
+.btn-primary {
+  background:#4f46e5; color:#fff; font-size:14px; font-weight:700;
+  padding:13px 24px; border-radius:10px; cursor:pointer;
+  box-shadow: 0 4px 14px rgba(79,70,229,0.3);
+  display:flex; align-items:center; gap:6px;
+}
+.btn-secondary {
+  background:#fff; border:1px solid #e2e8f0; color:#374151;
+  font-size:14px; font-weight:600; padding:13px 20px; border-radius:10px; cursor:pointer;
+  display:flex; align-items:center; gap:6px;
+}
+.btn-arrow { font-size:16px; }
+
+.hero-social { display:flex; align-items:center; gap:8px; }
+.avatars { display:flex; }
+.avatar { width:24px; height:24px; border-radius:50%; border:2px solid #fff; margin-left:-6px; font-size:9px; display:flex; align-items:center; justify-content:center; font-weight:700; }
+.hero-social-text { font-size:12px; color:#94a3b8; }
+.hero-social-text strong { color:#374151; }
+
+/* ── HERO RIGHT — Dashboard mockup ─── */
+.hero-right { position:relative; display:flex; align-items:center; justify-content:center; }
+.dashboard {
+  background:#fff; border:1px solid #e2e8f0; border-radius:16px;
+  overflow:hidden; width:100%; max-width:380px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.1), 0 4px 16px rgba(79,70,229,0.06);
+}
+.dash-topbar {
+  background:#f8fafc; border-bottom:1px solid #e2e8f0;
+  padding:10px 16px; display:flex; align-items:center; gap:8px;
+}
+.dash-dots { display:flex; gap:4px; }
+.dash-dot { width:8px; height:8px; border-radius:50%; }
+.dash-url { flex:1; background:#fff; border:1px solid #e2e8f0; border-radius:5px; padding:4px 10px; font-size:10px; color:#94a3b8; margin:0 10px; }
+.dash-body { padding:16px; }
+.dash-title { font-size:11px; font-weight:700; color:#0f172a; margin-bottom:12px; }
+.dash-stats { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:12px; }
+.dash-stat { background:#f8fafc; border-radius:8px; padding:8px 6px; text-align:center; }
+.dash-stat-val { font-size:13px; font-weight:800; font-family:'Manrope',sans-serif; }
+.dash-stat-label { font-size:8px; color:#94a3b8; margin-top:1px; }
+.dash-table { border:1px solid #f1f5f9; border-radius:8px; overflow:hidden; }
+.dash-row { display:flex; align-items:center; justify-content:space-between; padding:8px 10px; border-bottom:1px solid #f8fafc; }
+.dash-row:last-child { border-bottom:none; }
+.dash-row-left { display:flex; align-items:center; gap:6px; }
+.dash-row-icon { width:22px; height:22px; background:#eef2ff; border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:9px; }
+.dash-row-name { font-size:10px; font-weight:600; color:#0f172a; }
+.dash-row-sub { font-size:8px; color:#94a3b8; }
+.badge-ok { background:#f0fdf4; color:#16a34a; font-size:8px; font-weight:700; padding:2px 7px; border-radius:20px; }
+.badge-sync { background:#fff7ed; color:#ea580c; font-size:8px; font-weight:700; padding:2px 7px; border-radius:20px; }
+.badge-num { background:#eef2ff; color:#4f46e5; font-size:8px; font-weight:700; padding:2px 7px; border-radius:20px; }
+.dash-chart { margin-top:10px; }
+.chart-bars { display:flex; align-items:flex-end; gap:3px; height:36px; }
+.cb { flex:1; border-radius:2px; background:#e0e7ff; }
+.cb.hi { background:#4f46e5; }
+
+/* floating stats badges */
+.float-stat {
+  position:absolute;
+  background:#fff; border:1px solid #e2e8f0; border-radius:10px;
+  padding:8px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.1);
+  display:flex; align-items:center; gap:8px;
+  animation: floatY 3s ease-in-out infinite;
+}
+.float-stat:nth-child(2) { animation-delay:-1s; }
+.float-stat:nth-child(3) { animation-delay:-2s; }
+@keyframes floatY { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+.float-stat-icon { width:28px; height:28px; border-radius:7px; display:flex; align-items:center; justify-content:center; font-size:14px; flex-shrink:0; }
+.float-stat-val { font-size:13px; font-weight:800; color:#0f172a; font-family:'Manrope',sans-serif; }
+.float-stat-label { font-size:10px; color:#94a3b8; }
+
+/* ── LOGOS BAR ─────────────────────────────────────── */
+.logos-bar {
+  background:#fff; border-top:1px solid #f1f5f9; border-bottom:1px solid #f1f5f9;
+  padding:20px 32px; overflow:hidden;
+}
+.logos-bar-label { text-align:center; font-size:11px; color:#cbd5e1; font-weight:500; margin-bottom:14px; text-transform:uppercase; letter-spacing:1px; }
+.logos-track { display:flex; align-items:center; gap:32px; animation:marquee 20s linear infinite; width:max-content; }
+@keyframes marquee { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+.logo-item { display:flex; align-items:center; gap:7px; opacity:0.45; white-space:nowrap; }
+.logo-item-icon { width:20px; height:20px; border-radius:5px; }
+.logo-item-name { font-size:13px; font-weight:700; color:#334155; }
+
+/* ── FEATURES ─────────────────────────────────────── */
+.features { background:#fafbff; padding:80px 32px; }
+.section-label { font-size:11px; font-weight:700; color:#4f46e5; text-transform:uppercase; letter-spacing:2px; margin-bottom:10px; }
+.section-title { font-family:'Manrope',sans-serif; font-size:34px; font-weight:800; color:#0f172a; letter-spacing:-1px; margin-bottom:10px; max-width:480px; }
+.section-sub { font-size:15px; color:#64748b; line-height:1.6; max-width:460px; margin-bottom:40px; }
+
+.bento { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+.bento-card {
+  background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:24px;
+  transition:all 0.2s ease; cursor:default;
+}
+.bento-card:hover { border-color:#c7d2fe; box-shadow:0 8px 24px rgba(79,70,229,0.08); transform:translateY(-2px); }
+.bento-card.wide { grid-column:span 2; }
+.bento-icon { width:38px; height:38px; background:#eef2ff; border-radius:9px; display:flex; align-items:center; justify-content:center; font-size:18px; margin-bottom:14px; }
+.bento-title { font-size:14px; font-weight:700; color:#0f172a; margin-bottom:6px; font-family:'Manrope',sans-serif; }
+.bento-desc { font-size:12px; color:#64748b; line-height:1.6; }
+.bento-visual { margin-top:14px; }
+.mini-progress { height:4px; border-radius:2px; background:#f1f5f9; overflow:hidden; margin-bottom:4px; }
+.mini-progress-fill { height:100%; border-radius:2px; }
+
+/* ── HOW IT WORKS ──────────────────────────────────── */
+.hiw { background:#fff; padding:80px 32px; }
+.steps { display:grid; grid-template-columns:repeat(3,1fr); gap:24px; position:relative; }
+.steps::before { content:''; position:absolute; top:28px; left:15%; right:15%; height:1px; background:linear-gradient(90deg,#e2e8f0,#c7d2fe,#e2e8f0); }
+.step { text-align:center; position:relative; }
+.step-num {
+  width:56px; height:56px; border-radius:50%; margin:0 auto 16px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:20px; font-weight:800; font-family:'Manrope',sans-serif;
+  background:#fff; border:2px solid #c7d2fe; color:#4f46e5;
+  position:relative; z-index:1;
+}
+.step-num.active { background:#4f46e5; color:#fff; border-color:#4f46e5; box-shadow:0 0 0 6px rgba(79,70,229,0.1); }
+.step-title { font-size:15px; font-weight:700; color:#0f172a; margin-bottom:6px; font-family:'Manrope',sans-serif; }
+.step-desc { font-size:12px; color:#64748b; line-height:1.6; }
+
+/* ── STATS ─────────────────────────────────────────── */
+.stats-section {
+  background:linear-gradient(135deg,#4f46e5 0%,#6d28d9 100%);
+  padding:60px 32px;
+}
+.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:24px; max-width:800px; margin:0 auto; }
+.stat-box { text-align:center; }
+.stat-box-num { font-family:'Manrope',sans-serif; font-size:40px; font-weight:800; color:#fff; letter-spacing:-2px; margin-bottom:4px; }
+.stat-box-label { font-size:13px; color:rgba(255,255,255,0.65); }
+.stat-box-change { font-size:11px; color:#a5f3fc; margin-top:2px; }
+
+/* ── PRICING ─────────────────────────────────────── */
+.pricing { background:#fafbff; padding:80px 32px; }
+.pricing-toggle { display:flex; align-items:center; gap:10px; margin-bottom:40px; }
+.toggle-track { width:44px; height:24px; background:#4f46e5; border-radius:12px; padding:2px; display:flex; align-items:center; cursor:pointer; }
+.toggle-thumb { width:20px; height:20px; background:#fff; border-radius:50%; margin-left:auto; }
+.toggle-label { font-size:13px; color:#374151; font-weight:500; }
+.toggle-badge { background:#dcfce7; color:#16a34a; font-size:10px; font-weight:700; padding:2px 7px; border-radius:20px; }
+.pricing-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+.plan-card { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:24px; }
+.plan-card.featured { border-color:#4f46e5; border-width:2px; position:relative; box-shadow:0 8px 32px rgba(79,70,229,0.12); }
+.plan-badge-featured { position:absolute; top:-10px; left:50%; transform:translateX(-50%); background:#4f46e5; color:#fff; font-size:10px; font-weight:700; padding:3px 12px; border-radius:20px; white-space:nowrap; }
+.plan-name { font-size:13px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:1px; margin-bottom:10px; }
+.plan-price { font-family:'Manrope',sans-serif; font-size:36px; font-weight:800; color:#0f172a; letter-spacing:-1.5px; margin-bottom:4px; }
+.plan-price span { font-size:16px; font-weight:500; color:#94a3b8; }
+.plan-desc { font-size:12px; color:#94a3b8; margin-bottom:16px; }
+.plan-divider { border:none; border-top:1px solid #f1f5f9; margin-bottom:14px; }
+.plan-features { display:flex; flex-direction:column; gap:8px; margin-bottom:20px; }
+.plan-feature { display:flex; align-items:center; gap:7px; font-size:12px; color:#374151; }
+.check { color:#10b981; font-size:13px; font-weight:700; }
+.plan-btn { width:100%; padding:11px; border-radius:8px; font-size:13px; font-weight:700; text-align:center; cursor:pointer; }
+.plan-btn-primary { background:#4f46e5; color:#fff; }
+.plan-btn-ghost { background:#f8fafc; border:1px solid #e2e8f0; color:#374151; }
+
+/* ── TESTIMONIALS ──────────────────────────────────── */
+.testimonials { background:#fff; padding:80px 32px; }
+.testimonials-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; }
+.testi-card { background:#fafbff; border:1px solid #e2e8f0; border-radius:12px; padding:20px; }
+.testi-stars { color:#fbbf24; font-size:12px; margin-bottom:10px; }
+.testi-quote { font-size:13px; color:#374151; line-height:1.65; margin-bottom:14px; font-style:italic; }
+.testi-author { display:flex; align-items:center; gap:10px; }
+.testi-avatar { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:#fff; }
+.testi-name { font-size:12px; font-weight:700; color:#0f172a; }
+.testi-role { font-size:10px; color:#94a3b8; }
+
+/* ── CTA ───────────────────────────────────────────── */
+.cta-section { background:#0f172a; padding:72px 32px; text-align:center; }
+.cta-title { font-family:'Manrope',sans-serif; font-size:36px; font-weight:800; color:#fff; letter-spacing:-1.5px; margin-bottom:14px; }
+.cta-sub { font-size:15px; color:#64748b; margin-bottom:28px; }
+.cta-btns { display:flex; gap:12px; justify-content:center; }
+.cta-btn-p { background:#4f46e5; color:#fff; font-size:14px; font-weight:700; padding:13px 28px; border-radius:10px; cursor:pointer; box-shadow:0 4px 20px rgba(79,70,229,0.4); }
+.cta-btn-s { background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); color:#94a3b8; font-size:14px; font-weight:600; padding:13px 24px; border-radius:10px; cursor:pointer; }
+
+/* ── FOOTER ─────────────────────────────────────────── */
+.footer { background:#020617; padding:48px 32px 28px; border-top:1px solid #0f172a; }
+.footer-top { display:grid; grid-template-columns:2fr 1fr 1fr 1fr; gap:32px; margin-bottom:36px; }
+.footer-brand { }
+.footer-logo { display:flex; align-items:center; gap:8px; margin-bottom:12px; }
+.footer-logo-icon { width:24px; height:24px; background:linear-gradient(135deg,#4f46e5,#7c3aed); border-radius:6px; }
+.footer-logo-text { font-family:'Manrope',sans-serif; font-size:14px; font-weight:800; color:#f8fafc; }
+.footer-desc { font-size:12px; color:#475569; line-height:1.7; max-width:220px; }
+.footer-col-title { font-size:11px; font-weight:700; color:#64748b; text-transform:uppercase; letter-spacing:1px; margin-bottom:12px; }
+.footer-link { display:block; font-size:12px; color:#475569; margin-bottom:7px; cursor:pointer; }
+.footer-link:hover { color:#94a3b8; }
+.footer-bottom { display:flex; align-items:center; justify-content:space-between; border-top:1px solid #0f172a; padding-top:20px; }
+.footer-copy { font-size:11px; color:#334155; }
+.footer-badges { display:flex; gap:8px; }
+.footer-badge { background:#0f172a; border:1px solid #1e293b; border-radius:5px; padding:3px 8px; font-size:10px; color:#475569; }
+
+/* ── SECTION HEADER (reutilizable) ─── */
+.section-header { margin-bottom:40px; }
+.section-header.centered { text-align:center; }
+.section-header.centered .section-sub { margin:0 auto 0; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Diseño completo — SyncStock Landing Rediseñada</h1>
+  <p>Mockup fiel al resultado final · Clean Enterprise + Animaciones Flotantes + Hero Split</p>
+</div>
+
+<div class="mockup-phone">
+
+  <!-- NAVBAR -->
+  <nav class="nav">
+    <div class="nav-logo">
+      <div class="nav-logo-icon">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+      </div>
+      <span class="nav-logo-text">SyncStock</span>
+    </div>
+    <div class="nav-links">
+      <span class="nav-link">Funciones</span>
+      <span class="nav-link">Integraciones</span>
+      <span class="nav-link">Precios</span>
+      <span class="nav-link">Blog</span>
+    </div>
+    <div class="nav-actions">
+      <span class="nav-login">Iniciar sesión</span>
+      <span class="nav-cta">Empezar gratis →</span>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="hero">
+    <div class="hero-left">
+      <div class="hero-badge">
+        <div class="hero-badge-dot"></div>
+        Sincronización en tiempo real
+      </div>
+      <h1 class="hero-h1">Inventario B2B<br><span>sin fricciones</span></h1>
+      <p class="hero-sub">Conecta proveedores, gestiona catálogos y actualiza tus tiendas online automáticamente. Sin código. Sin errores manuales.</p>
+      <div class="hero-btns">
+        <div class="btn-primary">Prueba gratis 14 días <span class="btn-arrow">→</span></div>
+        <div class="btn-secondary">▶ Ver demo en vivo</div>
+      </div>
+      <div class="hero-social">
+        <div class="avatars">
+          <div class="avatar" style="background:#4f46e5;">A</div>
+          <div class="avatar" style="background:#7c3aed;">M</div>
+          <div class="avatar" style="background:#0891b2;">S</div>
+          <div class="avatar" style="background:#059669;">R</div>
+        </div>
+        <p class="hero-social-text">Usado por <strong>500+ empresas</strong> en España y LATAM</p>
+      </div>
+    </div>
+
+    <div class="hero-right">
+      <!-- Floating stats -->
+      <div class="float-stat" style="top:-16px;left:-20px;">
+        <div class="float-stat-icon" style="background:#f0fdf4;">📦</div>
+        <div>
+          <div class="float-stat-val">1.247</div>
+          <div class="float-stat-label">Productos sync</div>
+        </div>
+      </div>
+      <div class="float-stat" style="bottom:20px;right:-20px;animation-delay:-1.2s;">
+        <div class="float-stat-icon" style="background:#fefce8;">⚡</div>
+        <div>
+          <div class="float-stat-val">99.9%</div>
+          <div class="float-stat-label">Uptime garantizado</div>
+        </div>
+      </div>
+
+      <!-- Dashboard -->
+      <div class="dashboard">
+        <div class="dash-topbar">
+          <div class="dash-dots">
+            <div class="dash-dot" style="background:#fc8181;"></div>
+            <div class="dash-dot" style="background:#fbd38d;"></div>
+            <div class="dash-dot" style="background:#68d391;"></div>
+          </div>
+          <div class="dash-url">app.syncstock.io/dashboard</div>
+        </div>
+        <div class="dash-body">
+          <div class="dash-title">Panel de control · Vista general</div>
+          <div class="dash-stats">
+            <div class="dash-stat"><div class="dash-stat-val" style="color:#4f46e5;">1.247</div><div class="dash-stat-label">Productos</div></div>
+            <div class="dash-stat"><div class="dash-stat-val" style="color:#10b981;">12</div><div class="dash-stat-label">Proveedores</div></div>
+            <div class="dash-stat"><div class="dash-stat-val" style="color:#f59e0b;">3</div><div class="dash-stat-label">Tiendas</div></div>
+            <div class="dash-stat"><div class="dash-stat-val" style="color:#06b6d4;">99%</div><div class="dash-stat-label">Uptime</div></div>
+          </div>
+          <div class="dash-table">
+            <div class="dash-row">
+              <div class="dash-row-left">
+                <div class="dash-row-icon">🏭</div>
+                <div><div class="dash-row-name">Proveedor Alpha</div><div class="dash-row-sub">342 productos</div></div>
+              </div>
+              <span class="badge-ok">✓ OK</span>
+            </div>
+            <div class="dash-row">
+              <div class="dash-row-left">
+                <div class="dash-row-icon">🔧</div>
+                <div><div class="dash-row-name">Tech Distributors</div><div class="dash-row-sub">891 productos</div></div>
+              </div>
+              <span class="badge-sync">↻ Sync</span>
+            </div>
+            <div class="dash-row">
+              <div class="dash-row-left">
+                <div class="dash-row-icon">🌍</div>
+                <div><div class="dash-row-name">Global Parts SL</div><div class="dash-row-sub">214 productos</div></div>
+              </div>
+              <span class="badge-num">+12%</span>
+            </div>
+          </div>
+          <div class="dash-chart">
+            <div style="font-size:9px;color:#94a3b8;margin-bottom:5px;">Sincronizaciones — últimas 12h</div>
+            <div class="chart-bars">
+              <div class="cb" style="height:45%;"></div>
+              <div class="cb" style="height:62%;"></div>
+              <div class="cb" style="height:38%;"></div>
+              <div class="cb" style="height:80%;"></div>
+              <div class="cb" style="height:55%;"></div>
+              <div class="cb hi" style="height:95%;"></div>
+              <div class="cb" style="height:70%;"></div>
+              <div class="cb hi" style="height:88%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- LOGOS BAR -->
+  <div class="logos-bar">
+    <div class="logos-bar-label">Integra con las plataformas que ya usas</div>
+    <div style="overflow:hidden;">
+      <div class="logos-track">
+        <div class="logo-item"><div class="logo-item-icon" style="background:#7f54b3;border-radius:4px;"></div><span class="logo-item-name">WooCommerce</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#95bf47;border-radius:4px;"></div><span class="logo-item-name">Shopify</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#df0067;border-radius:4px;"></div><span class="logo-item-name">PrestaShop</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#714b67;border-radius:4px;"></div><span class="logo-item-name">Odoo</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#1a73e8;border-radius:4px;"></div><span class="logo-item-name">Dolibarr</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#21759b;border-radius:4px;"></div><span class="logo-item-name">WordPress</span></div>
+        <!-- duplicados para loop infinito -->
+        <div class="logo-item"><div class="logo-item-icon" style="background:#7f54b3;border-radius:4px;"></div><span class="logo-item-name">WooCommerce</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#95bf47;border-radius:4px;"></div><span class="logo-item-name">Shopify</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#df0067;border-radius:4px;"></div><span class="logo-item-name">PrestaShop</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#714b67;border-radius:4px;"></div><span class="logo-item-name">Odoo</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#1a73e8;border-radius:4px;"></div><span class="logo-item-name">Dolibarr</span></div>
+        <div class="logo-item"><div class="logo-item-icon" style="background:#21759b;border-radius:4px;"></div><span class="logo-item-name">WordPress</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FEATURES -->
+  <section class="features">
+    <div class="section-header">
+      <div class="section-label">Funcionalidades</div>
+      <h2 class="section-title">Todo lo que necesitas para gestionar tu inventario</h2>
+      <p class="section-sub">Diseñado para equipos B2B que trabajan con múltiples proveedores y tiendas simultáneas.</p>
+    </div>
+    <div class="bento">
+      <div class="bento-card wide">
+        <div class="bento-icon">🔄</div>
+        <div class="bento-title">Sincronización multi-proveedor</div>
+        <div class="bento-desc">Conecta FTP, SFTP, URL, CSV, XLSX y XML. SyncStock descarga, procesa y actualiza tu catálogo automáticamente cada hora.</div>
+        <div class="bento-visual">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="font-size:10px;color:#94a3b8;width:100px;">Proveedor Alpha</div>
+            <div class="mini-progress" style="flex:1;"><div class="mini-progress-fill" style="background:#4f46e5;width:78%;"></div></div>
+            <div style="font-size:10px;color:#4f46e5;font-weight:700;">342 prods</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <div style="font-size:10px;color:#94a3b8;width:100px;">Tech Dist.</div>
+            <div class="mini-progress" style="flex:1;"><div class="mini-progress-fill" style="background:#10b981;width:92%;"></div></div>
+            <div style="font-size:10px;color:#10b981;font-weight:700;">891 prods</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="font-size:10px;color:#94a3b8;width:100px;">Global Parts</div>
+            <div class="mini-progress" style="flex:1;"><div class="mini-progress-fill" style="background:#f59e0b;width:45%;"></div></div>
+            <div style="font-size:10px;color:#f59e0b;font-weight:700;">214 prods</div>
+          </div>
+        </div>
+      </div>
+      <div class="bento-card">
+        <div class="bento-icon">🏪</div>
+        <div class="bento-title">Multi-tienda</div>
+        <div class="bento-desc">Publica en WooCommerce, Shopify y PrestaShop a la vez. Un catálogo, todas tus tiendas actualizadas.</div>
+      </div>
+      <div class="bento-card">
+        <div class="bento-icon">📊</div>
+        <div class="bento-title">Historial de precios</div>
+        <div class="bento-desc">Detecta cambios de precio automáticamente y alerta cuando un proveedor sube precios más del umbral configurado.</div>
+      </div>
+      <div class="bento-card">
+        <div class="bento-icon">🧮</div>
+        <div class="bento-title">Reglas de margen</div>
+        <div class="bento-desc">Define márgenes por categoría o proveedor. Los precios de venta se calculan solos en cada sincronización.</div>
+      </div>
+      <div class="bento-card">
+        <div class="bento-icon">🔔</div>
+        <div class="bento-title">Alertas en tiempo real</div>
+        <div class="bento-desc">Stock bajo, precios fuera de rango, sincronizaciones fallidas. Notificaciones instantáneas por WebSocket.</div>
+      </div>
+      <div class="bento-card">
+        <div class="bento-icon">🔗</div>
+        <div class="bento-title">CRM integrado</div>
+        <div class="bento-desc">Sincroniza productos, clientes y pedidos con Dolibarr y Odoo. Bidireccional y sin duplicados.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- HOW IT WORKS -->
+  <section class="hiw">
+    <div class="section-header centered">
+      <div class="section-label">¿Cómo funciona?</div>
+      <h2 class="section-title" style="margin:0 auto 10px;">En marcha en menos de 5 minutos</h2>
+      <p class="section-sub" style="margin:0 auto 40px;">Sin código, sin instalaciones, sin configuraciones complejas.</p>
+    </div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num active">1</div>
+        <div class="step-title">Conecta un proveedor</div>
+        <div class="step-desc">Añade la URL, FTP o sube el archivo CSV/XLSX de tu proveedor. SyncStock mapea las columnas automáticamente.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-title">Define tus reglas</div>
+        <div class="step-desc">Configura márgenes, exclusiones y alertas. Tú controlas qué se publica y cómo se calculan los precios.</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-title">Activa la sincronización</div>
+        <div class="step-desc">Tu tienda se actualiza automáticamente cada vez que el proveedor cambia stock o precios. 24/7 sin intervención.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- STATS -->
+  <section class="stats-section">
+    <div class="stats-grid">
+      <div class="stat-box">
+        <div class="stat-box-num">500+</div>
+        <div class="stat-box-label">Empresas activas</div>
+        <div class="stat-box-change">↑ creciendo cada semana</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-box-num">2M+</div>
+        <div class="stat-box-label">Productos gestionados</div>
+        <div class="stat-box-change">↑ en tiempo real</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-box-num">99.9%</div>
+        <div class="stat-box-label">Uptime garantizado</div>
+        <div class="stat-box-change">↑ SLA Enterprise</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-box-num">4.9★</div>
+        <div class="stat-box-label">Valoración media</div>
+        <div class="stat-box-change">↑ de 500 reseñas</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="pricing">
+    <div class="section-header centered">
+      <div class="section-label">Precios</div>
+      <h2 class="section-title" style="margin:0 auto 10px;">Transparente. Sin sorpresas.</h2>
+      <p class="section-sub" style="margin:0 auto 24px;">Empieza gratis. Escala cuando lo necesites.</p>
+    </div>
+    <div class="pricing-toggle" style="justify-content:center;">
+      <span class="toggle-label">Mensual</span>
+      <div class="toggle-track"><div class="toggle-thumb"></div></div>
+      <span class="toggle-label">Anual</span>
+      <span class="toggle-badge">Ahorra 20%</span>
+    </div>
+    <div class="pricing-grid">
+      <div class="plan-card">
+        <div class="plan-name">Free</div>
+        <div class="plan-price">0€ <span>/mes</span></div>
+        <div class="plan-desc">Para empezar y explorar</div>
+        <hr class="plan-divider">
+        <div class="plan-features">
+          <div class="plan-feature"><span class="check">✓</span> 1 proveedor</div>
+          <div class="plan-feature"><span class="check">✓</span> 1 tienda WooCommerce</div>
+          <div class="plan-feature"><span class="check">✓</span> Hasta 500 productos</div>
+          <div class="plan-feature"><span class="check">✓</span> Sync cada 24h</div>
+        </div>
+        <div class="plan-btn plan-btn-ghost">Empezar gratis</div>
+      </div>
+      <div class="plan-card featured">
+        <div class="plan-badge-featured">⭐ Más popular</div>
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">49€ <span>/mes</span></div>
+        <div class="plan-desc">Para equipos en crecimiento</div>
+        <hr class="plan-divider">
+        <div class="plan-features">
+          <div class="plan-feature"><span class="check">✓</span> Hasta 10 proveedores</div>
+          <div class="plan-feature"><span class="check">✓</span> Hasta 2 tiendas</div>
+          <div class="plan-feature"><span class="check">✓</span> Productos ilimitados</div>
+          <div class="plan-feature"><span class="check">✓</span> Sync cada hora</div>
+          <div class="plan-feature"><span class="check">✓</span> Reglas de margen</div>
+          <div class="plan-feature"><span class="check">✓</span> Historial de precios</div>
+        </div>
+        <div class="plan-btn plan-btn-primary">Probar 14 días gratis</div>
+      </div>
+      <div class="plan-card">
+        <div class="plan-name">Enterprise</div>
+        <div class="plan-price">149€ <span>/mes</span></div>
+        <div class="plan-desc">Para operaciones complejas</div>
+        <hr class="plan-divider">
+        <div class="plan-features">
+          <div class="plan-feature"><span class="check">✓</span> Proveedores ilimitados</div>
+          <div class="plan-feature"><span class="check">✓</span> Tiendas ilimitadas</div>
+          <div class="plan-feature"><span class="check">✓</span> Integraciones CRM</div>
+          <div class="plan-feature"><span class="check">✓</span> SLA 99.9% garantizado</div>
+          <div class="plan-feature"><span class="check">✓</span> Soporte prioritario</div>
+        </div>
+        <div class="plan-btn plan-btn-ghost">Hablar con ventas</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TESTIMONIALS -->
+  <section class="testimonials">
+    <div class="section-header centered">
+      <div class="section-label">Testimonios</div>
+      <h2 class="section-title" style="margin:0 auto 10px;">Lo que dicen nuestros clientes</h2>
+      <p class="section-sub" style="margin:0 auto 40px;">Empresas reales. Resultados reales.</p>
+    </div>
+    <div class="testimonials-grid">
+      <div class="testi-card">
+        <div class="testi-stars">★★★★★</div>
+        <div class="testi-quote">"Pasamos de actualizar el stock a mano cada día a tenerlo sincronizado en tiempo real. Ahorramos 2 horas diarias y eliminamos los errores de stock."</div>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:#4f46e5;">AM</div>
+          <div><div class="testi-name">Ana Martínez</div><div class="testi-role">CEO · TecnoDistrib SL</div></div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-stars">★★★★★</div>
+        <div class="testi-quote">"Tenemos 8 proveedores y 3 tiendas. Antes era un caos. Ahora SyncStock lo gestiona todo solo y solo intervenimos cuando hay una alerta."</div>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:#7c3aed;">JL</div>
+          <div><div class="testi-name">Jorge López</div><div class="testi-role">Director de Operaciones · PartsMadrid</div></div>
+        </div>
+      </div>
+      <div class="testi-card">
+        <div class="testi-stars">★★★★★</div>
+        <div class="testi-quote">"La integración con Odoo fue clave. En menos de una semana teníamos todos los catálogos sincronizados y el equipo de ventas trabajando con datos actualizados."</div>
+        <div class="testi-author">
+          <div class="testi-avatar" style="background:#059669;">SR</div>
+          <div><div class="testi-name">Sara Ruiz</div><div class="testi-role">IT Manager · Grupo Electro</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA FINAL -->
+  <section class="cta-section">
+    <h2 class="cta-title">¿Listo para sincronizar<br>tu inventario?</h2>
+    <p class="cta-sub">14 días gratis. Sin tarjeta de crédito. Cancela cuando quieras.</p>
+    <div class="cta-btns">
+      <div class="cta-btn-p">Empezar gratis ahora →</div>
+      <div class="cta-btn-s">Reservar una demo</div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <div class="footer-logo">
+          <div class="footer-logo-icon"></div>
+          <span class="footer-logo-text">SyncStock</span>
+        </div>
+        <p class="footer-desc">La plataforma SaaS para sincronización automática de inventarios B2B. Conecta proveedores y tiendas en tiempo real.</p>
+      </div>
+      <div>
+        <div class="footer-col-title">Producto</div>
+        <a class="footer-link">Funciones</a>
+        <a class="footer-link">Integraciones</a>
+        <a class="footer-link">Precios</a>
+        <a class="footer-link">Changelog</a>
+      </div>
+      <div>
+        <div class="footer-col-title">Empresa</div>
+        <a class="footer-link">Sobre nosotros</a>
+        <a class="footer-link">Blog</a>
+        <a class="footer-link">Contacto</a>
+        <a class="footer-link">Soporte</a>
+      </div>
+      <div>
+        <div class="footer-col-title">Legal</div>
+        <a class="footer-link">Privacidad</a>
+        <a class="footer-link">Términos</a>
+        <a class="footer-link">Cookies</a>
+        <a class="footer-link">RGPD</a>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span class="footer-copy">© 2025 SyncStock. Todos los derechos reservados.</span>
+      <div class="footer-badges">
+        <span class="footer-badge">🔒 SSL</span>
+        <span class="footer-badge">🇪🇺 RGPD</span>
+        <span class="footer-badge">99.9% SLA</span>
+      </div>
+    </div>
+  </footer>
+
+</div>
+
+<div style="text-align:center;margin-top:28px;font-size:13px;color:#475569;">
+  ¿Este diseño te convence? Dime en el chat si quieres ajustar algo antes de implementar.
+</div>
+
+</body>
+</html>

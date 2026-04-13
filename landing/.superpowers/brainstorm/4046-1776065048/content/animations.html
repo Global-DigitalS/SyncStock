@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Estilo de Animaciones — SyncStock Landing</title>
+<script src="/helper.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0a0a0f; color: #e2e8f0; min-height: 100vh; padding: 40px 24px; }
+
+  .page-title { text-align: center; font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 6px; }
+  .page-sub { text-align: center; font-size: 13px; color: #64748b; margin-bottom: 36px; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1100px; margin: 0 auto; }
+
+  .card {
+    border-radius: 16px; overflow: hidden; cursor: pointer;
+    border: 2px solid #1e1e2e; transition: all 0.25s ease; background: #0f1117;
+  }
+  .card:hover { border-color: #4f46e5; transform: translateY(-3px); }
+  .card.selected { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.15); }
+
+  .preview {
+    height: 220px; background: #fff; position: relative; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  /* ─── OPCIÓN A: Fade + Slide suave ─── */
+  .preview-a { background: #fff; padding: 20px; flex-direction: column; align-items: flex-start; justify-content: center; gap: 10px; }
+
+  .fade-el { opacity: 0; transform: translateY(16px); animation: fadeSlide 0.7s ease forwards; }
+  .fade-el:nth-child(1) { animation-delay: 0.0s; }
+  .fade-el:nth-child(2) { animation-delay: 0.15s; }
+  .fade-el:nth-child(3) { animation-delay: 0.30s; }
+  .fade-el:nth-child(4) { animation-delay: 0.45s; }
+
+  @keyframes fadeSlide {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .badge-a { display: inline-flex; align-items: center; gap: 5px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 20px; padding: 4px 10px; font-size: 10px; color: #4338ca; font-weight: 500; }
+  .h1-a { font-size: 18px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1.2; }
+  .sub-a { font-size: 10px; color: #64748b; line-height: 1.5; max-width: 220px; }
+  .btn-a { background: #4f46e5; color: #fff; font-size: 10px; font-weight: 700; padding: 7px 16px; border-radius: 7px; display: inline-block; }
+
+  /* ─── OPCIÓN B: Scroll-reveal con escala ─── */
+  .preview-b { background: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 20px; }
+
+  .reveal-el { opacity: 0; transform: scale(0.92) translateY(12px); animation: revealScale 0.6s cubic-bezier(0.22,1,0.36,1) forwards; }
+  .reveal-el:nth-child(1) { animation-delay: 0.0s; }
+  .reveal-el:nth-child(2) { animation-delay: 0.12s; }
+  .reveal-el:nth-child(3) { animation-delay: 0.24s; }
+
+  @keyframes revealScale {
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .card-b {
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 14px;
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+  .icon-b { width: 28px; height: 28px; background: #eef2ff; border-radius: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .icon-dot { width: 10px; height: 10px; background: #4f46e5; border-radius: 50%; }
+  .card-b-text { font-size: 10px; font-weight: 600; color: #0f172a; }
+  .card-b-sub { font-size: 9px; color: #94a3b8; }
+  .badge-num { margin-left: auto; background: #f0fdf4; color: #16a34a; font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 20px; }
+
+  /* ─── OPCIÓN C: Morphing + Partículas flotantes ─── */
+  .preview-c { background: linear-gradient(135deg, #f8faff 0%, #fff 100%); flex-direction: column; padding: 20px; }
+
+  .float-badge {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+    padding: 6px 12px; font-size: 9px; color: #0f172a; font-weight: 600;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+    animation: float 3s ease-in-out infinite;
+    margin-bottom: 14px; align-self: flex-start;
+  }
+  .float-badge:nth-child(2) { animation-delay: -1.5s; align-self: flex-end; }
+  .float-badge:nth-child(3) { animation-delay: -0.75s; align-self: center; }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+
+  .number-ticker {
+    font-size: 28px; font-weight: 800; color: #0f172a; letter-spacing: -1px;
+    font-variant-numeric: tabular-nums;
+    animation: countUp 2s ease-out forwards;
+    align-self: center;
+  }
+  @keyframes countUp {
+    from { opacity: 0.3; }
+    to { opacity: 1; }
+  }
+
+  .progress-bar-wrap { width: 100%; background: #f1f5f9; border-radius: 4px; height: 5px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, #4f46e5, #7c3aed); animation: fillBar 2s ease-out forwards; width: 0; }
+  @keyframes fillBar { to { width: 87%; } }
+
+  .card-body { padding: 16px 18px; }
+  .card-letter {
+    display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center;
+    border-radius: 6px; font-size: 11px; font-weight: 700; margin-bottom: 8px;
+    background: #1e1e2e; color: #94a3b8; border: 1px solid #2a2a3e;
+  }
+  .card.selected .card-letter { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+  .card-name { font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+  .card-desc { font-size: 11px; color: #64748b; line-height: 1.5; margin-bottom: 10px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag { font-size: 10px; padding: 2px 8px; border-radius: 20px; background: #1e1e2e; color: #94a3b8; border: 1px solid #2a2a3e; }
+  .tag.a { background: rgba(79,70,229,0.15); color: #818cf8; border-color: rgba(79,70,229,0.25); }
+
+  .hint { text-align: center; font-size: 12px; color: #475569; margin-top: 28px; }
+
+  /* Restart animations on hover */
+  .card:hover .fade-el { animation: none; opacity: 1; transform: none; }
+  .card:hover .fade-el:nth-child(1) { animation: fadeSlide 0.7s ease 0.0s forwards; opacity: 0; transform: translateY(16px); }
+  .card:hover .fade-el:nth-child(2) { animation: fadeSlide 0.7s ease 0.15s forwards; opacity: 0; transform: translateY(16px); }
+  .card:hover .fade-el:nth-child(3) { animation: fadeSlide 0.7s ease 0.30s forwards; opacity: 0; transform: translateY(16px); }
+  .card:hover .fade-el:nth-child(4) { animation: fadeSlide 0.7s ease 0.45s forwards; opacity: 0; transform: translateY(16px); }
+</style>
+</head>
+<body>
+
+<p class="page-title">¿Qué estilo de animaciones quieres?</p>
+<p class="page-sub">Las animaciones afectan cómo percibe el usuario la velocidad y calidad del producto. Pasa el ratón sobre cada tarjeta para ver la animación en acción.</p>
+
+<div class="cards">
+
+  <!-- A: Fade + Slide suave -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="preview preview-a">
+      <div class="badge-a fade-el">🚀 Nuevo en SyncStock</div>
+      <div class="h1-a fade-el">Sincroniza tu inventario<br>sin esfuerzo</div>
+      <div class="sub-a fade-el">Conecta proveedores y tiendas. Actualización automática en tiempo real.</div>
+      <div class="btn-a fade-el">Empieza gratis →</div>
+    </div>
+    <div class="card-body">
+      <div class="card-letter">A</div>
+      <div class="card-name">Fade + Slide Elegante</div>
+      <div class="card-desc">Elementos entran suavemente desde abajo, uno a uno. Sensación de calma y confianza. Como Stripe o Linear.</div>
+      <div class="tags">
+        <span class="tag a">Sofisticado</span>
+        <span class="tag a">Suave</span>
+        <span class="tag">Clásico</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- B: Scroll-reveal con escala -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="preview preview-b">
+      <div class="card-b reveal-el">
+        <div class="icon-b"><div class="icon-dot"></div></div>
+        <div><div class="card-b-text">Proveedor Alpha</div><div class="card-b-sub">342 productos sincronizados</div></div>
+        <div class="badge-num">✓ OK</div>
+      </div>
+      <div class="card-b reveal-el" style="border-color:#d1fae5;">
+        <div class="icon-b" style="background:#f0fdf4;"><div class="icon-dot" style="background:#10b981;"></div></div>
+        <div><div class="card-b-text">Tech Distributors</div><div class="card-b-sub">891 productos</div></div>
+        <div class="badge-num">+12%</div>
+      </div>
+      <div class="card-b reveal-el">
+        <div class="icon-b" style="background:#fefce8;"><div class="icon-dot" style="background:#f59e0b;"></div></div>
+        <div><div class="card-b-text">Global Parts SL</div><div class="card-b-sub">Sincronizando...</div></div>
+        <div class="badge-num" style="background:#fff7ed;color:#ea580c;">⏳</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="card-letter">B</div>
+      <div class="card-name">Scroll Reveal + Escala</div>
+      <div class="card-desc">Cada sección pop-ins con un leve zoom al entrar al viewport. Moderno, da sensación de app real. Como Notion o Vercel.</div>
+      <div class="tags">
+        <span class="tag a">Moderno</span>
+        <span class="tag a">App-like</span>
+        <span class="tag">Dinámico</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- C: Float + Counters -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="preview preview-c">
+      <div class="float-badge">📦 1.247 productos sync</div>
+      <div class="float-badge">⚡ Sync en 2 minutos</div>
+      <div style="width:100%;padding:0 10px;">
+        <div style="font-size:9px;color:#94a3b8;margin-bottom:4px;">Uptime este mes</div>
+        <div class="progress-bar-wrap">
+          <div class="progress-bar-fill"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;">
+          <span style="font-size:9px;color:#64748b;">99.97%</span>
+          <span style="font-size:9px;color:#16a34a;font-weight:600;">↑ Excelente</span>
+        </div>
+      </div>
+      <div class="float-badge" style="align-self:flex-end;">🏪 3 tiendas conectadas</div>
+    </div>
+    <div class="card-body">
+      <div class="card-letter">C</div>
+      <div class="card-name">Flotante + Contadores</div>
+      <div class="card-desc">Badges flotando con efecto parallax, contadores numéricos animados y barras de progreso. Muy visual e impactante.</div>
+      <div class="tags">
+        <span class="tag a">Impactante</span>
+        <span class="tag a">Visual</span>
+        <span class="tag">Llamativo</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="hint">Pasa el ratón sobre una tarjeta para ver la animación repetida · Haz clic para seleccionar</p>
+
+</body>
+</html>

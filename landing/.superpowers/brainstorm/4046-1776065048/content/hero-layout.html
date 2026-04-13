@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hero Layout — SyncStock</title>
+<script src="/helper.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, -apple-system, sans-serif; background: #0a0a0f; color: #e2e8f0; padding: 40px 24px; }
+
+  .page-title { text-align: center; font-size: 20px; font-weight: 700; color: #f8fafc; margin-bottom: 6px; }
+  .page-sub { text-align: center; font-size: 13px; color: #64748b; margin-bottom: 36px; }
+
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; max-width: 1100px; margin: 0 auto; }
+
+  .card {
+    border-radius: 16px; overflow: hidden; cursor: pointer;
+    border: 2px solid #1e1e2e; transition: all 0.25s ease; background: #0f1117;
+  }
+  .card:hover { border-color: #4f46e5; transform: translateY(-3px); }
+  .card.selected { border-color: #6366f1; box-shadow: 0 0 0 4px rgba(99,102,241,0.15); }
+
+  .preview { height: 240px; background: #fff; position: relative; overflow: hidden; }
+
+  /* ─── A: SPLIT (texto izquierda + mockup derecha) ─── */
+  .preview-a {
+    display: flex; align-items: stretch;
+  }
+  .split-left {
+    width: 48%; padding: 20px 16px; display: flex; flex-direction: column; justify-content: center; gap: 8px;
+    border-right: 1px solid #f0f4f8;
+  }
+  .split-right {
+    flex: 1; background: #f8faff; display: flex; align-items: center; justify-content: center; padding: 12px; position: relative; overflow: hidden;
+  }
+  .badge-split { display: inline-flex; align-items: center; gap: 4px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 20px; padding: 3px 8px; font-size: 8px; color: #4338ca; font-weight: 600; }
+  .h1-split { font-size: 14px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; line-height: 1.2; }
+  .sub-split { font-size: 8px; color: #64748b; line-height: 1.5; }
+  .btns-split { display: flex; gap: 5px; }
+  .btn-p-split { background: #4f46e5; color: #fff; font-size: 7px; font-weight: 700; padding: 5px 11px; border-radius: 5px; }
+  .btn-s-split { background: #f8fafc; border: 1px solid #e2e8f0; color: #64748b; font-size: 7px; padding: 5px 10px; border-radius: 5px; }
+
+  /* mini dashboard mockup */
+  .mini-dash { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; width: 130px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); overflow: hidden; }
+  .mini-dash-bar { background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 4px 8px; display: flex; gap: 3px; }
+  .dot { width: 4px; height: 4px; border-radius: 50%; }
+  .mini-dash-body { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .mini-stat { display: flex; align-items: center; justify-content: space-between; }
+  .mini-stat-label { font-size: 7px; color: #94a3b8; }
+  .mini-stat-val { font-size: 8px; font-weight: 700; color: #0f172a; }
+  .mini-bar { height: 3px; border-radius: 2px; background: #e2e8f0; overflow: hidden; margin-bottom: 2px; }
+  .mini-bar-fill { height: 100%; border-radius: 2px; background: #4f46e5; }
+
+  /* floating badges */
+  .fbadge {
+    position: absolute; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 5px 8px; font-size: 7px; font-weight: 600; color: #0f172a;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08); display: flex; align-items: center; gap: 4px;
+    animation: floatBadge 3s ease-in-out infinite;
+  }
+  @keyframes floatBadge { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
+  .fbadge.b2 { animation-delay: -1.5s; }
+  .fbadge.b3 { animation-delay: -0.75s; }
+  .dot-green { width: 5px; height: 5px; border-radius: 50%; background: #10b981; flex-shrink: 0; }
+  .dot-amber { width: 5px; height: 5px; border-radius: 50%; background: #f59e0b; flex-shrink: 0; }
+  .dot-indigo { width: 5px; height: 5px; border-radius: 50%; background: #4f46e5; flex-shrink: 0; }
+
+  /* ─── B: CENTERED (texto centrado + mockup abajo) ─── */
+  .preview-b { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 20px 16px 0; background: linear-gradient(180deg, #fff 0%, #f8faff 100%); }
+  .badge-center { display: inline-flex; align-items: center; gap: 4px; background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 20px; padding: 3px 8px; font-size: 8px; color: #4338ca; font-weight: 600; margin-bottom: 8px; }
+  .h1-center { font-size: 18px; font-weight: 800; color: #0f172a; letter-spacing: -0.8px; line-height: 1.1; text-align: center; margin-bottom: 6px; }
+  .sub-center { font-size: 9px; color: #64748b; text-align: center; line-height: 1.5; max-width: 220px; margin-bottom: 10px; }
+  .btns-center { display: flex; gap: 6px; margin-bottom: 14px; }
+  .btn-p-center { background: #4f46e5; color: #fff; font-size: 8px; font-weight: 700; padding: 6px 14px; border-radius: 6px; }
+  .btn-s-center { background: #f8fafc; border: 1px solid #e2e8f0; color: #64748b; font-size: 8px; padding: 6px 12px; border-radius: 6px; }
+  .dash-bottom { width: 85%; background: #fff; border: 1px solid #e2e8f0; border-radius: 8px 8px 0 0; padding: 8px; box-shadow: 0 -4px 20px rgba(79,70,229,0.08); }
+  .dash-bottom-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 6px; }
+  .stat-pill { background: #f8faff; border-radius: 5px; padding: 4px 5px; text-align: center; }
+  .stat-pill-val { font-size: 9px; font-weight: 700; color: #4f46e5; }
+  .stat-pill-label { font-size: 6px; color: #94a3b8; }
+  .chart-row { display: flex; align-items: flex-end; gap: 2px; height: 28px; }
+  .chart-bar { flex: 1; border-radius: 2px; background: #e0e7ff; }
+  .chart-bar.active { background: #4f46e5; }
+
+  /* ─── C: FULL-WIDTH (hero ancho completo + stats bar) ─── */
+  .preview-c { background: linear-gradient(135deg, #fafbff 0%, #f0f4ff 100%); display: flex; flex-direction: column; justify-content: space-between; }
+  .hero-c-top { flex: 1; display: flex; align-items: center; justify-content: center; flex-direction: column; padding: 18px 16px 10px; text-align: center; position: relative; }
+  .badge-full { display: inline-flex; align-items: center; gap: 4px; background: #fff; border: 1px solid #c7d2fe; border-radius: 20px; padding: 3px 10px; font-size: 8px; color: #4338ca; font-weight: 600; margin-bottom: 8px; box-shadow: 0 2px 8px rgba(79,70,229,0.08); }
+  .h1-full { font-size: 20px; font-weight: 800; color: #0f172a; letter-spacing: -1px; line-height: 1.1; margin-bottom: 6px; }
+  .h1-full span { color: #4f46e5; }
+  .sub-full { font-size: 8px; color: #64748b; line-height: 1.5; max-width: 200px; margin: 0 auto 10px; }
+  .btns-full { display: flex; gap: 6px; justify-content: center; }
+  .btn-p-full { background: #4f46e5; color: #fff; font-size: 8px; font-weight: 700; padding: 6px 14px; border-radius: 6px; }
+  .btn-s-full { background: rgba(255,255,255,0.8); border: 1px solid #e2e8f0; color: #475569; font-size: 8px; padding: 6px 12px; border-radius: 6px; }
+  .stats-bar { background: #fff; border-top: 1px solid #e2e8f0; padding: 8px 16px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .stat-item { text-align: center; }
+  .stat-num { font-size: 13px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px; }
+  .stat-label { font-size: 7px; color: #94a3b8; }
+  .stat-change { font-size: 7px; color: #10b981; font-weight: 600; }
+
+  /* logos bar */
+  .logos-c { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 5px 16px; border-top: 1px solid #f1f5f9; }
+  .logo-pill { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 3px 7px; font-size: 7px; color: #94a3b8; font-weight: 600; }
+
+  .card-body { padding: 16px 18px; }
+  .card-letter {
+    display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center;
+    border-radius: 6px; font-size: 11px; font-weight: 700; margin-bottom: 8px;
+    background: #1e1e2e; color: #94a3b8; border: 1px solid #2a2a3e;
+  }
+  .card.selected .card-letter { background: #4f46e5; color: #fff; border-color: #4f46e5; }
+  .card-name { font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px; }
+  .card-desc { font-size: 11px; color: #64748b; line-height: 1.5; margin-bottom: 10px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .tag { font-size: 10px; padding: 2px 8px; border-radius: 20px; background: #1e1e2e; color: #94a3b8; border: 1px solid #2a2a3e; }
+  .tag.a { background: rgba(79,70,229,0.15); color: #818cf8; border-color: rgba(79,70,229,0.25); }
+
+  .hint { text-align: center; font-size: 12px; color: #475569; margin-top: 28px; }
+</style>
+</head>
+<body>
+
+<p class="page-title">¿Cómo debe verse el Hero?</p>
+<p class="page-sub">La sección principal es lo primero que verá el usuario — define toda la primera impresión</p>
+
+<div class="cards">
+
+  <!-- A: Split izquierda/derecha -->
+  <div class="card" data-choice="a" onclick="toggleSelect(this)">
+    <div class="preview preview-a">
+      <div class="split-left">
+        <div class="badge-split">⚡ Sincronización automática</div>
+        <div class="h1-split">Sincroniza tu inventario sin esfuerzo</div>
+        <div class="sub-split">Conecta proveedores y tiendas. Todo actualizado en tiempo real.</div>
+        <div class="btns-split">
+          <span class="btn-p-split">Empieza gratis</span>
+          <span class="btn-s-split">Ver demo</span>
+        </div>
+      </div>
+      <div class="split-right">
+        <div class="mini-dash">
+          <div class="mini-dash-bar">
+            <div class="dot" style="background:#fc8181;"></div>
+            <div class="dot" style="background:#fbd38d;"></div>
+            <div class="dot" style="background:#68d391;"></div>
+          </div>
+          <div class="mini-dash-body">
+            <div class="mini-stat"><span class="mini-stat-label">Productos sync</span><span class="mini-stat-val">1.247</span></div>
+            <div class="mini-bar"><div class="mini-bar-fill" style="width:78%;"></div></div>
+            <div class="mini-stat"><span class="mini-stat-label">Proveedores</span><span class="mini-stat-val">12</span></div>
+            <div class="mini-bar"><div class="mini-bar-fill" style="width:60%;background:#10b981;"></div></div>
+            <div class="mini-stat"><span class="mini-stat-label">Uptime</span><span class="mini-stat-val" style="color:#10b981;">99.9%</span></div>
+          </div>
+        </div>
+        <!-- floating badges -->
+        <div class="fbadge" style="top:10px;right:8px;"><div class="dot-green"></div>Sync OK</div>
+        <div class="fbadge b2" style="bottom:30px;left:5px;"><div class="dot-amber"></div>+342 prods</div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="card-letter">A</div>
+      <div class="card-name">Split — Texto + Mockup</div>
+      <div class="card-desc">Texto a la izquierda, dashboard animado a la derecha. Estilo Stripe/Intercom. Muestra el producto de inmediato.</div>
+      <div class="tags">
+        <span class="tag a">Equilibrado</span>
+        <span class="tag a">Muestra el producto</span>
+        <span class="tag">Estándar B2B</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- B: Centrado + mockup abajo -->
+  <div class="card" data-choice="b" onclick="toggleSelect(this)">
+    <div class="preview preview-b">
+      <div class="badge-center">🚀 14 días gratis</div>
+      <div class="h1-center">El inventario que nunca<br>se desactualiza</div>
+      <div class="sub-center">Sincroniza proveedores, gestiona catálogos y actualiza tiendas en tiempo real.</div>
+      <div class="btns-center">
+        <span class="btn-p-center">Prueba gratis</span>
+        <span class="btn-s-center">Ver demo →</span>
+      </div>
+      <div class="dash-bottom">
+        <div class="dash-bottom-row">
+          <div class="stat-pill"><div class="stat-pill-val">1.2K</div><div class="stat-pill-label">Productos</div></div>
+          <div class="stat-pill"><div class="stat-pill-val" style="color:#10b981;">12</div><div class="stat-pill-label">Proveedores</div></div>
+          <div class="stat-pill"><div class="stat-pill-val" style="color:#f59e0b;">3</div><div class="stat-pill-label">Tiendas</div></div>
+          <div class="stat-pill"><div class="stat-pill-val" style="color:#6366f1;">99%</div><div class="stat-pill-label">Uptime</div></div>
+        </div>
+        <div class="chart-row">
+          <div class="chart-bar" style="height:40%;"></div>
+          <div class="chart-bar" style="height:65%;"></div>
+          <div class="chart-bar" style="height:50%;"></div>
+          <div class="chart-bar" style="height:80%;"></div>
+          <div class="chart-bar" style="height:60%;"></div>
+          <div class="chart-bar active" style="height:90%;"></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="card-letter">B</div>
+      <div class="card-name">Centrado + Dashboard abajo</div>
+      <div class="card-desc">Hero centrado con el copy encima y el dashboard saliendo desde abajo. Estilo Notion/Linear. Máximo impacto del headline.</div>
+      <div class="tags">
+        <span class="tag a">Impactante</span>
+        <span class="tag a">Centrado</span>
+        <span class="tag">Apple-like</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- C: Full width + stats bar abajo -->
+  <div class="card" data-choice="c" onclick="toggleSelect(this)">
+    <div class="preview preview-c">
+      <div class="hero-c-top">
+        <div class="badge-full">✨ Nuevo — Shopify + PrestaShop</div>
+        <div class="h1-full">Inventario B2B<br><span>sin fricción</span></div>
+        <div class="sub-full">Automatiza la sincronización entre tus proveedores y tiendas. Sin código.</div>
+        <div class="btns-full">
+          <span class="btn-p-full">Comenzar gratis</span>
+          <span class="btn-s-full">Ver demo</span>
+        </div>
+      </div>
+      <div class="logos-c">
+        <span style="font-size:7px;color:#cbd5e1;">Integra con</span>
+        <span class="logo-pill">WooCommerce</span>
+        <span class="logo-pill">Shopify</span>
+        <span class="logo-pill">PrestaShop</span>
+        <span class="logo-pill">Odoo</span>
+      </div>
+      <div class="stats-bar">
+        <div class="stat-item"><div class="stat-num">1.2K+</div><div class="stat-label">Productos sync</div><div class="stat-change">↑ en vivo</div></div>
+        <div class="stat-item"><div class="stat-num">99.9%</div><div class="stat-label">Uptime</div><div class="stat-change">↑ estable</div></div>
+        <div class="stat-item"><div class="stat-num">500+</div><div class="stat-label">Empresas</div><div class="stat-change">↑ creciendo</div></div>
+        <div class="stat-item"><div class="stat-num">2min</div><div class="stat-label">Setup</div><div class="stat-change">↓ sin código</div></div>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="card-letter">C</div>
+      <div class="card-name">Full Width + Stats Bar</div>
+      <div class="card-desc">Hero ancho completo con headline grande, barra de logos de integración y barra de estadísticas animadas al pie. Estilo HubSpot/Salesforce.</div>
+      <div class="tags">
+        <span class="tag a">Enterprise</span>
+        <span class="tag a">Datos reales</span>
+        <span class="tag">Social proof</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<p class="hint">Haz clic en el layout de hero que más te guste</p>
+
+</body>
+</html>
