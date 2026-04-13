@@ -1,5 +1,6 @@
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel } from "../components/ui";
+import { useSEO } from "../hooks/useSEO";
 
 const SECTIONS = [
   {
@@ -112,6 +113,12 @@ export default function Privacy() {
   const dark = theme === "dark";
   const appName = branding.app_name || "SyncStock";
   const today = new Date().toLocaleDateString("es-ES", { year: "numeric", month: "long", day: "numeric" });
+
+  useSEO({
+    title: "Política de Privacidad",
+    description: "Política de privacidad de SyncStock. Cómo recopilamos, usamos y protegemos tus datos personales conforme al RGPD.",
+    canonical: "/privacidad",
+  });
 
   const render = (text) => text.replace(/{app_name}/g, appName);
 

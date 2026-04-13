@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { Check, X, ArrowRight, HelpCircle } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
+import { useSEO } from "../hooks/useSEO";
 
 const COMPARISON_FEATURES = [
   { category: "Proveedores y Fuentes", features: [
@@ -77,6 +78,21 @@ export default function Pricing() {
   const [billing, setBilling] = useState("monthly");
   const [openFaq, setOpenFaq] = useState(null);
 
+  useSEO({
+    title: "Precios",
+    description: "Planes de SyncStock desde gratis hasta Enterprise. Sin permanencia, sin comisiones ocultas. Prueba gratuita de 14 días incluida en todos los planes.",
+    canonical: "/precios",
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "¿Puedo cambiar de plan en cualquier momento?", "acceptedAnswer": { "@type": "Answer", "text": "Sí. Puedes subir o bajar de plan cuando quieras. Los cambios se aplican de inmediato y la facturación se prorratea automáticamente." } },
+        { "@type": "Question", "name": "¿Hay permanencia mínima?", "acceptedAnswer": { "@type": "Answer", "text": "No. Puedes cancelar cuando quieras. Si cancelas, mantendrás el acceso hasta el final del período facturado." } },
+        { "@type": "Question", "name": "¿Qué pasa con mis datos si cancelo?", "acceptedAnswer": { "@type": "Answer", "text": "Tus datos se conservan durante 30 días tras la cancelación. Puedes exportarlos en cualquier momento antes de ese plazo." } }
+      ]
+    }
+  });
+
   const displayedPlans = plans
     .filter(p => p.is_active !== false)
     .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
@@ -144,6 +160,7 @@ export default function Pricing() {
                   key={plan.id}
                   className={cn(
                     "relative flex flex-col rounded-2xl border p-7",
+                    isPopular ? "pricing-popular" : "",
                     isPopular
                       ? dark ? "bg-indigo-950 border-indigo-500 ring-2 ring-indigo-500 shadow-xl shadow-indigo-500/20" : "border-indigo-500 ring-2 ring-indigo-500 shadow-xl shadow-indigo-500/10 bg-white"
                       : dark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-100 shadow-sm"

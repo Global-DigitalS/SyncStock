@@ -2,6 +2,7 @@ import { Link } from "react-router-dom";
 import { ArrowRight, Shield, Zap, Heart, Globe } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
+import { useSEO } from "../hooks/useSEO";
 
 const DEFAULT_TIMELINE = [
   { year: "2022", title: "Fundación", description: "SyncStock nace de la frustración de gestionar proveedores con hojas de cálculo. El primer MVP conecta 3 proveedores con WooCommerce." },
@@ -16,6 +17,23 @@ export default function About() {
   const dark = theme === "dark";
 
   const about = content?.about || {};
+
+  useSEO({
+    title: "Nosotros",
+    description: "Conoce la historia y los valores de SyncStock. Fundada en 2022, ayudamos a más de 500 empresas a automatizar la gestión de inventario B2B en toda Europa.",
+    canonical: "/nosotros",
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "SyncStock",
+      "url": "https://sync-stock.com",
+      "description": "Plataforma SaaS B2B para sincronización automática de inventarios entre proveedores y tiendas online.",
+      "foundingDate": "2022",
+      "numberOfEmployees": { "@type": "QuantitativeValue", "value": "10" },
+      "areaServed": "Europe",
+      "logo": "https://sync-stock.com/logo.png"
+    }
+  });
   const values = about.values || [
     { title: "Automatización", description: "Eliminamos tareas repetitivas para que tu equipo se enfoque en el negocio." },
     { title: "Fiabilidad", description: "Nuestros sistemas funcionan 24/7 con una disponibilidad del 99.9%." },
@@ -67,7 +85,7 @@ export default function About() {
       <section className={cn("py-20 lg:py-28", dark ? "bg-slate-950" : "bg-white")}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-12 lg:gap-20 items-center">
-            <div>
+            <div className="reveal-right">
               <h2 className={cn("text-3xl lg:text-4xl font-bold mb-6", dark ? "text-white" : "text-slate-900")}>
                 Nuestra historia
               </h2>
@@ -127,6 +145,7 @@ export default function About() {
                 <div
                   key={i}
                   className={cn(
+                    `reveal-up reveal-delay-${(i + 1) * 100}`,
                     "p-6 rounded-2xl border text-center card-hover",
                     dark ? "bg-slate-800 border-slate-700" : "bg-white border-slate-100"
                   )}

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useApp } from "../context/AppContext";
 import { cn, SectionLabel, SectionTitle, SectionSubtitle } from "../components/ui";
+import { useSEO } from "../hooks/useSEO";
 
 const iconMap = {
   Zap, Database, Store, Calculator, RefreshCw, Shield, BarChart3, Clock,
@@ -130,6 +131,24 @@ export default function Features() {
 
   const allFeatures = content?.features || [];
 
+  useSEO({
+    title: "Características",
+    description: "Descubre todas las funcionalidades de SyncStock: sincronización automática, gestión de proveedores, integración con WooCommerce, Shopify, PrestaShop, CRM y más de 50 plataformas.",
+    canonical: "/caracteristicas",
+    structuredData: {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "name": "Características de SyncStock",
+      "description": "Funcionalidades de la plataforma de gestión de inventario B2B SyncStock",
+      "itemListElement": FEATURE_CATEGORIES.slice(0, 5).map((cat, i) => ({
+        "@type": "ListItem",
+        "position": i + 1,
+        "name": cat.title,
+        "description": cat.description
+      }))
+    }
+  });
+
   return (
     <div className={cn("min-h-screen pt-20", dark ? "bg-slate-950" : "bg-white")}>
 
@@ -193,7 +212,7 @@ export default function Features() {
             : dark ? "bg-slate-900" : "bg-slate-50"
         )}>
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="mb-12">
+            <div className="mb-12 reveal-right">
               <h2 className={cn("text-2xl lg:text-3xl font-bold mb-3", dark ? "text-white" : "text-slate-900")}>
                 {cat.title}
               </h2>
@@ -204,6 +223,7 @@ export default function Features() {
                 <div
                   key={i}
                   className={cn(
+                    `reveal-up reveal-delay-${(i + 1) * 100}`,
                     "p-6 rounded-2xl border card-hover",
                     dark ? "bg-slate-800 border-slate-700 hover:border-indigo-500/50" : "bg-white border-slate-100 hover:shadow-md"
                   )}

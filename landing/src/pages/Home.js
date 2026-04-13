@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useSEO } from "../hooks/useSEO";
 import { Link } from "react-router-dom";
 import {
   Zap, Database, Store, Calculator, RefreshCw, Shield, Check,
@@ -130,34 +131,22 @@ export default function Home() {
 
   const displayedPlans = plans.filter(p => p.is_active !== false).sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
 
-  // Agregar schema.org structured data para SEO
-  useEffect(() => {
-    const script = document.createElement('script');
-    script.type = 'application/ld+json';
-    script.textContent = JSON.stringify({
+  useSEO({
+    description: "Plataforma SaaS para sincronización automática de inventarios B2B. Conecta proveedores, gestiona catálogos y actualiza tus tiendas online en tiempo real. 14 días gratis.",
+    canonical: "/",
+    structuredData: {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
       "name": "SyncStock",
       "description": "Plataforma SaaS para sincronización automática de inventarios B2B. Conecta proveedores, gestiona catálogos y actualiza tiendas online en tiempo real.",
-      "url": window.location.origin,
-      "image": `${window.location.origin}/logo.png`,
+      "url": "https://sync-stock.com",
+      "image": "https://sync-stock.com/og-image.png",
       "applicationCategory": "BusinessApplication",
       "operatingSystem": "Web",
-      "offers": {
-        "@type": "Offer",
-        "price": "0",
-        "priceCurrency": "EUR",
-        "description": "Plan Free incluido"
-      },
-      "aggregateRating": {
-        "@type": "AggregateRating",
-        "ratingValue": "4.9",
-        "ratingCount": "500"
-      }
-    });
-    document.head.appendChild(script);
-    return () => script.remove();
-  }, []);
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR", "description": "Plan Free incluido" },
+      "aggregateRating": { "@type": "AggregateRating", "ratingValue": "4.9", "ratingCount": "500" }
+    }
+  });
 
   return (
     <div className="overflow-x-hidden">
@@ -169,6 +158,7 @@ export default function Home() {
       )}>
         {/* Background decoration */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className={cn("absolute inset-0 opacity-40", dark ? "dot-grid-dark" : "dot-grid")} />
           <div className="absolute -top-40 -right-40 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl" />
           <div className="absolute top-20 -left-20 w-72 h-72 bg-violet-500/10 rounded-full blur-3xl" />
           <div className="absolute -bottom-20 right-20 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl" />
@@ -248,8 +238,8 @@ export default function Home() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
               {stats.map((stat, i) => (
-                <div key={i} className="text-center">
-                  <div className={cn("text-4xl lg:text-5xl font-black mb-2 bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent")}>
+                <div key={i} className={`text-center reveal-up reveal-delay-${(i + 1) * 100}`}>
+                  <div className={cn("text-4xl lg:text-5xl font-black mb-2 bg-gradient-to-r from-indigo-600 to-violet-600 bg-clip-text text-transparent stat-number")}>
                     {stat.value}
                   </div>
                   <div className={cn("text-sm font-medium", dark ? "text-slate-400" : "text-slate-600")}>{stat.label}</div>
@@ -265,7 +255,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid lg:grid-cols-2 gap-16 items-center">
             {/* Problem */}
-            <div className="animate-slide-up">
+            <div className="reveal-right">
               <Badge className="mb-4">El Problema</Badge>
               <h2 className={cn("text-4xl font-black mb-6 leading-tight", dark ? "text-white" : "text-slate-900")}>
                 Gestionar múltiples proveedores es un caos
@@ -286,7 +276,7 @@ export default function Home() {
             </div>
 
             {/* Solution */}
-            <div className="animate-float">
+            <div className="reveal-left reveal-delay-200">
               <Badge className="mb-4 bg-emerald-50 text-emerald-700">La Solución</Badge>
               <h2 className={cn("text-4xl font-black mb-6 leading-tight text-emerald-600")}>
                 SyncStock lo automatiza todo
@@ -324,7 +314,7 @@ export default function Home() {
             </div>
             <div className="grid md:grid-cols-3 gap-10">
               {howItWorks.map((step, i) => (
-                <div key={i} className="relative text-center group">
+                <div key={i} className={`relative text-center group reveal-up reveal-delay-${(i + 1) * 150}`}>
                   {i < howItWorks.length - 1 && (
                     <div className={cn("hidden md:block absolute top-12 left-[60%] w-[80%] border-t-2 border-dashed group-hover:border-indigo-400 transition-colors", dark ? "border-slate-700" : "border-slate-300")} />
                   )}
@@ -364,7 +354,7 @@ export default function Home() {
               {features.map((feat, i) => (
                 <div
                   key={i}
-                  className={cn(
+                  className={cn(`reveal-scale reveal-delay-${Math.min((i % 3 + 1) * 100, 400)}`,
                     "p-8 rounded-2xl border transition-all duration-300 group cursor-pointer",
                     dark
                       ? "bg-slate-800 border-slate-700 hover:border-indigo-500 hover:shadow-xl hover:shadow-indigo-500/10 hover:bg-slate-750"
