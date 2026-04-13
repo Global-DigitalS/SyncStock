@@ -113,7 +113,7 @@ export default function FeaturesSection() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {features.map((f, i) => (
-            <FeatureCard key={i} feature={f} index={i} />
+            <FeatureCard key={f.title || i} feature={f} index={i} />
           ))}
         </div>
       </div>
