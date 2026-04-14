@@ -2,7 +2,9 @@ import logging
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from models.schemas import (
     BulkCategoryAssignment,
@@ -29,6 +31,9 @@ from services.sync import calculate_final_price
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+# Rate limiting
+limiter = Limiter(key_func=get_remote_address)
+
 # MEDIUM FIX #15: Hardcoded batch limits - now configurable constants
 # These limits prevent unbounded queries and memory exhaustion
 MAX_CATALOGS_PER_USER = 100      # User shouldn't have >100 catalogs
@@ -40,7 +45,8 @@ MAX_PRODUCTS_PAGE = 1000         # Products per page query
 # ==================== CATALOGS ====================
 
 @router.post("/catalogs", response_model=CatalogResponse)
-async def create_catalog(catalog: CatalogCreate, user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def create_catalog(request: Request, catalog: CatalogCreate, user: dict = Depends(get_current_user)):
     # Check user limit
     can_create = await check_user_limit(user, "catalogs")
     if not can_create:
@@ -131,7 +137,8 @@ async def get_catalog_by_id(catalog_id: str, user: dict = Depends(get_current_us
 
 
 @router.put("/catalogs/{catalog_id}", response_model=CatalogResponse)
-async def update_catalog(catalog_id: str, update: CatalogUpdate, user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def update_catalog(request: Request, catalog_id: str, update: CatalogUpdate, user: dict = Depends(get_current_user)):
     existing = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not existing:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
@@ -152,7 +159,8 @@ async def update_catalog(catalog_id: str, update: CatalogUpdate, user: dict = De
 
 
 @router.delete("/catalogs/{catalog_id}")
-async def delete_catalog(catalog_id: str, user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")
+async def delete_catalog(request: Request, catalog_id: str, user: dict = Depends(get_current_user)):
     existing = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not existing:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
@@ -165,7 +173,8 @@ async def delete_catalog(catalog_id: str, user: dict = Depends(get_current_user)
 # ==================== CATALOG ITEMS ====================
 
 @router.post("/catalogs/{catalog_id}/products")
-async def add_products_to_catalog(catalog_id: str, data: CatalogProductAdd, user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def add_products_to_catalog(request: Request, catalog_id: str, data: CatalogProductAdd, user: dict = Depends(get_current_user)):
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
@@ -269,7 +278,8 @@ async def remove_product_from_catalog(catalog_id: str, item_id: str, user: dict 
 # ==================== CATALOG MARGIN RULES ====================
 
 @router.post("/catalogs/{catalog_id}/margin-rules", response_model=CatalogMarginRuleResponse)
-async def create_catalog_margin_rule(catalog_id: str, rule: CatalogMarginRuleCreate, user: dict = Depends(get_current_user)):
+@limiter.limit("30/minute")
+async def create_catalog_margin_rule(request: Request, catalog_id: str, rule: CatalogMarginRuleCreate, user: dict = Depends(get_current_user)):
     catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
@@ -315,7 +325,8 @@ async def update_catalog_margin_rule(catalog_id: str, rule_id: str, rule: Catalo
 
 
 @router.delete("/catalogs/{catalog_id}/margin-rules/{rule_id}")
-async def delete_catalog_margin_rule(catalog_id: str, rule_id: str, user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")
+async def delete_catalog_margin_rule(request: Request, catalog_id: str, rule_id: str, user: dict = Depends(get_current_user)):
     result = await db.catalog_margin_rules.delete_one({"id": rule_id, "catalog_id": catalog_id, "user_id": user["id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Regla no encontrada")
@@ -746,7 +757,8 @@ async def get_category_products(catalog_id: str, category_id: str, user: dict = 
 
 
 @router.post("/catalogs/{catalog_id}/products/bulk-categories")
-async def bulk_assign_categories(catalog_id: str, data: BulkCategoryAssignment, user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")
+async def bulk_assign_categories(request: Request, catalog_id: str, data: BulkCategoryAssignment, user: dict = Depends(get_current_user)):
     """Assign categories to multiple products at once
     
     Modes:

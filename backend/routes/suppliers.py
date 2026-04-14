@@ -53,7 +53,8 @@ class FtpBrowseRequest(BaseModel):
 
 
 @router.post("/suppliers", response_model=SupplierResponse)
-async def create_supplier(supplier: SupplierCreate, user: dict = Depends(get_current_user)):
+@_limiter.limit("30/minute")
+async def create_supplier(request: Request, supplier: SupplierCreate, user: dict = Depends(get_current_user)):
     # Check user limit
     can_create = await check_user_limit(user, "suppliers")
     if not can_create:
@@ -194,7 +195,8 @@ async def update_supplier(supplier_id: str, supplier: SupplierUpdate, user: dict
 
 
 @router.delete("/suppliers/{supplier_id}")
-async def delete_supplier(supplier_id: str, user: dict = Depends(get_current_user)):
+@_limiter.limit("10/minute")
+async def delete_supplier(request: Request, supplier_id: str, user: dict = Depends(get_current_user)):
     result = await db.suppliers.delete_one({"id": supplier_id, "user_id": user["id"]})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
@@ -311,7 +313,8 @@ def _sanitize_ftp_path(path: str) -> str:
 
 
 @router.post("/suppliers/ftp-browse")
-async def ftp_browse(req: FtpBrowseRequest, user: dict = Depends(get_current_user)):
+@_limiter.limit("20/minute")
+async def ftp_browse(request: Request, req: FtpBrowseRequest, user: dict = Depends(get_current_user)):
     """Navega por el servidor FTP y lista archivos/carpetas"""
     safe_path = _sanitize_ftp_path(req.path or "/")
     # Resolve password: use saved DB password if supplier_id is provided and no new password given
@@ -343,7 +346,8 @@ class FtpTestRequest(BaseModel):
 
 
 @router.post("/suppliers/ftp-test")
-async def ftp_test_connection(req: FtpTestRequest, current_user: dict = Depends(get_current_user)):
+@_limiter.limit("20/minute")
+async def ftp_test_connection(request: Request, req: FtpTestRequest, current_user: dict = Depends(get_current_user)):
     """
     Prueba la conexión FTP sin descargar archivos.
     Útil para verificar credenciales antes de configurar el proveedor.
@@ -448,7 +452,8 @@ async def ftp_test_connection(req: FtpTestRequest, current_user: dict = Depends(
 
 
 @router.post("/suppliers/{supplier_id}/ftp-browse")
-async def ftp_browse_supplier(supplier_id: str, data: dict, user: dict = Depends(get_current_user)):
+@_limiter.limit("20/minute")
+async def ftp_browse_supplier(request: Request, supplier_id: str, data: dict, user: dict = Depends(get_current_user)):
     """Navega por el FTP del proveedor específico"""
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
@@ -523,7 +528,8 @@ async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(
 
 
 @router.post("/products/import/{supplier_id}")
-async def import_products(supplier_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
+@_limiter.limit("5/minute")
+async def import_products(request: Request, supplier_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
     supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
@@ -706,7 +712,8 @@ def suggest_column_mapping(columns: list) -> dict:
 
 
 @router.post("/suppliers/{supplier_id}/preview-file")
-async def preview_supplier_file(supplier_id: str, user: dict = Depends(get_current_user)):
+@_limiter.limit("10/minute")
+async def preview_supplier_file(request: Request, supplier_id: str, user: dict = Depends(get_current_user)):
     """Previsualiza el archivo del proveedor y muestra las columnas detectadas con sugerencias de mapeo"""
     from services.sync import download_file_from_ftp, download_file_from_url, extract_zip_files, parse_text_file
 

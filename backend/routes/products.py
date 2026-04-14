@@ -4,11 +4,16 @@ import uuid
 from datetime import UTC, datetime
 
 import aiofiles
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 from models.schemas import ProductResponse, ProductUpdate, SupplierOffer, UnifiedProductResponse
 from services.auth import get_current_user
 from services.database import db
+
+# Rate limiting
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter()
 
@@ -89,7 +94,9 @@ async def get_brands(
 
 
 @router.get("/products/search/global")
+@limiter.limit("100/minute")
 async def search_products_global(
+    request: Request,
     q: str | None = None,
     category: str | None = None,
     brand: str | None = None,
@@ -315,7 +322,9 @@ async def update_product(product_id: str, update: ProductUpdate, user: dict = De
 
 
 @router.post("/products/add-to-catalogs")
+@limiter.limit("30/minute")
 async def add_products_to_multiple_catalogs(
+    request: Request,
     data: dict, user: dict = Depends(get_current_user)
 ):
     product_ids = data.get("product_ids", [])
@@ -526,7 +535,9 @@ async def get_unified_product(ean: str, user: dict = Depends(get_current_user)):
 # ==================== PRODUCT SELECTION (Supplier -> Products flow) ====================
 
 @router.post("/products/select")
+@limiter.limit("60/minute")
 async def select_products(
+    request: Request,
     data: dict, user: dict = Depends(get_current_user)
 ):
     """
@@ -549,7 +560,9 @@ async def select_products(
 
 
 @router.post("/products/deselect")
+@limiter.limit("60/minute")
 async def deselect_products(
+    request: Request,
     data: dict, user: dict = Depends(get_current_user)
 ):
     """
@@ -784,7 +797,9 @@ async def get_supplier_categories(
 # ==================== PRODUCT IMAGE UPLOAD ====================
 
 @router.post("/products/{product_id}/upload-image")
+@limiter.limit("20/minute")
 async def upload_product_image(
+    request: Request,
     product_id: str,
     image_type: str = "main",  # main, gallery
     file: UploadFile = File(...),
@@ -894,7 +909,8 @@ async def delete_product(product_id: str, user: dict = Depends(get_current_user)
 
 
 @router.post("/products/delete-bulk")
-async def delete_products_bulk(data: dict, user: dict = Depends(get_current_user)):
+@limiter.limit("10/minute")
+async def delete_products_bulk(request: Request, data: dict, user: dict = Depends(get_current_user)):
     """Delete multiple products by their EANs"""
     eans = data.get("eans", [])
     if not eans:
