@@ -5,7 +5,7 @@ import re
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
 from models.schemas import (
     WooCommerceConfig,
@@ -21,6 +21,9 @@ from services.sync import (
     get_woocommerce_client,
     mask_key,
     sync_woocommerce_store_price_stock,
+    send_sync_progress,
+    send_sync_complete,
+    send_sync_error,
 )
 
 router = APIRouter()
@@ -251,25 +254,37 @@ async def test_woocommerce_connection(config_id: str, user: dict = Depends(get_c
         return {"status": "error", "message": "Error de conexión a WooCommerce. Verifica la URL y las claves API."}
 
 
+async def _run_woocommerce_sync_background(config: dict, user_id: str, config_id: str):
+    """Background task: run WooCommerce sync and emit WebSocket progress events"""
+    store_name = config.get("name", config_id)
+    try:
+        # Emit initial progress
+        await send_sync_progress(user_id, store_name, 0, 3, operation_id=config_id)
+
+        # Run sync
+        await sync_woocommerce_store_price_stock(config)
+
+        # Get updated count and emit completion
+        updated = await db.woocommerce_configs.find_one({"id": config_id}, {"_id": 0})
+        products_synced = updated.get("products_synced", 0) if updated else 0
+        message = f"Sincronización completada. {products_synced} productos actualizados."
+        await send_sync_complete(user_id, f"{store_name}: {message}", operation_id=config_id)
+
+    except Exception as e:
+        logger.error(f"Error in background WooCommerce sync for {config_id}: {e}")
+        await send_sync_error(user_id, f"Error en sincronización de {store_name}: {str(e)[:100]}", operation_id=config_id)
+
+
 @router.post("/woocommerce/configs/{config_id}/sync")
-async def sync_woocommerce_price_stock(config_id: str, user: dict = Depends(get_current_user)):
+async def sync_woocommerce_price_stock(config_id: str, user: dict = Depends(get_current_user), background_tasks: BackgroundTasks = BackgroundTasks()):
     config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
     if not config:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
     if not config.get("catalog_id"):
         raise HTTPException(status_code=400, detail="No hay catálogo asociado a esta tienda. Configura un catálogo primero.")
-    try:
-        await sync_woocommerce_store_price_stock(config)
-        updated = await db.woocommerce_configs.find_one({"id": config_id}, {"_id": 0})
-        return {
-            "status": "success",
-            "message": f"Sincronización completada. {updated.get('products_synced', 0)} productos actualizados.",
-            "products_synced": updated.get("products_synced", 0),
-            "last_sync": updated.get("last_sync")
-        }
-    except Exception as e:
-        logger.error(f"Error in manual WooCommerce sync: {e}")
-        return {"status": "error", "message": "Error en la sincronización con WooCommerce"}
+
+    background_tasks.add_task(_run_woocommerce_sync_background, config, user["id"], config_id)
+    return {"status": "queued", "operation_id": config_id, "message": "Sincronización iniciada en segundo plano..."}
 
 
 @router.post("/woocommerce/export", response_model=WooCommerceExportResult)

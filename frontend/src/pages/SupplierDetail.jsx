@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useSyncProgress, SYNC_STEPS } from "../contexts/SyncProgressContext";
 import {
   Truck,
   Package,
@@ -207,58 +208,45 @@ const SupplierDetail = () => {
     }
   };
 
-  // Poll sync-status every 5s until the background task finishes (max 10 min)
-  const pollSyncStatus = async (id, maxWaitMs = 600_000) => {
-    const interval = 5000;
-    const deadline = Date.now() + maxWaitMs;
-    while (Date.now() < deadline) {
-      await new Promise(r => setTimeout(r, interval));
-      try {
-        const res = await api.get(`/suppliers/${id}/sync-status`);
-        setSyncStatus(res.data);
-        if (res.data.sync_status !== "running") return res.data;
-      } catch (_) { /* continue polling on transient errors */ }
-    }
-    return null;
-  };
+  const { startSync, completeSync, failSync } = useSyncProgress();
 
   const handleSync = async () => {
+    const syncTitle = `Sincronizando ${supplier?.name || "Proveedor"}`;
+    startSync(supplierId, syncTitle, SYNC_STEPS.supplier);
     setSyncing(true);
+
     try {
       const res = await api.post(`/suppliers/${supplierId}/sync`);
 
       if (res.data.status === "queued") {
-        // Background sync — poll until done
-        toast.info(res.data.message || "Sincronización iniciada en segundo plano...");
-        const pollResult = await pollSyncStatus(supplierId);
-        if (pollResult?.sync_status === "error") {
-          toast.error(`Error en la sincronización: ${pollResult.sync_last_result || "error desconocido"}`);
-        } else {
-          toast.success("Sincronización completada");
-        }
-        fetchData();
+        // Background sync — panel se actualiza vía WebSocket
         return;
       }
 
-      // Legacy synchronous response handling
+      // Legacy synchronous response handling (para endpoints que aún devuelven resultado inmediato)
       if (res.data.needs_mapping) {
         toast.warning(res.data.message || "Se necesita configurar el mapeo de columnas", {
           duration: 8000,
           description: `Columnas detectadas: ${(res.data.detected_columns || []).slice(0, 5).join(", ")}...`
         });
+        completeSync(supplierId, "Requiere mapeo de columnas");
       } else if (res.data.status === "success" && res.data.imported + res.data.updated > 0) {
-        toast.success(`Sincronización completada: ${res.data.imported} nuevos, ${res.data.updated} actualizados`);
+        const summary = `${res.data.imported} nuevos, ${res.data.updated} actualizados`;
+        completeSync(supplierId, summary);
       } else if (res.data.errors > 0 && res.data.imported + res.data.updated === 0) {
         toast.warning("Archivo descargado pero no se importaron productos. Verifica el mapeo de columnas.", {
           duration: 6000
         });
+        completeSync(supplierId, "Sin importaciones");
       } else {
-        toast.info("Sincronización completada sin cambios");
+        completeSync(supplierId, "Completado sin cambios");
       }
 
       fetchData();
     } catch (error) {
-      toast.error(error.response?.data?.message || error.response?.data?.detail || "Error en la sincronización");
+      const errorMsg = error.response?.data?.message || error.response?.data?.detail || "Error en la sincronización";
+      failSync(supplierId, errorMsg);
+      toast.error(errorMsg);
     } finally {
       setSyncing(false);
     }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { useSyncProgress, SYNC_STEPS } from "../contexts/SyncProgressContext";
 import {
   Plus,
   RefreshCw,
@@ -107,6 +108,9 @@ const Suppliers = () => {
   const [pageView, setPageView] = useState("suppliers");
   const [globalCategories, setGlobalCategories] = useState([]);
   const [globalBrands, setGlobalBrands] = useState([]);
+
+  // Sync progress panel integration
+  const { startSync, completeSync, failSync } = useSyncProgress();
 
   const fetchSuppliers = useCallback(async () => {
     try {
@@ -253,22 +257,21 @@ const Suppliers = () => {
           (payload.ftp_host || (payload.ftp_paths && payload.ftp_paths.length > 0)));
 
       if (canSync) {
-        toast.info("Sincronizando catálogo...");
+        startSync(supplierId, `Sincronizando ${payload.name}`, SYNC_STEPS.supplier);
+
         api.post(`/suppliers/${supplierId}/sync`)
           .then(async (res) => {
             const d = res.data;
             if (d.status === "queued") {
-              toast.info(d.message || "Sincronización iniciada en segundo plano");
+              // Panel se actualiza via WS
               fetchSuppliers();
               return;
             }
             if (d.status === "error") {
-              toast.error(`Error en sincronización: ${d.message}`);
+              failSync(supplierId, d.message || "Error en sincronización");
               return;
             }
-            toast.success(
-              `Sincronización completada: ${d.imported ?? 0} importados, ${d.updated ?? 0} actualizados`
-            );
+            completeSync(supplierId, `${d.imported ?? 0} importados, ${d.updated ?? 0} actualizados`);
             fetchSuppliers();
 
             // Auto-detect and save column mapping if none configured
@@ -294,7 +297,7 @@ const Suppliers = () => {
             }
           })
           .catch((err) => {
-            toast.error(err.response?.data?.detail || "Error al sincronizar el catálogo");
+            failSync(supplierId, err.response?.data?.detail || "Error al sincronizar el catálogo");
           });
       }
     } catch (error) {

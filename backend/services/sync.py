@@ -63,16 +63,37 @@ async def send_realtime_notification(user_id: str, notification: dict):
         logger.debug(f"Could not send realtime notification: {e}")
 
 
-async def send_sync_progress(user_id: str, supplier_name: str, processed: int, total: int):
+async def send_sync_progress(user_id: str, supplier_name: str, processed: int, total: int, operation_id: str = None):
     """Send sync progress update via WebSocket"""
     pct = int((processed / total) * 100) if total > 0 else 0
     await send_realtime_notification(user_id, {
         "id": str(uuid.uuid4()),
         "type": "sync_progress",
+        "operation_id": operation_id or supplier_name,
         "message": f"Sincronizando '{supplier_name}': {processed:,}/{total:,} productos ({pct}%)",
         "progress": pct,
         "processed": processed,
         "total": total,
+    })
+
+
+async def send_sync_complete(user_id: str, message: str, operation_id: str = None):
+    """Send sync complete notification via WebSocket"""
+    await send_realtime_notification(user_id, {
+        "id": str(uuid.uuid4()),
+        "type": "sync_complete",
+        "operation_id": operation_id,
+        "message": message,
+    })
+
+
+async def send_sync_error(user_id: str, message: str, operation_id: str = None):
+    """Send sync error notification via WebSocket"""
+    await send_realtime_notification(user_id, {
+        "id": str(uuid.uuid4()),
+        "type": "sync_error",
+        "operation_id": operation_id,
+        "message": message,
     })
 
 
@@ -294,7 +315,7 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
                     await sku_cache.populate_batch(next_batch_skus)
 
                 # Send progress updates
-                await send_sync_progress(user_id, supplier_name, i + 1, total)
+                await send_sync_progress(user_id, supplier_name, i + 1, total, operation_id=supplier_id)
 
         except Exception as e:
             logger.error(f"Error processing product: {e}")
@@ -1180,14 +1201,15 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
         product_count = await db.products.count_documents({"supplier_id": supplier['id']})
         await db.suppliers.update_one({"id": supplier['id']}, {"$set": {"product_count": product_count, "last_sync": now.isoformat()}})
 
+        message = f"Sincronización completada: {supplier['name']} - {result['imported']} nuevos, {result['updated']} actualizados"
         notification = {
             "id": str(uuid.uuid4()), "type": "sync_complete",
-            "message": f"Sincronización completada: {supplier['name']} - {result['imported']} nuevos, {result['updated']} actualizados",
+            "message": message,
             "product_id": None, "product_name": None,
             "user_id": supplier["user_id"], "read": False, "created_at": now.isoformat()
         }
         await db.notifications.insert_one(notification)
-        await send_realtime_notification(supplier["user_id"], notification)
+        await send_sync_complete(supplier["user_id"], message, operation_id=supplier["id"])
 
         final_result = {"status": "success", **result}
         await record_sync_history(supplier, final_result, sync_type, duration)
@@ -1197,15 +1219,16 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
         duration = (datetime.now(UTC) - start_time).total_seconds()
         logger.error(f"Error syncing supplier {supplier['name']}: {e}")
 
+        message = f"Error en sincronización: {supplier['name']} - {str(e)[:100]}"
         notification = {
             "id": str(uuid.uuid4()), "type": "sync_error",
-            "message": f"Error en sincronización: {supplier['name']} - {str(e)[:100]}",
+            "message": message,
             "product_id": None, "product_name": None,
             "user_id": supplier["user_id"], "read": False,
             "created_at": datetime.now(UTC).isoformat()
         }
         await db.notifications.insert_one(notification)
-        await send_realtime_notification(supplier["user_id"], notification)
+        await send_sync_error(supplier["user_id"], message, operation_id=supplier["id"])
 
         error_result = {"status": "error", "message": str(e), "imported": 0, "updated": 0, "errors": 1}
         await record_sync_history(supplier, error_result, sync_type, duration, str(e))
@@ -1682,12 +1705,14 @@ async def sync_supplier_multifile(supplier: dict, sync_type: str = "manual") -> 
         "detected_columns": flat_detected if flat_detected else list(all_detected_columns.keys())
     }})
 
+    message = f"Sincronización multi-archivo: {supplier['name']} - {imported} nuevos, {updated} actualizados ({len(ftp_paths)} archivos)"
     await db.notifications.insert_one({
         "id": str(uuid.uuid4()), "type": "sync_complete",
-        "message": f"Sincronización multi-archivo: {supplier['name']} - {imported} nuevos, {updated} actualizados ({len(ftp_paths)} archivos)",
+        "message": message,
         "product_id": None, "product_name": None,
         "user_id": supplier["user_id"], "read": False, "created_at": now
     })
+    await send_sync_complete(supplier["user_id"], message, operation_id=supplier["id"])
 
     final_result = {
         "status": "success", "imported": imported, "updated": updated,
@@ -2372,11 +2397,7 @@ async def create_catalog_from_store_products(
                     raise
 
         # Step 5: Notify — complete
-        await send_realtime_notification(user_id, {
-            "id": str(uuid.uuid4()),
-            "type": "sync_complete",
-            "message": f"Catálogo '{catalog['name']}' creado: {matched} coincidencias, {unmatched} sin coincidencia, {added_items} añadidos al catálogo",
-        })
+        await send_sync_complete(user_id, f"Catálogo '{catalog['name']}' creado: {matched} coincidencias, {unmatched} sin coincidencia, {added_items} añadidos al catálogo", operation_id=store_config_id)
 
         return {
             "status": "success",
@@ -2394,11 +2415,7 @@ async def create_catalog_from_store_products(
     except Exception as e:
         logger.error(f"Error creating catalog from store: {e}")
         # Notify error via WebSocket
-        await send_realtime_notification(user_id, {
-            "id": str(uuid.uuid4()),
-            "type": "sync_error",
-            "message": f"Error creando catálogo desde tienda: {str(e)[:100]}",
-        })
+        await send_sync_error(user_id, f"Error creando catálogo desde tienda: {str(e)[:100]}", operation_id=store_config_id)
         return {
             "status": "error",
             "catalog_id": catalog["id"] if catalog else (catalog_id if catalog_id else None),

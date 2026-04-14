@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { useSyncProgress, SYNC_STEPS } from "../contexts/SyncProgressContext";
 import {
   RefreshCw,
   Clock,
@@ -7,7 +8,10 @@ import {
   CheckCircle,
   Settings,
   Play,
-  Loader2
+  Loader2,
+  Truck,
+  Store,
+  Building2
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
 import { Button } from "../components/ui/button";
@@ -29,9 +33,12 @@ const SyncSettings = () => {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [lastSyncResult, setLastSyncResult] = useState(null);
-  
+
   // Form state
   const [syncInterval, setSyncInterval] = useState(null);
+
+  // Sync progress panel integration
+  const { startSync, completeSync, failSync } = useSyncProgress();
 
   useEffect(() => {
     fetchSettings();
@@ -67,12 +74,18 @@ const SyncSettings = () => {
   const handleSyncNow = async () => {
     setSyncing(true);
     setLastSyncResult(null);
+
+    // Start the sync progress panel with generic steps for overall sync
+    const overallSteps = ["Sincronizando proveedores", "Sincronizando tiendas", "Sincronizando CRM"];
+    startSync("overall-sync", "Sincronización General", overallSteps);
+
     try {
       const res = await api.post("/sync/run-now");
       setLastSyncResult(res.data);
-      toast.success(res.data.message);
+      completeSync("overall-sync", res.data.message || "Sincronización completada");
       fetchSettings();
     } catch (error) {
+      failSync("overall-sync", "Error al sincronizar");
       toast.error("Error al sincronizar");
     } finally {
       setSyncing(false);
