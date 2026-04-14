@@ -26,6 +26,9 @@ logger = logging.getLogger(__name__)
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
+# Import security configuration
+from config.cors import CORS_CONFIG, SECURITY_HEADERS
+
 # Import route modules
 from routes.admin import router as admin_router
 from routes.auth import router as auth_router
@@ -367,28 +370,21 @@ app.add_middleware(UUIDValidationMiddleware)
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(GZipMiddleware, minimum_size=500)
 
-_cors_origins_env = os.environ.get('CORS_ORIGINS', '')
+# CORS Configuration (from config/cors.py)
 _environment = os.environ.get('ENVIRONMENT', 'development').lower()
-if not _cors_origins_env or _cors_origins_env.strip() == '*':
-    if _environment == 'production':
-        raise RuntimeError(
-            "CORS_ORIGINS es obligatorio en producción. "
-            "Define: CORS_ORIGINS=https://app.tudominio.com"
-        )
-    logger.warning(
-        "CORS_ORIGINS no está configurado o usa '*'. "
-        "En producción DEBES definir orígenes explícitos."
+if _environment == 'production' and CORS_CONFIG["allow_origins"] == ["*"]:
+    raise RuntimeError(
+        "CORS_ORIGINS es obligatorio en producción. "
+        "Define CORS_ORIGINS en variables de entorno con orígenes específicos, "
+        "ej: CORS_ORIGINS=https://app.tudominio.com"
     )
-    _cors_origins = ["*"]
-    _cors_credentials = False
-else:
-    _cors_origins = [o.strip() for o in _cors_origins_env.split(',') if o.strip()]
-    _cors_credentials = True
 
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=_cors_credentials,
-    allow_origins=_cors_origins,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["Authorization", "Content-Type", "Accept", "X-CSRF-Token"],
+    allow_credentials=CORS_CONFIG["allow_credentials"],
+    allow_origins=CORS_CONFIG["allow_origins"],
+    allow_methods=CORS_CONFIG["allow_methods"],
+    allow_headers=CORS_CONFIG["allow_headers"],
+    expose_headers=CORS_CONFIG.get("expose_headers", []),
+    max_age=CORS_CONFIG.get("max_age", 600),
 )
