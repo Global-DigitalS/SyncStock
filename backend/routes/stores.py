@@ -8,7 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from services.auth import check_user_limit, get_current_user
 from services.database import db
 from services.platforms import MagentoClient, PrestaShopClient, ShopifyClient, WixClient
-from services.sync import calculate_final_price, get_woocommerce_client, mask_key
+from services.sync import calculate_final_price, get_woocommerce_client, mask_key, send_sync_progress, send_sync_complete, send_sync_error
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -400,8 +400,42 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
         return {"status": "error", "message": "Error de conexión a la tienda. Verifica la URL y las credenciales."}
 
 
+async def _run_store_sync_background(config: dict, user_id: str, config_id: str):
+    """Background task: run store sync and emit WebSocket progress events"""
+    from services.multi_store_sync import sync_store
+
+    store_name = config.get("name", config_id)
+    try:
+        # Emit initial progress
+        await send_sync_progress(user_id, store_name, 0, 3, operation_id=config_id)
+
+        # Run sync
+        result = await sync_store(config)
+
+        # Emit completion with summary
+        s = result.get("summary", {})
+        message_parts = []
+        if s.get("update_by_ean"):
+            message_parts.append(f"{s['update_by_ean']} actualizados por EAN")
+        if s.get("update_by_sku"):
+            message_parts.append(f"{s['update_by_sku']} actualizados por SKU")
+        if s.get("create_full"):
+            message_parts.append(f"{s['create_full']} subidos nuevos")
+        if s.get("create_draft"):
+            message_parts.append(f"{s['create_draft']} creados como borrador")
+        if s.get("failed"):
+            message_parts.append(f"{s['failed']} fallidos")
+
+        message = ". ".join(message_parts) if message_parts else "Sin cambios"
+        await send_sync_complete(user_id, f"Sincronización completada: {store_name} - {message}", operation_id=config_id)
+
+    except Exception as e:
+        logger.error(f"Error in background store sync for {config_id}: {e}")
+        await send_sync_error(user_id, f"Error en sincronización de {store_name}: {str(e)[:100]}", operation_id=config_id)
+
+
 @router.post("/stores/configs/{config_id}/sync")
-async def sync_store_price_stock(config_id: str, user: dict = Depends(get_current_user)):
+async def sync_store_price_stock(config_id: str, user: dict = Depends(get_current_user), background_tasks: BackgroundTasks = BackgroundTasks()):
     """
     Sincroniza precio y stock con la tienda usando el algoritmo EAN > SKU > Borrador.
 
@@ -411,9 +445,9 @@ async def sync_store_price_stock(config_id: str, user: dict = Depends(get_curren
     - No encontrado: crea borrador (requiere revisión manual).
 
     Soporta: WooCommerce, PrestaShop, Shopify.
-    """
-    from services.multi_store_sync import sync_store
 
+    Ejecuta en background y emite eventos WebSocket para progreso en tiempo real.
+    """
     config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
     if not config:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
@@ -431,37 +465,8 @@ async def sync_store_price_stock(config_id: str, user: dict = Depends(get_curren
             detail=f"Sincronización automática no disponible para '{platform}'. Usa la exportación manual."
         )
 
-    try:
-        result = await sync_store(config)
-        s = result.get("summary", {})
-        total_synced = s.get("update_by_ean", 0) + s.get("update_by_sku", 0) + s.get("create_full", 0)
-
-        message_parts = []
-        if s.get("update_by_ean"):
-            message_parts.append(f"{s['update_by_ean']} actualizados por EAN")
-        if s.get("update_by_sku"):
-            message_parts.append(f"{s['update_by_sku']} actualizados por SKU")
-        if s.get("create_full"):
-            message_parts.append(f"{s['create_full']} subidos nuevos")
-        if s.get("create_draft"):
-            message_parts.append(f"{s['create_draft']} creados como borrador")
-        if s.get("failed"):
-            message_parts.append(f"{s['failed']} fallidos")
-
-        message = ". ".join(message_parts) if message_parts else "Sin cambios"
-
-        return {
-            "status": result.get("status", "success"),
-            "message": message,
-            "products_synced": total_synced,
-            "last_sync": result.get("end_time"),
-            "summary": s,
-            "draft_products": result.get("draft_products", []),
-            "errors": result.get("errors", [])[:10],
-        }
-    except Exception as e:
-        logger.error(f"Error in store sync for {config_id}: {e}")
-        return {"status": "error", "message": "Error en la sincronización con la tienda"}
+    background_tasks.add_task(_run_store_sync_background, config, user["id"], config_id)
+    return {"status": "queued", "operation_id": config_id, "message": "Sincronización iniciada en segundo plano..."}
 
 
 async def _run_export_background(config: dict, catalog_items: list, catalog_id: str,
