@@ -9,7 +9,6 @@ from services.sync._sync_original import (  # noqa: F401
     PROGRESS_REPORT_INTERVAL,
     sanitize_ean_quotes,
     send_realtime_notification,
-    send_sync_progress,
     bulk_upsert_products,
     prefetch_existing_products,
     download_file_from_ftp_sync,
@@ -47,4 +46,11 @@ from services.sync._sync_original import (  # noqa: F401
     fetch_all_store_products,
     extract_store_product_info,
     create_catalog_from_store_products,
+)
+
+# Versiones con soporte de operation_id (sobreescriben las del original)
+from services.sync.notifications import (  # noqa: F401
+    send_sync_progress,
+    send_sync_complete,
+    send_sync_error,
 )
