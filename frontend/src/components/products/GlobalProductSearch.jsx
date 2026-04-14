@@ -1,5 +1,5 @@
-import { useState, useCallback } from "react";
-import { Search, ChevronDown, ChevronUp, Package, X, Filter, Loader2 } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { Search, ChevronDown, ChevronUp, Package, X, Filter, Loader2, BookOpen, PackagePlus, Check } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../../App";
 import { Input } from "../ui/input";
@@ -8,8 +8,10 @@ import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "../ui/dialog";
+import { Checkbox } from "../ui/checkbox";
 
-const ProductRow = ({ product }) => (
+const ProductRow = ({ product, onSelectProduct, onAddToCatalog, isSelecting, isSelected }) => (
   <div className="flex items-center gap-3 py-2 border-b border-slate-100 last:border-0">
     {product.image_url ? (
       <img
@@ -47,10 +49,40 @@ const ProductRow = ({ product }) => (
         {product.category}
       </Badge>
     )}
+
+    {/* Botones de acción */}
+    <div className="flex items-center gap-1 shrink-0">
+      {/* Añadir a Productos */}
+      <button
+        onClick={() => onSelectProduct(product)}
+        disabled={isSelecting || isSelected}
+        title={isSelected ? "Ya en Productos" : "Añadir a Productos"}
+        className={`p-1.5 rounded-sm transition-colors ${
+          isSelected
+            ? "text-emerald-600 bg-emerald-50 cursor-default"
+            : isSelecting
+            ? "text-slate-300 cursor-wait"
+            : "text-slate-400 hover:text-emerald-600 hover:bg-emerald-50"
+        }`}
+      >
+        {isSelecting ? <Loader2 className="w-4 h-4 animate-spin" />
+          : isSelected ? <Check className="w-4 h-4" />
+          : <PackagePlus className="w-4 h-4" />}
+      </button>
+
+      {/* Añadir a Catálogo(s) */}
+      <button
+        onClick={() => onAddToCatalog(product)}
+        title="Añadir a catálogo(s)"
+        className="p-1.5 rounded-sm text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+      >
+        <BookOpen className="w-4 h-4" />
+      </button>
+    </div>
   </div>
 );
 
-const SupplierGroup = ({ group, limitPerSupplier }) => {
+const SupplierGroup = ({ group, limitPerSupplier, onSelectProduct, onAddToCatalog, selectingIds, selectedIds }) => {
   const [expanded, setExpanded] = useState(true);
 
   return (
@@ -83,7 +115,14 @@ const SupplierGroup = ({ group, limitPerSupplier }) => {
       {expanded && (
         <CardContent className="pt-0 px-4 pb-3">
           {group.products.map((product) => (
-            <ProductRow key={product.id} product={product} />
+            <ProductRow
+              key={product.id}
+              product={product}
+              onSelectProduct={onSelectProduct}
+              onAddToCatalog={onAddToCatalog}
+              isSelecting={selectingIds.has(product.id)}
+              isSelected={selectedIds.has(product.id)}
+            />
           ))}
           {group.count > limitPerSupplier && (
             <p className="text-xs text-slate-400 mt-2 text-center">
@@ -111,8 +150,130 @@ const GlobalProductSearch = ({ allCategories = [], allBrands = [] }) => {
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null); // null = sin búsqueda aún
 
+  // Estado para acciones de productos
+  const [catalogs, setCatalogs] = useState([]);
+  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
+  const [productToAdd, setProductToAdd] = useState(null);
+  const [selectedCatalogs, setSelectedCatalogs] = useState(new Set());
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [catalogCategories, setCatalogCategories] = useState([]);
+  const [loadingCategories, setLoadingCategories] = useState(false);
+  const [addingToCatalog, setAddingToCatalog] = useState(false);
+  const [selectingIds, setSelectingIds] = useState(new Set());
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
   const hasExtraFilters = searchParams.category || searchParams.brand ||
     searchParams.min_price || searchParams.max_price || searchParams.in_stock;
+
+  // Cargar catálogos al montar
+  useEffect(() => {
+    api.get("/catalogs")
+      .then(r => setCatalogs(r.data || []))
+      .catch(() => setCatalogs([]));
+  }, []);
+
+  // Funciones de acción
+  const handleSelectProduct = async (product) => {
+    if (selectingIds.has(product.id) || selectedIds.has(product.id)) return;
+    setSelectingIds(prev => new Set([...prev, product.id]));
+    try {
+      await api.post("/products/select", { product_ids: [product.id] });
+      setSelectedIds(prev => new Set([...prev, product.id]));
+      toast.success(`"${product.name.slice(0, 40)}" añadido a Productos`);
+    } catch {
+      toast.error("Error al añadir a Productos");
+    } finally {
+      setSelectingIds(prev => { const s = new Set(prev); s.delete(product.id); return s; });
+    }
+  };
+
+  const handleOpenCatalogSelector = (product) => {
+    if (catalogs.length === 0) {
+      toast.error("No hay catálogos creados. Crea uno primero.");
+      return;
+    }
+    setProductToAdd(product);
+    const def = catalogs.find(c => c.is_default);
+    setSelectedCatalogs(def ? new Set([def.id]) : new Set());
+    setSelectedCategoryId("");
+    setCatalogCategories([]);
+    setShowCatalogDialog(true);
+  };
+
+  const toggleCatalogSelection = async (catalogId) => {
+    const newSet = new Set(selectedCatalogs);
+    if (newSet.has(catalogId)) {
+      newSet.delete(catalogId);
+    } else {
+      newSet.add(catalogId);
+      await loadCatalogCategories(catalogId);
+    }
+    setSelectedCatalogs(newSet);
+  };
+
+  const loadCatalogCategories = async (catalogId) => {
+    setLoadingCategories(true);
+    try {
+      const res = await api.get(`/catalogs/${catalogId}/categories`);
+      setCatalogCategories(res.data || []);
+    } catch {
+      setCatalogCategories([]);
+    }
+    setLoadingCategories(false);
+  };
+
+  const flattenCategories = (categories, level = 0) => {
+    let result = [];
+    for (const cat of categories) {
+      result.push({
+        id: cat.id,
+        name: cat.name,
+        level: level,
+        displayName: "─".repeat(level) + (level > 0 ? " " : "") + cat.name
+      });
+      if (cat.children && cat.children.length > 0) {
+        result = result.concat(flattenCategories(cat.children, level + 1));
+      }
+    }
+    return result;
+  };
+
+  const handleConfirmAddToCatalogs = async () => {
+    if (selectedCatalogs.size === 0) {
+      toast.error("Selecciona al menos un catálogo");
+      return;
+    }
+
+    setAddingToCatalog(true);
+    let totalAdded = 0;
+
+    for (const catalogId of selectedCatalogs) {
+      try {
+        const payload = {
+          product_ids: [productToAdd.id]
+        };
+        if (selectedCategoryId) {
+          payload.category_ids = [selectedCategoryId];
+        }
+        const res = await api.post(`/catalogs/${catalogId}/products`, payload);
+        totalAdded += res.data.added || 0;
+      } catch {
+        // error handled via toast below
+      }
+    }
+
+    setAddingToCatalog(false);
+    setShowCatalogDialog(false);
+    setProductToAdd(null);
+    setSelectedCategoryId("");
+    setCatalogCategories([]);
+
+    if (totalAdded > 0) {
+      toast.success(`Producto añadido a los catálogos`);
+    } else {
+      toast.info("El producto ya estaba en los catálogos");
+    }
+  };
 
   const search = useCallback(async () => {
     if (!searchParams.q && !hasExtraFilters) {
@@ -363,6 +524,10 @@ const GlobalProductSearch = ({ allCategories = [], allBrands = [] }) => {
                   key={group.supplier?.id || Math.random()}
                   group={group}
                   limitPerSupplier={LIMIT_PER_SUPPLIER}
+                  onSelectProduct={handleSelectProduct}
+                  onAddToCatalog={handleOpenCatalogSelector}
+                  selectingIds={selectingIds}
+                  selectedIds={selectedIds}
                 />
               ))}
             </div>
@@ -377,6 +542,89 @@ const GlobalProductSearch = ({ allCategories = [], allBrands = [] }) => {
           <p className="text-sm">Escribe un término de búsqueda y pulsa <strong className="text-slate-500">Buscar</strong></p>
         </div>
       )}
+
+      {/* Modal de selección de catálogos */}
+      <Dialog open={showCatalogDialog} onOpenChange={(open) => {
+        if (!open) {
+          setProductToAdd(null);
+          setSelectedCatalogs(new Set());
+          setSelectedCategoryId("");
+          setCatalogCategories([]);
+        }
+        setShowCatalogDialog(open);
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Añadir a catálogo(s)</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 max-h-96 overflow-y-auto">
+            {/* Lista de catálogos */}
+            <div className="space-y-2">
+              {catalogs.map((catalog) => (
+                <div key={catalog.id} className="space-y-2">
+                  <div className="flex items-center gap-3 p-3 border border-slate-200 rounded-sm hover:border-slate-300 transition-colors cursor-pointer"
+                    onClick={() => toggleCatalogSelection(catalog.id)}>
+                    <Checkbox checked={selectedCatalogs.has(catalog.id)} onChange={() => {}} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800">{catalog.name}</p>
+                      {catalog.description && <p className="text-xs text-slate-500">{catalog.description}</p>}
+                    </div>
+                  </div>
+
+                  {/* Selector de categoría si el catálogo está seleccionado */}
+                  {selectedCatalogs.has(catalog.id) && (
+                    <div className="ml-6 space-y-1">
+                      <Label className="text-xs text-slate-600">Categoría (opcional)</Label>
+                      <Select value={selectedCategoryId} onValueChange={setSelectedCategoryId}>
+                        <SelectTrigger className="h-8 text-xs">
+                          <SelectValue placeholder="Selecciona categoría..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Sin categoría</SelectItem>
+                          {flattenCategories(catalogCategories).map((cat) => (
+                            <SelectItem key={cat.id} value={cat.id}>{cat.displayName}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {catalogs.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-4">No hay catálogos disponibles</p>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowCatalogDialog(false);
+                setProductToAdd(null);
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleConfirmAddToCatalogs}
+              disabled={addingToCatalog || selectedCatalogs.size === 0}
+              className="btn-primary"
+            >
+              {addingToCatalog ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  Añadiendo...
+                </>
+              ) : (
+                `Añadir`
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
