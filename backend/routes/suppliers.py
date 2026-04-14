@@ -595,7 +595,7 @@ SUPPLIER_PRESETS = [
     {
         "id": "techdata_es",
         "name": "Tech Data (España)",
-        "description": "ZIP con múltiples archivos (productos + precios) — CSV punto y coma, sin cabecera. Merge automático por columna común.",
+        "description": "ZIP multi-archivo: Productos (col_3=SKU), Precios QB (col_3=precio, col_1=SKU). Merge automático por SKU.",
         "config": {
             "file_format": "zip",
             "csv_separator": ";",
@@ -604,7 +604,7 @@ SUPPLIER_PRESETS = [
             "csv_header_row": 0,
             "strip_ean_quotes": False,
             "column_mapping": {
-                "sku": "col_0",
+                "sku": "col_3",
                 "name": "col_1",
                 "description": "col_2",
                 "brand": "col_5",
@@ -613,7 +613,7 @@ SUPPLIER_PRESETS = [
                 "category": "col_15",
                 "subcategory": "col_17",
                 "subcategory2": "col_19",
-                "price": "col_22"
+                "price": "prices_QB_col_3"
             }
         }
     },
