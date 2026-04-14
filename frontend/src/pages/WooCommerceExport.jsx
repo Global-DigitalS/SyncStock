@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
+import { useSyncProgress, SYNC_STEPS } from "../contexts/SyncProgressContext";
 import {
   Store, Plus, MoreVertical, Trash2, RefreshCw, ExternalLink, Upload,
   Wifi, WifiOff, Package, Key, Link2, BookOpen, Settings,
@@ -300,18 +301,28 @@ const StoresPage = () => {
     }
   };
 
+  const { startSync, completeSync, failSync } = useSyncProgress();
+
   const handleSyncPriceStock = async (config) => {
+    const opId = `store-${config.id}`;
+    startSync(opId, `Sincronizando ${config.name}`, SYNC_STEPS.store);
     setSyncing(prev => ({ ...prev, [config.id]: true }));
+
     try {
       const res = await api.post(`/stores/configs/${config.id}/sync`);
+      if (res.data.status === "queued") {
+        // Background sync — panel se actualiza vía WebSocket
+        return;
+      }
+      // Legacy response
       if (res.data.status === "success") {
-        toast.success(res.data.message);
+        completeSync(opId, res.data.message);
         fetchData();
       } else {
-        toast.error(res.data.message);
+        failSync(opId, res.data.message);
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error al sincronizar");
+      failSync(opId, error.response?.data?.detail || "Error al sincronizar");
     } finally {
       setSyncing(prev => ({ ...prev, [config.id]: false }));
     }
@@ -356,7 +367,10 @@ const StoresPage = () => {
       return;
     }
 
+    const opId = `catalog-${selectedConfig.id}`;
+    startSync(opId, `Importando desde ${selectedConfig.name}`, SYNC_STEPS.supplier);
     setCreatingCatalog(true);
+
     try {
       const payload = {
         match_by: opts.match_by,
@@ -371,20 +385,19 @@ const StoresPage = () => {
       const res = await api.post(`/stores/${selectedConfig.id}/create-catalog`, payload);
 
       if (res.data.status === "started") {
-        toast.info(res.data.message || "Proceso iniciado en segundo plano. Recibirás notificaciones de progreso.");
+        // Background create-catalog — panel se actualiza vía WebSocket
         setTimeout(() => {
           setShowCreateCatalogDialog(false);
           fetchData();
         }, 2000);
       } else if (res.data.status === "success") {
-        toast.success(
-          `Catálogo creado: ${res.data.matched_products} coincidencias de ${res.data.total_products} productos`
-        );
+        const summary = `${res.data.matched_products} coincidencias de ${res.data.total_products} productos`;
+        completeSync(opId, summary);
         setShowCreateCatalogDialog(false);
         fetchData();
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error al crear catálogo desde tienda");
+      failSync(opId, error.response?.data?.detail || "Error al crear catálogo desde tienda");
     } finally {
       setCreatingCatalog(false);
     }
@@ -406,6 +419,8 @@ const StoresPage = () => {
       return;
     }
 
+    const opId = `export-${selectedConfig.id}`;
+    startSync(opId, `Exportando a ${selectedConfig.name}`, SYNC_STEPS.export);
     setExporting(true);
     setExportResult(null);
 
@@ -419,27 +434,25 @@ const StoresPage = () => {
       const res = await api.post("/stores/export", payload);
 
       if (res.data.status === "started") {
-        // Background export started — close dialog and notify user
-        toast.info(res.data.message || "Exportación iniciada en segundo plano. Recibirás una notificación al finalizar.");
+        // Background export — panel se actualiza vía WebSocket
         setTimeout(() => {
           setShowExportDialog(false);
           fetchData();
         }, 2500);
       } else {
         setExportResult(res.data);
+        const summary = `${res.data.created || 0} creados, ${res.data.updated || 0} actualizados`;
         if (res.data.status === "success") {
-          toast.success(`Exportación completada: ${res.data.created} creados, ${res.data.updated} actualizados`);
+          completeSync(opId, summary);
         } else if (res.data.status === "partial") {
-          toast.warning(`Exportación parcial: ${res.data.failed} errores`);
-        } else if (res.data.status === "warning") {
-          toast.warning(res.data.errors?.[0] || "Sin productos para exportar");
+          completeSync(opId, `${summary} (${res.data.failed || 0} errores)`);
         } else {
-          toast.error("Error en la exportación");
+          failSync(opId, res.data.errors?.[0] || "Error en la exportación");
         }
         fetchData();
       }
     } catch (error) {
-      toast.error(error.response?.data?.detail || "Error al exportar");
+      failSync(opId, error.response?.data?.detail || "Error al exportar");
     } finally {
       setExporting(false);
     }

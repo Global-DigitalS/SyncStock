@@ -3,6 +3,8 @@ import { HashRouter } from "react-router-dom";
 import { Toaster } from "sonner";
 
 import { AuthProvider, AuthContext, useAuth, useWebSocket } from "./contexts/AuthContext";
+import { SyncProgressProvider } from "./contexts/SyncProgressContext";
+import SyncProgressPanel from "./components/sync/SyncProgressPanel";
 import AppRouter from "./router/AppRouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import useGoogleScripts from "./hooks/useGoogleScripts";
@@ -18,14 +20,17 @@ function App() {
     <ErrorBoundary>
       <HashRouter>
         <AuthProvider>
-          <Toaster
-            position="top-right"
-            richColors
-            toastOptions={{
-              style: { fontFamily: 'Inter, sans-serif' }
-            }}
-          />
-          <AppRouter />
+          <SyncProgressProvider>
+            <Toaster
+              position="top-right"
+              richColors
+              toastOptions={{
+                style: { fontFamily: 'Inter, sans-serif' }
+              }}
+            />
+            <SyncProgressPanel />
+            <AppRouter />
+          </SyncProgressProvider>
         </AuthProvider>
       </HashRouter>
     </ErrorBoundary>

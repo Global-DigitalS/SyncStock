@@ -11,6 +11,7 @@ export const useAuth = () => useContext(AuthContext);
 // WebSocket Context para notificaciones en tiempo real
 const WebSocketContext = createContext(null);
 export const useWebSocket = () => useContext(WebSocketContext);
+export const useWebSocketContext = () => useContext(WebSocketContext);
 
 // Auth Provider: gestiona autenticación + conexión WebSocket
 export const AuthProvider = ({ children }) => {
@@ -21,6 +22,7 @@ export const AuthProvider = ({ children }) => {
   const reconnectTimeoutRef = useRef(null);
   const userIdRef = useRef(null);
   const wsRetriesRef = useRef(0);
+  const wsListenersRef = useRef(new Map()); // Map<eventType, Set<callback>>
 
   // Conexión WebSocket con reconexión exponencial + jitter
   const connectWebSocket = useCallback((userId) => {
@@ -60,18 +62,24 @@ export const AuthProvider = ({ children }) => {
           if (data.type === "notification") {
             const notif = data.data;
             if (notif.type === "sync_progress") {
-              toast.loading(notif.message, { id: "sync-progress", duration: 30000 });
+              // Don't show toast — let SyncProgressPanel handle it
+              // toast.loading(notif.message, { id: "sync-progress", duration: 30000 });
             } else if (notif.type === "sync_complete") {
-              toast.dismiss("sync-progress");
-              toast.success(notif.message, { duration: 5000 });
+              // Don't show toast — let SyncProgressPanel handle it
+              // toast.dismiss("sync-progress");
+              // toast.success(notif.message, { duration: 5000 });
             } else if (notif.type === "sync_error") {
-              toast.dismiss("sync-progress");
-              toast.error(notif.message, { duration: 8000 });
+              // Don't show toast — let SyncProgressPanel handle it
+              // toast.dismiss("sync-progress");
+              // toast.error(notif.message, { duration: 8000 });
             } else if (notif.type === "price_change") {
               toast.info(notif.message, { duration: 5000 });
             } else if (notif.type === "stock_out" || notif.type === "stock_low") {
               toast.warning(notif.message, { duration: 5000 });
             }
+
+            // Emit event to subscribers
+            wsListenersRef.current.get(notif.type)?.forEach(cb => cb(notif));
           }
         } catch (e) {
           // Ignorar mensajes no-JSON
@@ -98,6 +106,18 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       // Fallo silencioso — WebSocket es opcional
     }
+  }, []);
+
+  const subscribeWsEvent = useCallback((eventType, callback) => {
+    if (!wsListenersRef.current.has(eventType)) {
+      wsListenersRef.current.set(eventType, new Set());
+    }
+    wsListenersRef.current.get(eventType).add(callback);
+
+    // Return unsubscribe function
+    return () => {
+      wsListenersRef.current.get(eventType)?.delete(callback);
+    };
   }, []);
 
   const disconnectWebSocket = useCallback(() => {
@@ -175,7 +195,7 @@ export const AuthProvider = ({ children }) => {
 
   return (
     <AuthContext.Provider value={{ user, login, register, logout, loading }}>
-      <WebSocketContext.Provider value={{ connected: wsConnected }}>
+      <WebSocketContext.Provider value={{ connected: wsConnected, subscribeWsEvent }}>
         {children}
       </WebSocketContext.Provider>
     </AuthContext.Provider>
