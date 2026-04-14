@@ -132,15 +132,28 @@ fi
 if command -v yarn &> /dev/null; then
     yarn install 2>/dev/null || yarn install
 
+    # Asegurar que react-scripts real está instalado (el stub 0.0.0 no tiene config/env.js)
+    RS_VERSION=$(node -e "try{require('react-scripts/package.json');console.log(require('react-scripts/package.json').version)}catch(e){console.log('0.0.0')}" 2>/dev/null || echo "0.0.0")
+    if [ "$RS_VERSION" = "0.0.0" ] || [ -z "$RS_VERSION" ]; then
+        echo -e "${CYAN}    Instalando react-scripts 5.0.1...${NC}"
+        yarn add react-scripts@5.0.1 --exact --silent 2>/dev/null || yarn add react-scripts@5.0.1 --exact
+    fi
+
     # Asegurar que dotenv está instalado (requerido por craco.config.js)
-    if ! yarn list --pattern dotenv --depth=0 2>/dev/null | grep -q "dotenv@"; then
+    if ! node -e "require('dotenv')" 2>/dev/null; then
         echo -e "${CYAN}    Instalando dotenv (requerido por craco)...${NC}"
         yarn add dotenv --silent 2>/dev/null || yarn add dotenv
     fi
 else
     npm install
 
-    if ! npm list dotenv --depth=0 2>/dev/null | grep -q "dotenv@"; then
+    RS_VERSION=$(node -e "try{require('react-scripts/package.json');console.log(require('react-scripts/package.json').version)}catch(e){console.log('0.0.0')}" 2>/dev/null || echo "0.0.0")
+    if [ "$RS_VERSION" = "0.0.0" ] || [ -z "$RS_VERSION" ]; then
+        echo -e "${CYAN}    Instalando react-scripts 5.0.1...${NC}"
+        npm install --save-exact react-scripts@5.0.1
+    fi
+
+    if ! node -e "require('dotenv')" 2>/dev/null; then
         echo -e "${CYAN}    Instalando dotenv (requerido por craco)...${NC}"
         npm install --save dotenv
     fi
