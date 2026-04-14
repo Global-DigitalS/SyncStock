@@ -685,7 +685,15 @@ def apply_column_mapping(raw_data: dict, column_mapping: dict, strip_ean_quotes:
         for col in columns:
             if not col:
                 continue
+            # IMPROVED: Soportar referencias dinámicas como "prices_QB_col_3"
+            # Primero intenta buscar exactamente, luego con case-insensitive
             value = raw_original.get(col) or raw_lower.get(col.lower().strip())
+
+            # Si no encuentra, intenta variaciones de case/underscore
+            if value is None:
+                # Probar variaciones: prices_QB_col_3, prices_qb_col_3, etc.
+                value = raw_original.get(col.replace('_QB_', '_qb_')) or raw_original.get(col.replace('_QB_', '_'))
+
             if value is not None and str(value).strip() != '':
                 values.append(str(value).strip())
         if values:
@@ -779,6 +787,7 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             role_keywords = {
                 'stock':    ['stock', 'inventory', 'disponibilidad', 'existencias', 'qty', 'quantity'],
                 'prices':   ['price', 'precio', 'tarif', 'coste', 'cost', 'pvp', 'pvd'],
+                'prices_qb': ['qb', 'prices_qb', 'pricesqb'],  # Detectar prices_QB específicamente (TechData)
                 'products': ['product', 'catalog', 'article', 'catalogo', 'articulo', 'master', 'items'],
             }
 
@@ -786,10 +795,17 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             for fname, fcontent in compatible_files:
                 fname_base = fname.split('/')[-1].lower()
                 detected_role = 'products'  # default
-                for role, keywords in role_keywords.items():
-                    if any(kw in fname_base for kw in keywords):
-                        detected_role = role
-                        break
+
+                # Check for prices_QB FIRST (more specific) before generic 'prices'
+                if any(kw in fname_base for kw in role_keywords.get('prices_qb', [])):
+                    detected_role = 'prices_qb'
+                else:
+                    for role, keywords in role_keywords.items():
+                        if role == 'prices_qb':
+                            continue  # Already checked
+                        if any(kw in fname_base for kw in keywords):
+                            detected_role = role
+                            break
 
                 # Determine header_row per file (StockFile.txt-style files often have header)
                 # Use supplier setting; individual files can override if needed
@@ -815,7 +831,13 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                     continue
 
                 # Don't overwrite an existing role with fewer rows
-                if detected_role not in all_file_data or len(file_rows) > len(all_file_data[detected_role]):
+                # PERO: si es prices_QB, SIEMPRE úsalo en lugar de 'prices' genérico (es más específico)
+                if detected_role == 'prices_qb':
+                    all_file_data[detected_role] = file_rows
+                    # También bórralo de 'prices' genérico si existía
+                    if 'prices' in all_file_data and len(file_rows) > len(all_file_data.get('prices', [])):
+                        logger.info(f"  Prefiriendo prices_QB sobre prices genérico (más específico)")
+                elif detected_role not in all_file_data or len(file_rows) > len(all_file_data[detected_role]):
                     all_file_data[detected_role] = file_rows
                 logger.info(f"  {fname} → role={detected_role}, filas={len(file_rows)}")
 
@@ -823,7 +845,8 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 return {"imported": 0, "updated": 0, "errors": 0, "message": "No se pudo parsear ningún archivo del ZIP"}
 
             products_data = all_file_data.get('products', [])
-            prices_data   = all_file_data.get('prices', [])
+            prices_data   = all_file_data.get('prices', []) or all_file_data.get('prices_qb', [])  # Prefer prices_qb if available
+            prices_qb_data = all_file_data.get('prices_qb', [])
             stock_data    = all_file_data.get('stock', [])
 
             # Fallback: if no 'products' role detected, use the largest file
@@ -834,25 +857,41 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             # Build lookup tables for price and stock
             prices_merge_key = None
             prices_lookup = {}
-            if prices_data:
-                # Try to find a common merge key (SKU, Matnr, etc.) instead of just first column
+            prices_qb_lookup = {}
+            is_prices_qb = bool(prices_qb_data)
+
+            # Try prices_QB first (mejor estructura para TechData)
+            prices_data_to_use = prices_qb_data if prices_qb_data else prices_data
+
+            if prices_data_to_use:
+                # IMPROVED: Preferir SKU (col_3 en TechData) como merge key
                 sample_product = products_data[0] if products_data else {}
                 product_keys = list(sample_product.keys())
 
-                # Buscar una columna común entre productos y precios
+                # Estrategia 1: Buscar columna común (mejor opción)
                 common_merge_key = None
-                for pk in product_keys:
-                    if pk in prices_data[0]:
-                        common_merge_key = pk
+
+                # Preferir col_3 (SKU en TechData) o col_1 (nombre/SKU en precios_QB)
+                preferred_keys = ['col_3', 'col_1', 'sku', 'code', 'ref']
+                for preferred in preferred_keys:
+                    if preferred in product_keys and preferred in prices_data_to_use[0]:
+                        common_merge_key = preferred
                         break
 
-                # Si no hay columna común, usar la primera
-                prices_merge_key = common_merge_key or list(prices_data[0].keys())[0]
+                # Estrategia 2: Buscar CUALQUIER columna común
+                if not common_merge_key:
+                    for pk in product_keys:
+                        if pk in prices_data_to_use[0]:
+                            common_merge_key = pk
+                            break
 
-                logger.info(f"ZIP prices merge_key: {prices_merge_key} (common={common_merge_key is not None})")
+                # Fallback: usar la primera columna
+                prices_merge_key = common_merge_key or list(prices_data_to_use[0].keys())[0]
+
+                logger.info(f"ZIP prices merge_key: {prices_merge_key} (common={common_merge_key is not None}, is_qb={is_prices_qb})")
 
                 if prices_merge_key:
-                    for row in prices_data:
+                    for row in prices_data_to_use:  # FIXED: usar prices_data_to_use, no prices_data
                         k = str(row.get(prices_merge_key, '')).strip()
                         if k:
                             prices_lookup[k] = row
@@ -887,12 +926,14 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             zip_detected_cols = []
             if products_data:
                 sample = dict(products_data[0])
-                sample_id = str(sample.get(list(sample.keys())[0], '')).strip()
+                # Usar prices_merge_key para obtener la muestra correcta
+                sample_id = str(sample.get(prices_merge_key if prices_merge_key else list(sample.keys())[0], '')).strip()
                 if prices_merge_key and sample_id in prices_lookup:
+                    prices_prefix = "prices_QB_" if is_prices_qb else "prices_"
                     for k in prices_lookup[sample_id]:
                         if header_row == 0:
                             if k != prices_merge_key:
-                                sample[f"prices_{k}"] = prices_lookup[sample_id][k]
+                                sample[f"{prices_prefix}{k}"] = prices_lookup[sample_id][k]
                         elif k not in sample:
                             sample[k] = prices_lookup[sample_id][k]
                 if stock_merge_key and sample_id in stock_lookup:
@@ -912,7 +953,8 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             now = datetime.now(UTC).isoformat()
             needs_mapping = False
             errors = 0
-            merge_key = list(products_data[0].keys())[0] if products_data else None
+            # IMPROVED: Usar prices_merge_key para merge (mejor que col_0)
+            merge_key = prices_merge_key if prices_merge_key and prices_lookup else list(products_data[0].keys())[0] if products_data else None
             column_mapping = supplier.get('column_mapping')
 
             normalized_products = []
@@ -921,10 +963,12 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                     prod_id = str(raw.get(merge_key, '')).strip() if merge_key else ''
                     merged = dict(raw)
                     if prod_id and prod_id in prices_lookup:
+                        # Determinar el prefijo correcto según el tipo de archivo de precios
+                        prices_prefix = "prices_QB_" if is_prices_qb else "prices_"
                         for k, v in prices_lookup[prod_id].items():
                             if header_row == 0:
                                 if k != prices_merge_key:
-                                    merged[f"prices_{k}"] = v
+                                    merged[f"{prices_prefix}{k}"] = v  # FIXED: usar el prefijo correcto
                             elif k not in merged or not merged[k]:
                                 merged[k] = v
                     if prod_id and prod_id in stock_lookup:
