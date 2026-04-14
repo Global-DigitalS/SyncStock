@@ -27,7 +27,7 @@ UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Import security configuration
-from config.cors import CORS_CONFIG, SECURITY_HEADERS
+from security_config.cors import CORS_CONFIG, SECURITY_HEADERS
 
 # Import route modules
 from routes.admin import router as admin_router
