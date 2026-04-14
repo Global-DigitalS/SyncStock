@@ -787,7 +787,7 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
             role_keywords = {
                 'stock':    ['stock', 'inventory', 'disponibilidad', 'existencias', 'qty', 'quantity'],
                 'prices':   ['price', 'precio', 'tarif', 'coste', 'cost', 'pvp', 'pvd'],
-                'prices_qb': ['qb', 'prices_qb', 'pricesqb'],  # Detectar prices_QB específicamente (TechData)
+                'prices_qb': ['prices_qb', 'pricesqb'],  # Detectar prices_QB específicamente (TechData) — eliminado 'qb' solo para evitar falsos positivos
                 'products': ['product', 'catalog', 'article', 'catalogo', 'articulo', 'master', 'items'],
             }
 
@@ -872,7 +872,12 @@ async def process_supplier_file(supplier: dict, content: bytes) -> dict:
                 common_merge_key = None
 
                 # Preferir col_3 (SKU en TechData) o col_1 (nombre/SKU en precios_QB)
-                preferred_keys = ['col_3', 'col_1', 'sku', 'code', 'ref']
+                # Solo usar col_3/col_1 si es realmente TechData (prices_QB)
+                if is_prices_qb:
+                    preferred_keys = ['col_3', 'col_1', 'sku', 'code', 'ref']
+                else:
+                    preferred_keys = ['sku', 'code', 'ref', 'id', 'article', 'articulo', 'cod', 'codigo']
+
                 for preferred in preferred_keys:
                     if preferred in product_keys and preferred in prices_data_to_use[0]:
                         common_merge_key = preferred
