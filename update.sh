@@ -33,6 +33,7 @@ NC='\033[0m' # No Color
 APP_NAME="syncstock"
 PERSISTENT_CONFIG="/etc/syncstock/config.json"
 BACKUP_DIR="/etc/syncstock/backups"
+AUTO_MODE="no"  # Activar con --auto o -y
 
 #-------------------------------------------------------------------------------
 # Funciones de utilidad
@@ -86,9 +87,14 @@ detect_installation() {
     if [ -n "$1" ]; then
         DOMAIN="$1"
     fi
-    
-    # Si no hay dominio, preguntar
+
+    # Si no hay dominio, preguntar (solo en modo interactivo)
     if [ -z "$DOMAIN" ]; then
+        if [ "$AUTO_MODE" == "yes" ]; then
+            print_error "En modo automático debes proporcionar el dominio como argumento"
+            echo "  Uso: sudo bash update.sh --auto app.sync-stock.com"
+            exit 1
+        fi
         echo ""
         read -p "  Introduce el dominio a actualizar (ej: app.sync-stock.com): " DOMAIN
         echo ""
@@ -199,38 +205,70 @@ detect_installation() {
 }
 
 #-------------------------------------------------------------------------------
-# Crear backup de configuración
+# Crear backup completo (código + configuración)
 #-------------------------------------------------------------------------------
 backup_config() {
-    print_step "Creando backup de configuración"
-    
+    print_step "Creando backup previo a la actualización"
+
     mkdir -p "$BACKUP_DIR"
-    
+
     TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-    
-    # Backup de config.json si existe
+
+    # --- Backup del código fuente (excluye carpetas pesadas) ---
+    CODE_BACKUP="$BACKUP_DIR/code_backup_$TIMESTAMP.tar.gz"
+    print_info "Creando backup del código fuente..."
+    tar -czf "$CODE_BACKUP" \
+        --exclude='*/node_modules' \
+        --exclude='*/venv' \
+        --exclude='*/__pycache__' \
+        --exclude='*/build' \
+        --exclude='*/.git' \
+        -C "$(dirname "$APP_DIR")" "$(basename "$APP_DIR")" 2>/dev/null || true
+
+    if [ -f "$CODE_BACKUP" ]; then
+        BACKUP_SIZE=$(du -sh "$CODE_BACKUP" 2>/dev/null | cut -f1)
+        print_success "Backup del código: code_backup_$TIMESTAMP.tar.gz ($BACKUP_SIZE)"
+    else
+        print_warning "No se pudo crear el backup del código"
+    fi
+
+    # --- Backup de config.json si existe ---
     if [ -f "$PERSISTENT_CONFIG" ]; then
         cp "$PERSISTENT_CONFIG" "$BACKUP_DIR/config_backup_$TIMESTAMP.json"
-        print_success "Backup creado: config_backup_$TIMESTAMP.json"
+        print_success "Backup de configuración: config_backup_$TIMESTAMP.json"
     else
-        # Buscar config.json en el directorio de la app
         if [ -f "$APP_DIR/backend/config.json" ]; then
-            # Migrar a ubicación persistente
             mkdir -p "$PERSISTENT_CONFIG_DIR"
             cp "$APP_DIR/backend/config.json" "$PERSISTENT_CONFIG"
             cp "$APP_DIR/backend/config.json" "$BACKUP_DIR/config_backup_$TIMESTAMP.json"
             print_success "Configuración migrada a ubicación persistente"
-            print_success "Backup creado: config_backup_$TIMESTAMP.json"
+            print_success "Backup de configuración: config_backup_$TIMESTAMP.json"
         else
-            print_warning "No se encontró configuración para respaldar"
+            print_warning "No se encontró configuración persistente para respaldar"
         fi
     fi
-    
-    # Backup del .env
+
+    # --- Backup del .env del backend ---
     if [ -f "$APP_DIR/backend/.env" ]; then
-        cp "$APP_DIR/backend/.env" "$BACKUP_DIR/env_backup_$TIMESTAMP"
-        print_success "Backup de .env creado"
+        cp "$APP_DIR/backend/.env" "$BACKUP_DIR/env_backend_$TIMESTAMP"
+        print_success "Backup de .env backend creado"
     fi
+
+    # --- Backup del .env del frontend ---
+    if [ -f "$APP_DIR/frontend/.env" ]; then
+        cp "$APP_DIR/frontend/.env" "$BACKUP_DIR/env_frontend_$TIMESTAMP"
+        print_success "Backup de .env frontend creado"
+    fi
+
+    # Limpiar backups antiguos (mantener últimos 5)
+    BACKUP_COUNT=$(ls -1 "$BACKUP_DIR"/code_backup_*.tar.gz 2>/dev/null | wc -l)
+    if [ "$BACKUP_COUNT" -gt 5 ]; then
+        print_info "Limpiando backups antiguos (manteniendo últimos 5)..."
+        ls -1t "$BACKUP_DIR"/code_backup_*.tar.gz | tail -n +6 | xargs rm -f 2>/dev/null || true
+        ls -1t "$BACKUP_DIR"/config_backup_*.json | tail -n +6 | xargs rm -f 2>/dev/null || true
+    fi
+
+    print_info "Backups almacenados en: $BACKUP_DIR"
 }
 
 #-------------------------------------------------------------------------------
@@ -238,7 +276,27 @@ backup_config() {
 #-------------------------------------------------------------------------------
 update_code() {
     print_step "Actualizando código fuente"
-    
+
+    cd "$APP_DIR"
+
+    # Modo automático o si existe .git → usar git pull directamente
+    if [ "$AUTO_MODE" == "yes" ] || [ -d ".git" ]; then
+        if [ -d ".git" ]; then
+            print_info "Ejecutando git pull..."
+            git fetch origin
+            git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || git pull
+            print_success "Código actualizado desde Git"
+            return
+        else
+            if [ "$AUTO_MODE" == "yes" ]; then
+                print_warning "No es un repositorio Git. Asumiendo que los archivos ya están actualizados."
+                print_success "Continuando con la actualización..."
+                return
+            fi
+        fi
+    fi
+
+    # Modo interactivo
     echo ""
     echo -e "${YELLOW}  ¿Cómo deseas actualizar el código?${NC}"
     echo ""
@@ -247,17 +305,16 @@ update_code() {
     echo "    3) Clonar de nuevo desde un repositorio"
     echo ""
     read -p "  Selecciona una opción [1-3]: " update_choice
-    
+
     case $update_choice in
         1)
-            cd "$APP_DIR"
             if [ -d ".git" ]; then
                 print_info "Ejecutando git pull..."
-                git pull
+                git fetch origin
+                git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || git pull
                 print_success "Código actualizado desde Git"
             else
                 print_error "No es un repositorio Git"
-                print_info "Usa la opción 2 o 3"
                 exit 1
             fi
             ;;
@@ -270,7 +327,7 @@ update_code() {
             TEMP_DIR=$(mktemp -d)
             print_info "Clonando repositorio..."
             git clone "$GIT_URL" "$TEMP_DIR"
-            
+
             # Preservar config.json y .env antes de copiar
             if [ -f "$APP_DIR/backend/config.json" ]; then
                 cp "$APP_DIR/backend/config.json" "$TEMP_DIR/backend/" 2>/dev/null || true
@@ -278,11 +335,14 @@ update_code() {
             if [ -f "$APP_DIR/backend/.env" ]; then
                 cp "$APP_DIR/backend/.env" "$TEMP_DIR/backend/" 2>/dev/null || true
             fi
-            
+
             # Copiar nuevos archivos
             rsync -av --exclude='.git' --exclude='node_modules' --exclude='venv' --exclude='build' "$TEMP_DIR/" "$APP_DIR/"
             rm -rf "$TEMP_DIR"
             print_success "Código actualizado desde repositorio"
+            ;;
+        *)
+            print_warning "Opción no válida. Continuando sin actualizar código fuente."
             ;;
     esac
 }
@@ -506,12 +566,18 @@ GENERATE_SOURCEMAP=false"
     # Instalar dependencias
     print_info "Actualizando dependencias de Node.js..."
     yarn install --silent 2>/dev/null || yarn install
-    
+
+    # Asegurar que dotenv está instalado (requerido por craco.config.js)
+    if ! yarn list --pattern dotenv --depth=0 2>/dev/null | grep -q "dotenv@"; then
+        print_info "Instalando dotenv (requerido por craco)..."
+        yarn add dotenv --silent 2>/dev/null || yarn add dotenv
+    fi
+
     # Restaurar .env
     if [ -n "$FRONTEND_ENV" ]; then
         echo "$FRONTEND_ENV" > .env
     fi
-    
+
     # Compilar
     print_info "Compilando frontend (esto puede tardar unos minutos)..."
     GENERATE_SOURCEMAP=false yarn build
@@ -558,6 +624,12 @@ GENERATE_SOURCEMAP=false"
     # Instalar dependencias
     print_info "Actualizando dependencias del landing..."
     yarn install --silent 2>/dev/null || yarn install
+
+    # Asegurar que dotenv está instalado
+    if ! yarn list --pattern dotenv --depth=0 2>/dev/null | grep -q "dotenv@"; then
+        print_info "Instalando dotenv (requerido por craco)..."
+        yarn add dotenv --silent 2>/dev/null || yarn add dotenv
+    fi
 
     # Restaurar .env
     if [ -n "$LANDING_ENV" ]; then
@@ -783,21 +855,30 @@ case "${1:-}" in
         echo "SyncStock Pro - Script de Actualización"
         echo ""
         echo "Uso:"
-        echo "  sudo bash update.sh [dominio]     Actualizar la aplicación preservando configuración"
-        echo "  sudo bash update.sh -h            Mostrar esta ayuda"
+        echo "  sudo bash update.sh [dominio]              Modo interactivo"
+        echo "  sudo bash update.sh --auto [dominio]       Modo automático (sin prompts)"
+        echo "  sudo bash update.sh -y [dominio]           Modo automático (alias)"
+        echo "  sudo bash update.sh -h                     Mostrar esta ayuda"
         echo ""
         echo "Ejemplos:"
-        echo "  sudo bash update.sh app.sync-stock.com   Actualizar un subdominio específico"
-        echo "  sudo bash update.sh menuboard.es         Actualizar un dominio principal"
-        echo "  sudo bash update.sh                      Preguntará el dominio"
+        echo "  sudo bash update.sh app.sync-stock.com            Actualizar con confirmaciones"
+        echo "  sudo bash update.sh --auto app.sync-stock.com     Actualizar sin intervención"
+        echo "  sudo bash update.sh menuboard.es                  Actualizar un dominio principal"
+        echo "  sudo bash update.sh                               Preguntará el dominio"
         echo ""
         echo "Este script:"
+        echo "  - Crea backup completo del código antes de actualizar"
         echo "  - Detecta automáticamente subdominios en Plesk"
-        echo "  - Crea backups de la configuración antes de actualizar"
         echo "  - Preserva la conexión a MongoDB y el usuario SuperAdmin"
         echo "  - Usa el puerto correcto para cada instalación"
-        echo "  - Actualiza dependencias y recompila el frontend"
+        echo "  - Actualiza dependencias Python y Node.js"
+        echo "  - Recompila frontend y landing automáticamente"
+        echo "  - Mantiene los últimos 5 backups (elimina los anteriores)"
         echo ""
+        ;;
+    --auto|-y)
+        AUTO_MODE="yes"
+        main "${2:-}"
         ;;
     *)
         main "$1"
