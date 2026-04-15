@@ -587,8 +587,8 @@ GENERATE_SOURCEMAP=false"
 
     # Compilar
     print_info "Compilando frontend (esto puede tardar unos minutos)..."
-    GENERATE_SOURCEMAP=false yarn build
-    
+    DISABLE_ESLINT_PLUGIN=true GENERATE_SOURCEMAP=false yarn build
+
     if [ -d "build" ]; then
         print_success "Frontend compilado correctamente"
     else
