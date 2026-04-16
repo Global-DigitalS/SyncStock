@@ -22,6 +22,14 @@ from config import (
 
 logger = logging.getLogger(__name__)
 
+# Hostnames bloqueados explícitamente por string antes de resolución DNS (anti-SSRF)
+_BLOCKED_HOSTNAMES = frozenset({
+    "localhost",
+    "localhost.localdomain",
+    "ip6-localhost",
+    "ip6-loopback",
+})
+
 
 def download_file_from_ftp_sync(supplier: dict) -> bytes:
     schema = supplier.get('ftp_schema', 'ftp').lower()
@@ -140,6 +148,12 @@ def _validate_url_ssrf(url: str) -> None:
     hostname = parsed.hostname
     if not hostname:
         raise ValueError("URL sin hostname válido")
+    # Bloqueo explícito por nombre de host antes de resolución DNS
+    if hostname.lower() in _BLOCKED_HOSTNAMES:
+        raise ValueError(
+            f"URL apunta a hostname interno bloqueado ({hostname}). "
+            f"No se permiten conexiones a redes internas."
+        )
     if '@' in (parsed.netloc.split(':')[0] if ':' in parsed.netloc else parsed.netloc):
         raise ValueError("URLs con @ en el host no están permitidas")
     try:
