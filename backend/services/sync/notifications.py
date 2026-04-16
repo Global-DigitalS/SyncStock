@@ -3,12 +3,24 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
+# Registry pattern to avoid circular imports with server.py
+_ws_manager = None
+
+
+def set_ws_manager(manager):
+    """Register the WebSocket manager (called from server.py startup)"""
+    global _ws_manager
+    _ws_manager = manager
+
 
 async def send_realtime_notification(user_id: str, notification: dict):
     """Send notification via WebSocket if user is connected"""
+    if not _ws_manager:
+        logger.debug("WebSocket manager not initialized, skipping notification")
+        return
+
     try:
-        from websocket.manager import ws_manager
-        await ws_manager.send_to_user(user_id, {
+        await _ws_manager.send_to_user(user_id, {
             "type": "notification",
             "data": notification
         })

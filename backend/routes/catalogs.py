@@ -24,6 +24,10 @@ from models.schemas import (
     MarginRuleResponse,
     ProductResponse,
 )
+from repositories import (
+    CatalogCategoryRepository, CatalogItemRepository, CatalogRepository,
+    MarginRuleRepository, ProductRepository,
+)
 from services.auth import check_user_limit, get_current_user
 from services.database import db
 from services.sync import calculate_final_price
@@ -58,52 +62,31 @@ async def create_catalog(request: Request, catalog: CatalogCreate, user: dict = 
     catalog_id = str(uuid.uuid4())
     now = datetime.now(UTC).isoformat()
     if catalog.is_default:
-        await db.catalogs.update_many({"user_id": user["id"]}, {"$set": {"is_default": False}})
-    existing_count = await db.catalogs.count_documents({"user_id": user["id"]})
+        await CatalogRepository.set_all_non_default(user["id"])
+    existing_count = await CatalogRepository.count(user["id"])
     is_default = catalog.is_default or existing_count == 0
     catalog_doc = {
         "id": catalog_id, "user_id": user["id"],
         "name": catalog.name, "description": catalog.description,
         "is_default": is_default, "created_at": now
     }
-    await db.catalogs.insert_one(catalog_doc)
+    await CatalogRepository.create(catalog_doc)
     return CatalogResponse(id=catalog_id, name=catalog.name, description=catalog.description,
         is_default=is_default, product_count=0, margin_rules_count=0, categories_count=0, created_at=now)
 
 
 @router.get("/catalogs", response_model=list[CatalogResponse])
 async def get_catalogs(user: dict = Depends(get_current_user)):
-    catalogs = await db.catalogs.find({"user_id": user["id"]}, {"_id": 0}).to_list(100)
+    catalogs = await CatalogRepository.get_all(user["id"])
 
     if not catalogs:
         return []
 
-    # Obtener IDs de catálogos
     catalog_ids = [c["id"] for c in catalogs]
 
-    # Obtener conteos de productos en una sola consulta con agregación
-    items_pipeline = [
-        {"$match": {"catalog_id": {"$in": catalog_ids}}},
-        {"$group": {"_id": "$catalog_id", "count": {"$sum": 1}}}
-    ]
-    items_counts_list = await db.catalog_items.aggregate(items_pipeline).to_list(100)
-    items_counts = {doc["_id"]: doc["count"] for doc in items_counts_list}
-
-    # Obtener conteos de reglas en una sola consulta con agregación
-    rules_pipeline = [
-        {"$match": {"catalog_id": {"$in": catalog_ids}}},
-        {"$group": {"_id": "$catalog_id", "count": {"$sum": 1}}}
-    ]
-    rules_counts_list = await db.catalog_margin_rules.aggregate(rules_pipeline).to_list(100)
-    rules_counts = {doc["_id"]: doc["count"] for doc in rules_counts_list}
-
-    # Obtener conteos de categorías
-    categories_pipeline = [
-        {"$match": {"catalog_id": {"$in": catalog_ids}}},
-        {"$group": {"_id": "$catalog_id", "count": {"$sum": 1}}}
-    ]
-    categories_counts_list = await db.catalog_categories.aggregate(categories_pipeline).to_list(100)
-    categories_counts = {doc["_id"]: doc["count"] for doc in categories_counts_list}
+    items_counts = await CatalogRepository.get_item_counts(catalog_ids)
+    rules_counts = await CatalogRepository.get_rule_counts(catalog_ids)
+    categories_counts = await CatalogRepository.get_category_counts(catalog_ids)
 
     # Construir respuesta
     result = []
@@ -123,12 +106,12 @@ async def get_catalogs(user: dict = Depends(get_current_user)):
 
 @router.get("/catalogs/{catalog_id}", response_model=CatalogResponse)
 async def get_catalog_by_id(catalog_id: str, user: dict = Depends(get_current_user)):
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]}, {"_id": 0})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    product_count = await db.catalog_items.count_documents({"catalog_id": catalog_id})
-    rules_count = await db.catalog_margin_rules.count_documents({"catalog_id": catalog_id})
-    categories_count = await db.catalog_categories.count_documents({"catalog_id": catalog_id})
+    product_count = await CatalogItemRepository.count(catalog_id)
+    rules_count = await MarginRuleRepository.count(catalog_id)
+    categories_count = await CatalogCategoryRepository.count(catalog_id)
     return CatalogResponse(
         id=catalog["id"], name=catalog["name"], description=catalog.get("description"),
         is_default=catalog.get("is_default", False), product_count=product_count,
@@ -139,18 +122,18 @@ async def get_catalog_by_id(catalog_id: str, user: dict = Depends(get_current_us
 @router.put("/catalogs/{catalog_id}", response_model=CatalogResponse)
 @limiter.limit("30/minute")
 async def update_catalog(request: Request, catalog_id: str, update: CatalogUpdate, user: dict = Depends(get_current_user)):
-    existing = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    existing = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not existing:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
     update_data = {k: v for k, v in update.model_dump().items() if v is not None}
     if update_data.get("is_default"):
-        await db.catalogs.update_many({"user_id": user["id"], "id": {"$ne": catalog_id}}, {"$set": {"is_default": False}})
+        await CatalogRepository.set_others_non_default(user["id"], catalog_id)
     if update_data:
-        await db.catalogs.update_one({"id": catalog_id}, {"$set": update_data})
-    updated = await db.catalogs.find_one({"id": catalog_id}, {"_id": 0})
-    product_count = await db.catalog_items.count_documents({"catalog_id": catalog_id})
-    rules_count = await db.catalog_margin_rules.count_documents({"catalog_id": catalog_id})
-    categories_count = await db.catalog_categories.count_documents({"catalog_id": catalog_id})
+        await CatalogRepository.update_by_id(catalog_id, update_data)
+    updated = await CatalogRepository.get_by_id_no_auth(catalog_id)
+    product_count = await CatalogItemRepository.count(catalog_id)
+    rules_count = await MarginRuleRepository.count(catalog_id)
+    categories_count = await CatalogCategoryRepository.count(catalog_id)
     return CatalogResponse(
         id=updated["id"], name=updated["name"], description=updated.get("description"),
         is_default=updated.get("is_default", False), product_count=product_count,
@@ -161,12 +144,9 @@ async def update_catalog(request: Request, catalog_id: str, update: CatalogUpdat
 @router.delete("/catalogs/{catalog_id}")
 @limiter.limit("10/minute")
 async def delete_catalog(request: Request, catalog_id: str, user: dict = Depends(get_current_user)):
-    existing = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
-    if not existing:
+    deleted = await CatalogRepository.delete_with_cascade(catalog_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    await db.catalog_items.delete_many({"catalog_id": catalog_id, "user_id": user["id"]})
-    await db.catalog_margin_rules.delete_many({"catalog_id": catalog_id, "user_id": user["id"]})
-    await db.catalogs.delete_one({"id": catalog_id, "user_id": user["id"]})
     return {"message": "Catálogo eliminado"}
 
 
@@ -175,25 +155,19 @@ async def delete_catalog(request: Request, catalog_id: str, user: dict = Depends
 @router.post("/catalogs/{catalog_id}/products")
 @limiter.limit("30/minute")
 async def add_products_to_catalog(request: Request, catalog_id: str, data: CatalogProductAdd, user: dict = Depends(get_current_user)):
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
     product_ids = list(data.product_ids)
 
     # Batch: validar que todos los productos existen y pertenecen al usuario
-    valid_products = await db.products.find(
-        {"id": {"$in": product_ids}, "user_id": user["id"]},
-        {"_id": 0, "id": 1}
-    ).to_list(len(product_ids))
-    valid_ids = {p["id"] for p in valid_products}
+    valid_products = await ProductRepository.find_by_ids(product_ids, {"_id": 0, "id": 1, "user_id": 1})
+    valid_ids = {p["id"] for p in valid_products if p.get("user_id") == user["id"]}
 
     # Batch: obtener los que ya están en el catálogo
-    existing_items = await db.catalog_items.find(
-        {"catalog_id": catalog_id, "product_id": {"$in": product_ids}},
-        {"_id": 0, "product_id": 1}
-    ).to_list(len(product_ids))
-    already_in_catalog = {i["product_id"] for i in existing_items}
+    already_in_catalog = await CatalogItemRepository.find_pairs([catalog_id], product_ids)
+    already_in_catalog = {pid for (_, pid) in already_in_catalog}
 
     now = datetime.now(UTC).isoformat()
     category_ids = data.category_ids if data.category_ids else []
@@ -211,7 +185,7 @@ async def add_products_to_catalog(request: Request, catalog_id: str, data: Catal
         })
 
     if to_insert:
-        await db.catalog_items.insert_many(to_insert)
+        await CatalogItemRepository.insert_many(to_insert)
 
     return {"added": len(to_insert), "message": f"{len(to_insert)} productos añadidos al catálogo"}
 
@@ -224,25 +198,20 @@ async def get_catalog_products(
     limit: int = Query(100, ge=1, le=1000),  # MEDIUM #12: Validate limit range
     user: dict = Depends(get_current_user)
 ):
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    query = {"catalog_id": catalog_id}
+    query = {}
     if active_only:
         query["active"] = True
     if category_id:
         query["category_ids"] = category_id
-    items = await db.catalog_items.find(query, {"_id": 0}).skip(skip).limit(limit).to_list(limit)
-    margin_rules = await db.catalog_margin_rules.find(
-        {"catalog_id": catalog_id, "user_id": user["id"]}, {"_id": 0}
-    ).sort("priority", -1).to_list(100)
+    items = await CatalogItemRepository.get_paginated(catalog_id, query, skip, limit)
+    margin_rules = await MarginRuleRepository.get_all(catalog_id)
 
     # Batch: cargar todos los productos en una sola query
     product_ids_page = [item["product_id"] for item in items]
-    products_list = await db.products.find(
-        {"id": {"$in": product_ids_page}},
-        {"_id": 0, "user_id": 0}
-    ).to_list(len(product_ids_page))
+    products_list = await ProductRepository.find_by_ids(product_ids_page)
     products_map = {p["id"]: p for p in products_list}
 
     search_lower = search.lower() if search else None
@@ -269,8 +238,8 @@ async def get_catalog_products(
 
 @router.delete("/catalogs/{catalog_id}/products/{item_id}")
 async def remove_product_from_catalog(catalog_id: str, item_id: str, user: dict = Depends(get_current_user)):
-    result = await db.catalog_items.delete_one({"id": item_id, "catalog_id": catalog_id, "user_id": user["id"]})
-    if result.deleted_count == 0:
+    deleted = await CatalogItemRepository.delete_item(item_id, catalog_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Producto no encontrado en el catálogo")
     return {"message": "Producto eliminado del catálogo"}
 
@@ -280,7 +249,7 @@ async def remove_product_from_catalog(catalog_id: str, item_id: str, user: dict 
 @router.post("/catalogs/{catalog_id}/margin-rules", response_model=CatalogMarginRuleResponse)
 @limiter.limit("30/minute")
 async def create_catalog_margin_rule(request: Request, catalog_id: str, rule: CatalogMarginRuleCreate, user: dict = Depends(get_current_user)):
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
     rule_id = str(uuid.uuid4())
@@ -292,25 +261,25 @@ async def create_catalog_margin_rule(request: Request, catalog_id: str, rule: Ca
         "min_price": rule.min_price, "max_price": rule.max_price,
         "priority": rule.priority, "created_at": now
     }
-    await db.catalog_margin_rules.insert_one(rule_doc)
+    await MarginRuleRepository.create(rule_doc)
     return CatalogMarginRuleResponse(**{k: v for k, v in rule_doc.items() if k != "user_id"})
 
 
 @router.get("/catalogs/{catalog_id}/margin-rules", response_model=list[CatalogMarginRuleResponse])
 async def get_catalog_margin_rules(catalog_id: str, user: dict = Depends(get_current_user)):
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}).sort("priority", -1).to_list(MAX_MARGIN_RULES)
+    rules = await MarginRuleRepository.get_all(catalog_id)
     return [CatalogMarginRuleResponse(**r) for r in rules]
 
 
 @router.put("/catalogs/{catalog_id}/margin-rules/{rule_id}", response_model=CatalogMarginRuleResponse)
 async def update_catalog_margin_rule(catalog_id: str, rule_id: str, rule: CatalogMarginRuleCreate, user: dict = Depends(get_current_user)):
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    existing = await db.catalog_margin_rules.find_one({"id": rule_id, "catalog_id": catalog_id, "user_id": user["id"]})
+    existing = await MarginRuleRepository.get_by_id(rule_id, catalog_id, user["id"])
     if not existing:
         raise HTTPException(status_code=404, detail="Regla no encontrada")
     update_data = {
@@ -319,16 +288,15 @@ async def update_catalog_margin_rule(catalog_id: str, rule_id: str, rule: Catalo
         "min_price": rule.min_price, "max_price": rule.max_price,
         "priority": rule.priority
     }
-    await db.catalog_margin_rules.update_one({"id": rule_id, "user_id": user["id"]}, {"$set": update_data})
-    updated = await db.catalog_margin_rules.find_one({"id": rule_id}, {"_id": 0, "user_id": 0})
+    updated = await MarginRuleRepository.update(rule_id, user["id"], update_data)
     return CatalogMarginRuleResponse(**updated)
 
 
 @router.delete("/catalogs/{catalog_id}/margin-rules/{rule_id}")
 @limiter.limit("10/minute")
 async def delete_catalog_margin_rule(request: Request, catalog_id: str, rule_id: str, user: dict = Depends(get_current_user)):
-    result = await db.catalog_margin_rules.delete_one({"id": rule_id, "catalog_id": catalog_id, "user_id": user["id"]})
-    if result.deleted_count == 0:
+    deleted = await MarginRuleRepository.delete(rule_id, catalog_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Regla no encontrada")
     return {"message": "Regla eliminada"}
 
@@ -337,15 +305,15 @@ async def delete_catalog_margin_rule(request: Request, catalog_id: str, rule_id:
 
 @router.post("/catalog")
 async def add_to_catalog(item: CatalogItemCreate, user: dict = Depends(get_current_user)):
-    product = await db.products.find_one({"id": item.product_id, "user_id": user["id"]})
+    product = await ProductRepository.get_by_id(item.product_id, user["id"])
     if not product:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
-    existing = await db.catalog_items.find_one({"product_id": item.product_id, "user_id": user["id"]})
+    existing = await CatalogItemRepository.get_by_product_user(item.product_id, user["id"])
     if existing:
         raise HTTPException(status_code=400, detail="Producto ya está en el catálogo")
     catalog_id = str(uuid.uuid4())
     now = datetime.now(UTC).isoformat()
-    await db.catalog_items.insert_one({
+    await CatalogItemRepository.insert_one({
         "id": catalog_id, "product_id": item.product_id, "user_id": user["id"],
         "custom_price": item.custom_price, "custom_name": item.custom_name,
         "active": item.active, "created_at": now
@@ -356,19 +324,14 @@ async def add_to_catalog(item: CatalogItemCreate, user: dict = Depends(get_curre
 @router.get("/catalog")
 async def get_catalog(active_only: bool = False, search: str | None = None,
     skip: int = Query(0, ge=0, le=100000), limit: int = Query(100, ge=1, le=500), user: dict = Depends(get_current_user)):
-    query = {"user_id": user["id"]}
-    if active_only:
-        query["active"] = True
-    catalog_items = await db.catalog_items.find(query, {"_id": 0, "user_id": 0}).skip(skip).limit(limit).to_list(limit)
-    margin_rules = await db.catalog_margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(MAX_MARGIN_RULES)
+    extra_q = {"active": True} if active_only else {}
+    catalog_items = await CatalogItemRepository.get_by_user_paginated(user["id"], extra_q, skip, limit)
+    margin_rules = await MarginRuleRepository.get_by_user(user["id"])
 
     # Batch: cargar todos los productos de una vez en lugar de N queries individuales
     product_ids = [item["product_id"] for item in catalog_items]
-    products_cursor = db.products.find(
-        {"id": {"$in": product_ids}},
-        {"_id": 0, "user_id": 0}
-    )
-    products_map = {p["id"]: p async for p in products_cursor}
+    products_list = await ProductRepository.find_by_ids(product_ids, {"_id": 0, "user_id": 0})
+    products_map = {p["id"]: p for p in products_list}
 
     search_lower = search.lower() if search else None
     result = []
@@ -392,17 +355,17 @@ async def get_catalog(active_only: bool = False, search: str | None = None,
 
 @router.put("/catalog/{catalog_id}")
 async def update_catalog_item(catalog_id: str, item: CatalogItemCreate, user: dict = Depends(get_current_user)):
-    existing = await db.catalog_items.find_one({"id": catalog_id, "user_id": user["id"]})
-    if not existing:
+    existing = await CatalogItemRepository.get_by_id_no_catalog(catalog_id)
+    if not existing or existing.get("user_id") != user["id"]:
         raise HTTPException(status_code=404, detail="Item no encontrado")
-    await db.catalog_items.update_one({"id": catalog_id}, {"$set": {"custom_price": item.custom_price, "custom_name": item.custom_name, "active": item.active}})
+    await CatalogItemRepository.update_by_id(catalog_id, {"custom_price": item.custom_price, "custom_name": item.custom_name, "active": item.active})
     return {"message": "Item actualizado"}
 
 
 @router.delete("/catalog/{catalog_id}")
 async def remove_from_catalog(catalog_id: str, user: dict = Depends(get_current_user)):
-    result = await db.catalog_items.delete_one({"id": catalog_id, "user_id": user["id"]})
-    if result.deleted_count == 0:
+    deleted = await CatalogItemRepository.delete_item_by_id(catalog_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Item no encontrado")
     return {"message": "Item eliminado del catálogo"}
 
@@ -414,31 +377,30 @@ async def create_margin_rule(rule: MarginRuleCreate, user: dict = Depends(get_cu
     rule_id = str(uuid.uuid4())
     now = datetime.now(UTC).isoformat()
     rule_doc = {"id": rule_id, "user_id": user["id"], **rule.model_dump(), "created_at": now}
-    await db.catalog_margin_rules.insert_one(rule_doc)
+    await MarginRuleRepository.create(rule_doc)
     rule_doc.pop("_id", None)
     return MarginRuleResponse(**rule_doc)
 
 
 @router.get("/margin-rules", response_model=list[MarginRuleResponse])
 async def get_margin_rules(user: dict = Depends(get_current_user)):
-    rules = await db.catalog_margin_rules.find({"user_id": user["id"]}, {"_id": 0}).sort("priority", -1).to_list(MAX_MARGIN_RULES)
+    rules = await MarginRuleRepository.get_by_user(user["id"])
     return [MarginRuleResponse(**r) for r in rules]
 
 
 @router.put("/margin-rules/{rule_id}", response_model=MarginRuleResponse)
 async def update_margin_rule(rule_id: str, rule: MarginRuleCreate, user: dict = Depends(get_current_user)):
-    existing = await db.catalog_margin_rules.find_one({"id": rule_id, "user_id": user["id"]})
+    existing = await MarginRuleRepository.get_by_id_no_catalog(rule_id, user["id"])
     if not existing:
         raise HTTPException(status_code=404, detail="Regla no encontrada")
-    await db.catalog_margin_rules.update_one({"id": rule_id, "user_id": user["id"]}, {"$set": rule.model_dump()})
-    updated = await db.catalog_margin_rules.find_one({"id": rule_id, "user_id": user["id"]}, {"_id": 0})
+    updated = await MarginRuleRepository.update(rule_id, user["id"], rule.model_dump())
     return MarginRuleResponse(**updated)
 
 
 @router.delete("/margin-rules/{rule_id}")
 async def delete_margin_rule(rule_id: str, user: dict = Depends(get_current_user)):
-    result = await db.catalog_margin_rules.delete_one({"id": rule_id, "user_id": user["id"]})
-    if result.deleted_count == 0:
+    deleted = await MarginRuleRepository.delete_by_user(rule_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Regla no encontrada")
     return {"message": "Regla eliminada"}
 
@@ -450,7 +412,7 @@ async def get_category_level(catalog_id: str, parent_id: str | None) -> int:
     """Get the level of the parent category"""
     if not parent_id:
         return -1  # Return -1 so that child becomes level 0
-    parent = await db.catalog_categories.find_one({"id": parent_id, "catalog_id": catalog_id})
+    parent = await CatalogCategoryRepository.get_by_id_raw(parent_id, catalog_id)
     if not parent:
         return -1
     return parent.get("level", 0)
@@ -468,9 +430,8 @@ async def build_category_tree(categories: list[dict], parent_id: str | None = No
             {"$match": {"category_ids": {"$in": cat_ids}}},
             {"$group": {"_id": "$category_ids", "count": {"$sum": 1}}}
         ]
-        counts_map = {}
-        async for doc in db.catalog_items.aggregate(pipeline):
-            counts_map[doc["_id"]] = doc["count"]
+        counts_list = await CatalogItemRepository.aggregate(pipeline)
+        counts_map = {doc["_id"]: doc["count"] for doc in counts_list}
 
     tree = []
     for cat in categories:
@@ -490,14 +451,14 @@ async def build_category_tree(categories: list[dict], parent_id: str | None = No
 @router.post("/catalogs/{catalog_id}/categories", response_model=CatalogCategoryResponse)
 async def create_catalog_category(catalog_id: str, category: CatalogCategoryCreate, user: dict = Depends(get_current_user)):
     """Create a new category in the catalog (max 4 levels deep)"""
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
     # Check parent exists and level limit
     level = 0
     if category.parent_id:
-        parent = await db.catalog_categories.find_one({"id": category.parent_id, "catalog_id": catalog_id})
+        parent = await CatalogCategoryRepository.get_by_id_raw(category.parent_id, catalog_id)
         if not parent:
             raise HTTPException(status_code=404, detail="Categoría padre no encontrada")
         level = await get_category_level(catalog_id, category.parent_id) + 1
@@ -506,10 +467,7 @@ async def create_catalog_category(catalog_id: str, category: CatalogCategoryCrea
 
     # Get next position if not specified
     if category.position == 0:
-        max_pos = await db.catalog_categories.find_one(
-            {"catalog_id": catalog_id, "parent_id": category.parent_id},
-            sort=[("position", -1)]
-        )
+        max_pos = await CatalogCategoryRepository.get_max_position(catalog_id, category.parent_id)
         category.position = (max_pos.get("position", 0) + 1) if max_pos else 0
 
     category_id = str(uuid.uuid4())
@@ -525,7 +483,7 @@ async def create_catalog_category(catalog_id: str, category: CatalogCategoryCrea
         "level": level,
         "created_at": now
     }
-    await db.catalog_categories.insert_one(category_doc)
+    await CatalogCategoryRepository.create(category_doc)
 
     return CatalogCategoryResponse(
         id=category_id, catalog_id=catalog_id, name=category.name,
@@ -539,13 +497,11 @@ async def create_catalog_category(catalog_id: str, category: CatalogCategoryCrea
 async def get_catalog_categories(catalog_id: str, flat: bool = False, user: dict = Depends(get_current_user)):
     """Get all categories for a catalog (tree or flat structure)"""
     try:
-        catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+        catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
         if not catalog:
             raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
-        categories = await db.catalog_categories.find(
-            {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
-        ).sort("position", 1).to_list(500)
+        categories = await CatalogCategoryRepository.get_all_by_position(catalog_id)
 
         if flat:
             # Batch: obtener conteos de todas las categorías en 1 query
@@ -556,9 +512,8 @@ async def get_catalog_categories(catalog_id: str, flat: bool = False, user: dict
                 {"$match": {"category_ids": {"$in": cat_ids}}},
                 {"$group": {"_id": "$category_ids", "count": {"$sum": 1}}}
             ]
-            counts_map = {}
-            async for doc in db.catalog_items.aggregate(pipeline):
-                counts_map[doc["_id"]] = doc["count"]
+            counts_list = await CatalogItemRepository.aggregate(pipeline)
+            counts_map = {doc["_id"]: doc["count"] for doc in counts_list}
 
             result = []
             for cat in categories:
@@ -578,20 +533,15 @@ async def get_catalog_categories(catalog_id: str, flat: bool = False, user: dict
 @router.get("/catalogs/{catalog_id}/categories/{category_id}", response_model=CatalogCategoryResponse)
 async def get_catalog_category(catalog_id: str, category_id: str, user: dict = Depends(get_current_user)):
     """Get a single category by ID"""
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
-    category = await db.catalog_categories.find_one(
-        {"id": category_id, "catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
-    )
+    category = await CatalogCategoryRepository.get_by_id(category_id, catalog_id)
     if not category:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
 
-    product_count = await db.catalog_items.count_documents({
-        "catalog_id": catalog_id,
-        "category_ids": category_id
-    })
+    product_count = await CatalogItemRepository.count_by_category(catalog_id, category_id)
 
     return CatalogCategoryResponse(**category, product_count=product_count, children=[])
 
@@ -599,11 +549,11 @@ async def get_catalog_category(catalog_id: str, category_id: str, user: dict = D
 @router.put("/catalogs/{catalog_id}/categories/{category_id}", response_model=CatalogCategoryResponse)
 async def update_catalog_category(catalog_id: str, category_id: str, update: CatalogCategoryUpdate, user: dict = Depends(get_current_user)):
     """Update a category"""
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
-    existing = await db.catalog_categories.find_one({"id": category_id, "catalog_id": catalog_id})
+    existing = await CatalogCategoryRepository.get_by_id_raw(category_id, catalog_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
 
@@ -623,13 +573,10 @@ async def update_catalog_category(catalog_id: str, category_id: str, update: Cat
             update_data["level"] = 0
 
     if update_data:
-        await db.catalog_categories.update_one({"id": category_id}, {"$set": update_data})
+        await CatalogCategoryRepository.update_by_id(category_id, update_data)
 
-    updated = await db.catalog_categories.find_one({"id": category_id}, {"_id": 0, "user_id": 0})
-    product_count = await db.catalog_items.count_documents({
-        "catalog_id": catalog_id,
-        "category_ids": category_id
-    })
+    updated = await CatalogCategoryRepository.get_by_id(category_id, catalog_id)
+    product_count = await CatalogItemRepository.count_by_category(catalog_id, category_id)
 
     return CatalogCategoryResponse(**updated, product_count=product_count, children=[])
 
@@ -637,20 +584,18 @@ async def update_catalog_category(catalog_id: str, category_id: str, update: Cat
 @router.delete("/catalogs/{catalog_id}/categories/{category_id}")
 async def delete_catalog_category(catalog_id: str, category_id: str, user: dict = Depends(get_current_user)):
     """Delete a category and optionally its children"""
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
-    existing = await db.catalog_categories.find_one({"id": category_id, "catalog_id": catalog_id})
+    existing = await CatalogCategoryRepository.get_by_id_raw(category_id, catalog_id)
     if not existing:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
 
     # Get all descendant categories
     async def get_descendants(parent_id: str) -> list[str]:
         descendants = []
-        children = await db.catalog_categories.find(
-            {"catalog_id": catalog_id, "parent_id": parent_id}
-        ).to_list(100)
+        children = await CatalogCategoryRepository.find_children(catalog_id, parent_id)
         for child in children:
             descendants.append(child["id"])
             descendants.extend(await get_descendants(child["id"]))
@@ -659,13 +604,10 @@ async def delete_catalog_category(catalog_id: str, category_id: str, user: dict 
     category_ids_to_delete = [category_id] + await get_descendants(category_id)
 
     # Remove category references from products
-    await db.catalog_items.update_many(
-        {"catalog_id": catalog_id, "category_ids": {"$in": category_ids_to_delete}},
-        {"$pull": {"category_ids": {"$in": category_ids_to_delete}}}
-    )
+    await CatalogItemRepository.remove_category_refs(catalog_id, category_ids_to_delete)
 
     # Delete categories
-    await db.catalog_categories.delete_many({"id": {"$in": category_ids_to_delete}})
+    await CatalogCategoryRepository.delete_by_ids(category_ids_to_delete)
 
     return {"message": f"Eliminadas {len(category_ids_to_delete)} categoría(s)"}
 
@@ -673,7 +615,7 @@ async def delete_catalog_category(catalog_id: str, category_id: str, user: dict 
 @router.post("/catalogs/{catalog_id}/categories/reorder")
 async def reorder_catalog_categories(catalog_id: str, reorder: CatalogCategoryBulkReorder, user: dict = Depends(get_current_user)):
     """Bulk reorder categories"""
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
@@ -683,14 +625,14 @@ async def reorder_catalog_categories(catalog_id: str, reorder: CatalogCategoryBu
             new_level = await get_category_level(catalog_id, update.new_parent_id) + 1
             if new_level >= 4:
                 continue  # Skip this update
-            await db.catalog_categories.update_one(
-                {"id": update.category_id, "catalog_id": catalog_id},
-                {"$set": {"parent_id": update.new_parent_id, "position": update.new_position, "level": new_level}}
+            await CatalogCategoryRepository.update_by_id_in_catalog(
+                update.category_id, catalog_id,
+                {"parent_id": update.new_parent_id, "position": update.new_position, "level": new_level}
             )
         else:
-            await db.catalog_categories.update_one(
-                {"id": update.category_id, "catalog_id": catalog_id},
-                {"$set": {"parent_id": None, "position": update.new_position, "level": 0}}
+            await CatalogCategoryRepository.update_by_id_in_catalog(
+                update.category_id, catalog_id,
+                {"parent_id": None, "position": update.new_position, "level": 0}
             )
 
     return {"message": "Categorías reordenadas"}
@@ -701,28 +643,23 @@ async def reorder_catalog_categories(catalog_id: str, reorder: CatalogCategoryBu
 @router.put("/catalogs/{catalog_id}/products/{item_id}/categories")
 async def update_product_categories(catalog_id: str, item_id: str, update: CatalogItemCategoryUpdate, user: dict = Depends(get_current_user)):
     """Update categories for a product in the catalog"""
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
-    item = await db.catalog_items.find_one({"id": item_id, "catalog_id": catalog_id})
+    item = await CatalogItemRepository.get_by_item_id(item_id, catalog_id)
     if not item:
         raise HTTPException(status_code=404, detail="Producto no encontrado en el catálogo")
 
     # Verify all category IDs exist in this catalog
     if update.category_ids:
-        valid_categories = await db.catalog_categories.find(
-            {"catalog_id": catalog_id, "id": {"$in": update.category_ids}}
-        ).to_list(100)
+        valid_categories = await CatalogCategoryRepository.get_in_catalog(catalog_id, update.category_ids)
         valid_ids = [c["id"] for c in valid_categories]
         invalid_ids = set(update.category_ids) - set(valid_ids)
         if invalid_ids:
             raise HTTPException(status_code=400, detail=f"Categorías no válidas: {invalid_ids}")
 
-    await db.catalog_items.update_one(
-        {"id": item_id},
-        {"$set": {"category_ids": update.category_ids}}
-    )
+    await CatalogItemRepository.update_by_id(item_id, {"category_ids": update.category_ids})
 
     return {"message": "Categorías actualizadas", "category_ids": update.category_ids}
 
@@ -730,21 +667,22 @@ async def update_product_categories(catalog_id: str, item_id: str, update: Catal
 @router.get("/catalogs/{catalog_id}/categories/{category_id}/products")
 async def get_category_products(catalog_id: str, category_id: str, user: dict = Depends(get_current_user)):
     """Get all products in a specific category"""
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
-    category = await db.catalog_categories.find_one({"id": category_id, "catalog_id": catalog_id})
+    category = await CatalogCategoryRepository.get_by_id_raw(category_id, catalog_id)
     if not category:
         raise HTTPException(status_code=404, detail="Categoría no encontrada")
 
-    items = await db.catalog_items.find(
-        {"catalog_id": catalog_id, "category_ids": category_id}, {"_id": 0}
-    ).to_list(500)
+    items = await CatalogItemRepository.find_by_category(catalog_id, category_id)
 
     result = []
+    product_ids_cat = [item["product_id"] for item in items]
+    products_cat = await ProductRepository.find_by_ids(product_ids_cat)
+    products_cat_map = {p["id"]: p for p in products_cat}
     for item in items:
-        product = await db.products.find_one({"id": item["product_id"]}, {"_id": 0, "user_id": 0})
+        product = products_cat_map.get(item["product_id"])
         if product:
             result.append({
                 "id": item["id"],
@@ -766,7 +704,7 @@ async def bulk_assign_categories(request: Request, catalog_id: str, data: BulkCa
     - replace: Replace all categories with the specified ones
     - remove: Remove the specified categories from products
     """
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
@@ -778,9 +716,7 @@ async def bulk_assign_categories(request: Request, catalog_id: str, data: BulkCa
 
     # Verify all category IDs exist in this catalog
     if data.category_ids:
-        valid_categories = await db.catalog_categories.find(
-            {"catalog_id": catalog_id, "id": {"$in": data.category_ids}}
-        ).to_list(100)
+        valid_categories = await CatalogCategoryRepository.get_in_catalog(catalog_id, data.category_ids)
         valid_ids = [c["id"] for c in valid_categories]
         invalid_ids = set(data.category_ids) - set(valid_ids)
         if invalid_ids:
@@ -789,28 +725,22 @@ async def bulk_assign_categories(request: Request, catalog_id: str, data: BulkCa
     updated_count = 0
 
     if data.mode == "replace":
-        # Replace all categories
-        result = await db.catalog_items.update_many(
+        updated_count = await CatalogItemRepository.update_many(
             {"catalog_id": catalog_id, "id": {"$in": data.product_item_ids}},
             {"$set": {"category_ids": data.category_ids}}
         )
-        updated_count = result.modified_count
 
     elif data.mode == "add":
-        # Add categories to existing ones (using $addToSet to avoid duplicates)
-        result = await db.catalog_items.update_many(
+        updated_count = await CatalogItemRepository.update_many(
             {"catalog_id": catalog_id, "id": {"$in": data.product_item_ids}},
             {"$addToSet": {"category_ids": {"$each": data.category_ids}}}
         )
-        updated_count = result.modified_count
 
     elif data.mode == "remove":
-        # Remove specified categories
-        result = await db.catalog_items.update_many(
+        updated_count = await CatalogItemRepository.update_many(
             {"catalog_id": catalog_id, "id": {"$in": data.product_item_ids}},
             {"$pull": {"category_ids": {"$in": data.category_ids}}}
         )
-        updated_count = result.modified_count
 
     return {
         "message": f"Categorías actualizadas en {updated_count} producto(s)",

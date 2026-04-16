@@ -5,8 +5,12 @@ from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 
+from repositories import (
+    CatalogCategoryRepository, CatalogItemRepository, CatalogRepository,
+    MarginRuleRepository, NotificationRepository, ProductRepository,
+    StoreRepository, SupplierRepository,
+)
 from services.auth import check_user_limit, get_current_user
-from services.database import db
 from services.platforms import MagentoClient, PrestaShopClient, ShopifyClient, WixClient
 from services.sync import calculate_final_price, get_woocommerce_client, mask_key, send_sync_progress, send_sync_complete, send_sync_error
 
@@ -83,7 +87,7 @@ async def create_store_config(config: dict, user: dict = Depends(get_current_use
     # Get catalog name if provided
     catalog_name = None
     if config.get("catalog_id"):
-        catalog = await db.catalogs.find_one({"id": config["catalog_id"], "user_id": user["id"]}, {"_id": 0})
+        catalog = await CatalogRepository.get_by_id(config["catalog_id"], user["id"])
         if catalog:
             catalog_name = catalog.get("name")
 
@@ -115,7 +119,7 @@ async def create_store_config(config: dict, user: dict = Depends(get_current_use
     if platform == "magento" and config.get("store_code"):
         config_doc["store_code"] = config.get("store_code", "default")
 
-    await db.woocommerce_configs.insert_one(config_doc)
+    await StoreRepository.create(config_doc)
 
     # Build response
     response = {
@@ -146,16 +150,13 @@ async def get_store_configs(user: dict = Depends(get_current_user)):
             projection[field] = 0
 
     # We need to include credentials for masking, so don't exclude them in projection
-    configs = await db.woocommerce_configs.find(
-        {"user_id": user["id"]},
-        {"_id": 0}
-    ).to_list(100)
+    configs = await StoreRepository.get_all(user["id"])
 
     # Get catalog names
     catalog_ids = [c.get("catalog_id") for c in configs if c.get("catalog_id")]
     catalogs = {}
     if catalog_ids:
-        catalog_docs = await db.catalogs.find({"id": {"$in": catalog_ids}}, {"_id": 0}).to_list(100)
+        catalog_docs = await CatalogRepository.get_by_ids(catalog_ids)
         catalogs = {c["id"]: c.get("name") for c in catalog_docs}
 
     result = []
@@ -200,17 +201,14 @@ async def get_store_configs(user: dict = Depends(get_current_user)):
 @router.get("/stores/configs/{config_id}")
 async def get_store_config(config_id: str, user: dict = Depends(get_current_user)):
     """Get a specific store configuration"""
-    config = await db.woocommerce_configs.find_one(
-        {"id": config_id, "user_id": user["id"]},
-        {"_id": 0}
-    )
+    config = await StoreRepository.get_by_id_clean(config_id, user["id"])
     if not config:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
 
     platform = config.get("platform", "woocommerce")
     catalog_name = None
     if config.get("catalog_id"):
-        catalog = await db.catalogs.find_one({"id": config["catalog_id"]}, {"_id": 0})
+        catalog = await CatalogRepository.get_by_id(config["catalog_id"], user["id"])
         if catalog:
             catalog_name = catalog.get("name")
 
@@ -241,7 +239,7 @@ async def get_store_config(config_id: str, user: dict = Depends(get_current_user
 @router.put("/stores/configs/{config_id}")
 async def update_store_config(config_id: str, update: dict, user: dict = Depends(get_current_user)):
     """Update a store configuration"""
-    existing = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    existing = await StoreRepository.get_by_id(config_id, user["id"])
     if not existing:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
 
@@ -273,14 +271,14 @@ async def update_store_config(config_id: str, update: dict, user: dict = Depends
         update_data["store_code"] = update["store_code"]
 
     if update_data:
-        await db.woocommerce_configs.update_one({"id": config_id}, {"$set": update_data})
+        await StoreRepository.update_sync_result(config_id, update_data)
 
     # Return updated config
-    updated = await db.woocommerce_configs.find_one({"id": config_id}, {"_id": 0})
+    updated = await StoreRepository.get_by_id_clean(config_id, user["id"])
 
     catalog_name = None
     if updated.get("catalog_id"):
-        catalog = await db.catalogs.find_one({"id": updated["catalog_id"]})
+        catalog = await CatalogRepository.get_by_id(updated["catalog_id"], user["id"])
         if catalog:
             catalog_name = catalog.get("name")
 
@@ -311,8 +309,8 @@ async def update_store_config(config_id: str, update: dict, user: dict = Depends
 @router.delete("/stores/configs/{config_id}")
 async def delete_store_config(config_id: str, user: dict = Depends(get_current_user)):
     """Delete a store configuration"""
-    result = await db.woocommerce_configs.delete_one({"id": config_id, "user_id": user["id"]})
-    if result.deleted_count == 0:
+    deleted = await StoreRepository.delete(config_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
     return {"message": "Configuración eliminada"}
 
@@ -320,7 +318,7 @@ async def delete_store_config(config_id: str, user: dict = Depends(get_current_u
 @router.post("/stores/configs/{config_id}/test")
 async def test_store_connection(config_id: str, user: dict = Depends(get_current_user)):
     """Test connection to a store"""
-    config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    config = await StoreRepository.get_by_id(config_id, user["id"])
     if not config:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
 
@@ -332,11 +330,11 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
             wcapi = get_woocommerce_client(config)
             response = await asyncio.to_thread(wcapi.get, "")
             if response.status_code == 200:
-                await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": True}})
+                await StoreRepository.update_connection_status(config_id, True)
                 store_info = response.json()
                 return {"status": "success", "message": "Conexión exitosa", "store_name": store_info.get("name", config["name"])}
             else:
-                await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": False}})
+                await StoreRepository.update_connection_status(config_id, False)
                 return {"status": "error", "message": f"Error de conexión: {response.status_code}"}
 
         elif platform == "prestashop":
@@ -347,7 +345,7 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
             )
             result = await asyncio.to_thread(client.test_connection)
             is_connected = result.get("status") == "success"
-            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": is_connected}})
+            await StoreRepository.update_connection_status(config_id, is_connected)
             result["store_name"] = config["name"]
             return result
 
@@ -360,7 +358,7 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
             )
             result = await asyncio.to_thread(client.test_connection)
             is_connected = result.get("status") == "success"
-            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": is_connected}})
+            await StoreRepository.update_connection_status(config_id, is_connected)
             if not result.get("store_name"):
                 result["store_name"] = config["name"]
             return result
@@ -374,7 +372,7 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
             )
             result = await asyncio.to_thread(client.test_connection)
             is_connected = result.get("status") == "success"
-            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": is_connected}})
+            await StoreRepository.update_connection_status(config_id, is_connected)
             result["store_name"] = config["name"]
             return result
 
@@ -387,7 +385,7 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
             )
             result = await asyncio.to_thread(client.test_connection)
             is_connected = result.get("status") == "success"
-            await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": is_connected}})
+            await StoreRepository.update_connection_status(config_id, is_connected)
             if not result.get("store_name"):
                 result["store_name"] = config["name"]
             return result
@@ -396,7 +394,7 @@ async def test_store_connection(config_id: str, user: dict = Depends(get_current
             return {"status": "error", "message": f"Plataforma no soportada: {platform}"}
 
     except Exception:
-        await db.woocommerce_configs.update_one({"id": config_id}, {"$set": {"is_connected": False}})
+        await StoreRepository.update_connection_status(config_id, False)
         return {"status": "error", "message": "Error de conexión a la tienda. Verifica la URL y las credenciales."}
 
 
@@ -448,7 +446,7 @@ async def sync_store_price_stock(config_id: str, user: dict = Depends(get_curren
 
     Ejecuta en background y emite eventos WebSocket para progreso en tiempo real.
     """
-    config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    config = await StoreRepository.get_by_id(config_id, user["id"])
     if not config:
         raise HTTPException(status_code=404, detail="Configuración no encontrada")
 
@@ -513,7 +511,7 @@ async def _run_export_background(config: dict, catalog_items: list, catalog_id: 
         logger.error(f"Background export error for store {config_id}: {e}")
 
     now = datetime.now(UTC).isoformat()
-    await db.notifications.insert_one({
+    await NotificationRepository.create({
         "id": str(uuid.uuid4()),
         "type": "store_export",
         "message": summary,
@@ -532,7 +530,7 @@ async def export_to_store(request: dict, background_tasks: BackgroundTasks, user
     catalog_id = request.get("catalog_id")
     update_existing = request.get("update_existing", True)
 
-    config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    config = await StoreRepository.get_by_id(config_id, user["id"])
     if not config:
         raise HTTPException(status_code=404, detail="Configuración de tienda no encontrada")
 
@@ -541,10 +539,10 @@ async def export_to_store(request: dict, background_tasks: BackgroundTasks, user
     # Validate catalog and fetch items synchronously before returning
     if not catalog_id:
         raise HTTPException(status_code=400, detail="Catálogo no especificado")
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
-    catalog_items = await db.catalog_items.find({"catalog_id": catalog_id, "active": True}, {"_id": 0}).to_list(1000)
+    catalog_items = await CatalogItemRepository.get_active(catalog_id)
     if not catalog_items:
         return {"status": "warning", "created": 0, "updated": 0, "failed": 0,
                 "errors": ["No hay productos activos para exportar"]}
@@ -580,7 +578,7 @@ async def export_to_prestashop(config: dict, catalog_items: list, catalog_id: st
 
     # Get products data
     product_ids = [item["product_id"] for item in catalog_items]
-    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+    products = await ProductRepository.find_by_ids(product_ids)
     products_map = {p["id"]: p for p in products}
 
     # Get existing products from PrestaShop by reference (SKU)
@@ -592,7 +590,7 @@ async def export_to_prestashop(config: dict, catalog_items: list, catalog_id: st
             existing_refs[ref] = p.get("id")
 
     # Get margin rules for this catalog
-    margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
+    margin_rules = await MarginRuleRepository.get_for_sync(catalog_id)
 
     for item in catalog_items:
         product = products_map.get(item["product_id"])
@@ -643,12 +641,9 @@ async def export_to_prestashop(config: dict, catalog_items: list, catalog_id: st
 
     # Update config
     now = datetime.now(UTC).isoformat()
-    await db.woocommerce_configs.update_one(
-        {"id": config["id"]},
-        {"$set": {"last_sync": now, "products_synced": created + updated}}
-    )
+    await StoreRepository.update_sync_result(config["id"], {"last_sync": now, "products_synced": created + updated})
 
-    await db.notifications.insert_one({
+    await NotificationRepository.create({
         "id": str(uuid.uuid4()),
         "type": "store_export",
         "message": f"Exportación a PrestaShop: {created} creados, {updated} actualizados, {failed} fallidos",
@@ -683,7 +678,7 @@ async def export_to_shopify(config: dict, catalog_items: list, catalog_id: str, 
 
     # Get products data
     product_ids = [item["product_id"] for item in catalog_items]
-    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+    products = await ProductRepository.find_by_ids(product_ids)
     products_map = {p["id"]: p for p in products}
 
     # Get existing products from Shopify by SKU
@@ -696,7 +691,7 @@ async def export_to_shopify(config: dict, catalog_items: list, catalog_id: str, 
                 existing_skus[sku] = p.get("id")
 
     # Get margin rules
-    margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
+    margin_rules = await MarginRuleRepository.get_for_sync(catalog_id)
 
     for item in catalog_items:
         product = products_map.get(item["product_id"])
@@ -747,12 +742,9 @@ async def export_to_shopify(config: dict, catalog_items: list, catalog_id: str, 
 
     # Update config
     now = datetime.now(UTC).isoformat()
-    await db.woocommerce_configs.update_one(
-        {"id": config["id"]},
-        {"$set": {"last_sync": now, "products_synced": created + updated}}
-    )
+    await StoreRepository.update_sync_result(config["id"], {"last_sync": now, "products_synced": created + updated})
 
-    await db.notifications.insert_one({
+    await NotificationRepository.create({
         "id": str(uuid.uuid4()),
         "type": "store_export",
         "message": f"Exportación a Shopify: {created} creados, {updated} actualizados, {failed} fallidos",
@@ -787,7 +779,7 @@ async def export_to_magento(config: dict, catalog_items: list, catalog_id: str, 
 
     # Get products data
     product_ids = [item["product_id"] for item in catalog_items]
-    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+    products = await ProductRepository.find_by_ids(product_ids)
     products_map = {p["id"]: p for p in products}
 
     # Get existing products from Magento by SKU
@@ -795,7 +787,7 @@ async def export_to_magento(config: dict, catalog_items: list, catalog_id: str, 
     existing_skus = {p.get("sku", ""): True for p in existing_products}
 
     # Get margin rules
-    margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
+    margin_rules = await MarginRuleRepository.get_for_sync(catalog_id)
 
     for item in catalog_items:
         product = products_map.get(item["product_id"])
@@ -845,12 +837,9 @@ async def export_to_magento(config: dict, catalog_items: list, catalog_id: str, 
 
     # Update config
     now = datetime.now(UTC).isoformat()
-    await db.woocommerce_configs.update_one(
-        {"id": config["id"]},
-        {"$set": {"last_sync": now, "products_synced": created + updated}}
-    )
+    await StoreRepository.update_sync_result(config["id"], {"last_sync": now, "products_synced": created + updated})
 
-    await db.notifications.insert_one({
+    await NotificationRepository.create({
         "id": str(uuid.uuid4()),
         "type": "store_export",
         "message": f"Exportación a Magento: {created} creados, {updated} actualizados, {failed} fallidos",
@@ -886,7 +875,7 @@ async def export_to_wix(config: dict, catalog_items: list, catalog_id: str, user
 
     # Get products data
     product_ids = [item["product_id"] for item in catalog_items]
-    products = await db.products.find({"id": {"$in": product_ids}}, {"_id": 0}).to_list(len(product_ids))
+    products = await ProductRepository.find_by_ids(product_ids)
     products_map = {p["id"]: p for p in products}
 
     # Get existing products from Wix by SKU
@@ -894,7 +883,7 @@ async def export_to_wix(config: dict, catalog_items: list, catalog_id: str, user
     existing_skus = {p.get("sku", ""): p.get("id") for p in existing_products if p.get("sku")}
 
     # Get margin rules
-    margin_rules = await db.catalog_margin_rules.find({"catalog_id": catalog_id}, {"_id": 0}).sort("priority", -1).to_list(100)
+    margin_rules = await MarginRuleRepository.get_for_sync(catalog_id)
 
     for item in catalog_items:
         product = products_map.get(item["product_id"])
@@ -945,12 +934,9 @@ async def export_to_wix(config: dict, catalog_items: list, catalog_id: str, user
 
     # Update config
     now = datetime.now(UTC).isoformat()
-    await db.woocommerce_configs.update_one(
-        {"id": config["id"]},
-        {"$set": {"last_sync": now, "products_synced": created + updated}}
-    )
+    await StoreRepository.update_sync_result(config["id"], {"last_sync": now, "products_synced": created + updated})
 
-    await db.notifications.insert_one({
+    await NotificationRepository.create({
         "id": str(uuid.uuid4()),
         "type": "store_export",
         "message": f"Exportación a Wix: {created} creados, {updated} actualizados, {failed} fallidos",
@@ -973,7 +959,7 @@ async def export_to_wix(config: dict, catalog_items: list, catalog_id: str, user
 @router.post("/stores/configs/{config_id}/export-categories")
 async def export_categories_to_store(config_id: str, request: dict, user: dict = Depends(get_current_user)):
     """Export catalog categories to a store"""
-    config = await db.woocommerce_configs.find_one({"id": config_id, "user_id": user["id"]})
+    config = await StoreRepository.get_by_id(config_id, user["id"])
     if not config:
         raise HTTPException(status_code=404, detail="Configuración de tienda no encontrada")
 
@@ -982,7 +968,7 @@ async def export_categories_to_store(config_id: str, request: dict, user: dict =
         raise HTTPException(status_code=400, detail="No hay catálogo especificado")
 
     # Verify catalog exists
-    catalog = await db.catalogs.find_one({"id": catalog_id, "user_id": user["id"]})
+    catalog = await CatalogRepository.get_by_id(catalog_id, user["id"])
     if not catalog:
         raise HTTPException(status_code=404, detail="Catálogo no encontrado")
 
@@ -994,13 +980,10 @@ async def export_categories_to_store(config_id: str, request: dict, user: dict =
 
         # Store the category mapping for future product exports
         if result.get("category_mapping"):
-            await db.woocommerce_configs.update_one(
-                {"id": config_id},
-                {"$set": {f"category_mapping_{catalog_id}": result["category_mapping"]}}
-            )
+            await StoreRepository.update_sync_result(config_id, {f"category_mapping_{catalog_id}": result["category_mapping"]})
 
         now = datetime.now(UTC).isoformat()
-        await db.notifications.insert_one({
+        await NotificationRepository.create({
             "id": str(uuid.uuid4()),
             "type": "categories_export",
             "message": f"Exportación de categorías a WooCommerce: {result.get('created', 0)} creadas, {result.get('total', 0)} total",
@@ -1020,9 +1003,7 @@ async def export_categories_to_store(config_id: str, request: dict, user: dict =
             api_key=config.get("api_key", "")
         )
 
-        categories = await db.catalog_categories.find(
-            {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
-        ).sort([("level", 1), ("position", 1)]).to_list(500)
+        categories = await CatalogCategoryRepository.get_sorted(catalog_id)
 
         if not categories:
             return {"status": "warning", "created": 0, "message": "No hay categorías para exportar"}
@@ -1062,9 +1043,7 @@ async def export_categories_to_store(config_id: str, request: dict, user: dict =
             api_version=config.get("api_version", "2024-10")
         )
 
-        categories = await db.catalog_categories.find(
-            {"catalog_id": catalog_id}, {"_id": 0, "user_id": 0}
-        ).sort([("level", 1), ("position", 1)]).to_list(500)
+        categories = await CatalogCategoryRepository.get_sorted(catalog_id)
 
         if not categories:
             return {"status": "warning", "created": 0, "message": "No hay categorías para exportar"}
@@ -1150,9 +1129,7 @@ async def create_catalog_from_store(
     }
     """
     # Validate store config exists
-    store_config = await db.woocommerce_configs.find_one(
-        {"id": store_config_id, "user_id": user["id"]}
-    )
+    store_config = await StoreRepository.get_by_id(store_config_id, user["id"])
     if not store_config:
         raise HTTPException(
             status_code=404,
@@ -1172,8 +1149,8 @@ async def create_catalog_from_store(
 
     # Only require suppliers when skipping unmatched (matching mode)
     if skip_unmatched:
-        supplier_count = await db.suppliers.count_documents({"user_id": user["id"]})
-        product_count = await db.products.count_documents({"user_id": user["id"]})
+        supplier_count = await SupplierRepository.count(user["id"])
+        product_count = await ProductRepository.count({"user_id": user["id"]})
         if supplier_count == 0 and product_count == 0:
             raise HTTPException(
                 status_code=400,

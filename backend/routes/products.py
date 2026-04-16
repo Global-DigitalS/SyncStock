@@ -9,6 +9,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from models.schemas import ProductResponse, ProductUpdate, SupplierOffer, UnifiedProductResponse
+from repositories import ProductRepository, SupplierRepository, CatalogRepository, CatalogItemRepository
 from services.auth import get_current_user
 from services.database import db
 
@@ -71,13 +72,13 @@ async def get_products(
         query["price"] = {"$gte": min_price}
     if max_price is not None:
         query.setdefault("price", {})["$lte"] = max_price
-    products = await db.products.find(query, {"_id": 0, "user_id": 0}).skip(skip).limit(limit).to_list(limit)
+    products = await ProductRepository.get_paginated(query, skip, limit)
     return [ProductResponse(**p) for p in products]
 
 
 @router.get("/products/categories")
 async def get_categories(user: dict = Depends(get_current_user)):
-    return await db.products.distinct("category", {"user_id": user["id"], "category": {"$ne": None}})
+    return await ProductRepository.get_categories(user["id"])
 
 
 @router.get("/products/brands")
@@ -89,7 +90,7 @@ async def get_brands(
     query = {"user_id": user["id"], "brand": {"$nin": [None, ""]}}
     if supplier_id:
         query["supplier_id"] = supplier_id
-    brands = await db.products.distinct("brand", query)
+    brands = await ProductRepository.get_brands(query)
     return sorted([b for b in brands if b])
 
 
@@ -162,7 +163,7 @@ async def search_products_global(
         }}
     ]
 
-    results = await db.products.aggregate(pipeline).to_list(500)
+    results = await ProductRepository.aggregate(pipeline, 500)
     total = sum(r["count"] for r in results)
     return {"total": total, "results": results}
 
@@ -196,7 +197,7 @@ async def get_category_hierarchy(
         {"$limit": 2000},
     ]
 
-    results = await db.products.aggregate(pipeline).to_list(2000)
+    results = await ProductRepository.aggregate(pipeline, 2000)
 
     # Construir árbol jerárquico
     hierarchy = {}
@@ -289,8 +290,8 @@ async def get_selected_products_count(
     if supplier_id:
         query["supplier_id"] = supplier_id
 
-    count = await db.products.count_documents(query)
-    total = await db.products.count_documents({"user_id": user["id"]} if not supplier_id else {"user_id": user["id"], "supplier_id": supplier_id})
+    count = await ProductRepository.count(query)
+    total = await ProductRepository.count({"user_id": user["id"]} if not supplier_id else {"user_id": user["id"], "supplier_id": supplier_id})
 
     return {
         "selected": count,
@@ -301,7 +302,7 @@ async def get_selected_products_count(
 
 @router.get("/products/{product_id}", response_model=ProductResponse)
 async def get_product(product_id: str, user: dict = Depends(get_current_user)):
-    product = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "user_id": 0})
+    product = await ProductRepository.get_by_id(product_id, user["id"])
     if not product:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     return ProductResponse(**product)
@@ -309,14 +310,13 @@ async def get_product(product_id: str, user: dict = Depends(get_current_user)):
 
 @router.put("/products/{product_id}", response_model=ProductResponse)
 async def update_product(product_id: str, update: ProductUpdate, user: dict = Depends(get_current_user)):
-    existing = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "id": 1})
+    existing = await ProductRepository.get_by_id(product_id, user["id"], {"_id": 0, "id": 1})
     if not existing:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     update_data = {k: v for k, v in update.model_dump().items() if v is not None}
     if update_data:
         update_data["updated_at"] = datetime.now(UTC).isoformat()
-        await db.products.update_one({"id": product_id}, {"$set": update_data})
-    updated = await db.products.find_one({"id": product_id}, {"_id": 0, "user_id": 0})
+    updated = await ProductRepository.update(product_id, user["id"], update_data)
     return ProductResponse(**updated)
 
 
@@ -334,20 +334,14 @@ async def add_products_to_multiple_catalogs(
         return {"added": 0, "message": "No hay productos o catálogos seleccionados"}
 
     # Obtener todos los catálogos válidos en una sola consulta
-    catalog_docs = await db.catalogs.find(
-        {"id": {"$in": catalog_ids}, "user_id": user["id"]}
-    ).to_list(100)
+    catalog_docs = await CatalogRepository.get_many_by_ids(catalog_ids, user["id"])
     valid_catalog_ids = {c["id"] for c in catalog_docs}
 
     if not valid_catalog_ids:
         return {"added": 0, "message": "No se encontraron catálogos válidos"}
 
     # Obtener items existentes en una sola consulta
-    existing_items = await db.catalog_items.find({
-        "catalog_id": {"$in": list(valid_catalog_ids)},
-        "product_id": {"$in": product_ids}
-    }).to_list(10000)
-    existing_pairs = {(item["catalog_id"], item["product_id"]) for item in existing_items}
+    existing_pairs = await CatalogItemRepository.find_pairs(list(valid_catalog_ids), product_ids)
 
     # Preparar inserción en lote
     items_to_insert = []
@@ -368,7 +362,7 @@ async def add_products_to_multiple_catalogs(
 
     # Insertar todo en una sola operación
     if items_to_insert:
-        await db.catalog_items.insert_many(items_to_insert)
+        await CatalogItemRepository.insert_many(items_to_insert)
 
     added = len(items_to_insert)
     return {"added": added, "message": f"{added} productos añadidos"}
@@ -438,7 +432,7 @@ async def get_unified_products(
     pipeline.append({"$skip": skip})
     pipeline.append({"$limit": limit})
 
-    results = await db.products.aggregate(pipeline).to_list(limit)
+    results = await ProductRepository.aggregate(pipeline, limit)
     unified_products = []
     for item in results:
         ean = item["_id"]
@@ -500,13 +494,13 @@ async def get_unified_products_count(
         pipeline.append({"$match": {"total_stock": {"$gte": min_stock}}})
     pipeline.append({"$count": "total"})
 
-    result = await db.products.aggregate(pipeline).to_list(1)
+    result = await ProductRepository.aggregate(pipeline, 1)
     return {"total": result[0]["total"] if result else 0}
 
 
 @router.get("/products-unified/{ean}", response_model=UnifiedProductResponse)
 async def get_unified_product(ean: str, user: dict = Depends(get_current_user)):
-    products = await db.products.find({"user_id": user["id"], "ean": ean}, {"_id": 0}).to_list(100)
+    products = await ProductRepository.find_by_ean(user["id"], ean)
     if not products:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     offers_with_stock = [p for p in products if p.get("stock", 0) > 0]
@@ -548,7 +542,7 @@ async def select_products(
     if not product_ids:
         raise HTTPException(status_code=400, detail="No se han proporcionado productos")
 
-    result = await db.products.update_many(
+    result = await ProductRepository.update_many(
         {"id": {"$in": product_ids}, "user_id": user["id"]},
         {"$set": {"is_selected": True, "updated_at": datetime.now(UTC).isoformat()}}
     )
@@ -572,7 +566,7 @@ async def deselect_products(
     if not product_ids:
         raise HTTPException(status_code=400, detail="No se han proporcionado productos")
 
-    result = await db.products.update_many(
+    result = await ProductRepository.update_many(
         {"id": {"$in": product_ids}, "user_id": user["id"]},
         {"$set": {"is_selected": False, "updated_at": datetime.now(UTC).isoformat()}}
     )
@@ -601,7 +595,7 @@ async def select_products_by_supplier(
         raise HTTPException(status_code=400, detail="Se requiere el ID del proveedor")
 
     # Verificar que el proveedor pertenece al usuario
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -613,7 +607,7 @@ async def select_products_by_supplier(
     if subcategory2:
         query["subcategory2"] = subcategory2
 
-    result = await db.products.update_many(
+    result = await ProductRepository.update_many(
         query,
         {"$set": {"is_selected": select_all, "updated_at": datetime.now(UTC).isoformat()}}
     )
@@ -662,7 +656,7 @@ async def get_supplier_products(
     así como filtros avanzados por marca, part_number, rango de precio y stock.
     """
     # Verificar que el proveedor pertenece al usuario
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -696,7 +690,7 @@ async def get_supplier_products(
     if max_stock is not None:
         query.setdefault("stock", {})["$lte"] = max_stock
 
-    products = await db.products.find(query, {"_id": 0, "user_id": 0}).skip(skip).limit(limit).to_list(limit)
+    products = await ProductRepository.get_paginated(query, skip, limit)
 
     return [ProductResponse(**p) for p in products]
 
@@ -752,7 +746,7 @@ async def get_supplier_products_count(
     if max_stock is not None:
         query.setdefault("stock", {})["$lte"] = max_stock
 
-    count = await db.products.count_documents(query)
+    count = await ProductRepository.count(query)
     return {"total": count}
 
 
@@ -766,7 +760,7 @@ async def get_supplier_categories(
     Incluye el conteo de productos por categoría.
     """
     # Verificar que el proveedor pertenece al usuario
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
@@ -781,7 +775,7 @@ async def get_supplier_categories(
         {"$limit": 1000},
     ]
 
-    results = await db.products.aggregate(pipeline).to_list(1000)
+    results = await ProductRepository.aggregate(pipeline, 1000)
 
     return [
         {
@@ -806,7 +800,7 @@ async def upload_product_image(
     user: dict = Depends(get_current_user)
 ):
     """Upload main image or gallery image for a product"""
-    product = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "id": 1, "gallery_images": 1})
+    product = await ProductRepository.get_gallery(product_id, user["id"])
     if not product:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
@@ -850,18 +844,12 @@ async def upload_product_image(
 
     if image_type == "main":
         # Update main image
-        await db.products.update_one(
-            {"id": product_id},
-            {"$set": {"image_url": image_url, "updated_at": now}}
-        )
+        await ProductRepository.update_gallery(product_id, {"image_url": image_url, "updated_at": now})
     else:
         # Add to gallery
         gallery = product.get("gallery_images") or []
         gallery.append(image_url)
-        await db.products.update_one(
-            {"id": product_id},
-            {"$set": {"gallery_images": gallery, "updated_at": now}}
-        )
+        await ProductRepository.update_gallery(product_id, {"gallery_images": gallery, "updated_at": now})
 
     return {"url": image_url, "message": "Imagen subida correctamente"}
 
@@ -873,17 +861,14 @@ async def remove_gallery_image(
     user: dict = Depends(get_current_user)
 ):
     """Remove an image from product gallery"""
-    product = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "id": 1, "gallery_images": 1})
+    product = await ProductRepository.get_gallery(product_id, user["id"])
     if not product:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
     gallery = product.get("gallery_images") or []
     if image_url in gallery:
         gallery.remove(image_url)
-        await db.products.update_one(
-            {"id": product_id},
-            {"$set": {"gallery_images": gallery, "updated_at": datetime.now(UTC).isoformat()}}
-        )
+        await ProductRepository.update_gallery(product_id, {"gallery_images": gallery, "updated_at": datetime.now(UTC).isoformat()})
         return {"message": "Imagen eliminada de la galería"}
 
     raise HTTPException(status_code=404, detail="Imagen no encontrada en la galería")
@@ -892,17 +877,16 @@ async def remove_gallery_image(
 @router.delete("/products/{product_id}")
 async def delete_product(product_id: str, user: dict = Depends(get_current_user)):
     """Delete a single product"""
-    product = await db.products.find_one({"id": product_id, "user_id": user["id"]}, {"_id": 0, "id": 1})
+    product = await ProductRepository.get_by_id(product_id, user["id"], {"_id": 0, "id": 1})
     if not product:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
     # Remove from all catalogs first
-    await db.catalog_items.delete_many({"product_id": product_id, "user_id": user["id"]})
+    await CatalogItemRepository.delete_by_product(product_id, user["id"])
 
     # Delete the product
-    result = await db.products.delete_one({"id": product_id, "user_id": user["id"]})
-
-    if result.deleted_count == 0:
+    deleted = await ProductRepository.delete(product_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
     return {"message": "Producto eliminado correctamente"}
@@ -917,10 +901,10 @@ async def delete_products_bulk(request: Request, data: dict, user: dict = Depend
         raise HTTPException(status_code=400, detail="No se proporcionaron EANs para eliminar")
 
     # Find products by EANs
-    products = await db.products.find(
-        {"ean": {"$in": eans}, "user_id": user["id"]},
-        {"_id": 0, "id": 1}
-    ).to_list(10000)
+    products = await ProductRepository.aggregate(
+        [{"$match": {"ean": {"$in": eans}, "user_id": user["id"]}}, {"$project": {"_id": 0, "id": 1}}],
+        10000
+    )
 
     if not products:
         raise HTTPException(status_code=404, detail="No se encontraron productos con los EANs proporcionados")
@@ -928,9 +912,9 @@ async def delete_products_bulk(request: Request, data: dict, user: dict = Depend
     product_ids = [p["id"] for p in products]
 
     # Remove from all catalogs first
-    await db.catalog_items.delete_many({"product_id": {"$in": product_ids}, "user_id": user["id"]})
+    await CatalogItemRepository.delete_by_products(product_ids, user["id"])
 
     # Delete the products
-    result = await db.products.delete_many({"id": {"$in": product_ids}, "user_id": user["id"]})
+    deleted_count = await ProductRepository.delete_many(product_ids, user["id"])
 
-    return {"deleted": result.deleted_count, "message": f"{result.deleted_count} productos eliminados"}
+    return {"deleted": deleted_count, "message": f"{deleted_count} productos eliminados"}

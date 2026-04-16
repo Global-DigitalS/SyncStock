@@ -15,6 +15,11 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from starlette.responses import StreamingResponse
 
+from repositories import (
+    AutomationRuleRepository, CatalogItemRepository, CatalogRepository,
+    CompetitorRepository, NotificationRepository, PendingMatchRepository,
+    PriceAlertRepository, ProductRepository,
+)
 from services.auth import get_current_user
 from services.database import db
 
@@ -83,7 +88,7 @@ async def get_competitor_prices(
     elif ean:
         product_query["ean"] = ean
 
-    my_product = await db.products.find_one(product_query, {"_id": 0})
+    my_product = await ProductRepository.find_one(product_query, {"_id": 0})
     my_price = my_product["price"] if my_product else None
 
     # Buscar el último snapshot de cada competidor para este SKU/EAN
@@ -107,18 +112,12 @@ async def get_competitor_prices(
         {"$project": {"_id": 0}},
     ]
 
-    snapshots = await db.price_snapshots.aggregate(pipeline).to_list(100)
+    snapshots = await CompetitorRepository.aggregate_snapshots(pipeline, 100)
 
     # Enriquecer con nombre de competidor
     competitor_ids = [s["competitor_id"] for s in snapshots]
-    competitors = {}
-    if competitor_ids:
-        comp_cursor = db.competitors.find(
-            {"id": {"$in": competitor_ids}, "user_id": user["id"]},
-            {"_id": 0, "id": 1, "name": 1, "channel": 1},
-        )
-        async for comp in comp_cursor:
-            competitors[comp["id"]] = comp
+    comp_list = await CompetitorRepository.get_all(user["id"], {"id": {"$in": competitor_ids}}) if competitor_ids else []
+    competitors = {c["id"]: c for c in comp_list}
 
     for snapshot in snapshots:
         comp = competitors.get(snapshot["competitor_id"], {})
@@ -180,20 +179,12 @@ async def get_competitor_price_history(
     if competitor_id:
         query["competitor_id"] = competitor_id
 
-    snapshots = await db.price_snapshots.find(
-        query, {"_id": 0}
-    ).sort("scraped_at", 1).to_list(5000)
+    snapshots = await CompetitorRepository.get_price_snapshots(query, 5000, sort=("scraped_at", 1))
 
     # Enriquecer con nombre de competidor
     comp_ids = list({s["competitor_id"] for s in snapshots})
-    competitors = {}
-    if comp_ids:
-        comp_cursor = db.competitors.find(
-            {"id": {"$in": comp_ids}, "user_id": user["id"]},
-            {"_id": 0, "id": 1, "name": 1},
-        )
-        async for comp in comp_cursor:
-            competitors[comp["id"]] = comp["name"]
+    comp_list = await CompetitorRepository.get_all(user["id"], {"id": {"$in": comp_ids}}) if comp_ids else []
+    competitors = {c["id"]: c["name"] for c in comp_list}
 
     for snapshot in snapshots:
         snapshot["competitor_name"] = competitors.get(snapshot["competitor_id"], "Desconocido")
@@ -219,9 +210,7 @@ async def list_price_alerts(
     if active_only:
         query["active"] = True
 
-    alerts = await db.price_alerts.find(
-        query, {"_id": 0}
-    ).sort("created_at", -1).to_list(500)
+    alerts = await PriceAlertRepository.get_all(user["id"], {k: v for k, v in query.items() if k != "user_id"}, limit=500)
     return alerts
 
 
@@ -273,7 +262,7 @@ async def create_price_alert(
         "created_at": now,
     }
 
-    await db.price_alerts.insert_one(alert)
+    await PriceAlertRepository.create(alert)
     alert.pop("_id", None)
     return alert
 
@@ -285,9 +274,7 @@ async def update_price_alert(
     user: dict = Depends(get_current_user),
 ):
     """Actualiza una alerta de precio existente"""
-    alert = await db.price_alerts.find_one(
-        {"id": alert_id, "user_id": user["id"]},
-    )
+    alert = await PriceAlertRepository.get_by_id(alert_id, user["id"])
     if not alert:
         raise HTTPException(status_code=404, detail="Alerta no encontrada")
 
@@ -322,15 +309,7 @@ async def update_price_alert(
     if final_channel == "webhook" and not final_webhook:
         raise HTTPException(status_code=400, detail="Se requiere webhook_url cuando el canal es webhook")
 
-    await db.price_alerts.update_one(
-        {"id": alert_id, "user_id": user["id"]},
-        {"$set": updates},
-    )
-
-    updated = await db.price_alerts.find_one(
-        {"id": alert_id, "user_id": user["id"]},
-        {"_id": 0},
-    )
+    updated = await PriceAlertRepository.update(alert_id, user["id"], updates)
     return updated
 
 
@@ -340,10 +319,8 @@ async def delete_price_alert(
     user: dict = Depends(get_current_user),
 ):
     """Elimina una alerta de precio"""
-    result = await db.price_alerts.delete_one(
-        {"id": alert_id, "user_id": user["id"]}
-    )
-    if result.deleted_count == 0:
+    deleted = await PriceAlertRepository.delete(alert_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Alerta no encontrada")
 
     return {"message": "Alerta eliminada correctamente"}
@@ -369,10 +346,10 @@ async def trigger_crawl(
     from services.scrapers.orchestrator import run_crawl_for_user
 
     # Verificar que hay competidores activos
-    query = {"user_id": user["id"], "active": True}
+    extra_q: dict = {"active": True}
     if competitor_id:
-        query["id"] = competitor_id
-    count = await db.competitors.count_documents(query)
+        extra_q["id"] = competitor_id
+    count = await CompetitorRepository.count(user["id"], extra_q)
     if count == 0:
         raise HTTPException(status_code=404, detail="No hay competidores activos para scrapear")
 
@@ -400,10 +377,7 @@ async def get_crawl_status(
     user: dict = Depends(get_current_user),
 ):
     """Obtiene el estado del último crawl de cada competidor."""
-    competitors = await db.competitors.find(
-        {"user_id": user["id"]},
-        {"_id": 0, "id": 1, "name": 1, "channel": 1, "last_crawl_at": 1, "last_crawl_status": 1, "active": 1},
-    ).to_list(200)
+    competitors = await CompetitorRepository.get_all(user["id"])
 
     # Batch: obtener conteos de snapshots de las últimas 24h en 1 query
     yesterday = (datetime.now(UTC) - timedelta(hours=24)).isoformat()
@@ -413,9 +387,8 @@ async def get_crawl_status(
             {"$match": {"competitor_id": {"$in": comp_ids}, "user_id": user["id"], "scraped_at": {"$gte": yesterday}}},
             {"$group": {"_id": "$competitor_id", "count": {"$sum": 1}}}
         ]
-        counts_map = {}
-        async for doc in db.price_snapshots.aggregate(pipeline):
-            counts_map[doc["_id"]] = doc["count"]
+        counts_list = await CompetitorRepository.aggregate_snapshots(pipeline)
+        counts_map = {r["_id"]: r["count"] for r in counts_list}
         for comp in competitors:
             comp["snapshots_24h"] = counts_map.get(comp["id"], 0)
     else:
@@ -437,15 +410,7 @@ async def list_pending_matches(
     user: dict = Depends(get_current_user),
 ):
     """Lista los matches de baja confianza pendientes de revisión."""
-    matches = await db.pending_matches.find(
-        {"user_id": user["id"], "status": "pending"},
-        {"_id": 0},
-    ).sort("created_at", -1).skip(skip).to_list(limit)
-
-    total = await db.pending_matches.count_documents(
-        {"user_id": user["id"], "status": "pending"}
-    )
-
+    matches, total = await PendingMatchRepository.get_paginated(user["id"], skip, limit, status="pending")
     return {"matches": matches, "total": total}
 
 
@@ -459,23 +424,18 @@ async def review_pending_match(
     if action not in ("confirm", "reject"):
         raise HTTPException(status_code=400, detail="Acción debe ser 'confirm' o 'reject'")
 
-    match = await db.pending_matches.find_one(
-        {"id": match_id, "user_id": user["id"]},
-    )
+    match = await PendingMatchRepository.get_by_id(match_id, user["id"])
     if not match:
         raise HTTPException(status_code=404, detail="Match no encontrado")
 
     now = datetime.now(UTC).isoformat()
     new_status = "confirmed" if action == "confirm" else "rejected"
 
-    await db.pending_matches.update_one(
-        {"id": match_id, "user_id": user["id"]},
-        {"$set": {"status": new_status, "reviewed_at": now}},
-    )
+    await PendingMatchRepository.update(match_id, user["id"], {"status": new_status, "reviewed_at": now})
 
     # Si se confirma, actualizar el snapshot con confianza elevada
     if action == "confirm" and match.get("snapshot_id"):
-        await db.price_snapshots.update_one(
+        await CompetitorRepository.update_snapshot(
             {"id": match["snapshot_id"], "user_id": user["id"]},
             {"$set": {"match_confidence": 1.0, "matched_by": "manual_confirm"}},
         )
@@ -509,19 +469,12 @@ async def export_competitor_prices_csv(
     if competitor_id:
         query["competitor_id"] = competitor_id
 
-    snapshots = await db.price_snapshots.find(
-        query, {"_id": 0}
-    ).sort("scraped_at", -1).to_list(10000)
+    snapshots = await CompetitorRepository.get_price_snapshots(query, 10000, sort=("scraped_at", -1))
 
     # Enriquecer con nombres de competidor
     comp_ids = list({s["competitor_id"] for s in snapshots})
-    comp_names = {}
-    if comp_ids:
-        async for comp in db.competitors.find(
-            {"id": {"$in": comp_ids}, "user_id": user["id"]},
-            {"_id": 0, "id": 1, "name": 1},
-        ):
-            comp_names[comp["id"]] = comp["name"]
+    comp_list = await CompetitorRepository.get_all(user["id"], {"id": {"$in": comp_ids}}) if comp_ids else []
+    comp_names = {c["id"]: c["name"] for c in comp_list}
 
     output = io.StringIO()
     writer = csv.writer(output, quoting=csv.QUOTE_ALL)
@@ -579,7 +532,7 @@ async def get_positioning_report(
         {"$replaceRoot": {"newRoot": "$latest"}},
         {"$project": {"_id": 0}},
     ]
-    all_snapshots = await db.price_snapshots.aggregate(pipeline).to_list(10000)
+    all_snapshots = await CompetitorRepository.aggregate_snapshots(pipeline, 10000)
 
     # Agrupar snapshots por producto (SKU o EAN)
     product_snapshots = {}
@@ -596,20 +549,15 @@ async def get_positioning_report(
     if supplier_id:
         product_query["supplier_id"] = supplier_id
 
-    my_products = await db.products.find(
-        product_query,
+    my_products = await ProductRepository.find_paginated(
+        product_query, 0, 10000,
         {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1, "category": 1, "supplier_name": 1},
-    ).to_list(10000)
+    )
 
     # Nombres de competidores
     comp_ids = list({s["competitor_id"] for snaps in product_snapshots.values() for s in snaps})
-    comp_names = {}
-    if comp_ids:
-        async for comp in db.competitors.find(
-            {"id": {"$in": comp_ids}, "user_id": user["id"]},
-            {"_id": 0, "id": 1, "name": 1},
-        ):
-            comp_names[comp["id"]] = comp["name"]
+    comp_list = await CompetitorRepository.get_all(user["id"], {"id": {"$in": comp_ids}}) if comp_ids else []
+    comp_names = {c["id"]: c["name"] for c in comp_list}
 
     # Construir informe
     report_items = []
@@ -739,9 +687,7 @@ async def list_automation_rules(
     if active_only:
         query["active"] = True
 
-    rules = await db.price_automation_rules.find(
-        query, {"_id": 0}
-    ).sort("priority", -1).to_list(500)
+    rules = await AutomationRuleRepository.get_all(user["id"], {k: v for k, v in query.items() if k != "user_id"})
     return {"rules": rules, "total": len(rules)}
 
 
@@ -815,7 +761,7 @@ async def create_automation_rule(
         "created_at": now,
     }
 
-    await db.price_automation_rules.insert_one(rule)
+    await AutomationRuleRepository.create(rule)
     rule.pop("_id", None)
     return rule
 
@@ -827,9 +773,7 @@ async def update_automation_rule(
     user: dict = Depends(get_current_user),
 ):
     """Actualiza una regla de automatización de precios."""
-    existing = await db.price_automation_rules.find_one(
-        {"id": rule_id, "user_id": user["id"]},
-    )
+    existing = await AutomationRuleRepository.get_by_id(rule_id, user["id"])
     if not existing:
         raise HTTPException(status_code=404, detail="Regla no encontrada")
 
@@ -845,13 +789,7 @@ async def update_automation_rule(
     if not updates:
         raise HTTPException(status_code=400, detail="No se proporcionaron campos para actualizar")
 
-    await db.price_automation_rules.update_one(
-        {"id": rule_id, "user_id": user["id"]},
-        {"$set": updates},
-    )
-    updated = await db.price_automation_rules.find_one(
-        {"id": rule_id, "user_id": user["id"]}, {"_id": 0}
-    )
+    updated = await AutomationRuleRepository.update(rule_id, user["id"], updates)
     return updated
 
 
@@ -861,10 +799,8 @@ async def delete_automation_rule(
     user: dict = Depends(get_current_user),
 ):
     """Elimina una regla de automatización de precios."""
-    result = await db.price_automation_rules.delete_one(
-        {"id": rule_id, "user_id": user["id"]}
-    )
-    if result.deleted_count == 0:
+    deleted = await AutomationRuleRepository.delete(rule_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Regla no encontrada")
     return {"message": "Regla eliminada correctamente"}
 
@@ -882,9 +818,7 @@ async def simulate_automation(
     rule_query = {"user_id": user["id"], "active": True}
     if rule_id:
         rule_query["id"] = rule_id
-    rules = await db.price_automation_rules.find(
-        rule_query, {"_id": 0}
-    ).sort("priority", -1).to_list(100)
+    rules = await AutomationRuleRepository.get_all(user["id"], {k: v for k, v in rule_query.items() if k != "user_id"})
 
     if not rules:
         return {"message": "No hay reglas activas", "changes": [], "total": 0}
@@ -902,7 +836,7 @@ async def simulate_automation(
             }
         },
     ]
-    competitor_data = await db.price_snapshots.aggregate(pipeline).to_list(10000)
+    competitor_data = await CompetitorRepository.aggregate_snapshots(pipeline, 10000)
 
     comp_best = {}
     for cd in competitor_data:
@@ -910,11 +844,11 @@ async def simulate_automation(
         if key:
             comp_best[key] = cd
 
-    my_products = await db.products.find(
-        {"user_id": user["id"]},
+    my_products = await ProductRepository.find_paginated(
+        {"user_id": user["id"]}, 0, 10000,
         {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1,
          "category": 1, "supplier_id": 1, "supplier_name": 1},
-    ).to_list(10000)
+    )
 
     changes = []
     for product in my_products:
@@ -987,12 +921,10 @@ async def apply_automation(
     if dry_run:
         return await simulate_automation(rule_id, 500, user)
 
-    rule_query = {"user_id": user["id"], "active": True}
+    extra_rule_q: dict = {"active": True}
     if rule_id:
-        rule_query["id"] = rule_id
-    rules = await db.price_automation_rules.find(
-        rule_query, {"_id": 0}
-    ).sort("priority", -1).to_list(100)
+        extra_rule_q["id"] = rule_id
+    rules = await AutomationRuleRepository.get_all(user["id"], extra_rule_q)
 
     if not rules:
         return {"message": "No hay reglas activas", "applied": 0}
@@ -1008,18 +940,18 @@ async def apply_automation(
             }
         },
     ]
-    competitor_data = await db.price_snapshots.aggregate(pipeline).to_list(10000)
+    competitor_data = await CompetitorRepository.aggregate_snapshots(pipeline, 10000)
     comp_best = {}
     for cd in competitor_data:
         key = cd["_id"].get("sku") or cd["_id"].get("ean")
         if key:
             comp_best[key] = cd["best_price"]
 
-    my_products = await db.products.find(
-        {"user_id": user["id"]},
+    my_products = await ProductRepository.find_paginated(
+        {"user_id": user["id"]}, 0, 10000,
         {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1,
          "category": 1, "supplier_id": 1},
-    ).to_list(10000)
+    )
 
     applied = 0
     now = datetime.now(UTC).isoformat()
@@ -1056,12 +988,12 @@ async def apply_automation(
 
             catalog_id = rule.get("catalog_id")
             if catalog_id:
-                await db.catalog_items.update_many(
+                await CatalogItemRepository.update_many(
                     {"product_id": product["id"], "catalog_id": catalog_id, "user_id": user["id"]},
                     {"$set": {"custom_price": new_price}},
                 )
             else:
-                await db.products.update_one(
+                await ProductRepository.update_many(
                     {"id": product["id"], "user_id": user["id"]},
                     {"$set": {"price": new_price, "updated_at": now}},
                 )
@@ -1073,9 +1005,9 @@ async def apply_automation(
     # Actualizar estadísticas de las reglas
     for rule in rules:
         if rule_counts.get(rule["id"], 0) > 0:
-            await db.price_automation_rules.update_one(
-                {"id": rule["id"], "user_id": user["id"]},
-                {"$set": {"last_applied_at": now, "products_affected": rule_counts[rule["id"]]}},
+            await AutomationRuleRepository.update_by_id(
+                rule["id"],
+                {"last_applied_at": now, "products_affected": rule_counts[rule["id"]]},
             )
 
     # Notificación de resultado
@@ -1090,7 +1022,7 @@ async def apply_automation(
                 "read": False,
                 "created_at": now,
             }
-            await db.notifications.insert_one(notification)
+            await NotificationRepository.create(notification)
             await send_realtime_notification(user["id"], notification)
         except Exception:
             pass
@@ -1153,9 +1085,8 @@ async def list_competitors(
     if active_only:
         query["active"] = True
 
-    competitors = await db.competitors.find(
-        query, {"_id": 0}
-    ).sort("created_at", -1).to_list(200)
+    extra_query = {"active": True} if active_only else None
+    competitors = await CompetitorRepository.get_all(user["id"], extra_query)
 
     # Batch: obtener conteos de snapshots de todos los competidores en 1 query
     comp_ids = [c["id"] for c in competitors]
@@ -1164,9 +1095,8 @@ async def list_competitors(
             {"$match": {"competitor_id": {"$in": comp_ids}, "user_id": user["id"]}},
             {"$group": {"_id": "$competitor_id", "count": {"$sum": 1}}}
         ]
-        counts_map = {}
-        async for doc in db.price_snapshots.aggregate(pipeline):
-            counts_map[doc["_id"]] = doc["count"]
+        counts_list = await CompetitorRepository.aggregate_snapshots(pipeline)
+        counts_map = {r["_id"]: r["count"] for r in counts_list}
         for comp in competitors:
             comp["total_snapshots"] = counts_map.get(comp["id"], 0)
     else:
@@ -1198,9 +1128,7 @@ async def create_competitor(
         raise HTTPException(status_code=400, detail="Código de país no válido (ISO 3166-1 alpha-2)")
 
     # Comprobar duplicados por URL + usuario
-    existing = await db.competitors.find_one(
-        {"user_id": user["id"], "base_url": data.base_url.strip().rstrip("/")},
-    )
+    existing = await CompetitorRepository.find_by_url(user["id"], data.base_url.strip().rstrip("/"))
     if existing:
         raise HTTPException(status_code=409, detail="Ya existe un competidor con esta URL")
 
@@ -1218,7 +1146,7 @@ async def create_competitor(
         "created_at": now,
     }
 
-    await db.competitors.insert_one(competitor)
+    competitor = await CompetitorRepository.create(competitor)
     competitor.pop("_id", None)
     competitor["total_snapshots"] = 0
     return competitor
@@ -1230,16 +1158,11 @@ async def get_competitor(
     user: dict = Depends(get_current_user),
 ):
     """Obtiene un competidor por ID"""
-    competitor = await db.competitors.find_one(
-        {"id": competitor_id, "user_id": user["id"]},
-        {"_id": 0},
-    )
+    competitor = await CompetitorRepository.get_by_id_clean(competitor_id, user["id"])
     if not competitor:
         raise HTTPException(status_code=404, detail="Competidor no encontrado")
 
-    competitor["total_snapshots"] = await db.price_snapshots.count_documents(
-        {"competitor_id": competitor_id, "user_id": user["id"]}
-    )
+    competitor["total_snapshots"] = await CompetitorRepository.count_snapshots(competitor_id)
     return competitor
 
 
@@ -1250,9 +1173,7 @@ async def update_competitor(
     user: dict = Depends(get_current_user),
 ):
     """Actualiza un competidor existente"""
-    competitor = await db.competitors.find_one(
-        {"id": competitor_id, "user_id": user["id"]},
-    )
+    competitor = await CompetitorRepository.get_by_id(competitor_id, user["id"])
     if not competitor:
         raise HTTPException(status_code=404, detail="Competidor no encontrado")
 
@@ -1280,18 +1201,10 @@ async def update_competitor(
     if not updates:
         raise HTTPException(status_code=400, detail="No se proporcionaron campos para actualizar")
 
-    await db.competitors.update_one(
-        {"id": competitor_id, "user_id": user["id"]},
-        {"$set": updates},
-    )
+    await CompetitorRepository.update(competitor_id, user["id"], updates)
 
-    updated = await db.competitors.find_one(
-        {"id": competitor_id, "user_id": user["id"]},
-        {"_id": 0},
-    )
-    updated["total_snapshots"] = await db.price_snapshots.count_documents(
-        {"competitor_id": competitor_id, "user_id": user["id"]}
-    )
+    updated = await CompetitorRepository.get_by_id_clean(competitor_id, user["id"])
+    updated["total_snapshots"] = await CompetitorRepository.count_snapshots(competitor_id)
     return updated
 
 
@@ -1301,20 +1214,16 @@ async def delete_competitor(
     user: dict = Depends(get_current_user),
 ):
     """Elimina un competidor y sus snapshots de precios asociados"""
-    competitor = await db.competitors.find_one(
-        {"id": competitor_id, "user_id": user["id"]},
-    )
+    competitor = await CompetitorRepository.get_by_id(competitor_id, user["id"])
     if not competitor:
         raise HTTPException(status_code=404, detail="Competidor no encontrado")
 
-    deleted_snapshots = await db.price_snapshots.delete_many(
-        {"competitor_id": competitor_id, "user_id": user["id"]}
-    )
-    await db.competitors.delete_one({"id": competitor_id, "user_id": user["id"]})
+    deleted_count = await CompetitorRepository.delete_snapshots(competitor_id, user["id"])
+    await CompetitorRepository.delete(competitor_id, user["id"])
 
     return {
         "message": "Competidor eliminado correctamente",
-        "deleted_snapshots": deleted_snapshots.deleted_count,
+        "deleted_snapshots": deleted_count,
     }
 
 
@@ -1328,14 +1237,14 @@ async def get_dashboard_overview(user: dict = Depends(get_current_user)):
     """
     user_id = user["id"]
 
-    competitors_count = await db.competitors.count_documents({"user_id": user_id, "active": True})
-    alerts_count = await db.price_alerts.count_documents({"user_id": user_id, "active": True})
+    competitors_count = await CompetitorRepository.count(user_id, {"active": True})
+    alerts_count = await PriceAlertRepository.count(user_id, {"active": True})
 
     since_7d = (datetime.now(UTC) - timedelta(days=7)).isoformat()
-    snapshots_7d = await db.price_snapshots.count_documents({"user_id": user_id, "scraped_at": {"$gte": since_7d}})
+    snapshots_7d = await CompetitorRepository.count_snapshots_by_query({"user_id": user_id, "scraped_at": {"$gte": since_7d}})
 
     # SKUs únicos monitorizados
-    unique_skus = await db.price_snapshots.distinct("sku", {"user_id": user_id})
+    unique_skus = await CompetitorRepository.distinct_snapshot_field("sku", {"user_id": user_id})
     monitored_skus = len([s for s in unique_skus if s])
 
     # Productos donde el competidor es más barato (últimos 24h)
@@ -1345,13 +1254,13 @@ async def get_dashboard_overview(user: dict = Depends(get_current_user)):
         {"$sort": {"scraped_at": -1}},
         {"$group": {"_id": "$sku", "comp_price": {"$first": "$price"}, "sku": {"$first": "$sku"}}},
     ]
-    cheaper_snapshots = await db.price_snapshots.aggregate(pipeline_cheaper).to_list(500)
+    cheaper_snapshots = await CompetitorRepository.aggregate_snapshots(pipeline_cheaper, 500)
 
     cheaper_count = 0
     for s in cheaper_snapshots:
         if not s.get("sku"):
             continue
-        my_prod = await db.products.find_one({"user_id": user_id, "sku": s["sku"]}, {"_id": 0, "price": 1})
+        my_prod = await ProductRepository.find_by_sku(user_id, s["sku"], {"_id": 0, "price": 1})
         if my_prod and my_prod.get("price") and s.get("comp_price") and s["comp_price"] < my_prod["price"]:
             cheaper_count += 1
 
@@ -1387,11 +1296,12 @@ async def get_dashboard_price_table(
             {"name": {"$regex": search, "$options": "i"}},
         ]
 
-    products = await db.products.find(
-        product_query, {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1, "cost": 1}
-    ).skip(skip).limit(page_size).to_list(page_size)
+    products = await ProductRepository.find_paginated(
+        product_query, skip, page_size,
+        {"_id": 0, "id": 1, "sku": 1, "ean": 1, "name": 1, "price": 1, "cost": 1}
+    )
 
-    total = await db.products.count_documents(product_query)
+    total = await ProductRepository.count(product_query)
 
     if not products:
         return {"items": [], "total": total, "page": page, "page_size": page_size}
@@ -1425,19 +1335,15 @@ async def get_dashboard_price_table(
                 "availability": {"$first": "$availability"},
             }},
         ]
-        comp_prices = await db.price_snapshots.aggregate(pipeline).to_list(20)
+        comp_prices = await CompetitorRepository.aggregate_snapshots(pipeline, 20)
 
         if not comp_prices:
             continue
 
         # Nombre de competidores
         comp_ids = [c["_id"] for c in comp_prices]
-        comp_names = {}
-        async for comp in db.competitors.find(
-            {"id": {"$in": comp_ids}, "user_id": user_id},
-            {"_id": 0, "id": 1, "name": 1, "channel": 1},
-        ):
-            comp_names[comp["id"]] = {"name": comp["name"], "channel": comp.get("channel")}
+        comps = await CompetitorRepository.get_all(user_id, {"id": {"$in": comp_ids}})
+        comp_names = {c["id"]: {"name": c["name"], "channel": c.get("channel")} for c in comps}
 
         competitors_data = []
         prices_list = []
@@ -1461,9 +1367,8 @@ async def get_dashboard_price_table(
 
         # Cambio de precio 24h
         price_change_24h = None
-        old_snapshot = await db.price_snapshots.find_one(
+        old_snapshot = await CompetitorRepository.find_one_snapshot(
             {**match_q, "scraped_at": {"$lt": since_48h, "$gte": since_96h}},
-            {"_id": 0, "price": 1},
             sort=[("scraped_at", -1)],
         )
         if old_snapshot and best_price and old_snapshot.get("price"):
@@ -1522,13 +1427,11 @@ async def get_enriched_alerts(
     user_id = user["id"]
 
     # Buscar notificaciones de competidores recientes con contexto
-    query: dict = {"user_id": user_id, "type": "competitor_price"}
+    extra_query: dict = {"type": "competitor_price"}
     if status:
-        query["status"] = status.upper()
+        extra_query["status"] = status.upper()
 
-    notifications = await db.notifications.find(
-        query, {"_id": 0}
-    ).sort("created_at", -1).limit(limit).to_list(limit)
+    notifications = await NotificationRepository.find_by_query(user_id, extra_query, limit)
 
     return {
         "alerts": notifications,
@@ -1582,7 +1485,7 @@ async def schedule_crawl_job(
     user_id = user["id"]
 
     # Verificar que el competidor existe y pertenece al usuario
-    competitor = await db.competitors.find_one({"id": competitor_id, "user_id": user_id})
+    competitor = await CompetitorRepository.get_by_id(competitor_id, user_id)
     if not competitor:
         raise HTTPException(status_code=404, detail="Competidor no encontrado")
 
@@ -1724,27 +1627,18 @@ async def get_monitoring_catalog_config(user: dict = Depends(get_current_user)):
 
     # Si no hay configurado, intentar usar el catálogo predeterminado
     if not catalog_id:
-        default_catalog = await db.catalogs.find_one(
-            {"user_id": user_id, "is_default": True},
-            {"_id": 0, "id": 1, "name": 1}
-        )
+        default_catalog = await CatalogRepository.get_default(user_id)
         if default_catalog:
             catalog_id = default_catalog["id"]
         else:
             # Si no hay predeterminado, usar el primero disponible
-            first_catalog = await db.catalogs.find_one(
-                {"user_id": user_id},
-                {"_id": 0, "id": 1, "name": 1}
-            )
+            first_catalog = await CatalogRepository.get_first(user_id)
             if first_catalog:
                 catalog_id = first_catalog["id"]
 
     # Si hay un catálogo válido, obtener sus detalles
     if catalog_id:
-        catalog = await db.catalogs.find_one(
-            {"user_id": user_id, "id": catalog_id},
-            {"_id": 0, "id": 1, "name": 1, "is_default": 1}
-        )
+        catalog = await CatalogRepository.get_by_id(catalog_id, user_id)
         if catalog:
             return {
                 "catalog_id": catalog_id,
@@ -1782,10 +1676,7 @@ async def set_monitoring_catalog_config(
         raise HTTPException(status_code=400, detail="catalog_id es requerido")
 
     # Verificar que el catálogo existe y pertenece al usuario
-    catalog = await db.catalogs.find_one(
-        {"user_id": user_id, "id": catalog_id},
-        {"_id": 0, "id": 1, "name": 1}
-    )
+    catalog = await CatalogRepository.get_by_id(catalog_id, user_id)
 
     if not catalog:
         raise HTTPException(
@@ -1827,10 +1718,7 @@ async def list_available_catalogs_for_monitoring(user: dict = Depends(get_curren
     current_catalog_id = user_config.get("competitor_monitoring_catalog_id") if user_config else None
 
     # Obtener todos los catálogos del usuario
-    catalogs = await db.catalogs.find(
-        {"user_id": user_id},
-        {"_id": 0, "id": 1, "name": 1, "is_default": 1}
-    ).to_list(None)
+    catalogs = await CatalogRepository.get_all(user_id)
 
     if not catalogs:
         return {

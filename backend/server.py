@@ -132,6 +132,10 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB (continuando sin ellos): {e}")
 
+    # Registrar el WebSocket manager en el módulo de notificaciones (evita circular import)
+    from services.sync.notifications import set_ws_manager
+    set_ws_manager(ws_manager)
+
     queue_manager = get_sync_queue()
 
     async def sync_supplier_handler(user_id: str, supplier_id: str, task):
