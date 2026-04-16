@@ -5,3 +5,6 @@ export { ColumnMappingAlert } from "./ColumnMappingAlert";
 export { SelectionActionsBar } from "./SelectionActionsBar";
 export { UploadDialog } from "./UploadDialog";
 export { CatalogSelectionDialog } from "./CatalogSelectionDialog";
+export { ProductSelectionStats } from "./ProductSelectionStats";
+export { ProductFiltersCard } from "./ProductFiltersCard";
+export { ProductsTable } from "./ProductsTable";
