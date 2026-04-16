@@ -224,6 +224,14 @@ async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = 
         if not has_multifile and (not supplier.get('ftp_host') or not supplier.get('ftp_path')):
             raise HTTPException(status_code=400, detail="Configuración FTP incompleta.")
 
+    # Guard contra race condition: rechazar si ya hay sync en progreso
+    current_status = supplier.get("sync_status")
+    if current_status == "running":
+        raise HTTPException(
+            status_code=409,
+            detail="La sincronización ya está en progreso para este proveedor."
+        )
+
     # Mark sync as running immediately so the UI can show progress
     await SupplierRepository.update_by_id(
         supplier_id,
