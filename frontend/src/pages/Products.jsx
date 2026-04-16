@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { usePagination } from "../hooks/usePagination";
+import { useDialogState } from "../hooks/useDialogState";
+import { handleApiError } from "../utils/handleApiError";
 import {
   Package,
   Search,
@@ -156,12 +159,7 @@ const Products = () => {
   const [selectedCatalogs, setSelectedCatalogs] = useState(new Set());
   
   // Dialog states
-  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
-  const [showDetailDialog, setShowDetailDialog] = useState(false);
-  const [showUploadDialog, setShowUploadDialog] = useState(false);
-  const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  const dialogs = useDialogState(["catalog", "detail", "upload", "edit", "delete"]);
   const [editProduct, setEditProduct] = useState(null);
   const [productsToAdd, setProductsToAdd] = useState([]);
   const [addingToCatalog, setAddingToCatalog] = useState(false);
@@ -179,10 +177,16 @@ const Products = () => {
   const fileInputRef = useRef(null);
   
   // Pagination
-  const [currentPage, setCurrentPage] = useState(1);
-  const [totalProducts, setTotalProducts] = useState(0);
-  const pageSize = 25;
-  const totalPages = Math.ceil(totalProducts / pageSize);
+  const {
+    currentPage,
+    pageSize,
+    skip,
+    total: totalProducts,
+    totalPages,
+    setTotal: setTotalProducts,
+    handlePageChange: paginationHandlePageChange,
+    resetPage,
+  } = usePagination({ pageSize: 25 });
 
   // Build query params for current filters
   const buildFilterParams = useCallback(() => {
@@ -201,7 +205,7 @@ const Products = () => {
 
     try {
       const params = buildFilterParams();
-      params.append("skip", String((currentPage - 1) * pageSize));
+      params.append("skip", String(skip));
       params.append("limit", String(pageSize));
 
       const response = await api.get(`/products-unified?${params.toString()}`);
@@ -212,12 +216,12 @@ const Products = () => {
         setProducts([]);
       }
     } catch (err) {
-      setError(err.response?.data?.detail || err.message || "Error al cargar productos");
+      setError(handleApiError(err, "Error al cargar productos", { silent: true }));
       setProducts([]);
     } finally {
       setLoading(false);
     }
-  }, [currentPage, buildFilterParams]);
+  }, [skip, buildFilterParams]);
 
   // Fetch count for pagination
   const fetchCount = useCallback(async () => {
@@ -259,15 +263,13 @@ const Products = () => {
 
   // Handle search — just reset page, the useEffect handles the fetch
   const handleSearch = () => {
-    setCurrentPage(1);
+    resetPage();
   };
 
   // Handle page change
   const handlePageChange = (newPage) => {
-    if (newPage >= 1 && newPage <= totalPages) {
-      setCurrentPage(newPage);
-      setSelectedProducts(new Set());
-    }
+    paginationHandlePageChange(newPage);
+    setSelectedProducts(new Set());
   };
 
   // Selection handlers
@@ -314,7 +316,7 @@ const Products = () => {
     setProductsToAdd(productIds);
     const defaultCatalog = catalogs.find(c => c.is_default);
     setSelectedCatalogs(defaultCatalog ? new Set([defaultCatalog.id]) : new Set());
-    setShowCatalogDialog(true);
+    dialogs.open("catalog");
   };
 
   const handleAddSelectedToCatalogs = () => {
@@ -373,7 +375,7 @@ const Products = () => {
       toast.error("Selecciona al menos un producto");
       return;
     }
-    setShowDeleteDialog(true);
+    dialogs.open("delete");
   };
 
   const confirmDeleteProducts = async () => {
@@ -384,11 +386,10 @@ const Products = () => {
       });
       toast.success(`${res.data.deleted} productos eliminados`);
       setSelectedProducts(new Set());
-      setShowDeleteDialog(false);
+      dialogs.close("delete");
       fetchProducts();
     } catch (err) {
-      // error handled via toast
-      toast.error("Error al eliminar productos");
+      handleApiError(err, "Error al eliminar productos");
     }
     setDeletingProducts(false);
   };
@@ -419,7 +420,7 @@ const Products = () => {
     }
 
     setAddingToCatalog(false);
-    setShowCatalogDialog(false);
+    dialogs.close("catalog");
     setSelectedProducts(new Set());
     setProductsToAdd([]);
     setSelectedCategoryId("");
@@ -434,8 +435,7 @@ const Products = () => {
 
   // Product detail
   const openProductDetail = (product) => {
-    setSelectedProduct(product);
-    setShowDetailDialog(true);
+    dialogs.open("detail", product);
   };
 
 
@@ -455,12 +455,12 @@ const Products = () => {
         headers: { "Content-Type": "multipart/form-data" }
       });
       toast.success(`${res.data.imported} productos importados`);
-      setShowUploadDialog(false);
+      dialogs.close("upload");
       setUploadSupplierId("");
       fetchProducts();
       fetchCount();
     } catch (err) {
-      toast.error(err.response?.data?.detail || "Error al importar");
+      handleApiError(err, "Error al importar");
     } finally {
       setUploading(false);
     }
@@ -532,7 +532,7 @@ const Products = () => {
             <Truck className="w-4 h-4 mr-2" />
             Ir a Proveedores
           </Button>
-          <Button onClick={() => setShowUploadDialog(true)} data-testid="import-csv-btn">
+          <Button onClick={() => dialogs.open("upload")} data-testid="import-csv-btn">
             <Upload className="w-4 h-4 mr-2" />
             Importar CSV
           </Button>
@@ -554,7 +554,7 @@ const Products = () => {
                 data-testid="search-input"
               />
             </div>
-            <Select value={categoryFilter || "all"} onValueChange={(v) => { setCategoryFilter(v === "all" ? "" : v); setCurrentPage(1); }}>
+            <Select value={categoryFilter || "all"} onValueChange={(v) => { setCategoryFilter(v === "all" ? "" : v); resetPage(); }}>
               <SelectTrigger className="w-full lg:w-[200px]" data-testid="category-filter">
                 <SelectValue placeholder="Todas las categorías" />
               </SelectTrigger>
@@ -565,7 +565,7 @@ const Products = () => {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={stockFilter || "all"} onValueChange={(v) => { setStockFilter(v === "all" ? "" : v); setCurrentPage(1); }}>
+            <Select value={stockFilter || "all"} onValueChange={(v) => { setStockFilter(v === "all" ? "" : v); resetPage(); }}>
               <SelectTrigger className="w-full lg:w-[150px]" data-testid="stock-filter">
                 <SelectValue placeholder="Stock" />
               </SelectTrigger>
@@ -582,7 +582,7 @@ const Products = () => {
             {(searchTerm || categoryFilter || stockFilter) && (
               <Button
                 variant="ghost"
-                onClick={() => { setSearchTerm(""); setCategoryFilter(""); setStockFilter(""); setCurrentPage(1); }}
+                onClick={() => { setSearchTerm(""); setCategoryFilter(""); setStockFilter(""); resetPage(); }}
                 className="text-slate-500 hover:text-slate-700"
                 data-testid="clear-filters-btn"
               >
@@ -761,20 +761,20 @@ const Products = () => {
       )}
 
       {/* Product Detail Dialog */}
-      <Dialog open={showDetailDialog} onOpenChange={setShowDetailDialog}>
+      <Dialog open={dialogs.isOpen("detail")} onOpenChange={(v) => !v && dialogs.close("detail")}>
         <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Detalle del Producto</DialogTitle>
-            <DialogDescription>{selectedProduct?.name}</DialogDescription>
+            <DialogDescription>{dialogs.selected?.name}</DialogDescription>
           </DialogHeader>
           
-          {selectedProduct && (
+          {dialogs.selected && (
             <div className="space-y-6 py-4">
               {/* Product Info */}
               <div className="flex gap-4">
                 <div className="w-20 h-20 flex-shrink-0">
-                  {selectedProduct.image_url ? (
-                    <img src={selectedProduct.image_url} alt={selectedProduct.name} className="w-full h-full object-cover rounded-lg border" />
+                  {dialogs.selected.image_url ? (
+                    <img src={dialogs.selected.image_url} alt={dialogs.selected.name} className="w-full h-full object-cover rounded-lg border" />
                   ) : (
                     <div className="w-full h-full bg-slate-100 rounded-lg flex items-center justify-center">
                       <Package className="w-8 h-8 text-slate-300" />
@@ -782,10 +782,10 @@ const Products = () => {
                   )}
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold">{selectedProduct.name}</h3>
+                  <h3 className="text-lg font-semibold">{dialogs.selected.name}</h3>
                   <div className="flex flex-wrap gap-2 mt-2">
-                    <Badge className="bg-slate-100 text-slate-700 border-0 font-mono text-xs">EAN: {selectedProduct.ean}</Badge>
-                    {selectedProduct.brand && <Badge className="bg-indigo-100 text-indigo-700 border-0 text-xs">{selectedProduct.brand}</Badge>}
+                    <Badge className="bg-slate-100 text-slate-700 border-0 font-mono text-xs">EAN: {dialogs.selected.ean}</Badge>
+                    {dialogs.selected.brand && <Badge className="bg-indigo-100 text-indigo-700 border-0 text-xs">{dialogs.selected.brand}</Badge>}
                   </div>
                 </div>
               </div>
@@ -800,15 +800,15 @@ const Products = () => {
                       </div>
                       <div>
                         <p className="text-sm text-emerald-600 font-medium">Mejor Oferta</p>
-                        <p className="text-lg font-bold text-emerald-700">{selectedProduct.best_supplier}</p>
+                        <p className="text-lg font-bold text-emerald-700">{dialogs.selected.best_supplier}</p>
                       </div>
                     </div>
                     <div className="text-right">
                       <p className="text-2xl font-bold text-emerald-700">
-                        {selectedProduct.best_price?.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
+                        {dialogs.selected.best_price?.toLocaleString("es-ES", { style: "currency", currency: "EUR" })}
                       </p>
-                      <p className={`text-sm ${selectedProduct.total_stock <= 0 ? 'text-rose-600 font-semibold' : 'text-emerald-600'}`}>
-                        {selectedProduct.total_stock <= 0 ? 'Sin stock' : `Stock: ${selectedProduct.total_stock} uds`}
+                      <p className={`text-sm ${dialogs.selected.total_stock <= 0 ? 'text-rose-600 font-semibold' : 'text-emerald-600'}`}>
+                        {dialogs.selected.total_stock <= 0 ? 'Sin stock' : `Stock: ${dialogs.selected.total_stock} uds`}
                       </p>
                     </div>
                   </div>
@@ -818,10 +818,10 @@ const Products = () => {
               {/* All Suppliers */}
               <div>
                 <h4 className="text-sm font-medium text-slate-700 mb-3">
-                  Todos los Proveedores ({selectedProduct.supplier_count})
+                  Todos los Proveedores ({dialogs.selected.supplier_count})
                 </h4>
                 <div className="space-y-2">
-                  {selectedProduct.suppliers?.map((supplier, idx) => (
+                  {dialogs.selected.suppliers?.map((supplier, idx) => (
                     <div key={idx} className={`flex items-center justify-between p-3 rounded-lg border ${
                       supplier.is_best_offer ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-200"
                     }`}>
@@ -853,21 +853,21 @@ const Products = () => {
           )}
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDetailDialog(false)}>Cerrar</Button>
+            <Button variant="outline" onClick={() => dialogs.close("detail")}>Cerrar</Button>
             <Button 
               variant="outline"
               onClick={async () => { 
-                if (selectedProduct && selectedProduct.best_supplier_id) { 
+                if (dialogs.selected && dialogs.selected.best_supplier_id) { 
                   // Find the best supplier's product_id from suppliers array
-                  const bestSupplier = selectedProduct.suppliers?.find(s => s.is_best_offer);
+                  const bestSupplier = dialogs.selected.suppliers?.find(s => s.is_best_offer);
                   if (bestSupplier?.product_id) {
                     try {
                       const res = await api.get(`/products/${bestSupplier.product_id}`);
                       setEditProduct(res.data);
-                      setShowEditDialog(true);
-                      setShowDetailDialog(false);
+                      dialogs.close("detail");
+                      dialogs.open("edit");
                     } catch (err) {
-                      toast.error("Error al cargar el producto para editar");
+                      handleApiError(err, "Error al cargar el producto para editar");
                     }
                   }
                 } 
@@ -877,7 +877,7 @@ const Products = () => {
               <Pencil className="w-4 h-4 mr-2" />
               Editar
             </Button>
-            <Button onClick={() => { if (selectedProduct) { openCatalogSelector([selectedProduct.ean]); setShowDetailDialog(false); } }}>
+            <Button onClick={() => { if (dialogs.selected) { openCatalogSelector([dialogs.selected.ean]); dialogs.close("detail"); } }}>
               <BookOpen className="w-4 h-4 mr-2" />
               Añadir a Catálogo
             </Button>
@@ -887,16 +887,16 @@ const Products = () => {
 
       {/* Product Edit Dialog */}
       <ProductDetailDialog
-        open={showEditDialog}
-        onOpenChange={setShowEditDialog}
+        open={dialogs.isOpen("edit")}
+        onOpenChange={(v) => !v && dialogs.close("edit")}
         product={editProduct}
         onProductUpdate={() => fetchProducts()}
       />
 
       {/* Catalog Selection Dialog */}
-      <Dialog open={showCatalogDialog} onOpenChange={(open) => {
-        setShowCatalogDialog(open);
+      <Dialog open={dialogs.isOpen("catalog")} onOpenChange={(open) => {
         if (!open) {
+          dialogs.close("catalog");
           setSelectedCategoryId("");
           setCatalogCategories([]);
         }
@@ -917,7 +917,7 @@ const Products = () => {
                 <div className="text-center py-6">
                   <BookOpen className="w-10 h-10 text-slate-300 mx-auto mb-2" />
                   <p className="text-slate-500">No hay catálogos</p>
-                  <Button variant="link" onClick={() => { setShowCatalogDialog(false); navigate("/catalogs"); }}>
+                  <Button variant="link" onClick={() => { dialogs.close("catalog"); navigate("/catalogs"); }}>
                     Crear catálogo
                   </Button>
                 </div>
@@ -979,7 +979,7 @@ const Products = () => {
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCatalogDialog(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => dialogs.close("catalog")}>Cancelar</Button>
             <Button onClick={handleConfirmAddToCatalogs} disabled={addingToCatalog || selectedCatalogs.size === 0}>
               {addingToCatalog ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
               Añadir
@@ -989,7 +989,7 @@ const Products = () => {
       </Dialog>
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <Dialog open={dialogs.isOpen("delete")} onOpenChange={(v) => !v && dialogs.close("delete")}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
@@ -1003,7 +1003,7 @@ const Products = () => {
           </DialogHeader>
           
           <DialogFooter className="gap-2 sm:gap-0">
-            <Button variant="outline" onClick={() => setShowDeleteDialog(false)}>
+            <Button variant="outline" onClick={() => dialogs.close("delete")}>
               Cancelar
             </Button>
             <Button 
@@ -1020,7 +1020,7 @@ const Products = () => {
       </Dialog>
 
       {/* Upload Dialog */}
-      <Dialog open={showUploadDialog} onOpenChange={setShowUploadDialog}>
+      <Dialog open={dialogs.isOpen("upload")} onOpenChange={(v) => !v && dialogs.close("upload")}>
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -1073,7 +1073,7 @@ const Products = () => {
           </div>
           
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowUploadDialog(false)}>Cancelar</Button>
+            <Button variant="outline" onClick={() => dialogs.close("upload")}>Cancelar</Button>
             <Button onClick={() => fileInputRef.current?.click()} disabled={uploading || !uploadSupplierId}>
               {uploading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
               Importar
