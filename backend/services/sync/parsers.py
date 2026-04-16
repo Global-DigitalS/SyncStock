@@ -7,6 +7,8 @@ import zipfile
 import xlrd
 from openpyxl import load_workbook
 
+from config import MAX_ZIP_FILES
+
 logger = logging.getLogger(__name__)
 
 
@@ -135,9 +137,15 @@ def parse_text_file(content: bytes, separator: str = ";", header_row: int = 1) -
 
 def extract_zip_files(content: bytes) -> dict:
     """Extract all files from a ZIP archive, returns {filename: bytes}.
-    Valida paths para prevenir path traversal (Zip Slip)."""
+    Valida paths para prevenir path traversal (Zip Slip) y limita número de archivos."""
     result = {}
     with zipfile.ZipFile(io.BytesIO(content)) as zf:
+        members = [info for info in zf.infolist() if not info.is_dir()]
+        if len(members) > MAX_ZIP_FILES:
+            raise ValueError(
+                f"El ZIP contiene demasiados archivos: {len(members)} "
+                f"(máximo permitido: {MAX_ZIP_FILES})"
+            )
         for info in zf.infolist():
             if info.is_dir():
                 continue

@@ -133,14 +133,9 @@ async def bulk_upsert_products(supplier: dict, normalized_products: list, sku_ca
                     })
 
                 product_ops.append(UpdateOne(
-                    {"supplier_id": supplier_id, "sku": sku, "id": existing.id},
-                    {"$set": product_doc, "$setOnInsert": {"id": existing.id, "created_at": now}},
+                    {"id": existing.id},
+                    {"$set": product_doc},
                     upsert=False
-                ))
-                product_ops.append(UpdateOne(
-                    {"supplier_id": supplier_id, "sku": sku, "id": {"$ne": existing.id}},
-                    {"$set": product_doc, "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}},
-                    upsert=True
                 ))
                 updated += 1
             else:

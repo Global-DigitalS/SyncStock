@@ -14,12 +14,21 @@ import requests
 from config import (
     FTP_CONNECTION_TIMEOUT,
     FTP_DOWNLOAD_TIMEOUT,
+    MAX_DOWNLOAD_SIZE,
     SOCKET_CONNECTION_TIMEOUT,
     URL_DOWNLOAD_TIMEOUT,
     URL_REQUEST_TIMEOUT,
 )
 
 logger = logging.getLogger(__name__)
+
+# Hostnames bloqueados explícitamente por string antes de resolución DNS (anti-SSRF)
+_BLOCKED_HOSTNAMES = frozenset({
+    "localhost",
+    "localhost.localdomain",
+    "ip6-localhost",
+    "ip6-loopback",
+})
 
 
 def download_file_from_ftp_sync(supplier: dict) -> bytes:
@@ -139,6 +148,12 @@ def _validate_url_ssrf(url: str) -> None:
     hostname = parsed.hostname
     if not hostname:
         raise ValueError("URL sin hostname válido")
+    # Bloqueo explícito por nombre de host antes de resolución DNS
+    if hostname.lower() in _BLOCKED_HOSTNAMES:
+        raise ValueError(
+            f"URL apunta a hostname interno bloqueado ({hostname}). "
+            f"No se permiten conexiones a redes internas."
+        )
     if '@' in (parsed.netloc.split(':')[0] if ':' in parsed.netloc else parsed.netloc):
         raise ValueError("URLs con @ en el host no están permitidas")
     try:
@@ -163,9 +178,30 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
     def _do_request(verify_ssl: bool) -> bytes:
         response = session.get(url, timeout=URL_REQUEST_TIMEOUT, stream=True, verify=verify_ssl)
         response.raise_for_status()
-        content = response.content
+
+        # Verificar Content-Length antes de descargar si está disponible
+        content_length = response.headers.get("Content-Length")
+        if content_length and int(content_length) > MAX_DOWNLOAD_SIZE:
+            raise ValueError(
+                f"Archivo demasiado grande: {int(content_length):,} bytes "
+                f"(máximo permitido: {MAX_DOWNLOAD_SIZE:,} bytes / 500 MB)"
+            )
+
+        # Descargar en chunks con límite acumulado
+        chunks = []
+        downloaded = 0
+        for chunk in response.iter_content(chunk_size=65536):
+            downloaded += len(chunk)
+            if downloaded > MAX_DOWNLOAD_SIZE:
+                raise ValueError(
+                    f"Descarga superó el límite de {MAX_DOWNLOAD_SIZE:,} bytes (500 MB). "
+                    f"Verifica el archivo del proveedor."
+                )
+            chunks.append(chunk)
+
+        content = b"".join(chunks)
         ssl_note = "" if verify_ssl else " (SSL verification skipped)"
-        logger.info(f"URL download completed{ssl_note}: {len(content)} bytes")
+        logger.info(f"URL download completed{ssl_note}: {len(content):,} bytes")
         return content
 
     try:

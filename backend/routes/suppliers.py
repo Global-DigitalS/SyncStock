@@ -224,11 +224,26 @@ async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = 
         if not has_multifile and (not supplier.get('ftp_host') or not supplier.get('ftp_path')):
             raise HTTPException(status_code=400, detail="Configuración FTP incompleta.")
 
-    # Mark sync as running immediately so the UI can show progress
-    await SupplierRepository.update_by_id(
-        supplier_id,
-        {"sync_status": "running", "sync_started_at": datetime.now(UTC).isoformat()}
+    # Operación atómica: marcar "running" solo si NO está ya corriendo.
+    # El filtro $ne:"running" + update_one garantiza que la lectura y escritura
+    # ocurren en una única operación atómica en MongoDB, eliminando la ventana
+    # de race condition que existía con el patrón check-then-set previo.
+    result = await db.suppliers.update_one(
+        {
+            "id": supplier_id,
+            "user_id": user["id"],
+            "$or": [
+                {"sync_status": {"$ne": "running"}},
+                {"sync_status": {"$exists": False}},
+            ],
+        },
+        {"$set": {"sync_status": "running", "sync_started_at": datetime.now(UTC).isoformat()}},
     )
+    if result.matched_count == 0:
+        raise HTTPException(
+            status_code=409,
+            detail="La sincronización ya está en progreso para este proveedor."
+        )
 
     async def _run_sync():
         try:
