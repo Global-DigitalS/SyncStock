@@ -207,3 +207,64 @@ class TestRaceConditionGuard:
             response = client.post("/suppliers/nonexistent-supplier/sync")
 
         assert response.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Tests de límite de descarga 500 MB (Task 2)
+# ---------------------------------------------------------------------------
+
+class TestDownloadSizeLimit:
+    """Task 2: Límite de tamaño de descarga."""
+
+    def test_archivo_rechazado_via_content_length(self):
+        """Content-Length mayor al límite debe lanzar ValueError."""
+        from services.sync.downloaders import download_file_from_url_sync
+        from unittest.mock import patch, MagicMock
+
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"Content-Length": str(600 * 1024 * 1024)}  # 600 MB
+        mock_response.raise_for_status = MagicMock()
+
+        with patch("services.sync.downloaders._validate_url_ssrf"):
+            with patch("services.sync.downloaders._build_browser_session") as mock_session:
+                mock_session.return_value.get.return_value = mock_response
+                with pytest.raises(ValueError, match="grande|límite"):
+                    download_file_from_url_sync("http://example.com/file.csv")
+
+    def test_archivo_rechazado_durante_streaming(self):
+        """Archivo que supera el límite durante streaming debe lanzar ValueError."""
+        from services.sync.downloaders import download_file_from_url_sync
+        from unittest.mock import patch, MagicMock
+
+        # Dos chunks: el segundo supera el límite
+        chunk_300mb = b"x" * (300 * 1024 * 1024)
+
+        mock_response = MagicMock()
+        mock_response.headers = {}
+        mock_response.raise_for_status = MagicMock()
+        mock_response.iter_content.return_value = iter([chunk_300mb, chunk_300mb])
+
+        with patch("services.sync.downloaders._validate_url_ssrf"):
+            with patch("services.sync.downloaders._build_browser_session") as mock_session:
+                mock_session.return_value.get.return_value = mock_response
+                with pytest.raises(ValueError, match="límite"):
+                    download_file_from_url_sync("http://example.com/file.csv")
+
+    def test_archivo_pequeno_descargado_correctamente(self):
+        """Archivo de 10 KB debe descargarse correctamente."""
+        from services.sync.downloaders import download_file_from_url_sync
+        from unittest.mock import patch, MagicMock
+
+        data = b"col1,col2\nval1,val2\n"
+
+        mock_response = MagicMock()
+        mock_response.headers = {"Content-Length": str(len(data))}
+        mock_response.raise_for_status = MagicMock()
+        mock_response.iter_content.return_value = iter([data])
+
+        with patch("services.sync.downloaders._validate_url_ssrf"):
+            with patch("services.sync.downloaders._build_browser_session") as mock_session:
+                mock_session.return_value.get.return_value = mock_response
+                result = download_file_from_url_sync("http://example.com/file.csv")
+                assert result == data

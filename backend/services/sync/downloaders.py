@@ -14,6 +14,7 @@ import requests
 from config import (
     FTP_CONNECTION_TIMEOUT,
     FTP_DOWNLOAD_TIMEOUT,
+    MAX_DOWNLOAD_SIZE,
     SOCKET_CONNECTION_TIMEOUT,
     URL_DOWNLOAD_TIMEOUT,
     URL_REQUEST_TIMEOUT,
@@ -163,9 +164,30 @@ def download_file_from_url_sync(url: str, username: str = None, password: str = 
     def _do_request(verify_ssl: bool) -> bytes:
         response = session.get(url, timeout=URL_REQUEST_TIMEOUT, stream=True, verify=verify_ssl)
         response.raise_for_status()
-        content = response.content
+
+        # Verificar Content-Length antes de descargar si está disponible
+        content_length = response.headers.get("Content-Length")
+        if content_length and int(content_length) > MAX_DOWNLOAD_SIZE:
+            raise ValueError(
+                f"Archivo demasiado grande: {int(content_length):,} bytes "
+                f"(máximo permitido: {MAX_DOWNLOAD_SIZE:,} bytes / 500 MB)"
+            )
+
+        # Descargar en chunks con límite acumulado
+        chunks = []
+        downloaded = 0
+        for chunk in response.iter_content(chunk_size=65536):
+            downloaded += len(chunk)
+            if downloaded > MAX_DOWNLOAD_SIZE:
+                raise ValueError(
+                    f"Descarga superó el límite de {MAX_DOWNLOAD_SIZE:,} bytes (500 MB). "
+                    f"Verifica el archivo del proveedor."
+                )
+            chunks.append(chunk)
+
+        content = b"".join(chunks)
         ssl_note = "" if verify_ssl else " (SSL verification skipped)"
-        logger.info(f"URL download completed{ssl_note}: {len(content)} bytes")
+        logger.info(f"URL download completed{ssl_note}: {len(content):,} bytes")
         return content
 
     try:
