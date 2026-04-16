@@ -14,6 +14,7 @@ from models.schemas import (
     SupplierResponse,
     SupplierUpdate,
 )
+from repositories import SupplierRepository
 from services.auth import check_user_limit, get_current_user
 from services.database import db
 from services.encryption import decrypt_password, encrypt_password
@@ -85,7 +86,7 @@ async def create_supplier(request: Request, supplier: SupplierCreate, user: dict
         "preset_id": supplier.preset_id,
         "product_count": 0, "last_sync": None, "created_at": now
     }
-    await db.suppliers.insert_one(supplier_doc)
+    await SupplierRepository.create(supplier_doc)
     supplier_doc = remove_credentials(supplier_doc)
     supplier_doc.pop("user_id", None)
     supplier_doc.pop("_id", None)
@@ -106,7 +107,7 @@ def _normalize_supplier_data(supplier: dict) -> dict:
 
 @router.get("/suppliers", response_model=list[SupplierResponse])
 async def get_suppliers(user: dict = Depends(get_current_user)):
-    suppliers = await db.suppliers.find({"user_id": user["id"]}, {"_id": 0, "ftp_password": 0, "url_password": 0, "user_id": 0}).to_list(1000)
+    suppliers = await SupplierRepository.get_all(user["id"])
     return [SupplierResponse(**_normalize_supplier_data(s)) for s in suppliers]
 
 
@@ -119,7 +120,7 @@ async def get_supplier_presets_route(user: dict = Depends(get_current_user)):
 @router.post("/suppliers/{supplier_id}/apply-preset")
 async def apply_preset_to_supplier(supplier_id: str, data: dict, user: dict = Depends(get_current_user)):
     """Aplica una plantilla predefinida a un proveedor ya existente (actualiza config de formato y mapeo)."""
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     preset_id = data.get("preset_id")
@@ -151,8 +152,8 @@ async def apply_preset_to_supplier(supplier_id: str, data: dict, user: dict = De
                 fp_copy["header_row"] = new_header_row
             updated_ftp_paths.append(fp_copy)
         update_fields["ftp_paths"] = updated_ftp_paths
-    await db.suppliers.update_one({"id": supplier_id}, {"$set": update_fields})
-    updated = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0, "ftp_password": 0, "url_password": 0, "user_id": 0})
+    await SupplierRepository.update_by_id(supplier_id, update_fields)
+    updated = await SupplierRepository.get_by_id_safe(supplier_id, user["id"])
     return {
         "message": f"Plantilla '{preset['name']}' aplicada correctamente. Sincroniza el proveedor para importar los productos.",
         "supplier": SupplierResponse(**_normalize_supplier_data(updated))
@@ -161,7 +162,7 @@ async def apply_preset_to_supplier(supplier_id: str, data: dict, user: dict = De
 
 @router.get("/suppliers/{supplier_id}", response_model=SupplierResponse)
 async def get_supplier(supplier_id: str, user: dict = Depends(get_current_user)):
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]}, {"_id": 0, "ftp_password": 0, "url_password": 0, "user_id": 0})
+    supplier = await SupplierRepository.get_by_id_safe(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     return SupplierResponse(**_normalize_supplier_data(supplier))
@@ -169,7 +170,7 @@ async def get_supplier(supplier_id: str, user: dict = Depends(get_current_user))
 
 @router.put("/suppliers/{supplier_id}", response_model=SupplierResponse)
 async def update_supplier(supplier_id: str, supplier: SupplierUpdate, user: dict = Depends(get_current_user)):
-    existing = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    existing = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not existing:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     raw = supplier.model_dump()
@@ -189,25 +190,24 @@ async def update_supplier(supplier_id: str, supplier: SupplierUpdate, user: dict
     elif "url_password" in update_data and not update_data["url_password"]:
         update_data.pop("url_password")  # don't overwrite with empty string
     if update_data:
-        await db.suppliers.update_one({"id": supplier_id}, {"$set": update_data})
-    updated = await db.suppliers.find_one({"id": supplier_id}, {"_id": 0, "ftp_password": 0, "url_password": 0, "user_id": 0})
+        await SupplierRepository.update_by_id(supplier_id, update_data)
+    updated = await SupplierRepository.get_by_id_safe(supplier_id, user["id"])
     return SupplierResponse(**updated)
 
 
 @router.delete("/suppliers/{supplier_id}")
 @_limiter.limit("10/minute")
 async def delete_supplier(request: Request, supplier_id: str, user: dict = Depends(get_current_user)):
-    result = await db.suppliers.delete_one({"id": supplier_id, "user_id": user["id"]})
-    if result.deleted_count == 0:
+    deleted = await SupplierRepository.delete(supplier_id, user["id"])
+    if not deleted:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
-    await db.products.delete_many({"supplier_id": supplier_id})
     return {"message": "Proveedor eliminado"}
 
 
 @router.post("/suppliers/{supplier_id}/sync")
 @_limiter.limit("10/minute")
 async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = Depends(get_current_user)):
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     # Desencriptar contraseñas antes de usar
@@ -225,9 +225,9 @@ async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = 
             raise HTTPException(status_code=400, detail="Configuración FTP incompleta.")
 
     # Mark sync as running immediately so the UI can show progress
-    await db.suppliers.update_one(
-        {"id": supplier_id},
-        {"$set": {"sync_status": "running", "sync_started_at": datetime.now(UTC).isoformat()}}
+    await SupplierRepository.update_by_id(
+        supplier_id,
+        {"sync_status": "running", "sync_started_at": datetime.now(UTC).isoformat()}
     )
 
     async def _run_sync():
@@ -237,15 +237,15 @@ async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = 
             else:
                 result = await sync_supplier(supplier)
             status = result.get('status', 'error')
-            await db.suppliers.update_one(
-                {"id": supplier_id},
-                {"$set": {"sync_status": status, "sync_last_result": result.get('message', '')}}
+            await SupplierRepository.update_by_id(
+                supplier_id,
+                {"sync_status": status, "sync_last_result": result.get('message', '')}
             )
         except Exception as exc:
             logger.error(f"Background sync error for {supplier_id}: {exc}")
-            await db.suppliers.update_one(
-                {"id": supplier_id},
-                {"$set": {"sync_status": "error", "sync_last_result": str(exc)}}
+            await SupplierRepository.update_by_id(
+                supplier_id,
+                {"sync_status": "error", "sync_last_result": str(exc)}
             )
 
     task = asyncio.create_task(_run_sync())
@@ -259,7 +259,7 @@ async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = 
 
 @router.get("/suppliers/{supplier_id}/sync-status")
 async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_user)):
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]}, {"_id": 0})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     has_ftp = bool(supplier.get('ftp_host') and (supplier.get('ftp_path') or supplier.get('ftp_paths')))
@@ -283,9 +283,9 @@ async def get_sync_status(supplier_id: str, user: dict = Depends(get_current_use
             elapsed = (datetime.now(UTC) - started_dt).total_seconds()
             if elapsed > 1800:  # 30 minutes
                 sync_status = 'error'
-                await db.suppliers.update_one(
-                    {"id": supplier_id},
-                    {"$set": {"sync_status": "error", "sync_last_result": "Sincronización interrumpida (tiempo máximo superado)"}}
+                await SupplierRepository.update_by_id(
+                    supplier_id,
+                    {"sync_status": "error", "sync_last_result": "Sincronización interrumpida (tiempo máximo superado)"}
                 )
         except Exception as e:
             logger.error(f"Error updating supplier sync timeout: {e}")
@@ -320,7 +320,7 @@ async def ftp_browse(request: Request, req: FtpBrowseRequest, user: dict = Depen
     # Resolve password: use saved DB password if supplier_id is provided and no new password given
     password = req.ftp_password
     if req.supplier_id and not password:
-        supplier = await db.suppliers.find_one({"id": req.supplier_id, "user_id": user["id"]})
+        supplier = await SupplierRepository.get_by_id(req.supplier_id, user["id"])
         if supplier and supplier.get("ftp_password"):
             password = decrypt_password(supplier["ftp_password"])
     try:
@@ -363,7 +363,7 @@ async def ftp_test_connection(request: Request, req: FtpTestRequest, current_use
     # Resolve password: use saved DB password if supplier_id is provided and no new password given
     password = req.ftp_password or ''
     if req.supplier_id and not password:
-        supplier = await db.suppliers.find_one({"id": req.supplier_id, "user_id": current_user["id"]})
+        supplier = await SupplierRepository.get_by_id(req.supplier_id, current_user["id"])
         if supplier and supplier.get("ftp_password"):
             password = decrypt_password(supplier["ftp_password"])
     mode = req.ftp_mode or 'passive'
@@ -455,7 +455,7 @@ async def ftp_test_connection(request: Request, req: FtpTestRequest, current_use
 @_limiter.limit("20/minute")
 async def ftp_browse_supplier(request: Request, supplier_id: str, data: dict, user: dict = Depends(get_current_user)):
     """Navega por el FTP del proveedor específico"""
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     if supplier.get("ftp_password"):
@@ -475,7 +475,7 @@ async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(
     Lista todos los archivos soportados en una carpeta y subcarpetas (máximo 2 niveles).
     Útil para ver todos los archivos disponibles del proveedor.
     """
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     if supplier.get("ftp_password"):
@@ -530,7 +530,7 @@ async def ftp_list_all_files(supplier_id: str, data: dict, user: dict = Depends(
 @router.post("/products/import/{supplier_id}")
 @_limiter.limit("5/minute")
 async def import_products(request: Request, supplier_id: str, file: UploadFile = File(...), user: dict = Depends(get_current_user)):
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     content = await file.read()
@@ -566,8 +566,7 @@ async def import_products(request: Request, supplier_id: str, file: UploadFile =
     imported = bulk_result["imported"]
     updated = bulk_result["updated"]
 
-    product_count = await db.products.count_documents({"supplier_id": supplier_id})
-    await db.suppliers.update_one({"id": supplier_id}, {"$set": {"product_count": product_count, "last_sync": now}})
+    await SupplierRepository.update_product_count(supplier_id, now)
     return {"imported": imported, "updated": updated, "total": imported + updated}
 
 
@@ -717,7 +716,7 @@ async def preview_supplier_file(request: Request, supplier_id: str, user: dict =
     """Previsualiza el archivo del proveedor y muestra las columnas detectadas con sugerencias de mapeo"""
     from services.sync import download_file_from_ftp, download_file_from_url, extract_zip_files, parse_text_file
 
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     if supplier.get("ftp_password"):
@@ -848,7 +847,7 @@ async def diagnose_supplier_zip(supplier_id: str, user: dict = Depends(get_curre
         parse_text_file,
     )
 
-    supplier = await db.suppliers.find_one({"id": supplier_id, "user_id": user["id"]})
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
     if supplier.get("ftp_password"):
@@ -998,10 +997,7 @@ async def diagnose_zip_merge(
     Diagnóstico para archivos ZIP multi-archivo.
     Muestra qué hay en cada archivo y por qué el merge puede estar fallando.
     """
-    supplier = await db.suppliers.find_one(
-        {"id": supplier_id, "user_id": user["id"]},
-        {"_id": 0}
-    )
+    supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
     if not supplier:
         raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
