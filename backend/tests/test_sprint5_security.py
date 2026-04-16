@@ -268,3 +268,75 @@ class TestDownloadSizeLimit:
                 mock_session.return_value.get.return_value = mock_response
                 result = download_file_from_url_sync("http://example.com/file.csv")
                 assert result == data
+
+
+# ---------------------------------------------------------------------------
+# Tests de upsert duplicado en product_sync (Task 3)
+# ---------------------------------------------------------------------------
+
+class TestUpsertDuplicado:
+    """Task 3: Fix upsert duplicado en product_sync."""
+
+    def test_no_hay_patron_doble_upsert_en_codigo_fuente(self):
+        """Verificar que el código fuente no tiene el patrón doble UpdateOne para productos existentes."""
+        import os
+        filepath = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "services", "sync", "product_sync.py"
+        )
+        with open(filepath) as f:
+            source = f.read()
+
+        # El patrón problemático era dos UpdateOne con "id": {"$ne": existing.id}
+        # Este filtro solo tenía sentido en el patrón duplicado
+        assert '{"$ne": existing.id}' not in source, \
+            "Patrón de upsert duplicado todavía presente: {'$ne': existing.id}"
+
+    def test_producto_existente_usa_filtro_por_id_unico(self):
+        """El bloque if existing debe usar {"id": existing.id} como filtro, sin upsert."""
+        import os
+        filepath = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "services", "sync", "product_sync.py"
+        )
+        with open(filepath) as f:
+            source = f.read()
+
+        # Verificar que existe el patrón correcto: filtro solo por id único del documento
+        assert '"id": existing.id' in source or "{'id': existing.id}" in source, \
+            "No se encontró el filtro correcto {'id': existing.id} para productos existentes"
+
+    def test_bloque_existente_no_usa_setoninsert(self):
+        """Con upsert=False, $setOnInsert nunca se ejecuta — no debe estar en el bloque if existing."""
+        import os
+        filepath = os.path.join(
+            os.path.dirname(os.path.dirname(__file__)),
+            "services", "sync", "product_sync.py"
+        )
+        with open(filepath) as f:
+            source = f.read()
+
+        # Encontrar la sección del bloque if existing (antes del else)
+        # Buscamos que $setOnInsert no aparezca junto a upsert=False en el bloque existing
+        # El else sí puede tener $setOnInsert con upsert=True (productos nuevos)
+        lines = source.splitlines()
+        in_existing_block = False
+        found_else = False
+        existing_has_setoninsert = False
+
+        for line in lines:
+            stripped = line.strip()
+            if "if existing:" in stripped:
+                in_existing_block = True
+                found_else = False
+                continue
+            if in_existing_block and stripped.startswith("else:"):
+                found_else = True
+                in_existing_block = False
+                continue
+            if in_existing_block and not found_else:
+                if "$setOnInsert" in stripped:
+                    existing_has_setoninsert = True
+
+        assert not existing_has_setoninsert, \
+            "$setOnInsert no debería estar en el bloque 'if existing:' (es inútil con upsert=False)"
