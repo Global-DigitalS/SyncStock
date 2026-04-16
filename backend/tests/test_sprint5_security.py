@@ -340,3 +340,68 @@ class TestUpsertDuplicado:
 
         assert not existing_has_setoninsert, \
             "$setOnInsert no debería estar en el bloque 'if existing:' (es inútil con upsert=False)"
+
+
+# ---------------------------------------------------------------------------
+# Tests de límite de archivos en ZIP (Task 4)
+# ---------------------------------------------------------------------------
+
+class TestZipFileLimit:
+    """Task 4: Límite de archivos en ZIP."""
+
+    def _create_zip_with_n_files(self, n: int) -> bytes:
+        """Crea un ZIP con n archivos CSV de prueba."""
+        import io
+        import zipfile
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            for i in range(n):
+                zf.writestr(f"file_{i}.csv", f"col1,col2\nval{i},val{i}")
+        return buf.getvalue()
+
+    def test_zip_con_muchos_archivos_lanza_valueerror(self):
+        """ZIP con más de 100 archivos debe lanzar ValueError."""
+        from services.sync.parsers import extract_zip_files
+        big_zip = self._create_zip_with_n_files(150)
+        with pytest.raises(ValueError, match="archivos|demasiados"):
+            extract_zip_files(big_zip)
+
+    def test_zip_con_pocos_archivos_funciona(self):
+        """ZIP con 5 archivos debe extraerse correctamente."""
+        from services.sync.parsers import extract_zip_files
+        small_zip = self._create_zip_with_n_files(5)
+        result = extract_zip_files(small_zip)
+        assert len(result) == 5
+
+    def test_zip_exactamente_en_limite_es_aceptado(self):
+        """ZIP con exactamente 100 archivos debe ser aceptado."""
+        from services.sync.parsers import extract_zip_files
+        zip_at_limit = self._create_zip_with_n_files(100)
+        result = extract_zip_files(zip_at_limit)
+        assert len(result) == 100
+
+
+# ---------------------------------------------------------------------------
+# Tests de bloqueo explícito de localhost en validación SSRF (Task 5)
+# ---------------------------------------------------------------------------
+
+class TestSSRFLocalhost:
+    """Task 5: Bloqueo explícito de localhost en validación SSRF."""
+
+    def test_localhost_bloqueado_sin_resolver_dns(self):
+        """'localhost' debe bloquearse por nombre antes de resolución DNS."""
+        from services.sync.downloaders import _validate_url_ssrf
+        with pytest.raises(ValueError, match="localhost|interna|bloqueado"):
+            _validate_url_ssrf("http://localhost/admin")
+
+    def test_localhost_con_puerto_bloqueado(self):
+        """'localhost:8080' debe bloquearse."""
+        from services.sync.downloaders import _validate_url_ssrf
+        with pytest.raises(ValueError, match="localhost|interna|bloqueado"):
+            _validate_url_ssrf("http://localhost:8080/api")
+
+    def test_127_0_0_1_sigue_bloqueado(self):
+        """127.0.0.1 debe seguir bloqueado (is_loopback ya lo cubre)."""
+        from services.sync.downloaders import _validate_url_ssrf
+        with pytest.raises(ValueError):
+            _validate_url_ssrf("http://127.0.0.1/secret")

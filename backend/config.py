@@ -157,6 +157,9 @@ URL_DOWNLOAD_TIMEOUT = int(os.environ.get('URL_DOWNLOAD_TIMEOUT', 900))
 # Límite de descarga de archivos de proveedores (500 MB por defecto)
 MAX_DOWNLOAD_SIZE = int(os.environ.get('MAX_DOWNLOAD_SIZE', 500 * 1024 * 1024))
 
+# Límite de archivos dentro de un ZIP de proveedor
+MAX_ZIP_FILES = int(os.environ.get('MAX_ZIP_FILES', 100))
+
 # Timeout para solicitudes API de WooCommerce - en segundos
 WOOCOMMERCE_API_TIMEOUT = int(os.environ.get('WOOCOMMERCE_API_TIMEOUT', 30))
 
