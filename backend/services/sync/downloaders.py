@@ -50,7 +50,7 @@ def download_file_from_ftp_sync(supplier: dict) -> bytes:
         transport.connect(username=user, password=password)
         transport.set_keepalive(30)
         sftp = paramiko.SFTPClient.from_transport(transport)
-        sftp.get_channel().settimeout(120)
+        sftp.get_channel().settimeout(FTP_DOWNLOAD_TIMEOUT)
         try:
             sftp.getfo(file_path, content)
             logger.info(f"SFTP download completed: {content.tell()} bytes")

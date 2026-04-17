@@ -1,0 +1,21 @@
+User-agent: *
+Allow: /
+
+# Bloquear rutas de administración y API
+Disallow: /api/
+Disallow: /admin/
+
+# Sitemap
+Sitemap: https://sync-stock.com/sitemap.xml
+
+# Crawl delay (respetuoso con el servidor)
+Crawl-delay: 10
+
+# Directivas específicas por bot
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 5
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 10
