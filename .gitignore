@@ -94,3 +94,6 @@ update_package/
 # Archivos residuales del sistema
 Personalizacion
 Sincronización
+
+# Git worktrees
+.worktrees/
