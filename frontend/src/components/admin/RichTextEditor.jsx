@@ -155,7 +155,7 @@ const RichTextEditor = ({ value, onChange, label }) => {
               <Textarea
                 value={editorValue}
                 onChange={(e) => handleChange(e.target.value)}
-                placeholder="{"type": "paragraph", "children": [{"text": ""}]}"
+                placeholder={`{"type": "paragraph", "children": [{"text": ""}]}`}
                 className={`font-mono text-xs min-h-96 ${
                   !isValid ? "border-red-500" : ""
                 }`}
