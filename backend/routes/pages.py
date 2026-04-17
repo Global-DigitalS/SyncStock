@@ -7,13 +7,13 @@ from models.page import PageCreate, PageResponse, PageUpdate, PageListResponse
 from services.auth import get_admin_user, get_superadmin_user
 from services.page_service import PageService
 
-router = APIRouter(prefix="/pages", tags=["pages"])
+router = APIRouter(tags=["pages"])
 logger = logging.getLogger(__name__)
 
 
 # ==================== ENDPOINTS PÚBLICOS ====================
 
-@router.get("/public", response_model=list[PageListResponse])
+@router.get("/pages/public", response_model=list[PageListResponse])
 async def get_public_pages(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000)
@@ -33,7 +33,7 @@ async def get_public_pages(
         raise HTTPException(status_code=500, detail="Error al obtener páginas")
 
 
-@router.get("/public/{slug}", response_model=PageResponse)
+@router.get("/pages/public/{slug}", response_model=PageResponse)
 async def get_public_page(slug: str):
     """Obtiene una página pública por slug.
 
@@ -62,7 +62,7 @@ async def get_public_page(slug: str):
 
 # ==================== ENDPOINTS ADMINISTRATIVOS ====================
 
-@router.get("", response_model=list[PageListResponse])
+@router.get("/pages", response_model=list[PageListResponse])
 async def list_pages(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
@@ -95,7 +95,7 @@ async def list_pages(
         raise HTTPException(status_code=500, detail="Error al listar páginas")
 
 
-@router.get("/{page_id}", response_model=PageResponse)
+@router.get("/pages/{page_id}", response_model=PageResponse)
 async def get_page(
     page_id: str,
     current_user: dict = Depends(get_admin_user)
@@ -124,7 +124,7 @@ async def get_page(
         raise HTTPException(status_code=500, detail="Error al obtener la página")
 
 
-@router.post("", response_model=PageResponse, status_code=201)
+@router.post("/pages", response_model=PageResponse, status_code=201)
 async def create_page(
     page_create: PageCreate,
     current_user: dict = Depends(get_superadmin_user)
@@ -162,7 +162,7 @@ async def create_page(
         raise HTTPException(status_code=500, detail="Error al crear la página")
 
 
-@router.put("/{page_id}", response_model=PageResponse)
+@router.put("/pages/{page_id}", response_model=PageResponse)
 async def update_page(
     page_id: str,
     page_update: PageUpdate,
@@ -223,7 +223,7 @@ async def update_page(
         raise HTTPException(status_code=500, detail="Error al actualizar la página")
 
 
-@router.delete("/{page_id}", status_code=204)
+@router.delete("/pages/{page_id}", status_code=204)
 async def delete_page(
     page_id: str,
     current_user: dict = Depends(get_superadmin_user)
@@ -251,7 +251,7 @@ async def delete_page(
 
 # ==================== ENDPOINTS AUXILIARES ====================
 
-@router.put("/{page_id}/publish", response_model=PageResponse)
+@router.put("/pages/{page_id}/publish", response_model=PageResponse)
 async def publish_page(
     page_id: str,
     published: bool = Query(True),
@@ -282,7 +282,7 @@ async def publish_page(
         raise HTTPException(status_code=500, detail="Error al cambiar estado de publicación")
 
 
-@router.post("/bulk/publish", status_code=200)
+@router.post("/pages/bulk/publish", status_code=200)
 async def bulk_publish_pages(
     page_ids: list[str],
     published: bool = Query(True),

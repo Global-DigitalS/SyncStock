@@ -7,13 +7,13 @@ from models.branding import BrandingCreate, BrandingResponse, BrandingUpdate
 from services.auth import get_superadmin_user
 from services.branding_service import BrandingService
 
-router = APIRouter(prefix="/branding", tags=["branding"])
+router = APIRouter(tags=["branding"])
 logger = logging.getLogger(__name__)
 
 
 # ==================== ENDPOINTS PÚBLICOS ====================
 
-@router.get("", response_model=BrandingResponse)
+@router.get("/branding", response_model=BrandingResponse)
 async def get_branding():
     """Obtiene la configuración actual de marca.
 
@@ -39,7 +39,7 @@ async def get_branding():
 
 # ==================== ENDPOINTS ADMINISTRATIVOS ====================
 
-@router.put("", response_model=BrandingResponse)
+@router.put("/branding", response_model=BrandingResponse)
 async def update_branding(
     branding_update: BrandingUpdate,
     current_user: dict = Depends(get_superadmin_user)
@@ -100,7 +100,7 @@ async def update_branding(
         raise HTTPException(status_code=500, detail="Error al actualizar la configuración de marca")
 
 
-@router.post("", response_model=BrandingResponse, status_code=201)
+@router.post("/branding", response_model=BrandingResponse, status_code=201)
 async def initialize_branding(
     branding_create: BrandingCreate,
     current_user: dict = Depends(get_superadmin_user)
@@ -145,7 +145,7 @@ async def initialize_branding(
 
 # ==================== ENDPOINTS AUXILIARES ====================
 
-@router.put("/colors", response_model=BrandingResponse)
+@router.put("/branding/colors", response_model=BrandingResponse)
 async def update_colors(
     primary_color: str,
     secondary_color: str,
@@ -179,7 +179,7 @@ async def update_colors(
         raise HTTPException(status_code=500, detail="Error al actualizar colores")
 
 
-@router.put("/company-info", response_model=BrandingResponse)
+@router.put("/branding/company-info", response_model=BrandingResponse)
 async def update_company_info(
     company_name: str | None = None,
     company_description: str | None = None,
@@ -219,7 +219,7 @@ async def update_company_info(
         raise HTTPException(status_code=500, detail="Error al actualizar información de la empresa")
 
 
-@router.put("/logos", response_model=BrandingResponse)
+@router.put("/branding/logos", response_model=BrandingResponse)
 async def update_logos(
     logo_url: str | None = None,
     logo_dark_url: str | None = None,
@@ -256,7 +256,7 @@ async def update_logos(
         raise HTTPException(status_code=500, detail="Error al actualizar logos")
 
 
-@router.put("/social-links", response_model=BrandingResponse)
+@router.put("/branding/social-links", response_model=BrandingResponse)
 async def update_social_links(
     social_links: dict,
     current_user: dict = Depends(get_superadmin_user)
@@ -287,7 +287,7 @@ async def update_social_links(
         raise HTTPException(status_code=500, detail="Error al actualizar enlaces sociales")
 
 
-@router.put("/subscription-plans", response_model=BrandingResponse)
+@router.put("/branding/subscription-plans", response_model=BrandingResponse)
 async def update_subscription_plans(
     subscription_plans: list,
     current_user: dict = Depends(get_superadmin_user)
