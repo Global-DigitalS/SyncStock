@@ -15,6 +15,8 @@
 #   models/subscription.py — SubscriptionPlan, UserSubscription, DashboardStats
 #   models/competitor.py  — Competitor*, PriceSnapshot*, PriceAlert*, CompetitorPriceComparison
 #   models/page.py        — PageType, HeroSection, PageCreate, PageUpdate, PageResponse, PageListResponse
+#   models/branding.py    — SocialLink, SubscriptionPlanConfig, BrandingBase, BrandingCreate,
+#                           BrandingUpdate, BrandingResponse
 
 from models.catalog import (  # noqa: F401
     BulkCategoryAssignment,
@@ -95,4 +97,12 @@ from models.page import (  # noqa: F401
     PageResponse,
     PageType,
     PageUpdate,
+)
+from models.branding import (  # noqa: F401
+    BrandingBase,
+    BrandingCreate,
+    BrandingResponse,
+    BrandingUpdate,
+    SocialLink,
+    SubscriptionPlanConfig,
 )
