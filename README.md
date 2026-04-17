@@ -51,10 +51,16 @@
 - ✅ Sincronización automática configurable
 - ✅ Importación de órdenes y clientes
 
+### Monitoreo de Competidores
+- ✅ Seguimiento de precios de competidores en tiempo real
+- ✅ Alertas de cambios de precio con umbral configurable
+- ✅ Jobs de rastreo (crawl jobs) con paginación
+- ✅ Catálogo de monitoreo configurable por usuario
+- ✅ Reglas de automatización y simulaciones
+
 ### Monitoreo en Tiempo Real
 - ✅ Dashboard con analíticas (productos, stock, ingresos)
 - ✅ Notificaciones por WebSocket
-- ✅ Alertas de cambios de precio (con umbral configurable)
 - ✅ Alertas de stock bajo
 - ✅ Historial de eventos y actividad
 
@@ -68,6 +74,8 @@
 - ✅ Autenticación JWT con cookies seguras (httpOnly, Secure, SameSite)
 - ✅ Control de acceso basado en roles (RBAC)
 - ✅ Rate limiting en endpoints críticos
+- ✅ Protección CSRF con middleware dedicado
+- ✅ Cabeceras de seguridad HTTP (HSTS, CSP, X-Frame-Options)
 - ✅ Encriptación de credenciales de terceros
 - ✅ Logs de auditoría
 
@@ -80,7 +88,7 @@
 |-----------|-----------|
 | Framework | FastAPI 0.110+ |
 | Servidor | Uvicorn |
-| Base de datos | MongoDB (Motor async driver) |
+| Base de datos | MongoDB (Motor async driver 3.3+) |
 | Autenticación | JWT (PyJWT) + bcrypt |
 | Planificador | APScheduler 3.11 |
 | Validación | Pydantic v2 |
@@ -227,36 +235,107 @@ SyncStock/
 ├── backend/
 │   ├── routes/
 │   │   ├── auth.py             # Autenticación y JWT
-│   │   ├── suppliers.py        # Gestión de proveedores
+│   │   ├── suppliers.py        # Gestión de proveedores y sincronización
 │   │   ├── products.py         # Inventario de productos
 │   │   ├── catalogs.py         # Gestión de catálogos
+│   │   ├── competitors.py      # Monitoreo de competidores y alertas
 │   │   ├── woocommerce.py      # Integración WooCommerce
 │   │   ├── stores.py           # Gestión multi-tienda
-│   │   ├── dashboard.py        # Analíticas y metrics
+│   │   ├── dashboard.py        # Analíticas y métricas
 │   │   ├── subscriptions.py    # Planes y facturación
 │   │   ├── crm.py              # Integraciones Dolibarr/Odoo
+│   │   ├── orders.py           # Gestión de órdenes
+│   │   ├── marketplaces.py     # Integraciones de marketplaces
 │   │   ├── stripe.py           # Pagos Stripe
 │   │   ├── email.py            # Configuración SMTP
-│   │   ├── admin.py            # Panel de administración
 │   │   ├── webhooks.py         # Receptores de webhooks
-│   │   └── setup.py            # Configuración inicial
+│   │   ├── support.py          # Soporte técnico
+│   │   ├── setup.py            # Configuración inicial
+│   │   └── admin/              # Panel de superadministración
+│   │       ├── branding.py     # Personalización de marca
+│   │       ├── content.py      # Gestión de contenido
+│   │       ├── email_templates.py
+│   │       ├── integrations.py
+│   │       ├── plans.py        # Gestión de planes
+│   │       └── system.py       # Configuración del sistema
+│   ├── repositories/           # Capa de acceso a datos (Repository Pattern)
+│   │   ├── supplier_repository.py   # SupplierRepository (incl. atomic try_start_sync)
+│   │   ├── product_repository.py    # ProductRepository
+│   │   ├── catalog_repository.py    # CatalogRepository
+│   │   ├── competitor_repository.py # CompetitorRepository, CrawlJobRepository,
+│   │   │                            # UserMonitoringConfigRepository
+│   │   ├── store_repository.py      # StoreRepository
+│   │   ├── notification_repository.py # NotificationRepository
+│   │   └── __init__.py         # Exportaciones centralizadas
 │   ├── services/
-│   │   ├── auth.py             # Lógica de autenticación
-│   │   ├── database.py         # Pool MongoDB y índices
-│   │   ├── sync.py             # Sincronización de proveedores
-│   │   ├── email_service.py    # Envío de emails
-│   │   ├── config_manager.py   # Gestión de configuración
-│   │   ├── platforms.py        # APIs de plataformas e-commerce
-│   │   ├── crm_scheduler.py    # Sincronización CRM programada
-│   │   └── unified_sync.py     # Orquestación de sincronizaciones
-│   ├── models/
-│   │   └── schemas.py          # Esquemas Pydantic
-│   ├── tests/
-│   │   ├── test_auth.py
+│   │   ├── sync/               # Paquete de sincronización de proveedores
+│   │   │   ├── downloaders.py  # Descargadores FTP/SFTP/HTTP/URL
+│   │   │   ├── parsers.py      # Parseo CSV/XLSX/XLS/XML
+│   │   │   ├── normalizer.py   # Normalización y limpieza de datos
+│   │   │   ├── product_sync.py # Upsert de productos en MongoDB
+│   │   │   ├── notifications.py # Disparadores de notificaciones de sync
+│   │   │   ├── woocommerce_sync.py # Sincronización WooCommerce
+│   │   │   ├── ftp_browser.py  # Navegación de directorios FTP
+│   │   │   └── utils.py        # Utilidades compartidas de sync
+│   │   ├── platforms/          # Integraciones de plataformas e-commerce
+│   │   │   ├── base.py         # Clase base abstracta
+│   │   │   ├── factory.py      # Factory pattern para plataformas
+│   │   │   ├── shopify_client.py
+│   │   │   ├── prestashop.py
+│   │   │   ├── magento.py
+│   │   │   └── wix.py
+│   │   ├── crm_clients/        # Clientes CRM
+│   │   │   ├── base.py         # Interfaz base CRM
+│   │   │   ├── factory.py      # Factory pattern para CRM
+│   │   │   ├── dolibarr.py     # Cliente Dolibarr REST
+│   │   │   ├── odoo.py         # Cliente Odoo XML-RPC
+│   │   │   └── basic_clients.py
+│   │   ├── orders/             # Gestión de órdenes
+│   │   │   ├── order_service.py
+│   │   │   ├── order_sync.py
+│   │   │   ├── normalizer.py
+│   │   │   ├── models.py
+│   │   │   └── retry_manager.py
+│   │   ├── auth.py             # Lógica de autenticación y RBAC
+│   │   ├── database.py         # Pool MongoDB e índices
+│   │   ├── email_service.py    # Envío de emails con plantillas Jinja2
+│   │   ├── config_manager.py   # Configuración persistente en /etc/syncstock/
+│   │   ├── encryption.py       # Encriptación de credenciales de terceros
+│   │   ├── cache.py            # Capa de caché
+│   │   ├── error_monitor.py    # Monitor de errores
+│   │   ├── crm_scheduler.py    # Jobs programados de sincronización CRM
+│   │   ├── crm_sync.py         # Orquestación de sincronización CRM
+│   │   ├── multi_store_sync.py # Sincronización multi-tienda
+│   │   └── unified_sync.py     # Planificador general de sincronizaciones
+│   ├── middleware/             # Middlewares de seguridad
+│   │   ├── csrf.py             # Protección CSRF
+│   │   ├── security_headers.py # Cabeceras HTTP de seguridad
+│   │   └── uuid_validation.py  # Validación de UUIDs en rutas
+│   ├── security_config/        # Configuración de seguridad
+│   │   ├── cors.py             # Política CORS
+│   │   └── rate_limits.py      # Límites de peticiones por endpoint
+│   ├── models/                 # Esquemas Pydantic por dominio
+│   │   ├── schemas.py          # Esquemas compartidos
+│   │   ├── supplier.py
+│   │   ├── product.py
+│   │   ├── catalog.py
+│   │   ├── store.py
+│   │   ├── competitor.py
+│   │   ├── subscription.py
+│   │   └── user.py
+│   ├── tests/                  # Suite de tests pytest (50+ archivos)
+│   │   ├── conftest.py         # Fixtures compartidos
+│   │   ├── test_repositories.py        # Tests del Repository Pattern
+│   │   ├── test_sprint5_security.py    # Tests de seguridad
 │   │   ├── test_catalogs.py
-│   │   ├── test_crm_dolibarr.py
 │   │   ├── test_products_sorting_price_history.py
-│   │   └── ... más tests
+│   │   ├── test_roles_users_websocket.py
+│   │   ├── test_crm_dolibarr.py
+│   │   ├── test_stores_multiplatform.py
+│   │   ├── test_stripe_checkout_sftp.py
+│   │   ├── test_competitors_unit.py
+│   │   ├── test_url_connection.py
+│   │   └── ... (40+ archivos de test más)
 │   ├── server.py               # Punto de entrada FastAPI
 │   ├── config.py               # Variables de configuración
 │   ├── requirements.txt        # Dependencias Python
@@ -265,21 +344,40 @@ SyncStock/
 ├── frontend/
 │   ├── src/
 │   │   ├── pages/              # Componentes de página (20+)
-│   │   │   ├── Dashboard.js
-│   │   │   ├── Suppliers.js
-│   │   │   ├── Products.js
-│   │   │   ├── Catalogs.js
-│   │   │   ├── Stores.js
-│   │   │   ├── CRM.js
-│   │   │   └── ... más páginas
+│   │   │   ├── Dashboard.jsx
+│   │   │   ├── Suppliers.jsx
+│   │   │   ├── SupplierDetail.jsx  # 203 líneas (refactorizado)
+│   │   │   ├── Products.jsx
+│   │   │   ├── Catalogs.jsx
+│   │   │   ├── Stores.jsx
+│   │   │   ├── Competitors.jsx     # 268 líneas (refactorizado)
+│   │   │   ├── CRM.jsx
+│   │   │   └── ... (más páginas)
 │   │   ├── components/         # Componentes reutilizables (72+)
 │   │   │   ├── ui/             # Wrappers de Radix UI
 │   │   │   ├── dialogs/        # Modales
+│   │   │   ├── supplier/       # Componentes de detalle de proveedor
 │   │   │   └── shared/         # Componentes comunes
-│   │   ├── hooks/              # Hooks personalizados
+│   │   ├── hooks/              # Hooks personalizados (14)
+│   │   │   ├── useAsyncData.js          # Loading/error/data para llamadas async
+│   │   │   ├── usePagination.js         # Lógica de paginación reutilizable
+│   │   │   ├── useDialogState.js        # Estado de apertura/cierre de diálogos
+│   │   │   ├── useCompetitorsCRUD.js    # CRUD de competidores
+│   │   │   ├── useAlertsCRUD.js         # Alertas de precio CRUD + fetch
+│   │   │   ├── useAutomationCRUD.js     # Reglas de automatización y simulación
+│   │   │   ├── useCompetitorSupportData.js  # Crawl jobs, matches, dashboard, config
+│   │   │   ├── useSupplierData.js       # 9 llamadas paralelas, paginación, filtros
+│   │   │   ├── useProductSelectionHandlers.js  # 7 handlers de selección de productos
+│   │   │   ├── useSupplierSyncHandlers.js      # Sync, preset, subida de archivos
+│   │   │   ├── useCatalogHandlers.js    # Diálogo de selección y adición a catálogos
+│   │   │   ├── useCustomIcons.js        # Iconos personalizados SVG
+│   │   │   ├── useGoogleScripts.js      # Carga de scripts de Google
+│   │   │   └── use-toast.js             # Hook de notificaciones toast
+│   │   ├── contexts/           # Contextos React
+│   │   │   └── SyncProgressContext.jsx  # Progreso de sincronización en tiempo real
 │   │   ├── lib/                # Utilidades
 │   │   ├── utils/              # Funciones auxiliares
-│   │   ├── App.js              # Router + Contextos
+│   │   ├── App.jsx             # Router + Auth Context + WebSocket Context
 │   │   └── index.js            # Punto de entrada
 │   ├── package.json
 │   └── build/                  # Build de producción (gitignored)
@@ -382,9 +480,6 @@ npm test  # o: yarn test
 # Health check del backend
 curl http://localhost:8001/health
 curl http://localhost:8001/api/health
-
-# Ver logs del backend en tiempo real
-# (Accesible desde terminal con --reload)
 
 # Rebuildar frontend
 cd frontend
@@ -543,11 +638,11 @@ curl -X POST http://localhost:8001/api/setup/reload-database
 #### Shopify
 - ✅ Conectar tienda Shopify
 - ✅ Publicar catálogos personalizados
-- **Documentación**: Ver `backend/routes/stores.py`
+- **Documentación**: Ver `backend/services/platforms/shopify_client.py`
 
 #### PrestaShop
 - ✅ Sincronización de stock y precios
-- **Documentación**: Ver `backend/services/platforms.py`
+- **Documentación**: Ver `backend/services/platforms/prestashop.py`
 
 ### CRM/ERP
 
@@ -593,19 +688,25 @@ POST   /api/suppliers               Crear proveedor
 GET    /api/suppliers/{id}          Obtener detalles
 PUT    /api/suppliers/{id}          Actualizar proveedor
 DELETE /api/suppliers/{id}          Eliminar proveedor
-POST   /api/suppliers/{id}/sync     Sincronizar provedor
-GET    /api/suppliers/{id}/products Obtener productos del proveedor
+POST   /api/suppliers/{id}/sync     Sincronizar proveedor (operación atómica)
+GET    /api/supplier/{id}/products  Obtener productos del proveedor (paginado)
+GET    /api/supplier/{id}/products/count  Total de productos con filtros
 ```
 
 ### Productos
 ```
 GET    /api/products                Listar productos
-POST   /api/products/search         Búsqueda avanzada
+GET    /api/products-unified        Búsqueda unificada con filtros avanzados
+POST   /api/products/search         Búsqueda global
 GET    /api/products/{id}           Obtener detalles
 PUT    /api/products/{id}           Actualizar producto
 DELETE /api/products/{id}           Eliminar producto
 GET    /api/products/{id}/history   Historial de precios
-POST   /api/products/upload         Subir imagen
+POST   /api/products/select         Añadir productos a sección principal
+POST   /api/products/deselect       Quitar productos de sección principal
+POST   /api/products/select-by-supplier  Seleccionar por proveedor/categoría
+GET    /api/products/category-hierarchy  Jerarquía de categorías
+GET    /api/products/brands         Marcas disponibles por proveedor
 ```
 
 ### Catálogos
@@ -616,7 +717,23 @@ GET    /api/catalogs/{id}           Obtener detalles
 PUT    /api/catalogs/{id}           Actualizar catálogo
 DELETE /api/catalogs/{id}           Eliminar catálogo
 GET    /api/catalogs/{id}/items     Listar ítems del catálogo
+POST   /api/catalogs/{id}/products  Añadir productos al catálogo
 POST   /api/catalogs/{id}/export    Exportar catálogo
+```
+
+### Competidores
+```
+GET    /api/competitors             Listar competidores
+POST   /api/competitors             Crear competidor
+PUT    /api/competitors/{id}        Actualizar competidor
+DELETE /api/competitors/{id}        Eliminar competidor
+GET    /api/competitors/crawl-jobs  Listar jobs de rastreo (paginado)
+GET    /api/competitors/alerts      Listar alertas de precio
+POST   /api/competitors/alerts      Crear alerta
+GET    /api/competitors/automation  Reglas de automatización
+POST   /api/competitors/automation  Crear regla de automatización
+GET    /api/competitors/monitoring-config  Config de catálogo de monitoreo
+PUT    /api/competitors/monitoring-config  Actualizar config de monitoreo
 ```
 
 ### Dashboard
@@ -657,21 +774,34 @@ WOOCOMMERCE_SYNC_INTERVAL_HOURS = 12  # WooCommerce cada 12h
 CRM_SYNC_INTERVAL_HOURS = 24          # CRM cada 24h
 ```
 
-### Alertas de Cambios de Precio
+### Sincronización Atómica de Proveedores
 
-En `backend/config.py`:
+El inicio de sincronización usa una operación atómica en MongoDB para evitar condiciones de carrera:
 
-```env
-PRICE_CHANGE_THRESHOLD_PERCENT=10     # Alertar si cambia >10%
-LOW_STOCK_THRESHOLD=5                 # Alertar si stock <5 unidades
+```python
+# SupplierRepository.try_start_sync() — marca como "running" solo si no está ya corriendo
+matched = await SupplierRepository.try_start_sync(supplier_id, user["id"])
+if matched == 0:
+    raise HTTPException(status_code=409, detail="Ya hay una sincronización en curso")
+```
+
+### Repository Pattern
+
+Toda la lógica de acceso a MongoDB está encapsulada en `backend/repositories/`:
+
+```python
+# Uso en rutas — sin acceso directo a db.*
+from repositories import SupplierRepository, ProductRepository
+
+supplier = await SupplierRepository.get_by_id(supplier_id, user["id"])
+products = await ProductRepository.get_paginated(filters, skip, limit)
 ```
 
 ### Rate Limiting
 
-Configurado automáticamente. Para ajustar, ver `backend/server.py`:
+Configurado en `backend/security_config/rate_limits.py`. Para ajustar:
 
 ```python
-limiter = Limiter(key_func=get_remote_address)
 # Ejemplo: 5 peticiones por minuto en /auth/register
 @limiter.limit("5/minute")
 ```
@@ -789,6 +919,7 @@ ls -la /etc/syncstock/
 - IDs: siempre strings UUID v4 (nunca MongoDB ObjectId)
 - Async/await para operaciones de BD
 - Exclusión de `_id` en respuestas API
+- Repository Pattern para todo acceso a MongoDB
 
 ### JavaScript/React (Frontend)
 - camelCase para variables y funciones
@@ -797,6 +928,7 @@ ls -la /etc/syncstock/
 - Iconos: Lucide React exclusivamente
 - Notificaciones: Sonner (`toast.success`, `toast.error`)
 - React Hook Form + Zod para formularios
+- `useAsyncData` para gestión de loading/error en llamadas API
 
 ---
 
@@ -832,4 +964,4 @@ Para problemas o preguntas:
 
 **SyncStock** — Gestión Inteligente de Catálogos de Proveedores
 
-Última actualización: 2026-04-09
+Última actualización: 2026-04-17
