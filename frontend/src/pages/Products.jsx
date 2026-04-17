@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useAsyncData } from "../hooks/useAsyncData";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { usePagination } from "../hooks/usePagination";
@@ -148,7 +149,6 @@ const Products = () => {
   const [catalogs, setCatalogs] = useState([]);
   
   // UI states
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -199,29 +199,22 @@ const Products = () => {
   }, [searchTerm, categoryFilter, stockFilter]);
 
   // Fetch products from API
-  const fetchProducts = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      const params = buildFilterParams();
-      params.append("skip", String(skip));
-      params.append("limit", String(pageSize));
-
-      const response = await api.get(`/products-unified?${params.toString()}`);
-
-      if (Array.isArray(response.data)) {
-        setProducts(response.data);
-      } else {
+  const { loading, reload: fetchProducts } = useAsyncData(
+    async () => {
+      setError(null);
+      try {
+        const params = buildFilterParams();
+        params.append("skip", String(skip));
+        params.append("limit", String(pageSize));
+        const response = await api.get(`/products-unified?${params.toString()}`);
+        setProducts(Array.isArray(response.data) ? response.data : []);
+      } catch (err) {
+        setError(handleApiError(err, "Error al cargar productos", { silent: true }));
         setProducts([]);
       }
-    } catch (err) {
-      setError(handleApiError(err, "Error al cargar productos", { silent: true }));
-      setProducts([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [skip, buildFilterParams]);
+    },
+    [skip, buildFilterParams, pageSize],
+  );
 
   // Fetch count for pagination
   const fetchCount = useCallback(async () => {
@@ -255,11 +248,10 @@ const Products = () => {
     fetchAuxiliaryData();
   }, []);
 
-  // Fetch products when filters or page change
+  // Fetch count when filters change (products fetch is handled by useAsyncData)
   useEffect(() => {
-    fetchProducts();
     fetchCount();
-  }, [fetchProducts, fetchCount]);
+  }, [fetchCount]);
 
   // Handle search — just reset page, the useEffect handles the fetch
   const handleSearch = () => {

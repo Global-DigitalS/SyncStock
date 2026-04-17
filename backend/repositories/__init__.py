@@ -5,7 +5,8 @@ from repositories.catalog_repository import (
     CatalogRepository, CatalogItemRepository, CatalogCategoryRepository, MarginRuleRepository
 )
 from repositories.competitor_repository import (
-    CompetitorRepository, PriceAlertRepository, AutomationRuleRepository, PendingMatchRepository
+    CompetitorRepository, PriceAlertRepository, AutomationRuleRepository,
+    PendingMatchRepository, CrawlJobRepository, UserMonitoringConfigRepository,
 )
 from repositories.notification_repository import NotificationRepository
 
@@ -21,5 +22,7 @@ __all__ = [
     "PriceAlertRepository",
     "AutomationRuleRepository",
     "PendingMatchRepository",
+    "CrawlJobRepository",
+    "UserMonitoringConfigRepository",
     "NotificationRepository",
 ]

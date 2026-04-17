@@ -59,6 +59,24 @@ class SupplierRepository:
         return await db.suppliers.count_documents({"user_id": user_id})
 
     @staticmethod
+    async def try_start_sync(supplier_id: str, user_id: str) -> int:
+        """Marca sync como 'running' de forma atómica solo si no está ya corriendo.
+        Devuelve matched_count: 0 = ya estaba corriendo, 1 = éxito."""
+        from datetime import UTC, datetime
+        result = await db.suppliers.update_one(
+            {
+                "id": supplier_id,
+                "user_id": user_id,
+                "$or": [
+                    {"sync_status": {"$ne": "running"}},
+                    {"sync_status": {"$exists": False}},
+                ],
+            },
+            {"$set": {"sync_status": "running", "sync_started_at": datetime.now(UTC).isoformat()}},
+        )
+        return result.matched_count
+
+    @staticmethod
     async def update_product_count(supplier_id: str, now: str) -> None:
         count = await db.products.count_documents({"supplier_id": supplier_id})
         await db.suppliers.update_one(
