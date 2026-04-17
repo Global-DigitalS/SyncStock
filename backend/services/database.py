@@ -352,6 +352,8 @@ async def ensure_indexes():
         await _db.pages.create_index([("created_at", -1)])
         await _db.pages.create_index([("updated_at", -1)])
         await _db.pages.create_index([("created_by", 1)])
+        # --- branding (Landing Page CMS Singleton) ---
+        await _db.branding.create_index([("_id", 1)], unique=True)
 
         logger.info("MongoDB indexes ensured (incluidos índices de optimización y TTL)")
     except Exception as e:
