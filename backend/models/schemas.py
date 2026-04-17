@@ -14,6 +14,7 @@
 #   models/store.py       — WooCommerceConfig*, MarketplaceConnection*
 #   models/subscription.py — SubscriptionPlan, UserSubscription, DashboardStats
 #   models/competitor.py  — Competitor*, PriceSnapshot*, PriceAlert*, CompetitorPriceComparison
+#   models/page.py        — PageType, HeroSection, PageCreate, PageUpdate, PageResponse, PageListResponse
 
 from models.catalog import (  # noqa: F401
     BulkCategoryAssignment,
@@ -86,4 +87,12 @@ from models.user import (  # noqa: F401
     UserLogin,
     UserResponse,
     UserUpdate,
+)
+from models.page import (  # noqa: F401
+    HeroSection,
+    PageCreate,
+    PageListResponse,
+    PageResponse,
+    PageType,
+    PageUpdate,
 )
