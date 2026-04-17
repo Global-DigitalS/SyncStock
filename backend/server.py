@@ -32,6 +32,7 @@ from security_config.cors import CORS_CONFIG, SECURITY_HEADERS
 # Import route modules
 from routes.admin import router as admin_router
 from routes.auth import router as auth_router
+from routes.branding import router as branding_router
 from routes.catalogs import router as catalogs_router
 from routes.competitors import router as competitors_router
 from routes.crm import router as crm_router
@@ -39,6 +40,7 @@ from routes.dashboard import router as dashboard_router
 from routes.email import router as email_router
 from routes.marketplaces import router as marketplaces_router
 from routes.orders import router as orders_router
+from routes.pages import router as pages_router
 from routes.products import router as products_router
 from routes.setup import router as setup_router
 from routes.stores import router as stores_router
@@ -225,6 +227,8 @@ api_router.include_router(crm_router)
 api_router.include_router(support_router)
 api_router.include_router(marketplaces_router)
 api_router.include_router(competitors_router)
+api_router.include_router(pages_router)
+api_router.include_router(branding_router)
 
 
 # Health check endpoints

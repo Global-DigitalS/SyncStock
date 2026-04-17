@@ -9,6 +9,8 @@ from repositories.competitor_repository import (
     PendingMatchRepository, CrawlJobRepository, UserMonitoringConfigRepository,
 )
 from repositories.notification_repository import NotificationRepository
+from repositories.page_repository import PageRepository
+from repositories.branding_repository import BrandingRepository
 
 __all__ = [
     "SupplierRepository",
@@ -25,4 +27,6 @@ __all__ = [
     "CrawlJobRepository",
     "UserMonitoringConfigRepository",
     "NotificationRepository",
+    "PageRepository",
+    "BrandingRepository",
 ]

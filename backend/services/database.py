@@ -343,6 +343,18 @@ async def ensure_indexes():
             [("expires_at", 1)], expireAfterSeconds=0, name="ttl_password_resets"
         )
 
+        # --- pages (Landing Page CMS) ---
+        await _db.pages.create_index([("id", 1)], unique=True)
+        await _db.pages.create_index([("slug", 1)], unique=True)
+        await _db.pages.create_index([("page_type", 1)])
+        await _db.pages.create_index([("is_published", 1)])
+        await _db.pages.create_index([("is_public", 1)])
+        await _db.pages.create_index([("created_at", -1)])
+        await _db.pages.create_index([("updated_at", -1)])
+        await _db.pages.create_index([("created_by", 1)])
+        # --- branding (Landing Page CMS Singleton) ---
+        await _db.branding.create_index([("_id", 1)], unique=True)
+
         logger.info("MongoDB indexes ensured (incluidos índices de optimización y TTL)")
     except Exception as e:
         logger.warning(f"No se pudieron crear los índices de MongoDB: {e}. Comprueba la URL de conexión y las credenciales.")
