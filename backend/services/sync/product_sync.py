@@ -549,15 +549,21 @@ async def sync_supplier(supplier: dict, sync_type: str = "manual") -> dict:
     start_time = datetime.now(UTC)
     try:
         logger.info(f"Syncing supplier: {supplier['name']} (via {connection_type})")
+        await send_sync_progress(supplier["user_id"], supplier['name'], 0, 100, supplier['id'])
         if connection_type == 'url':
             from services.encryption import decrypt_password
             url_username = supplier.get('url_username')
             url_password = supplier.get('url_password')
             if url_password:
                 url_password = decrypt_password(url_password)
+            logger.info(f"Starting URL download for {supplier['name']}...")
             content = await download_file_from_url(supplier['file_url'], url_username, url_password)
+            logger.info(f"URL download successful: {len(content)} bytes")
         else:
+            logger.info(f"Starting FTP/SFTP download for {supplier['name']}...")
             content = await download_file_from_ftp(supplier)
+            logger.info(f"FTP/SFTP download successful: {len(content)} bytes")
+        logger.info(f"Processing file for {supplier['name']}...")
         result = await process_supplier_file(supplier, content)
         now = datetime.now(UTC)
         duration = (now - start_time).total_seconds()
