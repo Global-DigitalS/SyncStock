@@ -47,6 +47,8 @@ const AdminEmailAccounts = lazy(() => import("../pages/AdminEmailAccounts"));
 const AdminLanding = lazy(() => import("../pages/AdminLanding"));
 const AdminGoogleServices = lazy(() => import("../pages/AdminGoogleServices"));
 const AdminSupport = lazy(() => import("../pages/AdminSupport"));
+const PageManager = lazy(() => import("../pages/admin/PageManager"));
+const PageEditor = lazy(() => import("../pages/admin/PageEditor"));
 
 // Redirección de home: superadmin → /admin/dashboard, otros → Dashboard
 const HomeRedirect = () => {
@@ -169,6 +171,9 @@ export default function AppRouter() {
           <Route path="/admin/landing" element={<ProtectedPage><AdminLanding /></ProtectedPage>} />
           <Route path="/admin/google-services" element={<ProtectedPage><AdminGoogleServices /></ProtectedPage>} />
           <Route path="/admin/support" element={<ProtectedPage><AdminSupport /></ProtectedPage>} />
+          <Route path="/admin/pages-list" element={<ProtectedPage><PageManager /></ProtectedPage>} />
+          <Route path="/admin/pages" element={<ProtectedPage><PageEditor /></ProtectedPage>} />
+          <Route path="/admin/pages/:id" element={<ProtectedPage><PageEditor /></ProtectedPage>} />
 
           {/* Fallback */}
           <Route path="*" element={<Navigate to="/" replace />} />
