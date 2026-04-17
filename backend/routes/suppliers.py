@@ -16,7 +16,6 @@ from models.schemas import (
 )
 from repositories import SupplierRepository
 from services.auth import check_user_limit, get_current_user
-from services.database import db
 from services.encryption import decrypt_password, encrypt_password
 from services.sanitizer import (
     remove_credentials,
@@ -225,21 +224,8 @@ async def sync_supplier_manual(request: Request, supplier_id: str, user: dict = 
             raise HTTPException(status_code=400, detail="Configuración FTP incompleta.")
 
     # Operación atómica: marcar "running" solo si NO está ya corriendo.
-    # El filtro $ne:"running" + update_one garantiza que la lectura y escritura
-    # ocurren en una única operación atómica en MongoDB, eliminando la ventana
-    # de race condition que existía con el patrón check-then-set previo.
-    result = await db.suppliers.update_one(
-        {
-            "id": supplier_id,
-            "user_id": user["id"],
-            "$or": [
-                {"sync_status": {"$ne": "running"}},
-                {"sync_status": {"$exists": False}},
-            ],
-        },
-        {"$set": {"sync_status": "running", "sync_started_at": datetime.now(UTC).isoformat()}},
-    )
-    if result.matched_count == 0:
+    matched = await SupplierRepository.try_start_sync(supplier_id, user["id"])
+    if matched == 0:
         raise HTTPException(
             status_code=409,
             detail="La sincronización ya está en progreso para este proveedor."

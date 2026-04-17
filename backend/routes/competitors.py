@@ -17,11 +17,11 @@ from starlette.responses import StreamingResponse
 
 from repositories import (
     AutomationRuleRepository, CatalogItemRepository, CatalogRepository,
-    CompetitorRepository, NotificationRepository, PendingMatchRepository,
-    PriceAlertRepository, ProductRepository,
+    CompetitorRepository, CrawlJobRepository, NotificationRepository,
+    PendingMatchRepository, PriceAlertRepository, ProductRepository,
+    UserMonitoringConfigRepository,
 )
 from services.auth import get_current_user
-from services.database import db
 
 limiter = Limiter(key_func=get_remote_address)
 from models.schemas import (
@@ -1523,14 +1523,7 @@ async def list_crawl_jobs(
             raise HTTPException(status_code=400, detail=f"Estado inválido. Valores permitidos: {', '.join(valid_statuses)}")
         query["status"] = status
 
-    # Contar total
-    total = await db.crawl_jobs.count_documents(query)
-
-    # Obtener jobs paginados
-    jobs = await db.crawl_jobs.find(
-        query,
-        {"_id": 0}
-    ).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
+    jobs, total = await CrawlJobRepository.get_paginated(user_id, query, offset, limit)
 
     return {
         "jobs": jobs,
@@ -1617,13 +1610,7 @@ async def get_monitoring_catalog_config(user: dict = Depends(get_current_user)):
     """
     user_id = user["id"]
 
-    # Obtener el catálogo configurado para monitoreo
-    user_config = await db.users.find_one(
-        {"id": user_id},
-        {"_id": 0, "competitor_monitoring_catalog_id": 1}
-    )
-
-    catalog_id = user_config.get("competitor_monitoring_catalog_id") if user_config else None
+    catalog_id = await UserMonitoringConfigRepository.get_monitoring_catalog_id(user_id)
 
     # Si no hay configurado, intentar usar el catálogo predeterminado
     if not catalog_id:
@@ -1684,13 +1671,8 @@ async def set_monitoring_catalog_config(
             detail="Catálogo no encontrado o no tiene permiso para acceder"
         )
 
-    # Actualizar la configuración del usuario
-    result = await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"competitor_monitoring_catalog_id": catalog_id}}
-    )
-
-    if result.modified_count == 0 and result.matched_count == 0:
+    matched = await UserMonitoringConfigRepository.set_monitoring_catalog_id(user_id, catalog_id)
+    if not matched:
         raise HTTPException(status_code=500, detail="Error al actualizar la configuración")
 
     logger.info(f"Usuario {user_id} configuró catálogo de monitoreo: {catalog_id}")
@@ -1711,11 +1693,7 @@ async def list_available_catalogs_for_monitoring(user: dict = Depends(get_curren
     user_id = user["id"]
 
     # Obtener catálogo actualmente configurado
-    user_config = await db.users.find_one(
-        {"id": user_id},
-        {"_id": 0, "competitor_monitoring_catalog_id": 1}
-    )
-    current_catalog_id = user_config.get("competitor_monitoring_catalog_id") if user_config else None
+    current_catalog_id = await UserMonitoringConfigRepository.get_monitoring_catalog_id(user_id)
 
     # Obtener todos los catálogos del usuario
     catalogs = await CatalogRepository.get_all(user_id)

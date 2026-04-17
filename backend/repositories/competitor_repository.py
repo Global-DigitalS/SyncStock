@@ -174,6 +174,31 @@ class AutomationRuleRepository:
         return result.deleted_count > 0
 
 
+class CrawlJobRepository:
+    @staticmethod
+    async def get_paginated(user_id: str, query: dict, offset: int, limit: int) -> tuple[list, int]:
+        total = await db.crawl_jobs.count_documents(query)
+        jobs = await db.crawl_jobs.find(query, {"_id": 0}).sort("created_at", -1).skip(offset).limit(limit).to_list(limit)
+        return jobs, total
+
+
+class UserMonitoringConfigRepository:
+    @staticmethod
+    async def get_monitoring_catalog_id(user_id: str) -> str | None:
+        doc = await db.users.find_one(
+            {"id": user_id}, {"_id": 0, "competitor_monitoring_catalog_id": 1}
+        )
+        return doc.get("competitor_monitoring_catalog_id") if doc else None
+
+    @staticmethod
+    async def set_monitoring_catalog_id(user_id: str, catalog_id: str) -> bool:
+        result = await db.users.update_one(
+            {"id": user_id},
+            {"$set": {"competitor_monitoring_catalog_id": catalog_id}}
+        )
+        return result.matched_count > 0
+
+
 class PendingMatchRepository:
     @staticmethod
     async def get_paginated(user_id: str, skip: int, limit: int, status: str = None) -> tuple[list, int]:
