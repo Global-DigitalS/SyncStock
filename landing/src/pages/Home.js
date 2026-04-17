@@ -6,6 +6,8 @@ import {
   Check, Star, TrendingUp, Code2, Database, Shield
 } from 'lucide-react';
 import { useSEO } from '../hooks/useSEO';
+import { useLandingData } from '../hooks/useLandingData';
+import DynamicPage from '../components/DynamicPage';
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -126,6 +128,8 @@ function TestimonialCard({ name, company, quote, index }) {
 
 export default function Home() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+  const { branding, currentPage, loading, error } = useLandingData({ slug: 'home' });
+  const [useFallback, setUseFallback] = useState(false);
 
   useSEO({
     description:
@@ -143,6 +147,12 @@ export default function Home() {
       aggregateRating: { '@type': 'AggregateRating', ratingValue: '4.8', ratingCount: '150' },
     },
   });
+
+  // Si la página se carga exitosamente desde API, usar DynamicPage
+  // Si hay error o no hay página, usar contenido estático como fallback
+  if (!loading && currentPage && !error?.currentPageError && !useFallback) {
+    return <DynamicPage page={currentPage} branding={branding} loading={loading} error={error} />;
+  }
 
   useEffect(() => {
     const handleMouseMove = (e) => {
