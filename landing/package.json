@@ -13,6 +13,7 @@
     "@radix-ui/react-accordion": "^1.2.0",
     "axios": "^1.6.7",
     "clsx": "^2.1.0",
+    "framer-motion": "^12.38.0",
     "lucide-react": "^0.312.0",
     "posthog-js": "^1.363.4",
     "react": "^18.2.0",
